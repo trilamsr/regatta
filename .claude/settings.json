@@ -1,4 +1,17 @@
 {
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); if echo \"$cmd\" | grep -qE '(^|[[:space:];&|])(gh pr (create|edit)|git push)([[:space:]]|$)'; then jq -n '{hookSpecificOutput: {hookEventName: \"PreToolUse\", additionalContext: \"Pre-PR checklist (acknowledge each before proceeding):\\n- [ ] Diff swept for superfluous comments (six-months-cold-reader test).\\n- [ ] PR title reflects the final diff.\\n- [ ] PR body reflects the final branch state (no stale test-plan items, no removed features still mentioned).\\n- [ ] Locally-runnable test-plan items run (make check, relevant tests).\\n- [ ] Root cause fully identified: keep investigating until the actual root cause is named in the PR body. Do not stop at the first symptom.\\n- [ ] Workaround is only permitted if the root cause is impossible to fix on our end (name the blocker, link the tracking entry). Otherwise, fix the root cause in this PR.\"}}'; fi"
+          }
+        ]
+      }
+    ]
+  },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
     "ralph-loop@claude-plugins-official": true,
