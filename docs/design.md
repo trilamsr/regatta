@@ -1,6 +1,6 @@
 # Regatta: A Repo-Agnostic Autonomous-Agent Fleet
 
-- **Status:** draft v3.1 (A+ revision pass)
+- **Status:** Draft design, pre-implementation
 - **Author(s):** Tri Lam
 - **Created:** 2026-05-19
 - **Last updated:** 2026-05-19
@@ -115,22 +115,26 @@ sink.
 
 ### Threats explicitly defended
 
-The 10 patterns in §Trap Catalog. The most load-bearing five (each
+The 13 patterns in §Trap Catalog. The most load-bearing six (each
 preventing 3+ documented incidents): P1 (deterministic gate before AI
 gate on destructive ops), P3 (trusted text from `main` only), P5
 (out-of-band supervisor), P6 (verified grounding), P8 (spend +
-iteration brakes).
+iteration brakes), P10 (invisible-glyph normalization + signed prompts).
 
-### Threats explicitly *not* defended (in v3.1)
+### Threats explicitly *not* defended
 
 - **Compromised model provider** producing systematically-biased gate
-  output. Mitigation deferred to v4 cross-vendor adapter.
+  output. Mitigation deferred to the cross-vendor adapter.
 - **Side-channels in PR comments or CI logs**. Egress-content scanning
-  for known secret formats is on the v3.1 roadmap but not yet
+  for known secret formats is on the roadmap but not yet
   implemented.
 - **Malicious maintainer**. Two-key approval on `regatta.yaml` edits
-  (CODEOWNERS requires ≥2 reviewers) is the only mitigation; collusion
-  is not modeled.
+  (CODEOWNERS routes to two disjoint teams + `required_approving_review_count: 2`
+  + `enforce_admins: true` + `require_last_push_approval: true`) is the
+  only mitigation; collusion is not modeled. Note that without
+  `enforce_admins: true` (off by default on GitHub) any admin silently
+  bypasses every rule below — `regatta verify-repo-config` enforces this
+  toggle pre-flight.
 
 ### Tamper-evident audit
 
@@ -145,39 +149,46 @@ credential, which lives outside the orchestrator host.
 
 ## Trap Catalog
 
-The 10 platform-enforcement patterns that close the documented AI-agent
+The 13 platform-enforcement patterns that close the documented AI-agent
 incident classes. Each pattern is wired into the architecture below;
 none is advisory. Full prose, primary-source citations, and the
 cross-pattern map live in [`incidents.md`](incidents.md).
 
 | ID | Pattern | Prevents (incidents from [incidents.md](incidents.md)) |
 |---|---|---|
-| **P1** | Deterministic gate before AI gate on destructive ops | Replit (#1), PocketOS (#2), slopsquatting (#11), Lovable RLS (#12) |
-| **P2** | Two-key approval on irreversible actions | Replit (#1), PocketOS (#2), Copilot RCE (#10) |
-| **P3** | Trusted instructions from `main` only; all other text is data | Comment-and-Control (#8), EchoLeak (#6), Cursor MCPoison/CurXecute/Rules-File (#9), Copilot RCE (#10) |
-| **P4** | Least-privilege, ephemeral, environment-scoped credentials | PocketOS (#2), Amazon Q (#7), Comment-and-Control (#8) |
-| **P5** | Out-of-band supervisor for limits and kill-switches | Sakana (#3), o3 shutdown (#4), Cursor runaway (#19) |
+| **P1** | Deterministic gate before AI gate on destructive ops | Replit (#1), PocketOS (#2), slopsquatting (#11), Lovable RLS (#12), Antigravity (#28), Kiro (#27, disputed) |
+| **P2** | Two-key approval on irreversible actions | Replit (#1), PocketOS (#2), Copilot RCE (#10), Kiro (#27, disputed) |
+| **P3** | Trusted instructions from `main` only; all other text is data — including config / MCP discovery / deeplinks / ingested documents | Comment-and-Control (#8), EchoLeak (#6), MCPoison/CurXecute/Rules-File (#9), Copilot RCE (#10), MCP-Git (#20), TrustFall (#21), DXT calendar (#24), ClaudeBleed (#25), claude-cli deeplink (#26), Cowork (#29) |
+| **P4** | Least-privilege, ephemeral, environment-scoped credentials | PocketOS (#2), Amazon Q (#7), Comment-and-Control (#8), DXT (#24), ClaudeBleed (#25) |
+| **P5** | Out-of-band supervisor for limits and kill-switches | Sakana (#3), o3 shutdown (#4), Cursor runaway (#19), TrustFall (#21), Antigravity (#28) |
 | **P6** | Verified grounding for any outward-facing claim | Air Canada (#13), MyCity (#14), Mata (#17), slopsquatting (#11), curl (#16) |
-| **P7** | Schema-level scope constraints, not prompt-level | Chevy $1 (#15), MyCity (#14), Air Canada (#13) |
+| **P7** | Schema-level scope constraints, not prompt-level | Chevy $1 (#15), MyCity (#14), Air Canada (#13), Antigravity workspace-root (#28) |
 | **P8** | Spend / iteration brakes with mandatory re-approval | Cursor runaway (#19), Sakana (#3), GTG-1002 (#18) |
-| **P9** | Sensitive context segregation | Opus 4 blackmail (#5), EchoLeak (#6) |
-| **P10** | Invisible-glyph normalization + signed prompt artifacts | Cursor Rules-File-Backdoor (#9), Amazon Q (#7), MCPoison (#9) |
+| **P9** | Sensitive context segregation | Opus 4 blackmail (#5), EchoLeak (#6), Cowork PII (#29) |
+| **P10** | Invisible-glyph normalization + signed prompt artifacts | Rules-File-Backdoor (#9), Amazon Q (#7), MCPoison (#9), TrustFall (#21), ClaudeBleed (#25), claude-cli (#26), Cowork (#29) |
+| **P11** | Agent-artifact release pipelines are themselves attack surface — content audit + build attestation + runner-memory isolation + age gate | Amazon Q wiper (#7), Claude Code source leak (#23), Mini Shai-Hulud (#30) |
+| **P12** | Inbound vulnerability signals default-escalate — two-key on the decision to ignore | curl slop (#16), Cowork (#29), Lovable BOLA Apr-26 (#31) |
+| **P13** | Judge-LLM lineage isolation + read-only metric channel | Reward-hacking corpus (#32) |
 
-P1, P3, P5, P6, P8 each prevent 3+ documented incidents and are the
-highest-leverage rules.
+P1, P3, P5, P6, P8, P10 each prevent 3+ documented incidents and are
+the highest-leverage rules. P11 (release-pipeline) prevents 3, P12
+(vuln-intake) prevents 3, P13 (judge-isolation) is forward-looking
+from the 2026 reward-hacking corpus and the Preference Leakage ICLR
+2026 finding.
 
 ### How patterns map to layers
 
 | Layer | Patterns enforced |
 |---|---|
 | L0 spec-immutability | P1, P3, P10 (rubric body) |
-| L1 repo CI | P1 (license, govulncheck), P6 (test grounding) |
+| L1 repo CI | P1 (license, govulncheck), P6 (test grounding), P11 (artifact-content audit + build attestation on agent commits) |
 | L2 PR-body | P6 (citation block) |
-| L3 spec-conformance | P6 (per-criterion grounding) |
-| L4 adversarial | P3, P6, P7, P9 (all read against signed `main` text) |
+| L3 spec-conformance | P6 (per-criterion grounding), P13 (judge runs in sibling sandbox) |
+| L4 adversarial | P3, P6, P7, P9 (all read against signed `main` text), P13 (cross-family escalation on family-stratified catch-rate <0.85) |
 | L5 drift | P3 (consumer-test contract from `main`) |
 | L6 human merge | P2 |
-| Orchestrator | P4, P5, P8, P10 |
+| Orchestrator | P4, P5, P8, P10, P11 (release-pipeline checks on Regatta's own binaries), P13 (immutable audit channel) |
+| Intake (vuln reports) | P12 (default-escalate; two-key on Won't-Fix) |
 
 ## Proposal
 
@@ -202,6 +213,24 @@ the repo selects an implementation.
 Built-in adapters: `github_issues`, `gitlab_issues`,
 `markdown_catalog`, `jira`, `linear`, `custom` (shells out to a binary
 on PATH via a versioned JSON-over-stdio protocol).
+
+Adapters split into two tiers based on what the platform's API actually
+exposes. **First-class adapters** (`github_issues`, `markdown_catalog`)
+support immutable-snapshot retrieval (ETag for GitHub, commit SHA for
+markdown), audited edit history (GitHub's `userContentEdits.diff` walk
+gives best-effort prior-text reconstruction with `ErrSourceUnverifiable`
+fallback), and atomic state transitions. **Degraded-mode adapters**
+(`gitlab_issues`, `jira`, `linear`) signal *that* a description
+changed (via `updatedAt`, `version`, or `IssueHistory.updatedDescription`)
+but cannot return the prior body text — Linear's GraphQL `IssueHistory`
+exposes `fromTitle`/`toTitle` and many other paired fields, but
+verified live (2026-05-20) it does *not* expose `fromDescription`/`toDescription`,
+only a Boolean `updatedDescription` flag plus a `descriptionUpdatedBy` list
+and an opaque `changes` JSONObject. On these adapters L0 falls back to
+"detect mutation, halt agent, file clarification item" rather than
+"verify byte-equality." `regatta init` prints the selected adapter's
+tier and refuses to advance without explicit acknowledgement when the
+tier is degraded.
 
 `WorkItem` shape: see
 [`schemas/work_item.schema.json`](../schemas/work_item.schema.json).
@@ -302,10 +331,10 @@ Example shapes: `license_audit` (deterministic), `migration_safety`
 
 ### Orchestrator shape
 
-Long-running Go daemon. The single recommended deployment for v3.1 is
-a self-hosted daemon watching one or more repos via VCS APIs — fastest
-to iterate, lowest blast radius. GitHub Actions integration ships as
-v3.2; hosted multi-tenant service is v4.
+Long-running Go daemon. The recommended deployment is a self-hosted
+daemon watching one or more repos via VCS APIs — fastest to iterate,
+lowest blast radius. GitHub Actions integration and a hosted
+multi-tenant service are deferred.
 
 Responsibilities:
 
@@ -430,10 +459,25 @@ $ regatta init                                       # writes regatta.yaml skele
 $ $EDITOR regatta.yaml                               # fill in adapter, ci.command, lanes
 $ regatta validate-config                            # CUE-validates regatta.yaml
 $ regatta validate-spec --dry-run                    # connects to adapter, lists items
+$ regatta verify-repo-config                         # audits branch protection + CODEOWNERS
 ```
 
 Expected: a parsed-items count, NFC + invisible-glyph cleanliness
 report, DAG verification, and the list of ready-to-spawn item IDs.
+`verify-repo-config` is mandatory before the first `regatta serve` —
+several silent-bypass classes (admins-bypass-by-default,
+CODEOWNERS-pattern-matches-nothing, SKIPPED-required-check satisfies
+branch protection, `required_approving_review_count: 0` is a no-op,
+CODEOWNERS file >3 MB is silently ignored, missing
+`require_last_push_approval` enables Mercari-class PR hijacking) are
+not surfaced by GitHub itself and would otherwise defeat L6 in
+production. The audit checks the P2 canonical recipe
+(`required_approving_review_count: 2`, `require_code_owner_reviews`,
+`require_last_push_approval`, `dismiss_stale_reviews`,
+`enforce_admins: true`, with Regatta-critical paths routed to two
+disjoint CODEOWNERS teams) and refuses to start if any check fails
+unless `--accept-degraded` is passed and the gap is logged to the
+audit sink.
 
 ### Day 2 — calibrate the gates
 
@@ -521,13 +565,13 @@ posts five `GateResult` comments (full schema:
 ```jsonc
 L0  pass   findings=[]                              duration=34ms
 L1  pass   findings=[]                              duration=118s
-L3  pass   3× info findings, each citing test/file  $0.062  Opus 4.7
-L4  pass   1× low finding (mock-vs-interceptor)     $0.041  Sonnet 4.6
-L5  pass   findings=[]                              $0.004  Haiku 4.5
+L3  pass   3× info findings, each citing test/file  $0.140  Opus 4.7
+L4  pass   1× low finding (mock-vs-interceptor)     $0.110  Sonnet 4.6
+L5  pass   findings=[]                              $0.014  Haiku 4.5
 ```
 
-Gate spend **~$0.11**, agent spend over 4 iterations **~$0.95**,
-PR-total **~$1.06**. Maintainer reads the comments in ~3 min, clicks
+Gate spend **~$0.27**, agent spend over 4 iterations **~$0.88**,
+PR-total **~$1.15**. Maintainer reads the comments in ~3 min, clicks
 Merge. Reaper tears down the worktree and kicks the scheduler.
 
 ## Test harness
@@ -547,8 +591,22 @@ mechanisms: a **golden corpus** of ≥30 historical PRs with
 maintainer-recorded verdicts, replayed weekly with ≥95% agreement
 required to ship a new prompt or model; **VCR fixtures** for
 deterministic unit-test replay; and the **canary catch-rate** from
-`gates/canary/testdata/` — 8 known-bad archetypes that must each be
-caught at the expected layer.
+`gates/canary/testdata/` — 18 known-bad archetypes that must each be
+caught at the expected layer. The 30-PR golden floor is adequate for
+gross-regression detection only (Wilson 95% CI on 28/30 = [78.7%,
+98.2%]); target 200 PRs over 6 months, with a CUSUM-style drift
+detector on the weekly agreement series.
+
+Two findings from the LLM-judge literature shape canary design.
+**Style/length bias is ~10× larger than same-family bias** (0.76–0.92
+across four vendor families on RewardBench 2; same-family bias is
+~9% per Preference Leakage 2026), so canary archetypes must exercise
+verbosity, formatting tricks, and citation-faking — not just
+correctness defects. **The Opus 4 agentic-misalignment study shows
+a 55.1% real-context vs 6.5% eval-context behavior gap** — judges
+behave very differently when they detect eval scaffolding, so canary
+PRs must be indistinguishable from real PRs (no test-only repos, no
+distinctive author bots, no eval-shaped prompts in agent context).
 
 ### Metrics with precise definitions
 
@@ -568,17 +626,27 @@ caught at the expected layer.
 
 ## Costed reference workload (simulated)
 
-10-engineer team, Node.js repo, 15 PRs/week average, mid-2026 list
-prices, mandatory prompt caching:
+10-engineer team, Node.js repo, 15 PRs/week average, 2026-05-20 list
+prices (Opus 4.7 $5 in / $25 out, Sonnet 4.6 $3 / $15, Haiku 4.5 $1 / $5
+per MTok; 5m cache write 1.25×, read 0.1×), mandatory prompt caching:
 
 | Component | Per PR | Per week | Per month |
 |---|---|---|---|
-| Agent (Opus 4.7, ~4 iterations, cached) | $0.95 | $14.25 | $61.75 |
-| L3 (Opus 4.7) | $0.06 | $0.90 | $3.90 |
-| L4 (Sonnet 4.6) | $0.04 | $0.60 | $2.60 |
-| L5 (Haiku 4.5) | $0.004 | $0.06 | $0.26 |
+| Agent (Opus 4.7, ~4 iterations, cached) | $0.88 | $13.20 | $57.20 |
+| L3 (Opus 4.7) | $0.14 | $2.10 | $9.10 |
+| L4 (Sonnet 4.6) | $0.11 | $1.65 | $7.15 |
+| L5 (Haiku 4.5) | $0.014 | $0.21 | $0.91 |
 | Custom gates (avg) | $0.05 | $0.75 | $3.25 |
-| **Total** | **~$1.10** | **~$16.55** | **~$71.75** |
+| **Total** | **~$1.15** | **~$17.93** | **~$77.66** |
+
+Two cost-risk landmines on top of the table. **Opus 4.7 ships a new
+tokenizer** producing up to 35% more tokens per text than its
+predecessor — real bills run ~1.2× the table until prompt sizes are
+re-tuned. **Prompt-caching is load-bearing**: Claude Code's March 2026
+cache regression dropped hit rate to 4–17% and inflated cost 10–20×;
+Regatta must halt the fleet if rolling `cache_hit_rate < 30%`. The
+minimum cacheable block on current Opus / Haiku is 4,096 tokens — L5
+prompts under that silently bypass caching with no error.
 
 For comparison (mid-2026 list pricing, *unverified*, fully-loaded
 on a 10-eng team at 15 PRs/week): Devin Team + CodeRabbit ~$50/PR;
@@ -604,6 +672,7 @@ escalation.
 | L4 prompt-injected via diff | `injection_suspected: true` in L4 | `regatta gate-result l4 --pr N --raw` | human review of diff | rotate signing key |
 | Recursive lesson taint | CODEOWNERS blocks merge | (branch-protected) | review lesson PR | maintainer rejects |
 | Token budget burned | telemetry.cost_usd ≥ cap | `regatta status --over-budget` | `regatta halt --work-id N` | summarize, alert |
+| Prompt-cache hit rate collapsed | rolling cache_hit_rate <30% | `regatta cache-stats` | `regatta serve --pause` | halt fleet; inspect prompt structure / TTL |
 | 737-MAX rubber-stamp drift | canary human-catch-rate <80% | `regatta canary-report` | `regatta canary-recent` | pause merges; review |
 | Spec mutated on `main` mid-flight | L0 merge-time re-run fails | `regatta gate-rerun l0 --pr N` | rebase + re-evaluate | usually agent halts cleanly |
 | Long autonomous trajectory (GTG-1002) | tool-call sequence anomaly | `regatta agent-trace --work-id N` | pause | require fresh approval |
@@ -635,21 +704,43 @@ self-review is the rubber-stamp failure mode (P8 + 737-MAX class).
 adversarial + mixed family closes same-family bias at 1× cost. Revisit
 if false-pass rate justifies 3×.
 
-**(e) Swap Claude for another runtime.** *Honest concession.* v3.1
-ships Claude only. The cross-vendor adapter (Codex, Gemini, open-
-source) is v4 scope and the single most load-bearing v4 deliverable.
+**(e) Swap Claude for another runtime.** *Honest concession.* Ships
+Claude only today. The cross-vendor adapter (Codex, Gemini,
+open-source) is the single most load-bearing deferred deliverable.
 Until it ships, treat "runtime-agnostic" as a thesis, not a feature.
 Pairs with the next point.
 
 **(f) "Different family" claim at L4.** Sonnet 4.6 and Opus 4.7 are
-the same Anthropic Claude 4.x family — they are not different families
-in the cross-vendor sense. They are *different checkpoints*, which
-reduces some same-prompt response correlation but does *not* close
-same-family judge bias. The genuinely cross-family L4 (`gates.adversarial.model:
-gpt-5-something`) lands with v4. Until then, treat the bias mitigation
-as partial; the published "5–15% same-family bias" figure is a
-range often cited in the LLM-judge literature but should be read as
-*directional* until benchmarked on Regatta's own canary corpus.
+sibling Claude-4.x checkpoints — same vendor, same generation, different
+post-training. The published proxy measurement closest to this pair is
+GPT-4o judging GPT-4-turbo output, which inflates win-rate by **8.9%**
+(Li et al., "Preference Leakage," ICLR 2026, Table 2). The "same-model"
+case (Opus judging Opus) inflates by 23.6% in the same study, and
+self-preference per Panickssery et al. (NeurIPS 2024) is 0.71–0.91 on
+summarization pairs for strong models. Sonnet→Opus is therefore
+meaningfully better than Opus→Opus — by roughly the same factor (2–3×)
+that family-bias is smaller than self-preference bias — but is *not*
+equivalent to cross-vendor judging, which the same study measures at
+2.8% (different series within a family) and which cross-vendor work
+(Cohere PoLL, arXiv 2404.18796) measures at variance reductions of ~64%
+over a single large judge.
+
+| Configuration | Win-rate inflation | Source |
+|---|---|---|
+| Opus judges Opus | ~20–50% | Panickssery '24, Wataoka '24 |
+| Sonnet 4.6 judges Opus 4.7 (proxy: GPT-4o↔GPT-4-turbo) | ~9% | Preference Leakage '26 |
+| GPT-5 judges Opus (cross-vendor proxy) | ~3% | Preference Leakage '26 |
+| Three-judge cross-vendor jury | smallest variance (σ=2.2 vs 6.1) | PoLL '24 |
+
+This design captures ~60% of the bias-reduction available; a
+cross-vendor judge closes the remaining ~6 percentage points.
+Style/length bias (0.76–0.92 across four vendor families per
+RewardBench 2) and prompt-injection attack surface (JudgeDeceiver:
+89% ASR on open-source judges) are *larger* design risks than the
+residual same-family delta. Ship with Sonnet 4.6 today; the
+L4-vs-cross-vendor comparison is deferred behind a documented
+canary-corpus delta as the acceptance criterion — a family-stratified
+catch-rate ratio `< 0.85` triggers cross-vendor L4.
 
 **(g) Vendor the gate stack into each repo.** Rejected — keeps
 Regatta independently versionable; lets one deployment serve many
@@ -657,11 +748,11 @@ repos; avoids forking gate logic per consumer.
 
 ## Competitor positioning
 
-| | Regatta v3.1 | Devin 2.0 | Cursor 3 + BugBot | Copilot Workspace + Coding Agent | Claude Code Agent Teams | OpenHands | CodeRabbit | Gitar |
+| | Regatta | Devin 2.0 | Cursor 3 + BugBot | Copilot Workspace + Coding Agent | Claude Code Agent Teams | OpenHands | CodeRabbit | Gitar |
 |---|---|---|---|---|---|---|---|---|
 | **Pricing** | Self-host + API at cost | $500/mo + ACUs | $40/seat/mo + usage | $39/seat/mo + usage | API at cost | OSS + API | $24/dev/mo | (stealth, $9M) |
 | **Gate transparency** | open, configurable | proprietary | proprietary | proprietary | open via Code | open | semi-open | semi-open |
-| **Runtime-agnostic** | thesis (v4) | no | no | no | Claude only | yes | model-agnostic | yes |
+| **Runtime-agnostic** | thesis (deferred) | no | no | no | Claude only | yes | model-agnostic | yes |
 | **Published incident defenses** | yes (10-pattern Trap Catalog) | partial | partial | partial | partial | no | partial | partial |
 | **Deterministic spec-immutability gate** | **yes (L0)** | no | no | no | no | no | no | no |
 | **Tamper-evident audit log out-of-band** | yes | no | no | no | no | no | no | no |
@@ -686,16 +777,16 @@ standalone OSS primitives.
 3. **Unstructured-repo path.** Many repos have no machine-readable
    spec. Regatta does not solve this; the repo must encode "done"
    somewhere before it can use the fleet.
-4. **Multi-repo coordination.** v3.1 = one deployment per repo.
-   Monorepo cross-package dependencies handled by single-repo
-   `dependencies` graph; cross-repo deferred to v4.
-5. **Cross-vendor L4 benchmark.** When v4 lands, re-run the canary
-   corpus on `(Opus, Sonnet)` vs `(Opus, GPT-5)` and publish the
-   same-family-vs-cross-family delta.
+4. **Multi-repo coordination.** One deployment per repo. Monorepo
+   cross-package dependencies handled by single-repo `dependencies`
+   graph; cross-repo deferred.
+5. **Cross-vendor L4 benchmark.** When the cross-vendor adapter
+   lands, re-run the canary corpus on `(Opus, Sonnet)` vs `(Opus,
+   GPT-5)` and publish the same-family-vs-cross-family delta.
 
 ## References
 
-- `incidents.md` — 19 AI-agent incidents + full prose for P1–P10.
+- `incidents.md` — AI-agent incident catalog + full prose for the Trap Catalog patterns.
 - `schemas/spec_adapter.go` — normative Go interface.
 - `schemas/gate_result.schema.json` — normative gate output schema.
 - `schemas/work_item.schema.json` — normative work item schema.
@@ -708,12 +799,3 @@ standalone OSS primitives.
 - AI Incident Database (incidentdatabase.ai).
 - OWASP Top 10 for LLM Applications (LLM01, LLM05).
 
-## v2 → v3.1 changelog
-
-Schemas published as normative contracts; Threat Model and Test
-Harness added; Trap Catalog promoted to top-level; Day 1→30 Runbook +
-Worked Example added; failure modes rewritten as on-call runbook;
-stop conditions made measurable; concurrency state machine specified
-with crash-recovery; honest concessions on runtime-agnosticism (v4
-work) and L4 "different family" (Sonnet/Opus are different
-checkpoints, not different families).

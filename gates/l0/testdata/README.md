@@ -48,9 +48,14 @@ The L0 gate operates by these rules. Fixtures must demonstrate each.
    §Failure modes row "spec mutated on `main` mid-flight".)
 
 2. **UTF-8 NFC normalization.** Both sides of the diff are normalized to
-   Unicode NFC before byte-equality comparison. This means visually-identical
-   strings expressed in different normalization forms compare equal, and
-   the gate cannot be evaded by switching forms.
+   Unicode NFC *after* invisible-glyph stripping (item 6) and before
+   byte-equality comparison. This means visually-identical strings expressed
+   in different normalization forms compare equal, and the gate cannot be
+   evaded by switching forms. Ordering is load-bearing: some stripped code
+   points (notably U+034F CGJ and U+200C ZWNJ) actively block NFC
+   composition, so a strip-after-NFC ordering would leave their effect
+   intact and allow a poisoned vs un-poisoned pair to compare unequal even
+   though their stripped forms are identical.
 
 3. **Byte-equality scope.** L0 compares the *body text* of each acceptance
    criterion, byte-for-byte after NFC. Whitespace inside the body is
@@ -65,14 +70,33 @@ The L0 gate operates by these rules. Fixtures must demonstrate each.
    git threshold (50% similarity). A criterion in a renamed file is still
    tracked; a criterion that disappears under rename + diff is a fail.
 
-6. **Invisible-glyph normalization.** Before any comparison, both sides
-   have these Unicode ranges stripped:
-   - U+200B–U+200D (zero-width characters)
-   - U+202A–U+202E (bidirectional overrides)
-   - U+2066–U+2069 (isolate controls)
-   - U+E0000–U+E007F (Tags block)
+6. **Invisible-glyph normalization.** Before NFC and any comparison, both
+   sides have all code points in the following set stripped. The set is
+   the union of Unicode `Default_Ignorable_Code_Point=Yes`, Unicode
+   `Bidi_Control=Yes`, and U+FFFC (Object Replacement Character). Pinned
+   to Unicode 15.1; bump requires a fixture refresh. Enumerated ranges:
+   - U+00AD (soft hyphen)
+   - U+034F (combining grapheme joiner — NFC-bypass primitive)
+   - U+061C (Arabic letter mark — bidi)
+   - U+115F–U+1160 (Hangul fillers)
+   - U+17B4–U+17B5 (Khmer invisible inherent vowels)
+   - U+180B–U+180F (Mongolian variation selectors + vowel separator)
+   - U+200B–U+200F (zero-width chars + LRM/RLM)
+   - U+202A–U+202E (bidi embedding/override)
+   - U+2060–U+206F (word joiner, invisible math, isolate controls, deprecated)
+   - U+FE00–U+FE0F (variation selectors 1–16)
+   - U+FEFF (BOM / ZWNBSP)
+   - U+FFF0–U+FFF8 (reserved invisibles)
+   - U+FFFC (object replacement)
+   - U+1BCA0–U+1BCA3 (shorthand format controls)
+   - U+1D173–U+1D17A (musical format controls)
+   - U+E0000–U+E0FFF (Tags block + supplementary variation selectors)
+
    A criterion whose only difference is invisible glyphs is a fail (this
    detects the Rules-File-Backdoor / MCPoison class — see Trap Catalog P10).
+   Homoglyph / confusable detection (Cyrillic vs Latin `a`, etc.) is
+   explicitly *out of scope* for L0 and is handled by a separate
+   script-mixing gate.
 
 7. **Re-run at merge time.** L0 is re-run as a status check on the merge
    commit (not just the PR head). This closes the window where a PR

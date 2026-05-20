@@ -1,4 +1,4 @@
-**Status: Draft design, pre-implementation (v3.1). Schemas and fixture-corpus contracts are normative; the binary follows.**
+**Status: Draft design, pre-implementation. Schemas and fixture-corpus contracts are normative; the binary follows.**
 
 # Regatta
 
@@ -52,9 +52,9 @@ config.
 
 ## Repo layout
 
-- [`docs/design.md`](docs/design.md) — full design (v3.1, ~5300 words)
-- [`docs/incidents.md`](docs/incidents.md) — 19 AI-agent incidents
-  with primary sources, root causes, and prevention patterns
+- [`docs/design.md`](docs/design.md) — full design
+- [`docs/incidents.md`](docs/incidents.md) — AI-agent incident
+  catalog with primary sources, root causes, and prevention patterns
 - [`schemas/spec_adapter.go`](schemas/spec_adapter.go) — normative Go
   interface for `SpecAdapter` (with custom-adapter wire protocol)
 - [`schemas/gate_result.schema.json`](schemas/gate_result.schema.json)
@@ -71,7 +71,7 @@ config.
 ## The Trap Catalog
 
 `docs/design.md` §Trap Catalog maps each documented incident to a
-platform-enforcement pattern wired into the architecture. The 10
+platform-enforcement pattern wired into the architecture. The 13
 patterns:
 
 | ID | Pattern |
@@ -86,9 +86,12 @@ patterns:
 | P8 | Spend / iteration brakes with mandatory re-approval |
 | P9 | Sensitive context segregation |
 | P10 | Invisible-glyph normalization + signed prompt artifacts |
+| P11 | Agent-artifact release pipelines are themselves attack surface |
+| P12 | Inbound vulnerability signals default-escalate |
+| P13 | Judge-LLM lineage isolation + read-only metric channel |
 
-P1, P3, P5, P6, P8 each prevent 3+ documented incidents and are the
-most load-bearing.
+P1, P3, P5, P6, P8, P10 each prevent 3+ documented incidents and are
+the most load-bearing.
 
 ## Next steps
 
