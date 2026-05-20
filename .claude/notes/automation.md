@@ -65,9 +65,9 @@ and the `pr-lint` workflow's awk regex (`^\`\`\`release-notes`
 matched as `^` + three backticks) then fails to find the block,
 failing CI.
 
-The robust fix is to bypass the heredoc-quoting question
-entirely: write the body to a file and pass
-`gh pr create --body-file <path>`. No quoting, no escaping.
+The reliable fix bypasses heredoc quoting entirely: write the
+body to a file and pass `gh pr create --body-file <path>`. No
+quoting, no escaping.
 
 Anchor: prefer `gh pr ... --body-file <path>` over
 `--body "$(cat <<'EOF' ... EOF)"`. If the heredoc form is
