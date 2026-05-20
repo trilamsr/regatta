@@ -16,7 +16,8 @@
     "superpowers@claude-plugins-official": true,
     "ralph-loop@claude-plugins-official": true,
     "claude-mem@thedotmack": true,
-    "caveman@caveman": true
+    "caveman@caveman": true,
+    "context-mode@context-mode": true
   },
   "extraKnownMarketplaces": {
     "thedotmack": {
@@ -30,6 +31,13 @@
       "source": {
         "source": "github",
         "repo": "JuliusBrussee/caveman"
+      },
+      "autoUpdate": true
+    },
+    "context-mode": {
+      "source": {
+        "source": "github",
+        "repo": "mksglu/context-mode"
       },
       "autoUpdate": true
     }
