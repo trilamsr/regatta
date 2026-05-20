@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/trilamsr/regatta/schemas/work_item.schema.json",
+  "title": "WorkItem",
+  "description": "A unit of planned work the fleet may pick up. Emitted by every SpecAdapter. See schemas/spec_adapter.go for the Go form.",
+  "type": "object",
+  "required": ["id", "title", "acceptance_criteria", "status", "source"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier within the spec source (e.g. issue number, RFC ID, milestone slug)."
+    },
+    "title": { "type": "string", "minLength": 1 },
+    "body": { "type": "string" },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Each criterion is a single falsifiable claim the agent must evidence with a citation. Text is IMMUTABLE post-publication.",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "state"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 },
+          "state": { "enum": ["planned", "in_progress", "done"] },
+          "citation": {
+            "type": "string",
+            "description": "Evidence string set when state transitions to done. Format: 'test=<TestName>' | 'file=<path>:<line>' | 'commit=<sha>'."
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Other WorkItem IDs this one depends on. MUST be acyclic; the orchestrator only spawns an agent when all dependencies are done."
+    },
+    "lane": {
+      "type": "string",
+      "description": "Lane ID this item belongs to. Empty means default lane."
+    },
+    "status": {
+      "enum": ["planned", "in_progress", "done"]
+    },
+    "linked_artifact": {
+      "type": "string",
+      "format": "uri-reference",
+      "description": "URL or repo-relative path to deeper context (RFC, design doc, ADR, runbook)."
+    },
+    "source": {
+      "type": "object",
+      "required": ["kind", "locator", "sha"],
+      "additionalProperties": false,
+      "description": "Immutable pointer L0 uses to verify the criterion text has not changed.",
+      "properties": {
+        "kind": { "enum": ["file", "issue", "ticket"] },
+        "locator": {
+          "type": "string",
+          "description": "For kind=file: 'path/to/file.md:lineStart-lineEnd'. For kind=issue|ticket: the external ID."
+        },
+        "sha": {
+          "type": "string",
+          "description": "Commit SHA (kind=file) or opaque ETag/version (kind=issue|ticket)."
+        }
+      }
+    }
+  }
+}

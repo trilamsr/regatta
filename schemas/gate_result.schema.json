@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/trilamsr/regatta/schemas/gate_result.schema.json",
+  "title": "GateResult",
+  "description": "The structured payload every Regatta gate emits (L0–Lx, deterministic or AI). Posted verbatim as a structured PR comment and persisted in regatta.db. Signed by the orchestrator for tamper-evidence.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "gate_id",
+    "gate_kind",
+    "pr_sha",
+    "run_id",
+    "verdict",
+    "blocking",
+    "findings",
+    "telemetry",
+    "signature"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "description": "Major version of this schema. Bumps are breaking.",
+      "const": 1
+    },
+    "gate_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier for the gate instance (e.g. 'l0_spec_immutability', 'l4_adversarial', 'custom_license_audit')."
+    },
+    "gate_kind": {
+      "enum": ["deterministic", "ai_judicial", "ai_adversarial", "ai_rule_check"],
+      "description": "How this gate produces a verdict. Determines audit-tier (see docs/design.md §Test harness)."
+    },
+    "pr_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Full 40-char hex SHA of the PR head commit this verdict was computed against."
+    },
+    "base_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Merge-base used for diff computation (informative; L0 normatively uses git-merge-base)."
+    },
+    "run_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Stable identifier for this gate run. Re-runs against the same pr_sha produce the same run_id (idempotency key)."
+    },
+    "verdict": {
+      "enum": ["pass", "fail", "advisory"],
+      "description": "pass = no findings of blocking severity; fail = at least one blocking finding; advisory = informational only, never blocks."
+    },
+    "blocking": {
+      "type": "boolean",
+      "description": "Whether this verdict blocks merge. Derived from gate config + verdict. Maintainers see this flag at a glance."
+    },
+    "severity": {
+      "enum": ["critical", "high", "medium", "low", "none"],
+      "default": "none",
+      "description": "Highest severity across all findings."
+    },
+    "findings": {
+      "type": "array",
+      "description": "Per-issue records. Empty array on pass.",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "claim"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+          "claim": {
+            "type": "string",
+            "description": "What the gate found, in operator-facing English."
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "line_start": { "type": "integer", "minimum": 0 },
+              "line_end": { "type": "integer", "minimum": 0 },
+              "sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+              "snippet": { "type": "string" }
+            }
+          },
+          "remediation": {
+            "type": "string",
+            "description": "Specific change to make. Empty if not actionable."
+          },
+          "trap_pattern": {
+            "type": "string",
+            "pattern": "^P([1-9]|10)$",
+            "description": "If this finding maps to a Trap Catalog pattern, the pattern ID (P1–P10)."
+          }
+        }
+      }
+    },
+    "injection_suspected": {
+      "type": "boolean",
+      "default": false,
+      "description": "Set by AI gates when the input diff contains content that looks like a prompt-injection attempt. ALWAYS blocks pending human review when true."
+    },
+    "telemetry": {
+      "type": "object",
+      "required": ["duration_ms"],
+      "additionalProperties": false,
+      "properties": {
+        "tokens_input": { "type": "integer", "minimum": 0 },
+        "tokens_output": { "type": "integer", "minimum": 0 },
+        "tokens_cached": { "type": "integer", "minimum": 0 },
+        "cost_usd": { "type": "number", "minimum": 0 },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "model": { "type": "string" },
+        "model_version": { "type": "string" },
+        "prompt_sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "required": ["alg", "key_id", "mac"],
+      "additionalProperties": false,
+      "description": "HMAC over the canonicalized JCS-serialized payload (RFC 8785). Verifies the result was produced by this orchestrator and not edited in flight.",
+      "properties": {
+        "alg": { "const": "HMAC-SHA256" },
+        "key_id": { "type": "string", "minLength": 1 },
+        "mac": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}
