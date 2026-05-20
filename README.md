@@ -1,7 +1,6 @@
-# Regatta
+**Status: Draft design, pre-implementation (v3.1). Schemas and fixture-corpus contracts are normative; the binary follows.**
 
-> **Status:** Draft design, pre-implementation (v3.1). Schemas and
-> fixture-corpus contracts are normative; the binary follows.
+# Regatta
 
 A repo-agnostic autonomous-agent fleet. Point it at any git-hosted
 repo with planned work and a deterministic test command — Regatta

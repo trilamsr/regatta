@@ -22,79 +22,56 @@ configurable gate stack, and routes feedback back to the agent.
 
 ### Two beliefs
 
-The whole design rests on these. Every other choice traces back here.
+Every other choice traces to these.
 
-- **The spec is the oracle.** Most repos already encode "done" in a
-  machine-readable form — ticket acceptance criteria, RFC rubrics,
-  test plans. Regatta plugs into that surface through `SpecAdapter`
-  ([§Spec contract](#spec-contract)); it does not invent a new spec
-  format.
-- **The platform enforces what the prompt cannot.** Every public
-  AI-agent incident — Replit deleting a prod database, EchoLeak
-  exfiltrating M365 data, Cursor's MCPoison RCE, Copilot leaking
-  credentials via PR titles, curl shutting down its bounty program
-  over AI slop — has the same root cause: a defense that lived in the
-  agent's prompt or self-report instead of in the surrounding
-  platform. Regatta's gates are deterministic, out-of-band, and
-  signed wherever possible. The Trap Catalog
-  ([§Trap Catalog](#trap-catalog)) maps 19 incidents to 10 enforcement
-  points.
+- **The spec is the oracle.** Repos already encode "done" in
+  machine-readable form (acceptance criteria, RFC rubrics, test
+  plans). Regatta plugs into that surface via `SpecAdapter`
+  ([§Spec contract](#spec-contract)); it does not invent a new format.
+- **The platform enforces what the prompt cannot.** Every public AI-
+  agent incident — Replit's prod-DB wipe, EchoLeak, Cursor MCPoison
+  RCE, Copilot credential leak via PR title, the curl bounty
+  shutdown over AI slop — shares a root cause: a defense that lived
+  in the agent's prompt or self-report instead of in the platform.
+  Regatta's gates are deterministic, out-of-band, and signed wherever
+  possible. The [Trap Catalog](#trap-catalog) maps 19 incidents to
+  10 enforcement points.
 
-### Default gate stack
+The default gate stack is six layers; the [§Gate stack](#gate-stack-normative)
+section is the normative source. Repos add custom gates, reorder,
+swap models, and tune thresholds via `regatta.yaml`. Deterministic
+gates run first in parallel; AI gates run after the deterministic
+floor passes. Default-deny on any blocking finding. L0 is mandatory.
 
-Six layers, all configurable per repo. L0 is mandatory.
+### Companion artifacts
 
-| Layer | Kind | Default model | Purpose |
-|---|---|---|---|
-| **L0** spec-immutability | deterministic | — | Block any PR that mutates criterion text or flips status without citation. |
-| **L1** repo CI | deterministic | — | Run the repo's own check (`make test`, `npm test`, etc.). |
-| **L2** PR-body conformance | deterministic | — | Validate citation block, ticket link. |
-| **L3** spec-conformance | AI judicial | Opus 4.7 | For each flipped criterion, verify diff evidences the criterion. |
-| **L4** adversarial reviewer | AI adversarial | Sonnet 4.6 | Prompted to reject; reviews against repo principles/style/budgets. |
-| **L5** drift detector | AI rule-check | Haiku 4.5 | Tracking docs / changelogs / consumer-test pattern. |
-| **L6** human merge | human | — | Maintainer approves on branch protection. |
-
-Repos add custom gates (`security_scan`, `migration_safety`,
-`license_audit`, `i18n_check`), reorder, swap models, tune thresholds
-via `regatta.yaml`. Deterministic gates run first in parallel; AI
-gates run after the deterministic floor passes. Default-deny on any
-blocking finding.
-
-### Companion artifacts in this repo
-
-- `docs/incidents.md` — 19 AI-agent incidents with primary sources;
-  full prose of patterns P1–P10.
-- `schemas/spec_adapter.go` — normative Go interface for `SpecAdapter`.
-- `schemas/gate_result.schema.json` — JSON Schema for the structured
-  payload every gate emits.
-- `schemas/work_item.schema.json` — JSON Schema for `WorkItem`.
-- `schemas/regatta.v1.cue` — CUE schema for `regatta.yaml`.
-- `gates/l0/testdata/` — fixture corpus for the L0 gate (pass/fail/
-  edge cases).
-- `gates/canary/testdata/` — canary archetype corpus.
+`docs/incidents.md` (19 incidents + full P1–P10 prose);
+`schemas/spec_adapter.go` (Go interface, normative);
+`schemas/{gate_result,work_item}.schema.json` (JSON Schemas);
+`schemas/regatta.v1.cue` (config schema); `gates/l0/testdata/` (L0
+fixture corpus contract); `gates/canary/testdata/` (canary archetype
+corpus).
 
 ## Motivation
 
-**Spec → PR is embarrassingly parallel.** Open work items are mostly
-independent. A team that processes them serially leaves throughput on
-the table. A team that processes them in parallel *without rigorous
-gates* is one bad merge away from a Replit-class incident.
+**Spec → PR is embarrassingly parallel** — open work items are mostly
+independent. A team processing them serially leaves throughput on the
+table; a team processing them in parallel *without rigorous gates* is
+one bad merge from a Replit-class incident.
 
 **Existing agent products ship at the wrong abstraction.** SWE-agent,
 Devin, Cursor agent mode, Copilot Workspace, Aider — each ships an
-agent runtime, then leaves gating to the consumer's existing review
-process. That process was designed for human PRs and doesn't catch
+agent runtime then leaves gating to the consumer's existing review
+process. That process was designed for human PRs; it doesn't catch
 reward-hacking, vacuous tests, sycophantic acceptance, hallucinated
 dependencies, or prompt-injection via repo content. Regatta inverts:
-**the gates are the product**; the agent runtime is interchangeable.
-(See [§Alternatives](#alternatives) for the honest read on
-runtime-agnosticism today.)
+**the gates are the product**; the agent runtime is interchangeable
+(see [§Alternatives](#alternatives) for the honest read).
 
 **The incident catalog is dense and growing.** 2023–2026 documents 19
-distinct incident classes ([incidents.md](incidents.md)). Building
-gates that close all 10 known load-bearing failure modes is feasible
-only because the platform sits between the agent and the destructive
-surface.
+distinct incident classes. Closing the 10 known load-bearing failure
+modes is feasible only because the platform sits between the agent
+and the destructive surface.
 
 ## Threat Model
 
@@ -128,25 +105,13 @@ your environment.
 
 ### Trust boundaries
 
-```
-            ┌─────────────────────────────────────────────┐
-            │  Signed trust root: target repo main + tag  │
-            │  (regatta.yaml, prompts/, AGENTS.md)        │
-            └────────────────────┬────────────────────────┘
-                                 │ pinned by SHA at start
-            ┌────────────────────▼────────────────────────┐
-            │  Orchestrator host (regatta.db, OIDC mint)  │
-            │  — assumed honest-but-fallible              │
-            │  — actions countersigned to audit sink      │
-            └─────────┬────────────────────┬──────────────┘
-                      │                    │
-         agent ctx (untrusted)    gate ctx (low-trust)
-                      │                    │
-   ┌──────────────────▼──┐   ┌─────────────▼──────────────┐
-   │ Agent worktree       │   │ Gate runner                │
-   │ (no main credentials)│   │ (model API, no repo write) │
-   └──────────────────────┘   └────────────────────────────┘
-```
+The signed trust root (target repo `main` at a pinned tag SHA — holds
+`regatta.yaml`, `prompts/`, agent-guidance) flows down to the
+orchestrator host (assumed honest-but-fallible, holds `regatta.db` and
+the OIDC mint), which spawns isolated agent worktrees (untrusted, no
+`main` credentials) and gate runners (low-trust, model API only, no
+repo write). Every action is countersigned to the out-of-band audit
+sink.
 
 ### Threats explicitly defended
 
@@ -218,33 +183,14 @@ highest-leverage rules.
 
 ### Architecture
 
-```
-              ┌──────────────────────────────────────────┐
-              │           Regatta Orchestrator           │
-              │  (standalone Go daemon)                  │
-              │  • SpecAdapter (per-repo, pluggable)     │
-              │  • Scheduler — sorted-lock acquisition   │
-              │  • AgentSpawner (claude --resume)        │
-              │  • PRWatcher (GitHub/GitLab adapter)     │
-              │  • GateRunner — parallel L0–Lx           │
-              │  • RejectionRouter (K=3 then escalate)   │
-              │  • CanaryInjector (~5%)                  │
-              │  • SupervisorLimits (cgroup-enforced)    │
-              │  • Reaper + LessonCapture                │
-              └────────────┬─────────────────────────────┘
-                           │ spawns
-                ┌──────────┼──────────┐
-                ▼          ▼          ▼
-              Agent A   Agent B   Agent C
-              Lane X    Lane Y    Lane Z
-              work N    work M    work P
-                │          │          │
-                └──── PRs ─┴────── PRs┘
-                           │
-                ┌──────────▼──────────────────┐
-                │   Gate Stack (see Summary)   │
-                └─────────────────────────────┘
-```
+A standalone Go daemon (the **Regatta orchestrator**) holds the
+`SpecAdapter`, the scheduler with sorted-lock acquisition, the agent
+spawner (`claude --resume`), the PR watcher (GitHub/GitLab adapter),
+the gate runner (parallel L0–Lx), the rejection router (K=3 then
+escalate), the canary injector (~5%), supervisor limits (cgroup-
+enforced), and the reaper + lesson capture. It spawns one Claude
+agent per ready work item into a lane-isolated worktree; each agent
+opens a PR; the gate stack runs on every push.
 
 ### Spec contract
 
@@ -444,49 +390,30 @@ throttle to 1 in-flight PR globally + alert.
 
 ### Per-repo configuration (`regatta.yaml`)
 
-Authored, validated by the CUE schema
-[`schemas/regatta.v1.cue`](../schemas/regatta.v1.cue), versioned with
-a migration tool (`regatta migrate-config --from 1 --to 2`).
+Full schema in [`schemas/regatta.v1.cue`](../schemas/regatta.v1.cue);
+migration via `regatta migrate-config --from 1 --to 2`. Minimal
+example:
 
 ```yaml
 version: 1
-repo: { host: github, owner: example, name: myproject, default_branch: main }
-spec_adapter:
-  type: github_issues
-  selector: 'label:planned'
-  acceptance_section: '## Acceptance'
-ci: { command: 'npm test && npm run lint', timeout_minutes: 30 }
-pr_template: { citation_section_required: true }
+repo: { host: github, owner: example, name: myproject }
+spec_adapter: { type: github_issues, selector: 'label:planned' }
+ci: { command: 'npm test && npm run lint' }
 gates:
-  - { id: spec_conformance, type: ai, model: claude-opus-4-7,    severity_block: ['fail'] }
-  - { id: adversarial,      type: ai, model: claude-sonnet-4-6,  severity_block: ['critical', '2*high'],
-      rigorous_label: 'regatta:rigorous-review' }
-  - { id: drift,            type: ai, model: claude-haiku-4-5,   severity_block: ['drift'] }
-  - { id: license_audit,    type: deterministic, command: 'npx license-checker --failOn GPL' }
+  - { id: spec_conformance, type: ai, model: claude-opus-4-7,   severity_block: ['fail'] }
+  - { id: adversarial,      type: ai, model: claude-sonnet-4-6, severity_block: ['critical', '2*high'] }
+  - { id: drift,            type: ai, model: claude-haiku-4-5,  severity_block: ['drift'] }
 lanes:
   - { id: server, paths: ['src/server/**'], max_concurrency: 1 }
-  - { id: client, paths: ['src/web/**'],    max_concurrency: 1 }
-hotspots: [CHANGELOG.md, package.json, pnpm-lock.yaml, README.md]
-safety:
-  destructive_ops_deny: ['git push --force', 'rm -rf /', 'npm publish', 'DROP TABLE']
-  agent_creds_scope: dev_only
-  iteration_cap: 50              # P8 — hard cap on agent loop
-  spend_cap_usd: 50              # P8 — per-task ceiling
-  spend_cap_usd_per_day: 200     # P8 — org-wide ceiling
-  canary_rate: 0.05              # ~1 in 20 PRs is a canary
-context:
-  trusted_doc_paths: [PRINCIPLES.md, STYLE.md, docs/architecture.md]
-  agent_guidance_path: AGENTS.md
-  agent_guidance_codeowners_check: true
-telemetry:
-  digest_path: docs/regatta-digest.md
-  state_db_path: ./.regatta/regatta.db
-  audit_sink: s3://acme-audit/regatta/?object-lock=COMPLIANCE
+hotspots: [CHANGELOG.md, package.json, README.md]
+safety: { iteration_cap: 50, spend_cap_usd: 50, canary_rate: 0.05 }
+context: { agent_guidance_path: AGENTS.md, agent_guidance_codeowners_check: true }
+telemetry: { audit_sink: 's3://acme-audit/regatta/?object-lock=COMPLIANCE' }
 ```
 
-The `severity_block: ['critical', '2*high']` mini-DSL: any `critical`
-finding OR ≥2 `high` findings block the PR. Future operators: `&`, `|`,
-and `count*severity` are the only forms; the validator rejects others.
+The `severity_block: ['critical', '2*high']` mini-DSL: `critical` OR
+≥2 `high` blocks. Only `&`, `|`, and `count*severity` operators
+permitted; the validator rejects others.
 
 ## Day 1 → Day 30 Runbook
 
@@ -505,13 +432,8 @@ $ regatta validate-config                            # CUE-validates regatta.yam
 $ regatta validate-spec --dry-run                    # connects to adapter, lists items
 ```
 
-Expected output of `validate-spec`:
-```
-✓ adapter: github_issues — 12 items, 0 cycles, 3 ready
-✓ acceptance criteria: 47 parsed, 47 NFC-clean, 0 invisible-glyph hits
-✓ dependency graph: 12 nodes, 8 edges, DAG verified
-ready to spawn: [#101, #104, #109]
-```
+Expected: a parsed-items count, NFC + invisible-glyph cleanliness
+report, DAG verification, and the list of ready-to-spawn item IDs.
 
 ### Day 2 — calibrate the gates
 
@@ -523,15 +445,10 @@ $ regatta gate-calibrate --canary-corpus            # all 8 archetypes
 `gate-calibrate` runs L0–L5 against the chosen PRs and emits a
 per-gate confusion matrix. The 8 canary archetypes (see
 [`gates/canary/testdata/README.md`](../gates/canary/testdata/README.md))
-have known-expected verdicts; a gate that fails its calibration is not
-safe to enable yet.
-
-Tune `gates[*].severity_block` until calibration is clean. Common
-calibration outputs:
-
-- L4 over-cautious: ≥3 false-rejects on clean PRs → raise threshold to
-  `['critical']` only.
-- L5 noisy: false-drift on auto-generated files → add path filters.
+have known-expected verdicts. Tune `gates[*].severity_block` until
+calibration is clean (typical fixes: raise L4 threshold to `critical`
+only when over-cautious; add path filters when L5 false-drifts on
+auto-generated files).
 
 ### Day 3 — single pilot PR (human-spawned)
 
@@ -597,44 +514,21 @@ fixes `src/server/http-client.js`, runs `npm test`, updates
 - `state: done, citation: test=request-id retries preserve header`
 - `state: done, citation: file=CHANGELOG.md:14`
 
-It opens PR #259 with a citation block in the body. The orchestrator
-runs gates and posts five comments:
+It opens PR #259 with a citation block. The orchestrator runs gates and
+posts five `GateResult` comments (full schema:
+[`gate_result.schema.json`](../schemas/gate_result.schema.json)):
 
 ```jsonc
-// L0 spec-immutability
-{"gate_id":"l0","verdict":"pass","blocking":false,
- "findings":[],
- "telemetry":{"duration_ms":34}}
-
-// L1 repo CI
-{"gate_id":"l1","verdict":"pass","blocking":false,
- "telemetry":{"duration_ms":118000}}
-
-// L3 spec-conformance (Opus 4.7)
-{"gate_id":"l3","verdict":"pass","blocking":false,
- "findings":[
-   {"id":"c1","severity":"info","claim":"Test 'request-id retries preserve header' newly added at test/integration/request-id.test.js:42; assert checks X-Request-ID on retries.","evidence":{"path":"test/integration/request-id.test.js","line_start":42,"line_end":71}},
-   {"id":"c2","severity":"info","claim":"Same test satisfies criterion 2.","evidence":{"path":"test/integration/request-id.test.js","line_start":42}},
-   {"id":"c3","severity":"info","claim":"CHANGELOG.md:14 entry under [Unreleased] / Fixed.","evidence":{"path":"CHANGELOG.md","line_start":14}}
- ],
- "telemetry":{"tokens_input":4280,"tokens_cached":3200,"tokens_output":410,"cost_usd":0.062,"model":"claude-opus-4-7"}}
-
-// L4 adversarial (Sonnet 4.6)
-{"gate_id":"l4","verdict":"pass","blocking":false,
- "findings":[
-   {"id":"f1","severity":"low","claim":"Test mocks the upstream with nock; consider a request-level interceptor for parity with prod axios config.","remediation":"Optional follow-up."}
- ],
- "telemetry":{"tokens_input":5100,"tokens_cached":4600,"tokens_output":280,"cost_usd":0.041,"model":"claude-sonnet-4-6"}}
-
-// L5 drift (Haiku 4.5)
-{"gate_id":"l5","verdict":"pass","blocking":false,
- "telemetry":{"tokens_input":2200,"tokens_output":90,"cost_usd":0.004,"model":"claude-haiku-4-5"}}
+L0  pass   findings=[]                              duration=34ms
+L1  pass   findings=[]                              duration=118s
+L3  pass   3× info findings, each citing test/file  $0.062  Opus 4.7
+L4  pass   1× low finding (mock-vs-interceptor)     $0.041  Sonnet 4.6
+L5  pass   findings=[]                              $0.004  Haiku 4.5
 ```
 
-Total gate spend: **~$0.11**. Plus agent spend across 4 iterations:
-**~$0.95**. PR-total cost: **~$1.06**. Maintainer reviews L0–L5 in
-~3 min, clicks Merge. Reaper tears down the worktree, archives session
-state, kicks the scheduler. Next item on lane `server` spawns.
+Gate spend **~$0.11**, agent spend over 4 iterations **~$0.95**,
+PR-total **~$1.06**. Maintainer reads the comments in ~3 min, clicks
+Merge. Reaper tears down the worktree and kicks the scheduler.
 
 ## Test harness
 
@@ -642,27 +536,19 @@ The doc separates audit-tier by gate kind. **Deterministic gates** are
 auditable: their fixture corpus is the contract. **AI gates** are
 statistically auditable only: live-replay + drift alerting.
 
-### Deterministic-tier audit
+**Deterministic-tier.** L0/L1/L2/L6 + custom deterministic gates ship
+with a fixture corpus. The L0 corpus at
+[`gates/l0/testdata/`](../gates/l0/testdata/) is the v1 contract
+(target: 200 fixtures by v1.0). CI runs the full corpus on every
+commit.
 
-L0, L1, L2, L6, and custom deterministic gates ship with a fixture
-corpus. The L0 corpus at
-[`gates/l0/testdata/`](../gates/l0/testdata/) is the v1 contract.
-Targets: 200 fixtures by v1.0, broken pass/fail/edge. CI runs the full
-corpus on every commit; expected verdict is checked into the repo.
-
-### Statistical-tier audit
-
-L3, L4, L5, and AI custom gates:
-
-- **Golden corpus.** A set of historical PRs (≥30) with maintainer-
-  recorded verdicts. Weekly replay job re-runs each AI gate against
-  the golden corpus; ≥95% verdict-agreement gate required to ship a
-  new model version or prompt revision.
-- **VCR fixtures.** Unit tests record canonical model responses for a
-  set of synthetic inputs; CI replays them deterministically.
-- **Canary catch-rate.** See `gates/canary/testdata/`. The 8 archetypes
-  produce known-bad PRs; failure to be caught at the expected layer
-  alerts.
+**Statistical-tier.** L3/L4/L5 + AI custom gates audit via three
+mechanisms: a **golden corpus** of ≥30 historical PRs with
+maintainer-recorded verdicts, replayed weekly with ≥95% agreement
+required to ship a new prompt or model; **VCR fixtures** for
+deterministic unit-test replay; and the **canary catch-rate** from
+`gates/canary/testdata/` — 8 known-bad archetypes that must each be
+caught at the expected layer.
 
 ### Metrics with precise definitions
 
@@ -694,30 +580,13 @@ prices, mandatory prompt caching:
 | Custom gates (avg) | $0.05 | $0.75 | $3.25 |
 | **Total** | **~$1.10** | **~$16.55** | **~$71.75** |
 
-Comparison (mid-2026 list pricing, *unverified*):
-
-- **Devin** — ACU-priced; 1 ACU ≈ $2.25; typical PR = 2–5 ACU =
-  $4.50–$11.25/PR.
-- **Cursor Business** — $40/seat/month flat; agent usage tiered.
-- **Copilot Business + Coding Agent** — $39/seat/month; agent usage on
-  consumption pricing.
-- **CodeRabbit Pro** — $24/dev/month.
-
-Caveat: numbers compare different things. Devin's price includes the
-agent + review + merge; Regatta's includes orchestration + gates but
-the agent is a `claude` API session billed separately. Apples-to-apples
-on a fully-loaded 10-eng team running 15 PRs/week:
-
-- **Regatta self-hosted** + Anthropic API + 10× Claude Code seats:
-  ~$70/PR-equivalent (incl. agent compute).
-- **Devin Team** (~$500/mo) + 10× CodeRabbit ($240/mo): ~$50/PR at 15
-  PRs/week.
-- **Copilot Business** (~$390/mo) + 10× Greptile ($200/mo) + ad-hoc
-  agent: ~$40/PR.
-
-Regatta's positioning: **not the cheapest; the only one with a
+For comparison (mid-2026 list pricing, *unverified*, fully-loaded
+on a 10-eng team at 15 PRs/week): Devin Team + CodeRabbit ~$50/PR;
+Copilot Business + Greptile + ad-hoc agent ~$40/PR; Regatta self-host
++ Anthropic API + Claude Code seats ~$70/PR-equivalent. Regatta's
+positioning is **not the cheapest** — it's the only one with a
 deterministic immutability gate, a published trap catalog, and a
-tamper-evident audit log out-of-band.** See [§Alternatives](#alternatives).
+tamper-evident audit log out-of-band.
 
 ## Failure modes (on-call runbook)
 
@@ -726,43 +595,30 @@ escalation.
 
 | Failure | Detect | First | Second | Escalate |
 |---|---|---|---|---|
-| Agent can't pass CI after K iters | session.iteration_count ≥ cap | `regatta logs --work-id N` | `regatta diff --work-id N` | open draft PR + flag human |
+| Agent can't pass CI after K iters | session.iteration_count ≥ cap | `regatta logs --work-id N` | `regatta diff --work-id N` | draft PR + flag human |
 | AI reviewer rejects K=3 times | gate_runs.rejection_count ≥ 3 | `regatta gate-history --pr N` | `regatta agent-prompt --pr N` | label `needs-human` |
-| Agent gaslights L3 (vacuous test) | L4 finding + canary catch-rate dip | `regatta gate-comment l4 --pr N` | `regatta canary-report --since 1d` | revise L4 prompt |
-| Agent edits acceptance criterion | **L0 fails hard** | (none — auto-blocked) | `regatta gate-comment l0 --pr N` | review agent log; if intentional, file FOLLOWUP |
+| Agent gaslights L3 (vacuous test) | L4 finding + canary catch dip | `regatta gate-comment l4 --pr N` | `regatta canary-report --since 1d` | revise L4 prompt |
+| Agent edits acceptance criterion | **L0 fails hard** | (auto-blocked) | `regatta gate-comment l0 --pr N` | review agent log |
 | L4 over-cautious — rejects everything | net-helpfulness <50% rolling 10 | `regatta net-helpfulness l4` | bump severity threshold | swap model |
-| Hallucinated package install | L1 fails (lockfile mismatch) + P1 deny | `regatta diff package.json --pr N` | check `pip index versions <pkg>` | block, comment |
-| Coverage gaming | L4 finding ("vacuous test"); mutation-test gate if enabled | `regatta gate-comment l4 --pr N` | manual triage | revise L4 prompt |
-| L4 prompt-injected via diff | `injection_suspected: true` in L4 result | `regatta gate-result l4 --pr N --raw` | human review of diff | rotate signing key |
-| Recursive lesson taint | CODEOWNERS blocks merge | (none — branch-protected) | review lesson PR | maintainer rejects |
-| Spec ambiguous / fixture missing | agent halts with "needs-clarification" | `regatta logs --work-id N` | open clarification item | route to maintainer |
+| Hallucinated package install | L1 lockfile mismatch + P1 deny | `regatta diff package.json --pr N` | `pip index versions <pkg>` | block, comment |
+| L4 prompt-injected via diff | `injection_suspected: true` in L4 | `regatta gate-result l4 --pr N --raw` | human review of diff | rotate signing key |
+| Recursive lesson taint | CODEOWNERS blocks merge | (branch-protected) | review lesson PR | maintainer rejects |
 | Token budget burned | telemetry.cost_usd ≥ cap | `regatta status --over-budget` | `regatta halt --work-id N` | summarize, alert |
-| Two agents collide on hotspot | scheduler lock contention >15min | `regatta locks` | identify loser; reschedule | none — auto-recovers |
-| Cross-item build break | L5 consumer-test gate fails | `regatta gate-comment l5 --pr N` | block downstream | upstream contract fix |
-| 737-MAX rubber-stamp drift | canary catch-rate <80% | `regatta canary-report` | `regatta canary-recent` | pause merges; review |
-| Spec mutated on `main` mid-flight | L0 re-run at merge time fails | `regatta gate-rerun l0 --pr N` | rebase + agent re-evaluates | usually agent halts cleanly |
-| Orchestrator broken | heartbeat dead-man-switch | `regatta health` | `systemctl status regatta` | restart; running agents reaped on next start |
-| Long autonomous trajectory (GTG-1002 pattern) | anomaly detector on tool-call sequence length | `regatta agent-trace --work-id N` | pause | require fresh approval |
-| Force-push or destructive git op | P1 deny + P2 two-key | (none — auto-rejected) | `regatta audit --since 1h` | log + audit sink entry |
-| API outage (Anthropic / GitHub) | gate-run timeouts spike | `regatta health --externals` | `regatta serve --pause` | wait for vendor; resume |
-| Token expiry (OIDC mint) | gate runs 401 | `regatta token-status` | `regatta token-refresh` | check OIDC provider |
-| Webhook drop | adapter event lag | `regatta adapter-lag` | `regatta serve --force-poll` | check webhook subscription |
-| Clock skew (orchestrator vs git host) | gate sig verify fails on PR comments | `chronyc tracking` | sync host clock | wait |
-| Duplicate PR race | adapter returns same item twice | `regatta locks` | mark one PR `duplicate` | dedupe in adapter |
+| 737-MAX rubber-stamp drift | canary human-catch-rate <80% | `regatta canary-report` | `regatta canary-recent` | pause merges; review |
+| Spec mutated on `main` mid-flight | L0 merge-time re-run fails | `regatta gate-rerun l0 --pr N` | rebase + re-evaluate | usually agent halts cleanly |
+| Long autonomous trajectory (GTG-1002) | tool-call sequence anomaly | `regatta agent-trace --work-id N` | pause | require fresh approval |
+| Force-push or destructive git op | P1 deny + P2 two-key | (auto-rejected) | `regatta audit --since 1h` | audit sink entry |
+| Orchestrator broken / API outage | heartbeat dead-man / gate timeouts | `regatta health` | `regatta serve --pause` | restart; running agents reaped on next start |
 
 ## Stop conditions (measurable)
 
-Abandon a deployment if **any** of these triggers:
-
-- Canary human-catch-rate <60% over rolling 20-canary window, ≥4 weeks
-  post-Phase-3.
-- Maintainer review-burden median time-on-PR has not dropped vs.
-  pre-Regatta baseline by week 6 (measured by `gh pr view --json
-  closedAt,createdAt` aggregations).
-- Agent completion rate (PR merged without escalation) <60% across
-  rolling 10-PR window for ≥2 consecutive windows.
-- Cost per completed item exceeds `safety.spend_cap_usd` consistently
-  for 3+ items in a row — gates are too noisy or agent is thrashing.
+Abandon a deployment if **any** triggers: canary human-catch-rate <60%
+over rolling 20-canary window for ≥4 weeks post-Phase-3; maintainer
+review-burden median time-on-PR has not dropped vs. pre-Regatta
+baseline by week 6 (measured via `gh pr view --json
+closedAt,createdAt`); agent completion rate <60% across rolling 10-PR
+window for ≥2 consecutive windows; or cost per completed item exceeds
+`safety.spend_cap_usd` consistently for 3+ items in a row.
 
 ## Alternatives
 
@@ -833,22 +689,9 @@ standalone OSS primitives.
 4. **Multi-repo coordination.** v3.1 = one deployment per repo.
    Monorepo cross-package dependencies handled by single-repo
    `dependencies` graph; cross-repo deferred to v4.
-5. **Cross-vendor L4.** When (not if) v4 ships, default L4 swaps to a
-   genuinely different family. The benchmark plan: re-run the canary
+5. **Cross-vendor L4 benchmark.** When v4 lands, re-run the canary
    corpus on `(Opus, Sonnet)` vs `(Opus, GPT-5)` and publish the
-   delta.
-
-## Versioning
-
-`regatta.yaml` carries `version: 1`. The CUE schema is at
-`schemas/regatta.v1.cue`. Breaking changes bump major; a migration
-tool (`regatta migrate-config --from 1 --to 2`) ships before any v2
-release.
-
-`GateResult` has `schema_version: 1`. Same migration discipline.
-
-`SpecAdapter` Go interface uses Go's interface-evolution rules:
-breaking changes bump the `regatta` module's major version (semver).
+   same-family-vs-cross-family delta.
 
 ## References
 
@@ -865,22 +708,12 @@ breaking changes bump the `regatta` module's major version (semver).
 - AI Incident Database (incidentdatabase.ai).
 - OWASP Top 10 for LLM Applications (LLM01, LLM05).
 
-## v2 → v3.1 changelog (compact)
+## v2 → v3.1 changelog
 
-- **Repo-agnostic.** Generic `SpecAdapter` interface; no
-  consumer-repo references anywhere in the doc.
-- **Schemas published.** `SpecAdapter` (Go), `GateResult` (JSON),
-  `WorkItem` (JSON), `regatta.yaml` (CUE). Normative.
-- **Threat model + tamper-evident audit added.**
-- **L0 specified normatively** with a fixture-corpus contract.
-- **Trap Catalog promoted** to top-level; full prose lives in
-  `incidents.md`.
-- **Day-1→Day-30 runbook + worked example added.**
-- **Costed reference workload added.**
-- **Competitor table added** with honest concessions on runtime-
-  agnosticism and same-family bias.
-- **Failure modes rewritten as on-call runbook** with first/second/
-  escalate columns.
-- **Stop conditions made measurable** (numeric thresholds + windows).
-- **Concurrency state machine specified** (sorted lock acquisition,
-  heartbeat lease, idempotency key, crash-recovery scan).
+Schemas published as normative contracts; Threat Model and Test
+Harness added; Trap Catalog promoted to top-level; Day 1→30 Runbook +
+Worked Example added; failure modes rewritten as on-call runbook;
+stop conditions made measurable; concurrency state machine specified
+with crash-recovery; honest concessions on runtime-agnosticism (v4
+work) and L4 "different family" (Sonnet/Opus are different
+checkpoints, not different families).

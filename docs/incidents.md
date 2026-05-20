@@ -89,7 +89,7 @@ Between 2023 and 2026, autonomous and semi-autonomous AI agents have caused prod
 - **What happened:** MCPoison: approved-once MCP config swapped to malicious payload post-approval. CurXecute: indirect prompt injection writes `.cursor/mcp.json` then auto-runs. Rules-File Backdoor: invisible Unicode in `.cursorrules` / `copilot-instructions.md` injects undisclosed backdoors into generated code.
 - **Root cause:** Trust bound to config key name not contents (MCPoison); auto-run enabled by default (CurXecute); model processes glyphs that humans cannot see (Unicode backdoor).
 - **Impact:** Persistent RCE in dev environments; code review cannot catch invisible-character injections.
-- **Prevention:** Re-approval required on any MCP config diff; auto-run off by default; pre-process all instruction files through a strict ASCII / printable-only normalizer; render invisible characters in PR diffs.
+- **Prevention:** Re-approval required on any MCP config diff; auto-run off by default; pre-process all instruction files through invisible-glyph normalization (strip bidi/format/PUA Unicode ranges); render invisible characters in PR diffs.
 
 ### 10. GitHub Copilot RCE via prompt injection (CVE-2025-53773)
 - **Date / source:** Aug 2025. [Embrace The Red post](https://embracethered.com/blog/posts/2025/github-copilot-remote-code-execution-via-prompt-injection/); [Cybersecurity News](https://cybersecuritynews.com/github-copilot-rce-vulnerability/).
@@ -180,7 +180,7 @@ These are the rules a fleet orchestrator should enforce at the platform layer. E
 ### Pattern 3 — Fetch trusted instructions from `main`, treat all other text as data
 **Rule:** System prompts, allowlists, and tool configs come from a signed `main`-branch artifact. PR-branch content, issue bodies, comments, emails, web/RAG retrievals, and MCP outputs are *data* — never interpolated into instruction context.
 **Prevents:** Comment-and-Control (#8), EchoLeak (#6), Cursor MCPoison/CurXecute/Rules-File (#9), Copilot RCE (#10).
-**Implementation:** Two-channel context: trusted instructions and untrusted data. Untrusted data is wrapped in sentinels, ASCII-normalized, and routed through a tool-less reasoning step that emits structured intents — the action-taking agent never sees raw untrusted text.
+**Implementation:** Two-channel context: trusted instructions and untrusted data. Untrusted data is wrapped in sentinels, passed through invisible-glyph normalization (strip — instructions; annotate — data so non-Latin text survives), and routed through a tool-less reasoning step that emits structured intents — the action-taking agent never sees raw untrusted text.
 
 ### Pattern 4 — Least-privilege, ephemeral, environment-scoped credentials
 **Rule:** Agent runs with a token scoped to one environment, one project, and the minimum verb set. No long-lived prod tokens in agent context. CI env stripped before agent invocation.
@@ -213,7 +213,7 @@ These are the rules a fleet orchestrator should enforce at the platform layer. E
 **Implementation:** Context router classifies retrieved content; sensitive shards routed to a separate, tool-less summarization step that emits only task-relevant, non-sensitive facts to the action agent.
 
 ### Pattern 10 — Render-the-invisible + signed prompt artifacts
-**Rule:** All instruction and rules files are normalized to printable ASCII (or rendered with invisible glyphs annotated) before reaching the model. Prompt-pack changes require human review and are cryptographically signed; runtime verifies signature.
+**Rule:** All instruction and rules files pass through invisible-glyph normalization before reaching the model — *strip* the bidi/format/PUA ranges from instructions, *annotate* in data (so non-Latin user content survives). Prompt-pack changes require human review and are cryptographically signed; runtime verifies signature.
 **Prevents:** Rules-File Backdoor (#9), Amazon Q wiper (#7), Copilot Unicode injection (#9/#10), Cursor MCPoison config swap (#9).
 **Implementation:** Pre-process step strips/escapes U+E0000–U+E007F, ZWJ, RTL/LTR overrides, etc.; CI signs `prompts/*.md` and `*.cursorrules`; agent refuses to load unsigned or mismatched artifacts; diff viewers render invisibles on PR.
 
