@@ -48,6 +48,16 @@ func ParseUnifiedDiff(diff string) []FileChange {
 				cur = &FileChange{}
 			}
 			cur.NewPath = strings.TrimPrefix(strings.TrimPrefix(line, "+++ "), "b/")
+		case strings.HasPrefix(line, "rename from "):
+			if cur == nil {
+				cur = &FileChange{}
+			}
+			cur.OldPath = strings.TrimPrefix(line, "rename from ")
+		case strings.HasPrefix(line, "rename to "):
+			if cur == nil {
+				cur = &FileChange{}
+			}
+			cur.NewPath = strings.TrimPrefix(line, "rename to ")
 		case strings.HasPrefix(line, "@@"):
 			inHunk = true
 		case inHunk && cur != nil:

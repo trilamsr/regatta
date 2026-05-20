@@ -146,6 +146,26 @@ func TestCheck_StateRevert_Fails(t *testing.T) {
 	}
 }
 
+// TestCheck_PureRename_Passes is the end-to-end for the rename-parsing
+// support. A pure rename (no content change) has no `--- a/`/`+++ b/`
+// lines; only `rename from`/`rename to`. Without parser support those
+// would leave paths empty, the file would not match isSpecPath, and
+// the verdict would be pass-because-skipped. With parser support, the
+// file IS in scope; Extract returns zero criteria from both sides;
+// compareCriteria returns no findings; verdict is pass-because-clean.
+// Behavior is the same; meaning differs. This test pins the meaning.
+func TestCheck_PureRename_Passes(t *testing.T) {
+	d := `diff --git a/MILESTONES_OLD.md b/MILESTONES.md
+similarity index 100%
+rename from MILESTONES_OLD.md
+rename to MILESTONES.md
+`
+	r := runCheck(t, d)
+	if r.Verdict != schemas.VerdictPass {
+		t.Fatalf("verdict=%s findings=%+v; expected pass for pure rename", r.Verdict, r.Findings)
+	}
+}
+
 func TestCheck_NonSpecFile_Skipped(t *testing.T) {
 	d := `diff --git a/src/main.go b/src/main.go
 --- a/src/main.go

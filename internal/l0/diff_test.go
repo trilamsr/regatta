@@ -46,3 +46,30 @@ func TestParseUnifiedDiff_NewFile(t *testing.T) {
 		t.Errorf("New=%q", changes[0].New)
 	}
 }
+
+// TestParseUnifiedDiff_PureRename pins down L0 README §5: a criterion
+// in a renamed file must still be tracked. Git's pure-rename output
+// (no content change) omits the `--- a/foo` and `+++ b/bar` headers
+// entirely; only `rename from`/`rename to` carry the paths. The
+// parser must pick them up so L0 sees the file as in-scope.
+func TestParseUnifiedDiff_PureRename(t *testing.T) {
+	d := `diff --git a/MILESTONES_OLD.md b/MILESTONES.md
+similarity index 100%
+rename from MILESTONES_OLD.md
+rename to MILESTONES.md
+`
+	changes := ParseUnifiedDiff(d)
+	if len(changes) != 1 {
+		t.Fatalf("len(changes)=%d", len(changes))
+	}
+	c := changes[0]
+	if c.OldPath != "MILESTONES_OLD.md" {
+		t.Errorf("OldPath=%q; want MILESTONES_OLD.md", c.OldPath)
+	}
+	if c.NewPath != "MILESTONES.md" {
+		t.Errorf("NewPath=%q; want MILESTONES.md", c.NewPath)
+	}
+	if c.Old != "" || c.New != "" {
+		t.Errorf("Old=%q New=%q; want both empty (pure rename has no hunks)", c.Old, c.New)
+	}
+}
