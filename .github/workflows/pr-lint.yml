@@ -1,0 +1,79 @@
+name: PR lint
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-lint:
+    name: pr-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: release-notes block edited
+        if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Skip the check entirely when the PR only touches paths with no
+          # user-visible runtime behavior (docs, CI, build system, tooling
+          # pins). A release-notes block on those is theatre. Exiting 0 here
+          # marks the required check passing.
+          mapfile -t changed < <(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
+          if [ "${#changed[@]}" -gt 0 ]; then
+            skip=1
+            for f in "${changed[@]}"; do
+              case "$f" in
+                *.md|docs/*) ;;
+                .github/*) ;;
+                scripts/*) ;;
+                Makefile|.gitignore|.gitattributes) ;;
+                .claude/*|.mcp.json) ;;
+                *) skip=0; break ;;
+              esac
+            done
+            if [ "$skip" -eq 1 ]; then
+              echo "PR only touches docs/CI/build-tooling - release-notes block check skipped."
+              exit 0
+            fi
+          fi
+
+          if [ -z "${BODY:-}" ]; then
+            echo "::error::PR description is empty. Use the PR template and fill in the release-notes block."
+            exit 1
+          fi
+          block=$(printf '%s\n' "$BODY" | awk '
+            /^```release-notes/ { capture=1; next }
+            capture && /^```/    { exit }
+            capture              { print }
+          ')
+          if [ -z "$block" ]; then
+            echo "::error::No \`\`\`release-notes\`\`\` block found in the PR description."
+            exit 1
+          fi
+          trimmed=$(printf '%s' "$block" | tr -d '[:space:]')
+          if [ -z "$trimmed" ]; then
+            echo "::error::release-notes block is empty. Either describe the user-visible change or write 'NONE'."
+            exit 1
+          fi
+          if printf '%s' "$block" | grep -qE '^\s*\[CATEGORY\] Short description of the user-visible change\.\s*$'; then
+            echo "::error::release-notes block is the unedited template. Edit it or replace with 'NONE'."
+            exit 1
+          fi
+          echo "release-notes block looks edited:"
+          printf '%s\n' "$block"
+
+      - name: doc-check
+        run: |
+          set -euo pipefail
+          bash scripts/doc-check.sh
