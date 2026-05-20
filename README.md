@@ -93,15 +93,25 @@ patterns:
 P1, P3, P5, P6, P8, P10 each prevent 3+ documented incidents and are
 the most load-bearing.
 
+## Shipped
+
+- **L0 spec-immutability gate.** `cmd/regatta l0 <diff>` reads a
+  unified diff, runs invisible-glyph stripping + NFC + criterion
+  byte-equality, and emits a `GateResult` JSON. The fixture corpus
+  under `gates/l0/testdata/` is the contract; `go test ./internal/l0`
+  exercises pass / fail / edge sweeps plus unit-level normalization.
+- **`regatta verify-repo-config`.** Pre-flight audit of a GitHub repo
+  against the P2 canonical recipe — branch protection
+  (`required_approving_review_count≥2`, `require_code_owner_reviews`,
+  `require_last_push_approval`, `dismiss_stale_reviews`,
+  `enforce_admins`), CODEOWNERS presence, and the
+  `/codeowners/errors` silent-ignore catcher. Requires `GITHUB_TOKEN`.
+
 ## Next steps
 
-Pre-implementation, the contract is the schemas + the fixture-corpus
-READMEs + the design doc. Concrete next milestones:
-
-1. **L0 implementation.** Pure Go, ~200 lines, passes the
-   `gates/l0/testdata/` corpus (target: 200 fixtures).
-2. **`regatta validate-config` + `regatta validate-spec`.** Two CLI
-   commands; minimal Go binary; CUE validation under the hood.
+1. **Expand the L0 fixture corpus toward the 200-fixture target.**
+2. **`regatta validate-config` + `regatta validate-spec`.** CUE
+   validation under the hood; first-class adapters land alongside.
 3. **Orchestrator skeleton.** Daemon, sqlite state, scheduler with
    sorted-lock acquisition, agent spawner.
 4. **Gate runners for L3 / L4 / L5.** Anthropic SDK clients with

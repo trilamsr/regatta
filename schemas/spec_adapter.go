@@ -8,7 +8,7 @@
 // Status: draft v1. Breaking changes bump the major version; new optional
 // methods bump the minor version. The wire protocol for the `custom` adapter
 // is also versioned (see CustomAdapterRequest.Version).
-package regatta
+package schemas
 
 import (
 	"context"
