@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -127,49 +126,46 @@ func TestTickHotspotsSortedAcquisition(t *testing.T) {
 	}
 }
 
-// TestTickSortsHotspotsLexicographically is a mutation-verify test
-// for the sort.Strings call in scheduler.resolveLocks. Removing that
-// sort would let the resolver's emitted order leak into
-// TryAcquireLocks, breaking the cross-agent deadlock-safety property
-// from docs/design.md §Concurrency & soft-lock policy.
-func TestTickSortsHotspotsLexicographically(t *testing.T) {
+// TestResolveLocksSorts is a mutation-verify test for the
+// sort.Strings call in scheduler.resolveLocks. Removing that sort
+// would let the resolver's emitted order leak into TryAcquireLocks,
+// breaking the cross-agent deadlock-safety property from
+// docs/design.md §Concurrency & soft-lock policy.
+//
+// Verified by calling the unexported resolveLocks directly: an
+// integration test through Tick + ListLocks cannot distinguish a
+// sorted insert from an unsorted insert because sqlite returns rows
+// by name regardless of insertion order.
+func TestResolveLocksSorts(t *testing.T) {
 	db := newDB(t)
-	mustUpsert(t, db, "WORK-1", "server")
-
-	var observed []string
-	resolver := func(string) []string {
-		// Returned in reverse-lex order so the test fails fast if
-		// the scheduler forwards the slice unchanged.
-		out := []string{"zeta", "alpha", "mu"}
-		observed = append([]string(nil), out...)
-		return out
-	}
-	sch := New(db, Config{LockTTL: time.Minute, Hotspots: resolver})
-	if _, err := sch.Tick(context.Background()); err != nil {
-		t.Fatalf("tick: %v", err)
-	}
-	// The scheduler must NOT mutate the resolver's return slice in
-	// place (caller may reuse it). Confirm the resolver output is
-	// untouched.
-	if !sort.SliceIsSorted(observed, func(i, j int) bool { return observed[i] < observed[j] }) &&
-		(observed[0] != "zeta" || observed[1] != "alpha" || observed[2] != "mu") {
-		t.Fatalf("scheduler mutated resolver slice: %v", observed)
-	}
-	// And the locks landed in lex order, proving the scheduler
-	// sorted internally before TryAcquireLocks.
-	locks, _ := db.ListLocks(context.Background())
-	got := make([]string, len(locks))
-	for i, l := range locks {
-		got[i] = l.Name
-	}
+	sch := New(db, Config{
+		LockTTL: time.Minute,
+		Hotspots: func(string) []string {
+			return []string{"zeta", "alpha", "mu"}
+		},
+	})
+	got := sch.resolveLocks("WORK-1")
 	want := []string{"alpha", "mu", "zeta"}
 	if len(got) != len(want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("lock %d = %q, want %q (full=%v)", i, got[i], want[i], got)
+			t.Fatalf("position %d = %q, want %q (full=%v)", i, got[i], want[i], got)
 		}
+	}
+}
+
+func TestResolveLocksDoesNotMutateResolverSlice(t *testing.T) {
+	db := newDB(t)
+	source := []string{"zeta", "alpha", "mu"}
+	sch := New(db, Config{
+		LockTTL:  time.Minute,
+		Hotspots: func(string) []string { return source },
+	})
+	_ = sch.resolveLocks("WORK-1")
+	if source[0] != "zeta" || source[1] != "alpha" || source[2] != "mu" {
+		t.Fatalf("scheduler mutated resolver-owned slice: %v", source)
 	}
 }
 

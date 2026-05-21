@@ -83,6 +83,34 @@ func TestUpsertPendingIdempotent(t *testing.T) {
 	}
 }
 
+// TestUpsertPendingTracksLaneChange pins down the contract that a
+// spec-source lane change is reflected on the existing agent row.
+// Without this, a markdown item moved from `server` to `client` lane
+// would stay in the original lane forever, defeating per-lane caps.
+func TestUpsertPendingTracksLaneChange(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	a1, err := db.UpsertPending(ctx, "WORK-1", "server")
+	if err != nil {
+		t.Fatalf("first upsert: %v", err)
+	}
+	a2, err := db.UpsertPending(ctx, "WORK-1", "client")
+	if err != nil {
+		t.Fatalf("second upsert with new lane: %v", err)
+	}
+	if a1.ID != a2.ID {
+		t.Fatalf("upsert returned different IDs: %d vs %d", a1.ID, a2.ID)
+	}
+	if a2.Lane != "client" {
+		t.Fatalf("expected lane=client after re-upsert; got %q", a2.Lane)
+	}
+	// Verify DB row reflects the change.
+	got, _ := db.GetAgent(ctx, a2.ID)
+	if got.Lane != "client" {
+		t.Fatalf("DB row stale: lane=%q want client", got.Lane)
+	}
+}
+
 func TestTransitionAgentHappyPath(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
@@ -175,6 +203,38 @@ func TestLockAcquisitionAndExpiry(t *testing.T) {
 	}
 	if len(locks) != 1 || locks[0].AgentID != b.ID {
 		t.Fatalf("unexpected lock state: %+v", locks)
+	}
+}
+
+func TestHeartbeatLockRefreshesAllLocksForAgent(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	a, err := db.UpsertPending(ctx, "WORK-1", "server")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+
+	clock := time.Unix(1_700_000_000, 0).UTC()
+	db.SetClock(func() time.Time { return clock })
+
+	if err := db.TryAcquireLocks(ctx, []string{"alpha", "beta", "gamma"}, a.ID, 5*time.Minute); err != nil {
+		t.Fatalf("acquire batch: %v", err)
+	}
+
+	clock = clock.Add(3 * time.Minute)
+
+	n, err := db.HeartbeatLock(ctx, a.ID)
+	if err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+	if n != 3 {
+		t.Fatalf("refreshed %d locks, want 3", n)
+	}
+	locks, _ := db.ListLocks(ctx)
+	for _, l := range locks {
+		if !l.HeartbeatAt.Equal(clock) {
+			t.Errorf("lock %s heartbeat=%v want %v", l.Name, l.HeartbeatAt, clock)
+		}
 	}
 }
 

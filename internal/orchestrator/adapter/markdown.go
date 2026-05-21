@@ -35,7 +35,7 @@ import (
 //	linked_artifact: docs/rfc/001.md
 //	---
 //
-//	(free body text — ignored by the parser)
+//	(free body text - ignored by the parser)
 //
 //	## Acceptance criteria
 //
@@ -102,6 +102,12 @@ func (m *markdownCatalog) List(ctx context.Context) ([]schemas.WorkItem, error) 
 			return nil, err
 		}
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		// Files prefixed with "_" or "." are treated as templates /
+		// scratch and skipped. Operators can stash a partial draft
+		// without breaking List.
+		if strings.HasPrefix(entry.Name(), "_") || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
@@ -185,6 +191,9 @@ func (m *markdownCatalog) findFileFor(id schemas.WorkItemID) (string, error) {
 	}
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+			continue
+		}
+		if strings.HasPrefix(entry.Name(), "_") || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())

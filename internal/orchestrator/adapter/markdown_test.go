@@ -162,6 +162,60 @@ dependencies: A
 	}
 }
 
+func TestMarkdownCatalogSkipsTemplateFiles(t *testing.T) {
+	dir := t.TempDir()
+	writeItem(t, dir, "001.md", sampleItem)
+	// Templates: leading "_" and leading "." must be ignored even
+	// though they have a .md suffix.
+	writeItem(t, dir, "_template.md", "garbage that would fail to parse")
+	writeItem(t, dir, ".draft.md", "another garbage draft")
+
+	a, _ := NewMarkdownCatalog(MarkdownCatalogConfig{Root: dir})
+	items, err := a.List(context.Background())
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != "ITEM-001" {
+		t.Fatalf("templates leaked into list: %+v", items)
+	}
+}
+
+func TestMarkdownCatalogRejectsMissingCriteria(t *testing.T) {
+	dir := t.TempDir()
+	writeItem(t, dir, "bad.md", `---
+id: BAD
+title: missing criteria
+lane: x
+status: planned
+---
+
+Body but no acceptance criteria heading.
+`)
+	a, _ := NewMarkdownCatalog(MarkdownCatalogConfig{Root: dir})
+	_, err := a.List(context.Background())
+	if err == nil {
+		t.Fatal("expected error for missing acceptance criteria, got nil")
+	}
+	if !strings.Contains(err.Error(), "acceptance criteria") {
+		t.Fatalf("error %v does not mention acceptance criteria", err)
+	}
+}
+
+func TestMarkdownCatalogRejectsMissingFrontmatter(t *testing.T) {
+	dir := t.TempDir()
+	writeItem(t, dir, "bad.md", `# No frontmatter
+
+## Acceptance criteria
+
+- [planned] c1: ignored
+`)
+	a, _ := NewMarkdownCatalog(MarkdownCatalogConfig{Root: dir})
+	_, err := a.List(context.Background())
+	if err == nil {
+		t.Fatal("expected error for missing frontmatter, got nil")
+	}
+}
+
 func TestMarkdownCatalogCapabilities(t *testing.T) {
 	dir := t.TempDir()
 	a, _ := NewMarkdownCatalog(MarkdownCatalogConfig{Root: dir})

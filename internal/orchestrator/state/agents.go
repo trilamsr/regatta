@@ -90,6 +90,15 @@ func (d *DB) UpsertPending(ctx context.Context, workItemID, lane string) (*Agent
 		`SELECT id, work_item_id, lane, state, pid, session_id, pr_sha, rejection_count, created_at, updated_at
 		 FROM agents WHERE work_item_id = ?`, workItemID)
 	if err := scanAgent(row, &a); err == nil {
+		if a.Lane != lane {
+			a.Lane = lane
+			a.UpdatedAt = time.Unix(now, 0).UTC()
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE agents SET lane = ?, updated_at = ? WHERE id = ?`,
+				lane, now, a.ID); err != nil {
+				return nil, fmt.Errorf("state: update lane: %w", err)
+			}
+		}
 		return &a, tx.Commit()
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("state: select agent: %w", err)

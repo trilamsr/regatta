@@ -17,7 +17,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"syscall"
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
@@ -233,8 +232,9 @@ func (o *Orchestrator) Heartbeat(ctx context.Context) error {
 }
 
 // Run drives the orchestrator until ctx is cancelled. Returns nil on
-// clean shutdown; non-nil only if one of the three timers reports a
-// fatal error.
+// clean shutdown. Per-tick errors (poll, schedule, heartbeat) are
+// logged but never abort the loop: a transient adapter outage or
+// sqlite contention must not take the daemon down.
 func (o *Orchestrator) Run(ctx context.Context) error {
 	pollT := time.NewTicker(o.cfg.PollInterval)
 	defer pollT.Stop()
@@ -243,11 +243,14 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	heartT := time.NewTicker(o.cfg.HeartbeatInterval)
 	defer heartT.Stop()
 
+	// Kick off one cycle immediately so the daemon does useful work
+	// before the first tick. Errors here are non-fatal for the same
+	// reason as the periodic ticks.
 	if err := o.PollOnce(ctx); err != nil {
-		return err
+		o.logf("orchestrator: initial poll: %v", err)
 	}
 	if err := o.ScheduleOnce(ctx); err != nil {
-		return err
+		o.logf("orchestrator: initial schedule: %v", err)
 	}
 
 	for {
@@ -270,20 +273,13 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	}
 }
 
-// pidAlive returns true iff pid identifies a live process. PIDs ≤ 0
-// (unset or synthetic from the stub spawner) are treated as dead.
-//
-// On Unix we send signal 0; if the process is gone, the kernel
-// returns ESRCH. EPERM means the process exists but is owned by
-// another user (still alive). Other errors are conservative-alive
-// to avoid mass-requeueing during a transient kernel issue.
+// pidAlive reports whether pid identifies a live process. Negative
+// or zero PIDs (unset or synthetic from the stub spawner) are
+// treated as dead. The OS-specific liveness probe lives in
+// orchestrator_unix.go and orchestrator_windows.go.
 func pidAlive(pid int) bool {
 	if pid <= 0 {
 		return false
 	}
-	err := syscall.Kill(pid, 0)
-	if err == nil {
-		return true
-	}
-	return !errors.Is(err, syscall.ESRCH)
+	return osPidAlive(pid)
 }
