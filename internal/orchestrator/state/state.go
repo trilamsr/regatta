@@ -8,9 +8,13 @@
 //
 // Concurrency: a *DB is safe for concurrent use. Open() caps the
 // underlying *sql.DB pool at one connection so writers serialize at
-// the application layer instead of contending on sqlite's file lock,
-// which busy_timeout alone does not reliably resolve under bursty
-// concurrent recovery (50+ goroutines hitting Recover at once).
+// the application layer. database/sql's pool default is unbounded;
+// modernc.org/sqlite serializes writes within a single *sql.Conn but
+// not across pool members, and sqlite's file lock + per-connection
+// busy_timeout will retry-fight rather than queue under bursty
+// concurrent recovery. The MaxOpenConns(1) contract is pinned by
+// TestOpenCapsConnectionPoolAtOne so a silent refactor cannot
+// regress.
 package state
 
 import (
