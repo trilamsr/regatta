@@ -14,6 +14,15 @@ import (
 // ClaudeSpawner launches an agent process inside a per-agent
 // worktree. It implements the Spawner interface.
 //
+// Restart-adoption gap (issue #45): on orchestrator restart the
+// children map is empty. Agents whose claude process is still alive
+// pass pidAlive and stay in `running`, but KillAgent returns
+// (false, nil) because the *exec.Cmd handle was lost when the
+// parent died. The Reaper still removes the worktree on a terminal
+// transition; the live child is reaped lazily by the kernel
+// parent-death cascade or an operator pkill until the adoption
+// routine ships under #45.
+//
 // The spawn sequence is:
 //
 //  1. WorktreeManager.Create(agentID, BaseRef) - deterministic path

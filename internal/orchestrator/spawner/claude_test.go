@@ -132,6 +132,39 @@ func TestClaudeChildrenAndForget(t *testing.T) {
 	}
 }
 
+// TestClaudeSpawnKillRace hammers Spawn and KillAgent across the
+// same agent IDs from many goroutines. With -race the test fails if
+// either method touches s.children without the mutex; functionally
+// it asserts no goroutine panics and the final children map shape
+// is internally consistent.
+func TestClaudeSpawnKillRace(t *testing.T) {
+	cs, _, _ := newClaudeHarness(t)
+
+	const N = 32
+	var wg sync.WaitGroup
+	wg.Add(N * 2)
+	for i := 0; i < N; i++ {
+		id := int64(i + 1)
+		go func() {
+			defer wg.Done()
+			_, _ = cs.Spawn(context.Background(), Request{AgentID: id})
+		}()
+		go func() {
+			defer wg.Done()
+			_, _ = cs.KillAgent(id)
+		}()
+	}
+	wg.Wait()
+
+	// Every recorded child must have a non-nil cmd; the map itself
+	// must be safe to range.
+	for id, cmd := range cs.Children() {
+		if cmd == nil {
+			t.Fatalf("agent %d has nil cmd in children map", id)
+		}
+	}
+}
+
 func TestDefaultPromptBuilderCarriesIdentifiers(t *testing.T) {
 	prompt := defaultPromptBuilder(Request{AgentID: 42, WorkItemID: "WORK-X", Lane: "server"})
 	for _, want := range []string{"42", "WORK-X", "server"} {
