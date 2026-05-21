@@ -1,0 +1,10 @@
+diff --git a/MILESTONES_OLD.md b/MILESTONES.md
+similarity index 80%
+rename from MILESTONES_OLD.md
+rename to MILESTONES.md
+--- a/MILESTONES_OLD.md
++++ b/MILESTONES.md
+@@ -1,2 +1,2 @@
+ # M1
+-- [ ] Original criterion text.
++- [ ] Original criterion silently edited under rename.
