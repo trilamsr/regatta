@@ -31,6 +31,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/validateconfig"
 	"github.com/trilamsr/regatta/internal/verifyrepo"
 	"github.com/trilamsr/regatta/schemas"
 )
@@ -53,6 +54,8 @@ func main() {
 		os.Exit(runVerifyRepoConfig(os.Args[2:]))
 	case "serve":
 		os.Exit(runServe(os.Args[2:]))
+	case "validate-config":
+		os.Exit(runValidateConfig(os.Args[2:]))
 	case "version", "-v", "--version":
 		fmt.Println("regatta", version)
 	case "help", "-h", "--help":
@@ -69,6 +72,7 @@ func usage(w io.Writer) {
   regatta l0 <diff-file>                              Run L0 against a unified diff
   regatta l0-refs -repo <dir> -base <ref> -head <ref> Run L0 against git refs (merge-base diff)
   regatta l0-merge -repo <dir> -commit <sha>          Re-run L0 on a merge commit vs first parent
+  regatta validate-config                             CUE-validate regatta.yaml
   regatta verify-repo-config                          Audit GitHub repo against P2 recipe
   regatta serve                                       Run the orchestrator daemon (skeleton)
   regatta version                                     Print build info
@@ -308,5 +312,18 @@ func runVerifyRepoConfig(args []string) int {
 	if !res.OK {
 		return 1
 	}
+	return 0
+}
+
+func runValidateConfig(args []string) int {
+	fs := flag.NewFlagSet("validate-config", flag.ExitOnError)
+	cfgPath := fs.String("config", "regatta.yaml", "Path to regatta.yaml")
+	_ = fs.Parse(args)
+
+	if err := validateconfig.LoadFile(*cfgPath); err != nil {
+		fmt.Fprintf(os.Stderr, "validate-config: FAIL\n%s\n", err)
+		return 1
+	}
+	fmt.Printf("validate-config: PASS — %s validates against regatta.v1\n", *cfgPath)
 	return 0
 }

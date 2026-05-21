@@ -13,6 +13,8 @@
 
 package regattav1
 
+import "list"
+
 #Config: {
 	version: 1
 	repo:          #Repo
