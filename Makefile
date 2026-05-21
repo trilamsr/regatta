@@ -35,4 +35,4 @@ hooks:  ## Install repo-managed Git hooks (sets core.hooksPath to .githooks).
 
 check: doc-check vet tidy-check mod-verify go-check  ## Single source of truth for what is verified locally and in CI.
 
-ci: check  ## CI entrypoint (alias of `check`). `lint` is opt-in until the existing-code lint backlog clears.
+ci: check lint  ## CI entrypoint: full check plus lint (backlog cleared).

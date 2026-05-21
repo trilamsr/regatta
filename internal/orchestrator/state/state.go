@@ -34,6 +34,7 @@ const CurrentSchemaVersion = 1
 // AgentState mirrors the state-machine in docs/design.md §378.
 type AgentState string
 
+// Agent lifecycle states; full state-machine in docs/design.md §378.
 const (
 	AgentPending       AgentState = "pending"
 	AgentSpawning      AgentState = "spawning"
@@ -105,7 +106,7 @@ func (d *DB) migrate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("state: begin migrate tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("state: apply schema: %w", err)
 	}

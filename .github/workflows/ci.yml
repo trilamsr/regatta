@@ -32,6 +32,5 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: make lint (advisory until existing-code backlog clears)
-        continue-on-error: true
+      - name: make lint
         run: make lint

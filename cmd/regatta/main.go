@@ -68,7 +68,7 @@ func main() {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `Usage:
+	_, _ = fmt.Fprint(w, `Usage:
   regatta l0 <diff-file>                              Run L0 against a unified diff
   regatta l0-refs -repo <dir> -base <ref> -head <ref> Run L0 against git refs (merge-base diff)
   regatta l0-merge -repo <dir> -commit <sha>          Re-run L0 on a merge commit vs first parent
@@ -100,7 +100,7 @@ a single poll+schedule cycle and exit.
 func runL0(args []string) int {
 	fs := flag.NewFlagSet("l0", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "Usage: regatta l0 <diff-file>  ('-' for stdin)")
+		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta l0 <diff-file>  ('-' for stdin)")
 	}
 	_ = fs.Parse(args)
 	if fs.NArg() != 1 {
@@ -220,7 +220,7 @@ func runServe(args []string) int {
 		logger.Printf("open db: %v", err)
 		return 2
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ad, err := adapter.NewMarkdownCatalog(adapter.MarkdownCatalogConfig{Root: *itemsRoot})
 	if err != nil {

@@ -83,7 +83,7 @@ func (d *DB) UpsertPending(ctx context.Context, workItemID, lane string) (*Agent
 	if err != nil {
 		return nil, fmt.Errorf("state: begin upsert tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var a Agent
 	row := tx.QueryRowContext(ctx,
@@ -160,7 +160,7 @@ func (d *DB) ListAgentsByState(ctx context.Context, states ...AgentState) ([]Age
 	if err != nil {
 		return nil, fmt.Errorf("state: list agents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Agent
 	for rows.Next() {
 		var a Agent
@@ -194,7 +194,7 @@ func (d *DB) CountAgentsByLane(ctx context.Context, states ...AgentState) (map[s
 	if err != nil {
 		return nil, fmt.Errorf("state: count by lane: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var lane string
 		var n int
@@ -214,7 +214,7 @@ func (d *DB) TransitionAgent(ctx context.Context, id int64, next AgentState, mut
 	if err != nil {
 		return nil, fmt.Errorf("state: begin transition tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	a, err := txGetAgentForUpdate(ctx, tx, id)
 	if err != nil {

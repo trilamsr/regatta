@@ -34,7 +34,7 @@ func (d *DB) TryAcquireLocks(ctx context.Context, names []string, agentID int64,
 	if err != nil {
 		return fmt.Errorf("state: begin batch acquire tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	for _, name := range names {
 		if err := acquireOne(ctx, tx, name, agentID, ttl, now); err != nil {
 			return err
@@ -86,7 +86,7 @@ func (d *DB) TryAcquireLock(ctx context.Context, name string, agentID int64, ttl
 	if err != nil {
 		return fmt.Errorf("state: begin acquire tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var holder int64
 	var heartbeat int64
@@ -166,7 +166,7 @@ func (d *DB) ListLocks(ctx context.Context) ([]Lock, error) {
 	if err != nil {
 		return nil, fmt.Errorf("state: list locks: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Lock
 	for rows.Next() {
 		var l Lock
