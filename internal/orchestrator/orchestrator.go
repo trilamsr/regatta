@@ -154,13 +154,18 @@ func (o *Orchestrator) Recover(ctx context.Context) error {
 }
 
 // PollOnce calls SpecAdapter.List and upserts a pending agent for
-// every planned item. Already-known items are left in place.
+// every planned item. Already-known items are left in place. The
+// loop checks ctx between items so a cancelled daemon shutdown does
+// not block on a large catalog.
 func (o *Orchestrator) PollOnce(ctx context.Context) error {
 	items, err := o.adapter.List(ctx)
 	if err != nil {
 		return fmt.Errorf("orchestrator: adapter list: %w", err)
 	}
 	for _, it := range items {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if it.Status != schemas.StatusPlanned {
 			continue
 		}
@@ -176,11 +181,14 @@ func (o *Orchestrator) PollOnce(ctx context.Context) error {
 // spawning→running with the returned PID and session ID. A failed
 // Spawn rolls the agent back to crashed → pending so a future tick
 // can retry.
+//
+// A Tick that returns a partial reservation plus an error is handled
+// by spawning the partial set first, then surfacing the Tick error.
+// Returning early would otherwise strand the reserved agents in the
+// spawning state with their locks held until the recovery sweep on
+// the next restart.
 func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
-	ids, err := o.sched.Tick(ctx)
-	if err != nil {
-		return fmt.Errorf("orchestrator: scheduler tick: %w", err)
-	}
+	ids, tickErr := o.sched.Tick(ctx)
 	for _, id := range ids {
 		a, err := o.db.GetAgent(ctx, id)
 		if err != nil {
@@ -210,6 +218,9 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 		_ = o.db.RecordEvent(ctx, a.ID, "spawned",
 			fmt.Sprintf(`{"pid":%d,"session_id":%q}`, pid, sess))
 		o.logf("orchestrator: spawned agent %d (%s) pid=%d session=%s", a.ID, a.WorkItemID, pid, sess)
+	}
+	if tickErr != nil {
+		return fmt.Errorf("orchestrator: scheduler tick: %w", tickErr)
 	}
 	return nil
 }

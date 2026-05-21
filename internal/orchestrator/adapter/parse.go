@@ -61,6 +61,14 @@ func parseMarkdownItem(data []byte) (schemas.WorkItem, error) {
 	return item, nil
 }
 
+// Per-criterion citations (work_item.schema.json:Criterion.citation)
+// are not yet round-tripped by this parser. The schema permits a
+// citation on each criterion, but the markdown_catalog adapter
+// currently exposes only top-level frontmatter `citation:` for the
+// whole item. Per-criterion citation lands when PRWatcher writes
+// done-transitions; until then UpdateStatus's citation argument
+// applies to the item as a whole. Anchor: schemas/work_item.schema.json
+// `acceptance_criteria[*].citation`.
 var (
 	frontmatterRE  = regexp.MustCompile(`(?s)\A---\r?\n(.*?)\r?\n---\r?\n?`)
 	criterionRE    = regexp.MustCompile(`^\s*-\s*\[(planned|in_progress|done)\]\s+([^\s:]+):\s*(.+?)\s*$`)
