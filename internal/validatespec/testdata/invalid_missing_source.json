@@ -1,0 +1,6 @@
+{
+  "id": "M1-x",
+  "title": "missing source object",
+  "acceptance_criteria": [{"id": "ac1", "text": "claim", "state": "planned"}],
+  "status": "planned"
+}

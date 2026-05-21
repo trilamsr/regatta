@@ -1,0 +1,8 @@
+{
+  "id": "M1-x",
+  "title": "deps must be strings",
+  "acceptance_criteria": [{"id": "ac1", "text": "claim", "state": "planned"}],
+  "dependencies": ["ok-id", 42],
+  "status": "planned",
+  "source": {"kind": "file", "locator": "x.md:1-2", "sha": "a"}
+}

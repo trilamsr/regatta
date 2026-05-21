@@ -1,0 +1,27 @@
+{
+  "id": "M1-002",
+  "title": "Migrate users table to v2 schema",
+  "body": "Existing rows backfill default; concurrent-write safety verified.",
+  "acceptance_criteria": [
+    {
+      "id": "ac1",
+      "text": "Migration applies cleanly on a 50M-row fixture.",
+      "state": "done",
+      "citation": "test=TestMigrateV2"
+    },
+    {
+      "id": "ac2",
+      "text": "Backfill default is idempotent under retries.",
+      "state": "in_progress"
+    }
+  ],
+  "dependencies": ["M1-001"],
+  "lane": "backend",
+  "status": "in_progress",
+  "linked_artifact": "docs/rfcs/0042-users-v2.md",
+  "source": {
+    "kind": "issue",
+    "locator": "GH-42",
+    "sha": "etag-abc123"
+  }
+}

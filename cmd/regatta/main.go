@@ -5,6 +5,7 @@
 //	regatta l0 <diff-file>      Run L0 against a unified diff.
 //	regatta l0-refs ...         Run L0 against git refs (merge-base diff).
 //	regatta l0-merge ...        Re-run L0 on a merge commit vs its first parent.
+//	regatta validate-spec ...   Validate emitted WorkItem JSON against work_item.schema.json.
 //	regatta verify-repo-config  Audit a GitHub repo against the P2 canonical recipe.
 //	regatta serve               Run the orchestrator daemon (skeleton).
 //	regatta version             Print build info.
@@ -32,6 +33,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/validateconfig"
+	"github.com/trilamsr/regatta/internal/validatespec"
 	"github.com/trilamsr/regatta/internal/verifyrepo"
 	"github.com/trilamsr/regatta/schemas"
 )
@@ -50,6 +52,8 @@ func main() {
 		os.Exit(runL0Refs(os.Args[2:]))
 	case "l0-merge":
 		os.Exit(runL0Merge(os.Args[2:]))
+	case "validate-spec":
+		os.Exit(runValidateSpec(os.Args[2:]))
 	case "verify-repo-config":
 		os.Exit(runVerifyRepoConfig(os.Args[2:]))
 	case "serve":
@@ -73,6 +77,7 @@ func usage(w io.Writer) {
   regatta l0-refs -repo <dir> -base <ref> -head <ref> Run L0 against git refs (merge-base diff)
   regatta l0-merge -repo <dir> -commit <sha>          Re-run L0 on a merge commit vs first parent
   regatta validate-config                             CUE-validate regatta.yaml
+  regatta validate-spec -file <path>                  Validate WorkItem JSON against the schema
   regatta verify-repo-config                          Audit GitHub repo against P2 recipe
   regatta serve                                       Run the orchestrator daemon (skeleton)
   regatta version                                     Print build info
@@ -88,6 +93,11 @@ PR is in flight (testdata/README.md §1).
 l0-merge re-runs the gate on a merge commit against its first parent.
 This catches rubber-stamp merges that revert criterion tightening
 landed on the base after the PR passed (testdata/README.md §7).
+
+validate-spec accepts a single WorkItem object or a JSON array. Reads
+from <path> ("-" for stdin) and emits a JSON Result document to stdout.
+Exit code 0 if every item validates, 1 if any item fails, 2 on usage
+or parse error.
 
 verify-repo-config requires GITHUB_TOKEN and -owner/-repo flags.
 
@@ -256,6 +266,40 @@ func runServe(args []string) int {
 
 	if err := o.Run(ctx); err != nil {
 		logger.Printf("run: %v", err)
+		return 1
+	}
+	return 0
+}
+
+func runValidateSpec(args []string) int {
+	fs := flag.NewFlagSet("validate-spec", flag.ExitOnError)
+	path := fs.String("file", "", "Path to WorkItem JSON file ('-' for stdin)")
+	_ = fs.Parse(args)
+	if *path == "" {
+		fs.Usage()
+		fmt.Fprintln(os.Stderr, "regatta validate-spec: -file required")
+		return 2
+	}
+	var data []byte
+	var err error
+	if *path == "-" {
+		data, err = io.ReadAll(os.Stdin)
+	} else {
+		data, err = os.ReadFile(*path)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "regatta validate-spec:", err)
+		return 2
+	}
+	result, err := validatespec.ValidateBytes(data)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "regatta validate-spec:", err)
+		return 2
+	}
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(result)
+	if !result.OK {
 		return 1
 	}
 	return 0

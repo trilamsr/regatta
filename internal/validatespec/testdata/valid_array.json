@@ -1,0 +1,16 @@
+[
+  {
+    "id": "M1-001",
+    "title": "Item one",
+    "acceptance_criteria": [{"id": "ac1", "text": "Claim 1.", "state": "planned"}],
+    "status": "planned",
+    "source": {"kind": "file", "locator": "M.md:1-2", "sha": "abc"}
+  },
+  {
+    "id": "M1-002",
+    "title": "Item two",
+    "acceptance_criteria": [{"id": "ac1", "text": "Claim 2.", "state": "done", "citation": "test=TestTwo"}],
+    "status": "done",
+    "source": {"kind": "file", "locator": "M.md:3-4", "sha": "abc"}
+  }
+]

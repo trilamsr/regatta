@@ -1,0 +1,7 @@
+{
+  "id": "M1-x",
+  "title": "bad source.kind enum",
+  "acceptance_criteria": [{"id": "ac1", "text": "claim", "state": "planned"}],
+  "status": "planned",
+  "source": {"kind": "rfc", "locator": "x.md:1-2", "sha": "a"}
+}

@@ -1,0 +1,7 @@
+{
+  "id": "M1-x",
+  "title": "no criteria",
+  "acceptance_criteria": [],
+  "status": "planned",
+  "source": {"kind": "file", "locator": "x.md:1-2", "sha": "a"}
+}

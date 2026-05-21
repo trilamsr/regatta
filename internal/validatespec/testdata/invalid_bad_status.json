@@ -1,0 +1,7 @@
+{
+  "id": "M1-x",
+  "title": "bad status enum",
+  "acceptance_criteria": [{"id": "ac1", "text": "claim", "state": "planned"}],
+  "status": "blocked",
+  "source": {"kind": "file", "locator": "x.md:1-2", "sha": "a"}
+}

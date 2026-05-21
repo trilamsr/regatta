@@ -1,0 +1,6 @@
+{
+  "title": "missing id",
+  "acceptance_criteria": [{"id": "ac1", "text": "claim", "state": "planned"}],
+  "status": "planned",
+  "source": {"kind": "file", "locator": "x.md:1-2", "sha": "a"}
+}

@@ -1,0 +1,17 @@
+{
+  "id": "M1-001",
+  "title": "Cache invalidation on user delete",
+  "acceptance_criteria": [
+    {
+      "id": "ac1",
+      "text": "Deleting a user evicts their session cache within 1s.",
+      "state": "planned"
+    }
+  ],
+  "status": "planned",
+  "source": {
+    "kind": "file",
+    "locator": "MILESTONES.md:42-44",
+    "sha": "deadbeefcafe"
+  }
+}

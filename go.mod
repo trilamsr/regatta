@@ -3,7 +3,8 @@ module github.com/trilamsr/regatta
 go 1.25.0
 
 require (
-	golang.org/x/text v0.35.0
+	github.com/santhosh-tekuri/jsonschema/v5 v5.3.1
+	golang.org/x/text v0.36.0
 	modernc.org/sqlite v1.50.1
 )
 
