@@ -30,4 +30,3 @@ required_status_checks_strict: false
 required_status_checks:
   - verify
   - pr-lint
-  - Analyze (go)

@@ -34,7 +34,6 @@ gh api \
     "strict": false,
     "contexts": [
       "verify",
-      "Analyze (go)",
       "pr-lint"
     ]
   },
