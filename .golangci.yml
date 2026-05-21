@@ -70,6 +70,12 @@ linters:
       - path: internal/l0/refs\.go
         linters: [gosec]
         text: "G204"
+      # validate-config CLI reads the operator-supplied regatta.yaml path.
+      # G304 cannot prove safety; the operator IS the trust root for this
+      # path (same as `cat <file>`).
+      - path: internal/validateconfig/load\.go
+        linters: [gosec]
+        text: "G304"
 
 issues:
   max-issues-per-linter: 0
