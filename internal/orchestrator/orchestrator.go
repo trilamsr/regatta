@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -60,6 +61,7 @@ type Orchestrator struct {
 	adapter schemas.SpecAdapter
 	sched   *scheduler.Scheduler
 	spawner spawner.Spawner
+	reaper  *reaper.Reaper
 	cfg     Config
 	logf    func(format string, args ...any)
 }
@@ -104,6 +106,19 @@ func (o *Orchestrator) SetLogger(f func(format string, args ...any)) {
 	if f != nil {
 		o.logf = f
 		o.sched.SetLogger(f)
+		if o.reaper != nil {
+			o.reaper.SetLogger(f)
+		}
+	}
+}
+
+// SetReaper installs the Reaper used by Run to sweep terminal
+// agents. Optional; without a Reaper the daemon still functions but
+// leaves worktrees on disk after terminal transitions.
+func (o *Orchestrator) SetReaper(r *reaper.Reaper) {
+	o.reaper = r
+	if r != nil {
+		r.SetLogger(o.logf)
 	}
 }
 
@@ -225,6 +240,15 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 	return nil
 }
 
+// ReapTerminal invokes the configured Reaper.ReapAll. Safe to call
+// with no Reaper set; returns nil in that case.
+func (o *Orchestrator) ReapTerminal(ctx context.Context) error {
+	if o.reaper == nil {
+		return nil
+	}
+	return o.reaper.ReapAll(ctx)
+}
+
 // Heartbeat refreshes every lock owned by an active agent. The
 // orchestrator runs Heartbeat on cfg.HeartbeatInterval so that locks
 // only age out when an agent has truly crashed.
@@ -275,6 +299,9 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		case <-tickT.C:
 			if err := o.ScheduleOnce(ctx); err != nil {
 				o.logf("orchestrator: tick: %v", err)
+			}
+			if err := o.ReapTerminal(ctx); err != nil {
+				o.logf("orchestrator: reap: %v", err)
 			}
 		case <-heartT.C:
 			if err := o.Heartbeat(ctx); err != nil {
