@@ -19,13 +19,13 @@ and lint gates landed via TDD. Use when the leverage pays for the
 cost:
 
 - **Use:** end-of-milestone / pre-release hygiene; after ≥3 PRs land
-  in a related area in a short window; on in-the-wild rediscovery
-  of drift ("processors do X, receivers do not-X — when did that
-  happen?"); quarterly cadence.
+ in a related area in a short window; on in-the-wild rediscovery
+ of drift ("processors do X, receivers do not-X — when did that
+ happen?"); quarterly cadence.
 - **Skip:** only one PR has landed since last run; the standards
-  haven't been codified yet (the loop has nothing to check
-  against); you're mid-feature (run after, not during); the surface
-  you care about is a single PR — use `pr-review-loop` instead.
+ haven't been codified yet (the loop has nothing to check
+ against); you're mid-feature (run after, not during); the surface
+ you care about is a single PR — use `pr-review-loop` instead.
 
 This gate is informational — the skill always invokes the audit
 loop if preconditions pass. Cost discipline lives in the operator's
@@ -36,27 +36,27 @@ judgment.
 Before invoking the audit loop, verify:
 
 1. `git rev-parse --is-inside-work-tree` succeeds. If not, surface
-   the gap and stop — there is nothing to audit.
+ the gap and stop — there is nothing to audit.
 2. `git status --porcelain` returns empty — clean tree. Otherwise
-   the audit branch's commits would mix loop output with unrelated
-   WIP. Surface the dirty paths and stop. NEVER auto-stash or
-   auto-commit the operator's WIP — silent rescue of unrelated work
-   loses context the operator needed.
+ the audit branch's commits would mix loop output with unrelated
+ WIP. Surface the dirty paths and stop. NEVER auto-stash or
+ auto-commit the operator's WIP — silent rescue of unrelated work
+ loses context the operator needed.
 3. `git branch --show-current` resolves a branch. If it is `main`
-   or `master`, AUTO-CREATE the audit branch:
-   `git checkout -b chore/consistency-audit-$(date +%Y-%m-%d)` and
-   continue. Commits to `main` are forbidden per branch protection
-   + `no_history_rewrites`, so the audit cannot run on main; the
-   branch creation is mechanical and safe (no commits yet). If the
-   branch name is already taken (e.g., second run same day),
-   append a short suffix: `-2`, `-3`, … until `git rev-parse
-   --verify` fails for the candidate name, then create that one.
+ or `master`, AUTO-CREATE the audit branch:
+ `git checkout -b chore/consistency-audit-$(date +%Y-%m-%d)` and
+ continue. Commits to `main` are forbidden per branch protection
+ + `no_history_rewrites`, so the audit cannot run on main; the
+ branch creation is mechanical and safe (no commits yet). If the
+ branch name is already taken (e.g., second run same day),
+ append a short suffix: `-2`, `-3`, … until `git rev-parse
+ --verify` fails for the candidate name, then create that one.
 4. The `ralph-loop@claude-plugins-official` plugin is installed.
-   Check via `ls ~/.claude/plugins/cache/claude-plugins-official/ralph-loop/`
-   returning a version directory, OR by `Skill` tool listing showing
-   `ralph-loop:ralph-loop`. If absent, surface the missing
-   dependency and stop — invoking the audit loop would fail with
-   "Unknown command: /ralph-loop:ralph-loop".
+ Check via `ls ~/.claude/plugins/cache/claude-plugins-official/ralph-loop/`
+ returning a version directory, OR by `Skill` tool listing showing
+ `ralph-loop:ralph-loop`. If absent, surface the missing
+ dependency and stop — invoking the audit loop would fail with
+ "Unknown command: /ralph-loop:ralph-loop".
 
 If a check fails AFTER auto-handling (dirty tree, no work tree,
 missing plugin), surface the precondition gap and do NOT invoke the
@@ -69,11 +69,11 @@ needed), invoke `/ralph-loop:ralph-loop` via the `Skill` tool:
 
 - `skill`: `ralph-loop:ralph-loop`
 - `args`: the prompt body verbatim (everything between the `EOF`
-  markers in the fence below — NOT including the `"$(cat <<'EOF'`
-  opening or the `EOF\n)"` closing; those are only needed if a user
-  is pasting the command into a terminal), followed by a space and
-  ` --completion-promise "CONSISTENCY-LOOP-COMPLETE"
-  --max-iterations 25`.
+ markers in the fence below — NOT including the `"$(cat <<'EOF'`
+ opening or the `EOF\n)"` closing; those are only needed if a user
+ is pasting the command into a terminal), followed by a space and
+ ` --completion-promise "CONSISTENCY-LOOP-COMPLETE"
+ --max-iterations 25`.
 
 Use the exact prompt body below; substitute nothing inside it. The
 Skill tool routes the invocation to the ralph-loop plugin, which
@@ -110,33 +110,32 @@ After 5 phases, emit a final report.
 
 Auto-detect (cwd is the audit branch root):
 - Audit branch: `git branch --show-current` (already verified
-  non-main by the invoking skill's preconditions)
+ non-main by the invoking skill's preconditions)
 - Repo state: `git rev-parse HEAD`
-- Standards roots: PRINCIPLES.md, STYLE.md, docs/STYLE-docs.md,
-  docs/STYLE-errors.md, NORTHSTARS.md, AGENTS.md, docs/notes/,
-  .claude/notes/, docs/rfcs/, MEMORY.md (auto-memory path),
-  .github/workflows/, Makefile, .golangci.yml
+- Standards roots: PRINCIPLES.md, STYLE.md, AGENTS.md,
+ .claude/notes/, (auto-memory path),
+ .github/workflows/, Makefile, .golangci.yml
 </task>
 
 <guiding-principle>
 This audit exists to serve, in priority order:
 
 1. USER BENEFIT. The operator running regatta at 3am, the adopter
-   installing for the first time, the contributor opening their
-   first PR, the researcher consuming the data. "The user" is
-   whichever role the drift most directly impacts. If a finding
-   cannot name a user role it serves, it is not a finding worth
-   keeping.
+ installing for the first time, the contributor opening their
+ first PR, the researcher consuming the data. "The user" is
+ whichever role the drift most directly impacts. If a finding
+ cannot name a user role it serves, it is not a finding worth
+ keeping.
 2. LONG-TERM MAINTAINABILITY. The next contributor reading this
-   code six months cold can understand and modify it without
-   re-deriving context. Cleverness that costs the cold reader is
-   not a feature.
+ code six months cold can understand and modify it without
+ re-deriving context. Cleverness that costs the cold reader is
+ not a feature.
 3. READABILITY. Code, docs, and structure communicate intent at
-   first glance. Surprising patterns carry a load-bearing reason
-   the reader can find inline.
+ first glance. Surprising patterns carry a load-bearing reason
+ the reader can find inline.
 4. INTUITIVENESS. Symmetric concepts have symmetric
-   implementations. One mechanism per concern. No "this area does X
-   but that area does Y for no reason."
+ implementations. One mechanism per concern. No "this area does X
+ but that area does Y for no reason."
 
 Every accept / defer / reject decision names which of the four it
 serves AND which it might cost. Findings tagged
@@ -149,16 +148,16 @@ higher-priority claim is contestable with hard proof.
 
 Cite the binding standards on every decision:
 - PRINCIPLES.md (the WHY behind code decisions),
-- NORTHSTARS.md (priorities and the seven objectives),
-- STYLE.md / docs/STYLE-docs.md / docs/STYLE-errors.md
-  (conventions),
-- AGENTS.md + docs/notes/<topic>.md + .claude/notes/<topic>.md
-  (load-bearing lessons; repo-wide vs. agent-internal),
-- docs/rfcs/ (architectural decisions),
-- MEMORY.md (durable feedback),
+- (priorities and the seven objectives),
+- STYLE.md 
+ (conventions),
+- AGENTS.md + + .claude/notes/<topic>.md
+ (load-bearing lessons; repo-wide vs. agent-internal),
+- (architectural decisions),
+- (durable feedback),
 - and the already-enforced floor: .github/workflows/, Makefile,
-  .golangci.yml. Per PRINCIPLES §5, NEVER duplicate the enforced
-  floor in prose — propose a lint/CI rule instead.
+ .golangci.yml. Per PRINCIPLES §5, NEVER duplicate the enforced
+ floor in prose — propose a lint/CI rule instead.
 </guiding-principle>
 
 <validation-cycle>
@@ -167,20 +166,20 @@ No finding is accepted on first dispatch. Each goes through:
 1. Research. What evidence would prove this finding true?
 2. Validate. Run that evidence. Record the output.
 3. Contradict. Independently look for evidence that would refute
-   the finding.
+ the finding.
 4. Re-validate. Run the contradiction evidence. Record the output.
 5. Synthesize. Apply only findings that survive contradiction with
-   hard proof. Reject claims that don't reproduce; record rejection
-   rationale.
+ hard proof. Reject claims that don't reproduce; record rejection
+ rationale.
 
 Findings without proposable hard-proof default to NIT severity and
 defer unless multiple lenses raise them.
 
 Hard proof for a drift finding means at least ONE of:
 - A failing test (or a test that would fail if the drift continued
-  to be tolerated).
+ to be tolerated).
 - A grep / ripgrep query whose hit count is the drift's measure
-  (and whose zero-hits state is the fix's success criterion).
+ (and whose zero-hits state is the fix's success criterion).
 - A CI rule that catches the drift class on future PRs.
 - A vendor / spec doc URL contradicting the drifted choice.
 - A measured number (RSS, latency, line count) before and after.
@@ -197,7 +196,7 @@ Every code change made during this loop follows TDD:
 3. Implement the minimal change.
 4. Watch it pass.
 5. Mutation-verify: invert the invariant; confirm the test fails;
-   restore.
+ restore.
 
 For lint / CI gates added during this loop, mutation-verify runs
 **LOCALLY** — never pushed. Pushing a violator commit would require
@@ -205,17 +204,17 @@ force-push to remove, which `no_history_rewrites` forbids. Concrete
 mechanic:
 
 1. Author the rule in the audit branch's working tree. Do NOT
-   commit yet.
+ commit yet.
 2. In the SAME working tree, introduce a known violator (an edit,
-   not a commit). Alternatively, `git stash` the rule, invert it,
-   restore the violator, and run the gate.
+ not a commit). Alternatively, `git stash` the rule, invert it,
+ restore the violator, and run the gate.
 3. Run the local invocation of the gate (`go tool golangci-lint
-   run`, `make doc-check`, the explicit grep, etc.). Confirm it
-   catches the violator.
+ run`, `make doc-check`, the explicit grep, etc.). Confirm it
+ catches the violator.
 4. Revert the working-tree edits via `git checkout -- <files>` or
-   `git stash pop`. The rule itself is now ready to commit cleanly.
+ `git stash pop`. The rule itself is now ready to commit cleanly.
 5. Commit the rule. Record the local mutation-verify outcome in
-   the commit body.
+ the commit body.
 
 If the gate ONLY runs in CI (no local invocation exists), open a
 throwaway pre-merge PR with the violator AS A SEPARATE EXERCISE
@@ -236,7 +235,7 @@ Test reproducibility — every test landed satisfies:
 - Deterministic: same inputs produce same outputs.
 - Seed-pinned where randomness is involved.
 - Hermetic: no network, no real-clock, no filesystem-ordering
-  reliance, no shared mutable state.
+ reliance, no shared mutable state.
 - Re-runnable: `git clean -fdx && make ci` passes on the same SHA.
 </tdd-discipline>
 
@@ -250,7 +249,7 @@ Example entries:
 
 - `STYLE-component-layout — every component has config.go, factory.go, <name>.go, <name>_test.go, README.md, example_config.yaml — Source: STYLE.md §"Component layout"`
 - `PRINCIPLES-one-mechanism — one well-known way per concern — Source: PRINCIPLES.md §3`
-- `MEMORY-no-ai-mentions — no Assisted-by / Co-Authored-By Claude / AI mention in repo surfaces — Source: MEMORY.md feedback_no_ai_mentions_in_repo`
+- `MEMORY-no-ai-mentions — no Assisted-by / Co-Authored-By Claude / AI mention in repo surfaces — Source: feedback_no_ai_mentions_in_repo`
 - `LESSON-make-ci-source-of-truth — make ci is the single source of truth for verification — Source: AGENTS.md § Load-bearing lessons`
 
 The index lives in `.claude/ralph-loop.local.md` under
@@ -266,57 +265,57 @@ do not enter the fix pile; they go to `docs/FOLLOWUPS.md` with a
 
 <acceptance>
 - `[consistency-pass-N-*]` commits exist on the audit branch in phase
-  order. Phases 1, 2, 3 are MANDATORY (3 commits minimum). Phases 4
-  and 5 are CONDITIONAL on findings surviving phase 3:
-  - Zero surviving findings (clean audit) → 3 commits total; loop
-    terminates after phase 3 with verdict `DRIFT-NONE`.
-  - One or more surviving findings → 5 commits total; phases 4 and 5
-    run.
-  Verifier (clean audit):
-  `[ "$(git log origin/main..HEAD --oneline | grep -c '\[consistency-pass-')" -ge 3 ]`
-  Verifier (drift found):
-  `[ "$(git log origin/main..HEAD --oneline | grep -c '\[consistency-pass-')" -eq 5 ]`
+ order. Phases 1, 2, 3 are MANDATORY (3 commits minimum). Phases 4
+ and 5 are CONDITIONAL on findings surviving phase 3:
+ - Zero surviving findings (clean audit) → 3 commits total; loop
+ terminates after phase 3 with verdict `DRIFT-NONE`.
+ - One or more surviving findings → 5 commits total; phases 4 and 5
+ run.
+ Verifier (clean audit):
+ `[ "$(git log origin/main..HEAD --oneline | grep -c '\[consistency-pass-')" -ge 3 ]`
+ Verifier (drift found):
+ `[ "$(git log origin/main..HEAD --oneline | grep -c '\[consistency-pass-')" -eq 5 ]`
 - Phase 1 commit body contains the binding-standards index OR
-  references the local file where it lives.
+ references the local file where it lives.
 - Phase 2 commit body lists, for each of the 9 lenses, the count of
-  findings raised at each severity.
+ findings raised at each severity.
 - Phase 3 commit body lists every finding's
-  validation-cycle outcome (reproduced / contradicted / deduped).
+ validation-cycle outcome (reproduced / contradicted / deduped).
 - Phase 4 + 5 commit bodies (when they run) contain:
-  - The phase's pushback table
-  - Hard-proof citations for every accepted finding
-  - One action per finding: `applied <SHA>`, `gated <CI-rule-name>`,
-    `rfc-drafted <PR#>`, `deferred <FOLLOWUPS.md ref>`, or
-    `rejected` (with rationale)
-  - For every applied finding: the validation-cycle record
-  - For every applied code change: the TDD record (failing-test
-    SHA or test name + mutation-verify outcome)
-  - For every new lint / CI gate: the mutation-verify record
+ - The phase's pushback table
+ - Hard-proof citations for every accepted finding
+ - One action per finding: `applied <SHA>`, `gated <CI-rule-name>`,
+ `rfc-drafted <PR#>`, `deferred <FOLLOWUPS.md ref>`, or
+ `rejected` (with rationale)
+ - For every applied finding: the validation-cycle record
+ - For every applied code change: the TDD record (failing-test
+ SHA or test name + mutation-verify outcome)
+ - For every new lint / CI gate: the mutation-verify record
 - The final assistant turn contains, in order:
-  1. `<consistency-report>` block (verdict `DRIFT-NONE` for clean
-     audits; `DRIFT-CLOSED` / `DRIFT-PARTIALLY-CLOSED` /
-     `DRIFT-DEFERRED` when phases 4-5 ran)
-  2. `<readiness-audit>` block
-  3. `<promise>CONSISTENCY-LOOP-COMPLETE</promise>`
+ 1. `<consistency-report>` block (verdict `DRIFT-NONE` for clean
+ audits; `DRIFT-CLOSED` / `DRIFT-PARTIALLY-CLOSED` /
+ `DRIFT-DEFERRED` when phases 4-5 ran)
+ 2. `<readiness-audit>` block
+ 3. `<promise>CONSISTENCY-LOOP-COMPLETE</promise>`
 - `make ci` clean on the latest commit.
 - AI-vocab grep gate clean across the diff (excludes
-  `.claude/skills/`).
+ `.claude/skills/`).
 - DCO `Signed-off-by:` on every commit. NO `Assisted-by:` trailer,
-  NO `Co-Authored-By:` for AI, NO AI mention in commit body or any
-  PR opened during this loop. Per
-  `feedback_no_ai_mentions_in_repo`.
+ NO `Co-Authored-By:` for AI, NO AI mention in commit body or any
+ PR opened during this loop. Per
+ `feedback_no_ai_mentions_in_repo`.
 - No commits to `main`; no force-push; no rebase past pushed
-  commits.
+ commits.
 - No prose-only additions to `STYLE.md` / `PRINCIPLES.md`. Per
-  `feedback_anti_bureaucracy` — every textual rule addition ships
-  with an enforcement gate in the same PR or is rejected.
+ `feedback_anti_bureaucracy` — every textual rule addition ships
+ with an enforcement gate in the same PR or is rejected.
 - Every accepted finding has a Beneficiary tag from the guiding
-  priority. `consistency-for-its-own-sake` is NOT an acceptable
-  tag.
+ priority. `consistency-for-its-own-sake` is NOT an acceptable
+ tag.
 - Every new code path lands via TDD. Every new lint / CI gate is
-  mutation-verified.
+ mutation-verified.
 - Remediation PRs follow `feedback_narrow_pr_scope`: one-per-bucket
-  (lint-gates PR, in-place-fixes PR, one PR per RFC draft).
+ (lint-gates PR, in-place-fixes PR, one PR per RFC draft).
 </acceptance>
 
 <pass-order>
@@ -333,14 +332,14 @@ finding and TDD to every code change.
 Read, in this order, as authoritative:
 
 1. PRINCIPLES.md
-2. STYLE.md + docs/STYLE-docs.md + docs/STYLE-errors.md
-3. NORTHSTARS.md
-4. MILESTONES.md (context only)
-5. AGENTS.md + every docs/notes/*.md + every .claude/notes/*.md
-6. docs/rfcs/*.md
-7. MEMORY.md at the user's auto-memory path
+2. STYLE.md + + 
+3. 
+4. (context only)
+5. AGENTS.md + every + every .claude/notes/*.md
+6. *.md
+7. at the user's auto-memory path
 8. .github/workflows/*.yml + Makefile + .golangci.yml (the already-
-   enforced floor — do NOT propose duplicating these in prose)
+ enforced floor — do NOT propose duplicating these in prose)
 
 Emit a one-page binding-standards index per the
 `<binding-standards>` block. Save under
@@ -357,13 +356,13 @@ multiple Agent tool calls), one per lens:
 |------|-------------|---------------|
 | Principles | Code/doc/decisions violating PRINCIPLES.md | repo-wide |
 | Style — code | STYLE.md (component layout, logging, error handling, repo layout) | components/, internal/, cmd/, pkg/ |
-| Style — docs | docs/STYLE-docs.md (WHY/falsifiable/lead-with-answer/voice/one-purpose-per-file) | docs/, all READMEs |
-| Style — errors | docs/STYLE-errors.md (wording, %w-wrap, sentinels, no-apologetics) | every .go error return |
-| Architecture | RFC contradicted by current code; material architectural decisions without an RFC | docs/rfcs/ ↔ code |
-| Pattern consistency | Cross-component shape (receivers vs exporters today; processors when introduced); cmd/ vs internal/ boundary; single codegen seam (tools/components-gen + components.yaml) | components/receivers/, components/exporters/ (+ components/processors/ when present), tools/components-gen/, components.yaml |
-| Lessons applied | AGENTS.md "load-bearing lessons" anchors + docs/notes/*.md + .claude/notes/*.md anchors that no longer hold; lessons not reflected in current code | every anchored file:line |
-| Memory adherence | MEMORY.md feedback rules (no AI mentions, no superfluous comments, no workflow vocab, no invented numbers, etc.) | repo-wide |
-| Doc-surface coherence | README ↔ RUNBOOK ↔ MILESTONES ↔ alert paths ↔ FAILURE-MODES.md — name/number/state drift across surfaces | docs/, components/*/README, components/*/RUNBOOK, components/*/prometheus-alerts.example.yaml |
+| Style — docs | (WHY/falsifiable/lead-with-answer/voice/one-purpose-per-file) | docs/, all READMEs |
+| Style — errors | (wording, %w-wrap, sentinels, no-apologetics) | every .go error return |
+| Architecture | RFC contradicted by current code; material architectural decisions without an RFC | ↔ code |
+| Pattern consistency | Gate shape (L0/L3/L4/L5 deterministic vs AI); cmd/ vs internal/ boundary; schema-as-contract (schemas/ CUE + JSON-Schema is normative; Go structs mirror) | cmd/regatta/, internal/{l0,verifyrepo,orchestrator}/, schemas/, gates/ |
+| Lessons applied | AGENTS.md "load-bearing lessons" anchors + + .claude/notes/*.md anchors that no longer hold; lessons not reflected in current code | every anchored file:line |
+| Memory adherence | feedback rules (no AI mentions, no superfluous comments, no workflow vocab, no invented numbers, etc.) | repo-wide |
+| Doc-surface coherence | README ↔ docs/design.md ↔ docs/incidents.md ↔ schemas/ ↔ gates/testdata/ — name/number/state drift across surfaces | docs/, schemas/, gates/*/testdata/ |
 
 Use the `<reviewer-brief>` below. Each subagent is read-only. Each
 must cite the rule-id from the binding-standards index for every
@@ -384,7 +383,7 @@ For every finding from phase 2:
 
 Dedupe across lenses: the same drift commonly surfaces in 2–3
 lenses (e.g., a doc-surface inconsistency that also violates
-STYLE-docs.md). Merge with a multi-lens tag. The merged finding
+STYLE.md). Merge with a multi-lens tag. The merged finding
 inherits the highest severity raised by any constituent lens.
 
 End with commit: `[consistency-pass-3-validate]`.
@@ -394,11 +393,11 @@ phase 3, the audit is clean. Phases 4 and 5 do not run — there is
 nothing to triage or remediate, and forcing empty commits is the
 ceremony `feedback_anti_bureaucracy` forbids. In this case:
 - Emit `<consistency-report>` with verdict `DRIFT-NONE` directly
-  after the phase-3 commit, in the same turn as the readiness
-  audit and the completion promise.
+ after the phase-3 commit, in the same turn as the readiness
+ audit and the completion promise.
 - The loop ends with 3 commits total.
 - A clean audit is a valid (and desirable) outcome — not a failure
-  to find findings.
+ to find findings.
 
 If one or more findings survive phase 3, continue to phase 4.
 
@@ -407,16 +406,16 @@ If one or more findings survive phase 3, continue to phase 4.
 For every surviving finding, classify into exactly ONE bucket:
 
 - **Lint / CI gate.** Recurring class, falsifiable in CI, would
-  catch future violations. PREFERRED per PRINCIPLES §4–5 +
-  `feedback_anti_bureaucracy`.
+ catch future violations. PREFERRED per PRINCIPLES §4–5 +
+ `feedback_anti_bureaucracy`.
 - **Fix-in-place.** One-off divergence. One commit, one fix.
 - **RFC update / new RFC.** Drift signals an unmade architectural
-  decision. The fix is to document the decision, then bring code
-  into line.
+ decision. The fix is to document the decision, then bring code
+ into line.
 - **Defer to docs/FOLLOWUPS.md.** Load-bearing but out of scope for
-  this audit. Requires an explicit `Revisit when:` trigger.
+ this audit. Requires an explicit `Revisit when:` trigger.
 - **Reject.** No falsifiable form, OR no binding-standard citation,
-  OR fails the user-benefit lens. Record rationale.
+ OR fails the user-benefit lens. Record rationale.
 
 Hard anti-bureaucracy gate: a finding may NOT propose adding prose
 to STYLE.md / PRINCIPLES.md unless an enforcement gate ships with
@@ -434,30 +433,30 @@ Runs only if phase 4 ran (i.e., one or more findings survived phase
 3). Author fixes:
 
 - **Fix-in-place items:** TDD (failing test → watch fail →
-  implement → watch pass → mutation-verify per the
-  `<tdd-discipline>` block).
+ implement → watch pass → mutation-verify per the
+ `<tdd-discipline>` block).
 - **Lint / CI gates:** TDD with **LOCAL** mutation-verify per the
-  `<tdd-discipline>` block. Mutation-verify happens in a scratch
-  worktree off the audit branch and is NEVER pushed — pushing a
-  violator commit would require force-push to restore, which is
-  forbidden by `no_history_rewrites`. Record the local
-  mutation-verify outcome in the commit body.
+ `<tdd-discipline>` block. Mutation-verify happens in a scratch
+ worktree off the audit branch and is NEVER pushed — pushing a
+ violator commit would require force-push to restore, which is
+ forbidden by `no_history_rewrites`. Record the local
+ mutation-verify outcome in the commit body.
 - **RFC drafts:** separate PR. Draft documents the decision and the
-  evidence trail, not just the drift.
+ evidence trail, not just the drift.
 - **Defer-to-FOLLOWUPS items:** append to docs/FOLLOWUPS.md with
-  `Revisit when:` clause.
+ `Revisit when:` clause.
 
 **PR strategy — one-per-bucket per `feedback_narrow_pr_scope`, with
 explicit merge order:**
 
 1. **Fixes PR first.** In-place fixes land on main before lint
-   gates. A lint gate authored against existing violators would
-   fail CI on first push if the violators were still in tree.
+ gates. A lint gate authored against existing violators would
+ fail CI on first push if the violators were still in tree.
 2. **Lint-gates PR second**, rebased onto post-fixes main. With the
-   violators removed, the lint gate passes CI; mutation-verify
-   confirmed locally already (above).
+ violators removed, the lint gate passes CI; mutation-verify
+ confirmed locally already (above).
 3. **RFC PRs are independent.** They document a decision and may
-   merge before, between, or after the fix and lint-gate PRs.
+ merge before, between, or after the fix and lint-gate PRs.
 
 Skip any bucket that produced no remediation — e.g., if all
 findings are RFC-only or defer-only, the fixes PR and lint-gates
@@ -466,10 +465,10 @@ PR are not created.
 After remediation:
 - Run `make ci`; verify clean.
 - For every PR ACTUALLY OPENED, run `gh pr checks <PR#>`; record
-  URL + initial status in the report. Buckets that produced no PR
-  omit their row in the report.
+ URL + initial status in the report. Buckets that produced no PR
+ omit their row in the report.
 - Emit `<consistency-report>` → `<readiness-audit>` →
-  `<promise>CONSISTENCY-LOOP-COMPLETE</promise>` IN THE SAME TURN.
+ `<promise>CONSISTENCY-LOOP-COMPLETE</promise>` IN THE SAME TURN.
 
 End with commit: `[consistency-pass-5-remediate]`.
 </pass-order>
@@ -479,73 +478,73 @@ Use this brief verbatim when dispatching lens subagents in phase 2.
 Substitute `<LENS NAME>`, `<LENS DRIFT CLASS>`, `<LENS SCOPE>` per
 row in the lens table.
 
-  > You are an INDEPENDENT, READ-ONLY consistency reviewer of the
-  > regatta repo on the audit branch. Your role:
-  > **<LENS NAME>**. Your drift class: <LENS DRIFT CLASS>. Your
-  > scope: <LENS SCOPE>.
-  >
-  > Inputs (cwd is the audit branch root):
-  > - Repo state:               `git rev-parse HEAD`
-  > - Branch:                   `git branch --show-current`
-  > - Binding standards index:  `.claude/ralph-loop.local.md` §
-  >                             "Binding standards index" (BINDING
-  >                             for this review)
-  > - Source standards:         PRINCIPLES.md, NORTHSTARS.md,
-  >                             STYLE.md, docs/STYLE-docs.md,
-  >                             docs/STYLE-errors.md, AGENTS.md,
-  >                             docs/notes/, .claude/notes/,
-  >                             docs/rfcs/, MEMORY.md
-  > - Already-enforced floor:   .github/workflows/, Makefile,
-  >                             .golangci.yml (do NOT duplicate in
-  >                             prose; propose a lint/CI rule
-  >                             instead)
-  >
-  > Be adversarial. The repo's parallel work streams each
-  > individually passed PR review; your job is to find the drift
-  > the union produced. Frame decisions through priority: USER
-  > BENEFIT first (name the role: operator / adopter / contributor
-  > / researcher / maintainer), then long-term maintainability,
-  > then readability, then intuitiveness.
-  >
-  > For every finding, propose HARD PROOF (a test that should fail
-  > before fix and pass after; a grep with a hit-count that goes to
-  > zero after fix; a CI rule that catches the class on future PRs;
-  > a vendor doc URL; a measured number). Findings without
-  > proposable proof default to NIT.
-  >
-  > Every finding MUST cite a rule-id from the binding-standards
-  > index. Findings that cannot cite a rule-id are PROPOSALS, not
-  > drift — surface them in a separate `Proposals` section at the
-  > end of your output.
-  >
-  > Output strictly:
-  >
-  > Findings:
-  > 1. Severity:           BLOCKER | CONCERN | NIT
-  >    Beneficiary:        user:operator | user:adopter |
-  >                        user:contributor | user:researcher |
-  >                        user:maintainer | maintainability |
-  >                        readability | intuitiveness
-  >    Rule cited:         <rule-id from binding-standards index>
-  >    Location:           file:line (or "repo-wide")
-  >    Description:        <one short paragraph>
-  >    Proposed proof:     <how the author should verify>
-  >    Proposed contradiction: <what evidence would refute this>
-  >    Proposed fix:       <one line>
-  >    Proposed bucket:    lint-gate | fix-in-place | rfc | defer |
-  >                        reject
-  > 2. (...)
-  >
-  > Proposals (no rule-id citation — go to FOLLOWUPS.md if accepted):
-  > - <proposal: one line, measurable form, Revisit when: clause>
-  >
-  > Verdict: APPROVED-NO-DRIFT | DRIFT-FOUND | DRIFT-BLOCKS-MERGE-FREEZE
-  > Reason:  <one paragraph naming the user benefit served>
-  >
-  > If no findings and no proposals: `Findings: (none)` +
-  > `Proposals: (none)` + verdict `APPROVED-NO-DRIFT`.
-  >
-  > Do NOT modify code, push commits, or alter branch state.
+ > You are an INDEPENDENT, READ-ONLY consistency reviewer of the
+ > regatta repo on the audit branch. Your role:
+ > **<LENS NAME>**. Your drift class: <LENS DRIFT CLASS>. Your
+ > scope: <LENS SCOPE>.
+ >
+ > Inputs (cwd is the audit branch root):
+ > - Repo state: `git rev-parse HEAD`
+ > - Branch: `git branch --show-current`
+ > - Binding standards index: `.claude/ralph-loop.local.md` §
+ > "Binding standards index" (BINDING
+ > for this review)
+ > - Source standards: PRINCIPLES.md,
+ > STYLE.md,
+ > AGENTS.md,
+ > .claude/notes/,
+ > 
+ > - Already-enforced floor: .github/workflows/, Makefile,
+ > .golangci.yml (do NOT duplicate in
+ > prose; propose a lint/CI rule
+ > instead)
+ >
+ > Be adversarial. The repo's parallel work streams each
+ > individually passed PR review; your job is to find the drift
+ > the union produced. Frame decisions through priority: USER
+ > BENEFIT first (name the role: operator / adopter / contributor
+ > / researcher / maintainer), then long-term maintainability,
+ > then readability, then intuitiveness.
+ >
+ > For every finding, propose HARD PROOF (a test that should fail
+ > before fix and pass after; a grep with a hit-count that goes to
+ > zero after fix; a CI rule that catches the class on future PRs;
+ > a vendor doc URL; a measured number). Findings without
+ > proposable proof default to NIT.
+ >
+ > Every finding MUST cite a rule-id from the binding-standards
+ > index. Findings that cannot cite a rule-id are PROPOSALS, not
+ > drift — surface them in a separate `Proposals` section at the
+ > end of your output.
+ >
+ > Output strictly:
+ >
+ > Findings:
+ > 1. Severity: BLOCKER | CONCERN | NIT
+ > Beneficiary: user:operator | user:adopter |
+ > user:contributor | user:researcher |
+ > user:maintainer | maintainability |
+ > readability | intuitiveness
+ > Rule cited: <rule-id from binding-standards index>
+ > Location: file:line (or "repo-wide")
+ > Description: <one short paragraph>
+ > Proposed proof: <how the author should verify>
+ > Proposed contradiction: <what evidence would refute this>
+ > Proposed fix: <one line>
+ > Proposed bucket: lint-gate | fix-in-place | rfc | defer |
+ > reject
+ > 2. (...)
+ >
+ > Proposals (no rule-id citation — go to FOLLOWUPS.md if accepted):
+ > - <proposal: one line, measurable form, Revisit when: clause>
+ >
+ > Verdict: APPROVED-NO-DRIFT | DRIFT-FOUND | DRIFT-BLOCKS-MERGE-FREEZE
+ > Reason: <one paragraph naming the user benefit served>
+ >
+ > If no findings and no proposals: `Findings: (none)` +
+ > `Proposals: (none)` + verdict `APPROVED-NO-DRIFT`.
+ >
+ > Do NOT modify code, push commits, or alter branch state.
 </reviewer-brief>
 
 <consistency-report-format>
@@ -554,56 +553,56 @@ report's sections after phase 3 are CONDITIONAL on whether phases
 4-5 ran:
 
 - Clean audit (phase 3 found zero surviving findings): emit Scope,
-  Standards indexed, Per-lens findings, Validation-cycle stats, and
-  the audit verdict `DRIFT-NONE`. Triage / Beneficiary tally /
-  Enforcement upgrades / PR landings sections are OMITTED (the
-  phases that populate them did not run).
+ Standards indexed, Per-lens findings, Validation-cycle stats, and
+ the audit verdict `DRIFT-NONE`. Triage / Beneficiary tally /
+ Enforcement upgrades / PR landings sections are OMITTED (the
+ phases that populate them did not run).
 - Drift found (phases 4-5 ran): emit the full report below.
 
 <consistency-report>
-Scope:    repo @ <commit-SHA>
-Branch:   <audit-branch>
+Scope: repo @ <commit-SHA>
+Branch: <audit-branch>
 Standards indexed: <N> rules from PRINCIPLES / STYLE / RFCs / AGENTS / MEMORY / enforced-floor
 
 Per-lens findings (BLOCKER / CONCERN / NIT raised):
-- Principles:            <B>/<C>/<N>
-- Style — code:          <B>/<C>/<N>
-- Style — docs:          <B>/<C>/<N>
-- Style — errors:        <B>/<C>/<N>
-- Architecture:          <B>/<C>/<N>
-- Pattern consistency:   <B>/<C>/<N>
-- Lessons applied:       <B>/<C>/<N>
-- Memory adherence:      <B>/<C>/<N>
+- Principles: <B>/<C>/<N>
+- Style — code: <B>/<C>/<N>
+- Style — docs: <B>/<C>/<N>
+- Style — errors: <B>/<C>/<N>
+- Architecture: <B>/<C>/<N>
+- Pattern consistency: <B>/<C>/<N>
+- Lessons applied: <B>/<C>/<N>
+- Memory adherence: <B>/<C>/<N>
 - Doc-surface coherence: <B>/<C>/<N>
 
 Validation-cycle stats:
-- Findings rejected during contradict:         <count>
+- Findings rejected during contradict: <count>
 - Findings whose hard-proof did not reproduce: <count>
-- Findings deduped across lenses (merged):     <count>
-- Findings surviving phase 3:                  <count>
+- Findings deduped across lenses (merged): <count>
+- Findings surviving phase 3: <count>
 
 # === sections below OMIT if surviving-findings == 0 (DRIFT-NONE) ===
 
 Triage (omit rows with count 0):
 - Promoted to lint / CI gate: <count> → PR <#> (mutation-verified: <count>)
-- Fixed in-place via TDD:     <count> → PR <#>
-- RFC drafts opened:          <count> → PRs <#>
-- Deferred to FOLLOWUPS.md:   <count>
-- Rejected:                   <count>
+- Fixed in-place via TDD: <count> → PR <#>
+- RFC drafts opened: <count> → PRs <#>
+- Deferred to FOLLOWUPS.md: <count>
+- Rejected: <count>
 
 Per-finding pushback table reference: see commit bodies
 [consistency-pass-2-scan] through [consistency-pass-5-remediate].
 
 Beneficiary tally (accepted findings by primary beneficiary; omit
 rows with count 0):
-- user:operator:       <count>
-- user:adopter:        <count>
-- user:contributor:    <count>
-- user:researcher:     <count>
-- user:maintainer:     <count>
-- maintainability:     <count>
-- readability:         <count>
-- intuitiveness:       <count>
+- user:operator: <count>
+- user:adopter: <count>
+- user:contributor: <count>
+- user:researcher: <count>
+- user:maintainer: <count>
+- maintainability: <count>
+- readability: <count>
+- intuitiveness: <count>
 (consistency-for-its-own-sake findings should be zero — they are
  rejected at triage)
 
@@ -618,9 +617,9 @@ section if none):
 - <item>
 
 PR landings (OMIT BUCKET ROWS THAT PRODUCED NO PR):
-- Lint-gates PR:   <URL> (<initial-checks-status>)
-- Fixes PR:        <URL> (<initial-checks-status>)
-- RFC PRs:         <URLs>
+- Lint-gates PR: <URL> (<initial-checks-status>)
+- Fixes PR: <URL> (<initial-checks-status>)
+- RFC PRs: <URLs>
 
 # === end of phases-4-5 sections ===
 
@@ -643,30 +642,30 @@ branches' conditions hold.
 **Universal conditions (every termination):**
 - `<consistency-report>` precedes the promise in the same turn,
 - `<readiness-audit>` precedes the promise in the same turn with
-  one bullet per acceptance criterion + concrete evidence,
+ one bullet per acceptance criterion + concrete evidence,
 - The binding-standards index from phase 1 exists at
-  `.claude/ralph-loop.local.md § "Binding standards index"`,
+ `.claude/ralph-loop.local.md § "Binding standards index"`,
 - `make ci` clean on the final commit,
 - AI-vocab grep gate clean (excludes `.claude/skills/`).
 
 **Clean-audit termination (verdict DRIFT-NONE, 3 commits):**
 - 3 `[consistency-pass-N-*]` commits exist on the audit branch in
-  phase order (passes 1, 2, 3),
+ phase order (passes 1, 2, 3),
 - Phase 3 commit body records zero findings surviving validation,
 - No phase-4 or phase-5 commits exist (commit count is exactly 3).
 
 **Drift-found termination (verdict DRIFT-CLOSED /
 DRIFT-PARTIALLY-CLOSED / DRIFT-DEFERRED, 5 commits):**
 - 5 `[consistency-pass-N-*]` commits exist on the audit branch in
-  phase order (passes 1, 2, 3, 4, 5),
+ phase order (passes 1, 2, 3, 4, 5),
 - Every accepted finding has a triage decision with hard-proof
-  citation, validation-cycle record, AND a Beneficiary tag from the
-  guiding priority,
+ citation, validation-cycle record, AND a Beneficiary tag from the
+ guiding priority,
 - Every applied code change has a TDD record,
 - Every new lint / CI gate has a mutation-verify record (per the
-  local-only mechanic in `<tdd-discipline>`),
+ local-only mechanic in `<tdd-discipline>`),
 - All remediation PRs ACTUALLY OPENED have their URL recorded in
-  the report (buckets that produced no PR omit their row),
+ the report (buckets that produced no PR omit their row),
 - No prose-only additions to STYLE.md / PRINCIPLES.md.
 
 If any condition fails: do NOT emit the promise. Fix forward in
@@ -686,33 +685,33 @@ mutation-verify outcome). Missing evidence = no promise.
 | ID | Phase | Lens(es) | Beneficiary | Severity | Rule cited | Finding | Proof | Contradict | TDD / mutation-verify record | Action | Rationale |
 
 - ID: monotonic ACROSS phases — `P2.1` (lens findings), `P3.N`
-  (post-validation), `P4.N` (triage decisions), `P5.N`
-  (remediation outcomes).
+ (post-validation), `P4.N` (triage decisions), `P5.N`
+ (remediation outcomes).
 - Lens(es): `principles`, `style-code`, `style-docs`,
-  `style-errors`, `architecture`, `pattern-consistency`,
-  `lessons-applied`, `memory-adherence`, `doc-surface-coherence`,
-  `multi-lens` (after dedupe).
+ `style-errors`, `architecture`, `pattern-consistency`,
+ `lessons-applied`, `memory-adherence`, `doc-surface-coherence`,
+ `multi-lens` (after dedupe).
 - Beneficiary: `user:operator` | `user:adopter` |
-  `user:contributor` | `user:researcher` | `user:maintainer` |
-  `maintainability` | `readability` | `intuitiveness`.
-  `consistency-for-its-own-sake` is REJECTED, not a valid
-  beneficiary.
+ `user:contributor` | `user:researcher` | `user:maintainer` |
+ `maintainability` | `readability` | `intuitiveness`.
+ `consistency-for-its-own-sake` is REJECTED, not a valid
+ beneficiary.
 - Severity: BLOCKER / CONCERN / NIT. Escalate one notch if the
-  drift was raised by 2+ lenses after dedupe.
+ drift was raised by 2+ lenses after dedupe.
 - Rule cited: rule-id from the binding-standards index. REQUIRED
-  for accepted findings.
+ for accepted findings.
 - Proof: REQUIRED for any non-rejected action.
 - Contradict: REQUIRED for any non-rejected action.
 - TDD / mutation-verify record: REQUIRED for `applied` (code
-  change) or `gated` (lint / CI rule).
+ change) or `gated` (lint / CI rule).
 - Action: `applied <SHA>` / `gated <CI-rule-name>` /
-  `rfc-drafted <PR#>` / `deferred <FOLLOWUPS.md ref>` / `rejected`.
+ `rfc-drafted <PR#>` / `deferred <FOLLOWUPS.md ref>` / `rejected`.
 - Rationale: REQUIRED for `rejected` and any case where the lens's
-  proposed bucket was overridden in triage.
+ proposed bucket was overridden in triage.
 
 ## Regatta-specific constraints
 
-Apply MEMORY.md regatta rules in full: `workflow_no_stacked_prs`,
+Apply regatta rules in full: `workflow_no_stacked_prs`,
 `no_history_rewrites`, `no_workflow_vocab_in_repo`,
 `no_ai_mentions_in_repo`, `no_signature_in_prs`,
 `deferral_tracking`, `make_check_vs_ci_cadence`,
@@ -729,21 +728,21 @@ Apply MEMORY.md regatta rules in full: `workflow_no_stacked_prs`,
 Loop-enforced artifacts:
 
 - AI-vocab grep gate — CONVENTION-ONLY (not enforced by CI; agents
-  run manually pre-push; excludes `.claude/skills/`):
-  `grep -rn -i 'ralph\|loop[ \-_]?[1-5]\|pass[ \-_]?[1-5]\|four[ \-]?loops\?\|reviewer agents\?\|subagents\?\|loop design\|loop prompt' \
-    --include='*.md' --include='*.go' --include='*.yaml' \
-    --exclude-dir='.git' --exclude-dir='.claude/skills'`
+ run manually pre-push; excludes `.claude/skills/`):
+ `grep -rn -i 'ralph\|loop[ \-_]?[1-5]\|pass[ \-_]?[1-5]\|four[ \-]?loops\?\|reviewer agents\?\|subagents\?\|loop design\|loop prompt' \
+ --include='*.md' --include='*.go' --include='*.yaml' \
+ --exclude-dir='.git' --exclude-dir='.claude/skills'`
 - Commits: DCO `Signed-off-by:` via `git commit -s`. NO
-  `Assisted-by:` trailer. NO `Co-Authored-By:` for AI. NO AI
-  mention anywhere.
+ `Assisted-by:` trailer. NO `Co-Authored-By:` for AI. NO AI
+ mention anywhere.
 - Remediation PRs follow the concise PR format
-  (`feedback_concise_pr_format`): problem → impact → solution →
-  test plan checklist. Operator notes go in commit body, not PR
-  body.
+ (`feedback_concise_pr_format`): problem → impact → solution →
+ test plan checklist. Operator notes go in commit body, not PR
+ body.
 
 ## Output register
 
-Phase 2+: emit a delta vs prior phase. Apply MEMORY.md
+Phase 2+: emit a delta vs prior phase. Apply 
 `feedback_trim_by_default` and `feedback_decide_dont_hedge`.
 
 For each phase, lead with the count of findings raised at each
@@ -769,12 +768,12 @@ writes to this section; later phases treat it as read-only.
 End of every phase ≥ 2:
 
 - If this phase surfaced a recurring pattern, footgun, or cross-
-  phase observation, APPEND a bullet to `## Discovered constraints
-  (append-only)` below the marker.
+ phase observation, APPEND a bullet to `## Discovered constraints
+ (append-only)` below the marker.
 - The binding-standards index is NOT amended after phase 1. If a
-  finding suggests a new binding standard is needed, that's a
-  proposal — it goes to `docs/FOLLOWUPS.md` with a `Revisit when:`
-  clause, not into the index mid-audit.
+ finding suggests a new binding standard is needed, that's a
+ proposal — it goes to `docs/FOLLOWUPS.md` with a `Revisit when:`
+ clause, not into the index mid-audit.
 
 Do not delete or rewrite prior bullets. Do not edit anything above
 the markers.
