@@ -14,7 +14,7 @@ gotcha below has been validated against GitHub Docs, GitHub's REST
 API surface, or a documented incident.
 
 The Tracecore CODEOWNERS-team-typo incident
-([`incidents.md`](../../regatta/docs/incidents.md) §silent-ignore) was
+([`incidents.md`](../docs/incidents.md) §silent-ignore) was
 the trigger: a CODEOWNERS line pointed paths to
 `@TraceCoreAI/maintainers`, the team did not exist, and GitHub silently
 ignored the rule for weeks. That is one mechanism among many.

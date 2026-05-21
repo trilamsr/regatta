@@ -73,6 +73,41 @@ jobs:
           echo "release-notes block looks edited:"
           printf '%s\n' "$block"
 
+      - name: root-cause block edited
+        if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BODY:-}" ]; then
+            echo "::error::PR description is empty. Use the PR template and fill in the root-cause block."
+            exit 1
+          fi
+          block=$(printf '%s\n' "$BODY" | awk '
+            /^```root-cause/ { capture=1; next }
+            capture && /^```/ { exit }
+            capture           { print }
+          ')
+          if [ -z "$block" ]; then
+            echo "::error::No \`\`\`root-cause\`\`\` block found in the PR description. Name the root cause or replace with WORKAROUND: <blocker>."
+            exit 1
+          fi
+          trimmed=$(printf '%s' "$block" | tr -d '[:space:]')
+          if [ -z "$trimmed" ]; then
+            echo "::error::root-cause block is empty. Name the root cause or write 'WORKAROUND: <blocker>'."
+            exit 1
+          fi
+          if printf '%s' "$block" | grep -qE '^\s*Describe the named root cause this PR addresses\.\s*$'; then
+            echo "::error::root-cause block is the unedited template. Edit it with the actual root cause or 'WORKAROUND: <blocker>'."
+            exit 1
+          fi
+          if printf '%s' "$block" | grep -qiE '^\s*WORKAROUND\s*:\s*$'; then
+            echo "::error::root-cause block declares WORKAROUND but names no blocker. Use 'WORKAROUND: <named blocker, link to tracking entry>'."
+            exit 1
+          fi
+          echo "root-cause block looks edited:"
+          printf '%s\n' "$block"
+
       - name: doc-check
         run: |
           set -euo pipefail

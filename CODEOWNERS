@@ -1,0 +1,37 @@
+# CODEOWNERS - path-specific review requirements.
+# GitHub matches the LAST matching pattern, so order matters.
+#
+# Solo maintainer until a second maintainer joins. Required-review
+# count stays at 0 in branch protection; CODEOWNERS exists so that
+# regatta's own `verifyrepo` audit (P2 canonical recipe) has a target
+# to assert against, and so the moment a second maintainer is added,
+# code-owner reviews become enforceable with one config flip.
+
+* @trilamsr
+
+# Governance & policy
+/LICENSE                  @trilamsr
+/PRINCIPLES.md            @trilamsr
+/STYLE.md                 @trilamsr
+/AGENTS.md                @trilamsr
+/CODEOWNERS               @trilamsr
+
+# Agent-facing instructions and skills.
+# A lesson-capture or skill edit landing without maintainer review
+# would taint every subsequent agent run via the substrate they
+# auto-load.
+/.claude/skills/**        @trilamsr
+
+# CI / supply chain
+/.github/                 @trilamsr
+/.githooks/               @trilamsr
+/Makefile                 @trilamsr
+/go.mod                   @trilamsr
+/go.sum                   @trilamsr
+/.golangci.yml            @trilamsr
+
+# Regatta normative surface
+/schemas/                 @trilamsr
+/gates/                   @trilamsr
+/docs/design.md           @trilamsr
+/docs/incidents.md        @trilamsr
