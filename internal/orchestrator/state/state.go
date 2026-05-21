@@ -6,8 +6,11 @@
 // recovery stay invariant. Callers MUST NOT issue ad-hoc UPDATEs on
 // the agents table; use TransitionAgent.
 //
-// Concurrency: a *DB is safe for concurrent use; the underlying
-// modernc.org/sqlite driver serializes writes internally.
+// Concurrency: a *DB is safe for concurrent use. Open() caps the
+// underlying *sql.DB pool at one connection so writers serialize at
+// the application layer instead of contending on sqlite's file lock,
+// which busy_timeout alone does not reliably resolve under bursty
+// concurrent recovery (50+ goroutines hitting Recover at once).
 package state
 
 import (
@@ -69,6 +72,7 @@ func Open(ctx context.Context, dsn string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("state: open sqlite: %w", err)
 	}
+	raw.SetMaxOpenConns(1)
 	if err := raw.PingContext(ctx); err != nil {
 		_ = raw.Close()
 		return nil, fmt.Errorf("state: ping sqlite: %w", err)
