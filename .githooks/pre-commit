@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Pre-commit hook: run `make check` to keep the inner loop honest.
+# Installed by `make hooks`, which sets core.hooksPath to .githooks.
+# Bypass with `git commit --no-verify` if you must - CI will still catch you.
+set -euo pipefail
+exec make check

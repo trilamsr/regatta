@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# pre-push hook: run `make ci` so the moment of truth is `git push`, not the
+# wait for GitHub Actions. Catches what `make check` (the pre-commit gate)
+# deliberately skips: license-check, full build, govulncheck-adjacent checks.
+# Bypass with `git push --no-verify` if you must - CI will still catch you.
+set -euo pipefail
+exec make ci
