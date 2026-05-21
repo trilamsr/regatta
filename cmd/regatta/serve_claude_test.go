@@ -2,23 +2,30 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
+	"syscall"
 	"testing"
+	"time"
+
+	_ "modernc.org/sqlite"
 )
 
-// TestServeWithClaudeSpawnerEndToEnd is a smoke test that builds the
-// regatta binary, points it at a temp repo, and asserts that
-// `serve --spawner=claude --tick-once` spawns a fake-claude binary
+// TestServeWithClaudeSpawnerEndToEnd builds the regatta binary,
+// points it at a temp repo, and asserts that
+// `serve --spawner=claude --tick-once` spawns a fake-claude shim
 // into a worktree, captures a real PID, and reaches the `running`
-// state.
+// state. The fake-claude shim is killed deterministically via the
+// captured PID at teardown.
 //
-// Skipped on non-unix platforms because the fake-claude shim is a
-// bash script.
+// Uses modernc.org/sqlite directly to read the agent row so the
+// test does not require the sqlite3 CLI on PATH. Skipped on
+// windows because the shim is a bash script.
 func TestServeWithClaudeSpawnerEndToEnd(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("bash shim is unix-only")
@@ -26,22 +33,15 @@ func TestServeWithClaudeSpawnerEndToEnd(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
-	if _, err := exec.LookPath("sqlite3"); err != nil {
-		// sqlite3 is only used for the final state assertion below;
-		// the orchestrator itself uses modernc.org/sqlite.
-		t.Skip("sqlite3 CLI not on PATH")
-	}
 
 	dir := t.TempDir()
 
-	// Build the regatta binary once into the temp dir.
 	bin := filepath.Join(dir, "regatta")
 	build := exec.Command("go", "build", "-o", bin, "../../cmd/regatta")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build regatta: %v\n%s", err, out)
 	}
 
-	// Prepare a fresh git repo as the agent's worktree base.
 	repo := filepath.Join(dir, "repo")
 	if err := os.MkdirAll(filepath.Join(repo, ".regatta", "items"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -94,35 +94,59 @@ status: planned
 		t.Fatalf("serve: %v\nstderr=%s", err, stderr.String())
 	}
 
-	// Worktree must exist.
 	wtPath := filepath.Join(repo, ".regatta", "worktrees", "agent-1")
 	if _, err := os.Stat(wtPath); err != nil {
 		t.Fatalf("worktree not created: %v", err)
 	}
 
-	// Agent row must be `running` with a positive pid (real shim).
-	out, err := exec.Command("sqlite3", dbPath, "select state, pid from agents where work_item_id='DEMO-1'").CombinedOutput()
+	// Read the agent row via modernc.org/sqlite directly so the
+	// test does not depend on the sqlite3 CLI being installed.
+	pid := readRunningAgentPID(t, dbPath, "DEMO-1")
+
+	// Deterministic teardown: kill the shim by its real pid so the
+	// test never leaks a 30s sleep. SIGKILL because the shim's bash
+	// loop ignores SIGTERM in some shells.
+	t.Cleanup(func() {
+		if proc, err := os.FindProcess(pid); err == nil {
+			_ = proc.Signal(syscall.SIGKILL)
+		}
+		// Give the kernel a moment to reap; then assert the
+		// process is gone. Best-effort; a stuck child is logged but
+		// not failed (the test temp dir cleanup handles the rest).
+		deadline := time.Now().Add(time.Second)
+		for time.Now().Before(deadline) {
+			if err := syscall.Kill(pid, 0); err != nil {
+				return
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+		t.Logf("warning: shim pid %d still alive at cleanup", pid)
+	})
+}
+
+func readRunningAgentPID(t *testing.T, dbPath, workItemID string) int {
+	t.Helper()
+	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", dbPath)
+	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		t.Fatalf("sqlite3: %v\n%s", err, out)
+		t.Fatalf("open db: %v", err)
 	}
-	got := strings.TrimSpace(string(out))
-	if !strings.HasPrefix(got, "running|") {
-		t.Fatalf("agent row %q; want state=running", got)
-	}
-	parts := strings.Split(got, "|")
-	if len(parts) != 2 {
-		t.Fatalf("unexpected sqlite output %q", got)
-	}
+	defer db.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var state string
 	var pid int
-	if _, err := fmt.Sscanf(parts[1], "%d", &pid); err != nil {
-		t.Fatalf("parse pid %q: %v", parts[1], err)
+	row := db.QueryRowContext(ctx, "SELECT state, pid FROM agents WHERE work_item_id = ?", workItemID)
+	if err := row.Scan(&state, &pid); err != nil {
+		t.Fatalf("scan agent row: %v", err)
+	}
+	if state != "running" {
+		t.Fatalf("agent state=%q, want running", state)
 	}
 	if pid <= 0 {
 		t.Fatalf("expected positive real pid, got %d", pid)
 	}
-
-	// Reap the shim so the test does not leak processes.
-	if proc, err := os.FindProcess(pid); err == nil {
-		_ = proc.Kill()
-	}
+	return pid
 }
