@@ -324,6 +324,6 @@ func runValidateConfig(args []string) int {
 		fmt.Fprintf(os.Stderr, "validate-config: FAIL\n%s\n", err)
 		return 1
 	}
-	fmt.Printf("validate-config: PASS — %s validates against regatta.v1\n", *cfgPath)
+	fmt.Printf("validate-config: PASS - %s validates against regatta.v1\n", *cfgPath)
 	return 0
 }
