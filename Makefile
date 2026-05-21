@@ -35,4 +35,4 @@ hooks:  ## Install repo-managed Git hooks (sets core.hooksPath to .githooks).
 
 check: doc-check vet tidy-check mod-verify go-check  ## Single source of truth for what is verified locally and in CI.
 
-ci: check lint  ## CI entrypoint: full check plus lint (backlog cleared).
+ci: check  ## CI entrypoint: `check` only. CI runs lint as a separate job via golangci-lint-action; `make lint` remains available locally.
