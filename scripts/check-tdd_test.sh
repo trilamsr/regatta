@@ -62,8 +62,6 @@ EOF
   unset BODY
 }
 
-# --- cases ---
-
 case_prod_only_fails() {
   mkdir -p internal/foo
   cat > internal/foo/foo.go <<EOF
@@ -182,13 +180,60 @@ func TestX(t *testing.T) {}
 EOF
 }
 
-run_case prod_only_fails                       1 "without a matching" case_prod_only_fails
-run_case prod_with_test_passes                 0 "every production"   case_prod_with_test_passes
-run_case test_only_passes                      0 "no production"      case_test_only_passes
-run_case generated_skipped                     0 "no production"      case_generated_skipped
-run_case docs_category_passes                  0 "category"           case_docs_category_passes
-run_case chore_category_passes                 0 "category"           case_chore_category_passes
-run_case feature_category_still_requires_test  1 "without a matching" case_feature_category_still_requires_test
+case_empty_test_file_does_not_satisfy() {
+  mkdir -p internal/foo
+  cat > internal/foo/foo.go <<EOF
+package foo
+
+func Foo() int { return 42 }
+EOF
+  cat > internal/foo/foo_test.go <<EOF
+package foo
+EOF
+}
+
+case_test_with_benchmark_satisfies() {
+  mkdir -p internal/foo
+  cat > internal/foo/foo.go <<EOF
+package foo
+
+func Foo() int { return 42 }
+EOF
+  cat > internal/foo/foo_test.go <<EOF
+package foo
+
+import "testing"
+
+func BenchmarkFoo(b *testing.B) {
+  for i := 0; i < b.N; i++ { _ = Foo() }
+}
+EOF
+}
+
+case_deletion_only_passes() {
+  mkdir -p internal/foo
+  cat > internal/foo/foo.go <<EOF
+package foo
+
+func Foo() int { return 42 }
+EOF
+  git add internal/foo/foo.go
+  git commit -q -m intermediate --allow-empty
+  base=$(git rev-parse HEAD~1)
+  cat > internal/foo/foo.go <<EOF
+package foo
+EOF
+}
+
+run_case prod_only_fails                        1 "without a matching" case_prod_only_fails
+run_case prod_with_test_passes                  0 "every production"   case_prod_with_test_passes
+run_case test_only_passes                       0 "no production"      case_test_only_passes
+run_case generated_skipped                      0 "no production"      case_generated_skipped
+run_case docs_category_passes                   0 "category"           case_docs_category_passes
+run_case chore_category_passes                  0 "category"           case_chore_category_passes
+run_case feature_category_still_requires_test   1 "without a matching" case_feature_category_still_requires_test
+run_case empty_test_file_does_not_satisfy       1 "without a matching" case_empty_test_file_does_not_satisfy
+run_case test_with_benchmark_satisfies          0 "every production"   case_test_with_benchmark_satisfies
 # This last case fails because the prod file's top-level dir is cmd/
 # and the test file's is internal/. The walk-up logic only matches
 # within a shared ancestor; cmd/ and internal/ have no shared ancestor

@@ -83,8 +83,16 @@ while IFS= read -r f; do
     continue
   fi
   case "$f" in
-    *_test.go) test_added="$test_added $f" ;;
-    *)         prod_added="$prod_added $f" ;;
+    *_test.go)
+      # Substance check: a *_test.go that contains no `func Test...`
+      # or `func Benchmark...` or `func Example...` declaration at HEAD
+      # does not satisfy the gate. Bypass-by-empty-file is closed.
+      if ! git show "$head:$f" 2>/dev/null | grep -qE '^func[[:space:]]+(Test|Benchmark|Example)[A-Z_]'; then
+        continue
+      fi
+      test_added="$test_added $f"
+      ;;
+    *) prod_added="$prod_added $f" ;;
   esac
 done < <(git diff --name-only "$base" "$head")
 
