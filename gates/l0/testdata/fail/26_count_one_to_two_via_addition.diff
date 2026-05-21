@@ -1,0 +1,7 @@
+diff --git a/MILESTONES.md b/MILESTONES.md
+--- a/MILESTONES.md
++++ b/MILESTONES.md
+@@ -1,2 +1,3 @@
+ # M1
+ - [ ] Only criterion.
++- [ ] Sneaky second criterion.

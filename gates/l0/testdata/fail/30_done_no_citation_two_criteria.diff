@@ -1,0 +1,9 @@
+diff --git a/MILESTONES.md b/MILESTONES.md
+--- a/MILESTONES.md
++++ b/MILESTONES.md
+@@ -1,3 +1,3 @@
+ # M1
+-- [ ] Encrypted backups land in S3.
+-- [ ] Restore procedure is documented.
++- [x] Encrypted backups land in S3.
++- [x] Restore procedure is documented.
