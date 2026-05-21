@@ -1,0 +1,7 @@
+diff --git a/MILESTONES.md b/MILESTONES.md
+--- a/MILESTONES.md
++++ b/MILESTONES.md
+@@ -1,2 +1,2 @@
+ # M1
+-- [ ] Session expires after 30 minutes idle.
++- [ ] Session expires after 60 minutes idle.

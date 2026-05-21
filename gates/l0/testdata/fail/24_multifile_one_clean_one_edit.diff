@@ -1,0 +1,14 @@
+diff --git a/MILESTONES.md b/MILESTONES.md
+--- a/MILESTONES.md
++++ b/MILESTONES.md
+@@ -1,2 +1,2 @@
+ # M1
+-- [ ] Clean criterion stays untouched.
++- [x] Clean criterion stays untouched. test=TestClean
+diff --git a/docs/M2.md b/docs/M2.md
+--- a/docs/M2.md
++++ b/docs/M2.md
+@@ -1,2 +1,2 @@
+ # M2
+-- [ ] Other criterion gets edited.
++- [ ] Other criterion gets rewritten.

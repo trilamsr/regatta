@@ -1,0 +1,13 @@
+diff --git a/MILESTONES.md b/MILESTONES.md
+--- a/MILESTONES.md
++++ b/MILESTONES.md
+@@ -1,2 +1,2 @@
+ # M1
+-- [ ] Backups run nightly.
++- [ ] Backups run hourly.
+diff --git a/src/main.go b/src/main.go
+--- a/src/main.go
++++ b/src/main.go
+@@ -1,1 +1,1 @@
+-old code
++new code

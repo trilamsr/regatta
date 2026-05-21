@@ -1,0 +1,7 @@
+diff --git a/specs/auth/M1.md b/specs/auth/M1.md
+--- a/specs/auth/M1.md
++++ b/specs/auth/M1.md
+@@ -1,2 +1,2 @@
+ # Auth M1
+-- [ ] Token rotation works.
++- [x] Token rotation works. test=TestRotation

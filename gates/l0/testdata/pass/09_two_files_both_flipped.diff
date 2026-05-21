@@ -1,0 +1,14 @@
+diff --git a/MILESTONES.md b/MILESTONES.md
+--- a/MILESTONES.md
++++ b/MILESTONES.md
+@@ -1,2 +1,2 @@
+ # M1
+-- [ ] Server boots.
++- [x] Server boots. test=TestBoot
+diff --git a/docs/M2.md b/docs/M2.md
+--- a/docs/M2.md
++++ b/docs/M2.md
+@@ -1,2 +1,2 @@
+ # M2
+-- [ ] Health endpoint exists.
++- [x] Health endpoint exists. file=src/health.go

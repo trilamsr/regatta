@@ -92,16 +92,29 @@ The L0 gate operates by these rules. Fixtures must demonstrate each.
    - U+1D173–U+1D17A (musical format controls)
    - U+E0000–U+E0FFF (Tags block + supplementary variation selectors)
 
-   A criterion whose only difference is invisible glyphs is a fail (this
-   detects the Rules-File-Backdoor / MCPoison class — see Trap Catalog P10).
+   Both sides are stripped before comparison; a criterion whose ONLY
+   difference is invisible glyphs from the closure above therefore
+   compares equal and the gate verdicts pass. This is the Rules-File-
+   Backdoor / MCPoison defense (Trap Catalog P10): invisibles can neither
+   smuggle semantic change nor block evasion via NFC, because the strip
+   set neutralizes both before any compare.
    Homoglyph / confusable detection (Cyrillic vs Latin `a`, etc.) is
    explicitly *out of scope* for L0 and is handled by a separate
-   script-mixing gate.
+   script-mixing gate. Confusable substitutions are byte-different and
+   are caught as plain text edits (see `fail/17_homoglyph_cyrillic_a.diff`).
 
 7. **Re-run at merge time.** L0 is re-run as a status check on the merge
    commit (not just the PR head). This closes the window where a PR
    passes L0, then `main` is updated to tighten a criterion, then the PR
    merges. The merge-time re-run uses the merged tree as both base and head.
+
+## Rules not exercised by .diff fixtures
+
+Rules §1 (diff-base selection) and §7 (merge-time re-run) are properties
+of the *harness* that invokes the gate — diff selection happens before
+the gate runs and re-run scheduling happens after. A static `.diff`
+file cannot exercise either path. Coverage for these lives in the
+orchestrator integration tests, not this corpus.
 
 ## Adding a fixture
 
