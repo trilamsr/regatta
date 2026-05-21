@@ -20,6 +20,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: download module deps (incl. tool directives)
+        run: go mod download
       - name: make ci
         run: make ci
 
@@ -32,5 +34,7 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: download module deps (incl. tool directives)
+        run: go mod download
       - name: make lint
         run: make lint
