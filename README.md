@@ -102,10 +102,14 @@ the most load-bearing.
   exercises pass / fail / edge sweeps plus unit-level normalization.
 - **`regatta verify-repo-config`.** Pre-flight audit of a GitHub repo
   against the P2 canonical recipe - branch protection
-  (`required_approving_review_count≥2`, `require_code_owner_reviews`,
+  (`required_approving_review_count>=2`, `require_code_owner_reviews`,
   `require_last_push_approval`, `dismiss_stale_reviews`,
   `enforce_admins`), CODEOWNERS presence, and the
   `/codeowners/errors` silent-ignore catcher. Requires `GITHUB_TOKEN`.
+- **`regatta validate-config`.** CUE-validates `regatta.yaml` against
+  the embedded `schemas/regatta.v1.cue`. Multi-error output enumerates
+  every offending field with `file:line` positions instead of eliding
+  with `(and N more errors)`.
 
 - **Orchestrator skeleton.** `regatta serve` runs a daemon backed by
   a sqlite state store (`modernc.org/sqlite`) that implements three of
@@ -124,8 +128,9 @@ the most load-bearing.
 ## Next steps
 
 1. **Expand the L0 fixture corpus toward the 200-fixture target.**
-2. **`regatta validate-config` + `regatta validate-spec`.** CUE
-   validation under the hood; first-class adapters land alongside.
+2. **`regatta validate-spec`.** Connect to the configured `SpecAdapter`,
+   list ready work items, surface NFC + invisible-glyph cleanliness,
+   verify the dependency DAG.
 3. **Production AgentSpawner.** Replace the stub with a real worktree
    + `claude --resume` launcher; wire SupervisorLimits (cgroups on
    Linux, rlimits on macOS).
