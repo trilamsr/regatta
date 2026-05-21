@@ -29,6 +29,20 @@ func openTestDB(t *testing.T, path string) *DB {
 	return db
 }
 
+// TestOpenCapsConnectionPoolAtOne pins the load-bearing contract that
+// fixes the SQLITE_BUSY flake: Open() must cap *sql.DB's pool at one
+// connection so writers serialize at the app layer. Without this, a
+// burst of concurrent Recover() goroutines contends on sqlite's file
+// lock and busy_timeout retries fight per-connection instead of
+// queueing globally. If a future refactor removes the cap, this test
+// fails immediately rather than re-introducing the flake quietly.
+func TestOpenCapsConnectionPoolAtOne(t *testing.T) {
+	db := newTestDB(t)
+	if got := db.SQL().Stats().MaxOpenConnections; got != 1 {
+		t.Fatalf("MaxOpenConnections=%d want 1", got)
+	}
+}
+
 func TestOpenAppliesSchema(t *testing.T) {
 	db := newTestDB(t)
 	var v int

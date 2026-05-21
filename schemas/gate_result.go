@@ -15,14 +15,17 @@ type GateResult struct {
 	Signature  string         `json:"signature,omitempty"` // HMAC over the rest
 }
 
+// Verdict is the gate's overall outcome.
 type Verdict string
 
+// Verdict values; the only legal payload of GateResult.Verdict.
 const (
 	VerdictPass Verdict = "pass"
 	VerdictFail Verdict = "fail"
 	VerdictSkip Verdict = "skip"
 )
 
+// Finding is a single rejecting (or informational) signal a gate emits.
 type Finding struct {
 	Severity    Severity `json:"severity"`
 	Message     string   `json:"message"`
@@ -32,8 +35,10 @@ type Finding struct {
 	Blocking    bool     `json:"blocking"`
 }
 
+// Severity orders Finding gravity, ascending.
 type Severity string
 
+// Severity values; the only legal payload of Finding.Severity.
 const (
 	SeverityInfo     Severity = "info"
 	SeverityLow      Severity = "low"
@@ -42,6 +47,7 @@ const (
 	SeverityCritical Severity = "critical"
 )
 
+// Telemetry captures gate timing + cost. Fed into observability paths.
 type Telemetry struct {
 	StartedAt  time.Time `json:"started_at"`
 	DurationMs int64     `json:"duration_ms"`

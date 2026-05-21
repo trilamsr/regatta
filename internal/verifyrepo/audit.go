@@ -41,6 +41,14 @@ type Result struct {
 	FailedOK []string `json:"failed_ok"` // human-readable check IDs that failed
 }
 
+const (
+	checkIDBranchProtection = "branch_protection"
+	checkIDCodeownersErrors = "codeowners_errors"
+	checkTitleCodeowners    = "CODEOWNERS parses cleanly"
+)
+
+// Check is one named assertion in the audit result. Emitted as JSON
+// alongside the Result that contains it.
 type Check struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
@@ -100,7 +108,7 @@ func checkBranchProtection(ctx context.Context, cfg Config) Check {
 	var bp branchProtection
 	if err := ghGet(ctx, cfg.Token, url, &bp); err != nil {
 		return Check{
-			ID:        "branch_protection",
+			ID:        checkIDBranchProtection,
 			Title:     "Branch protection on " + cfg.Branch,
 			Passed:    false,
 			Detail:    err.Error(),
@@ -128,7 +136,7 @@ func checkBranchProtection(ctx context.Context, cfg Config) Check {
 	}
 	if len(problems) > 0 {
 		return Check{
-			ID:        "branch_protection",
+			ID:        checkIDBranchProtection,
 			Title:     "Branch protection on " + cfg.Branch,
 			Passed:    false,
 			Detail:    strings.Join(problems, "; "),
@@ -136,7 +144,7 @@ func checkBranchProtection(ctx context.Context, cfg Config) Check {
 		}
 	}
 	return Check{
-		ID:     "branch_protection",
+		ID:     checkIDBranchProtection,
 		Title:  "Branch protection on " + cfg.Branch,
 		Passed: true,
 	}
@@ -151,7 +159,7 @@ func checkCodeOwners(ctx context.Context, cfg Config) Check {
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 		resp, err := http.DefaultClient.Do(req)
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
 				return Check{
 					ID:     "codeowners_present",
@@ -188,8 +196,8 @@ func checkCodeOwnersErrors(ctx context.Context, cfg Config) Check {
 	var ce codeOwnersErrors
 	if err := ghGet(ctx, cfg.Token, url, &ce); err != nil {
 		return Check{
-			ID:        "codeowners_errors",
-			Title:     "CODEOWNERS parses cleanly",
+			ID:        checkIDCodeownersErrors,
+			Title:     checkTitleCodeowners,
 			Passed:    false,
 			Detail:    err.Error(),
 			Rationale: "GET /repos/{owner}/{repo}/codeowners/errors must succeed.",
@@ -201,16 +209,16 @@ func checkCodeOwnersErrors(ctx context.Context, cfg Config) Check {
 			msgs = append(msgs, fmt.Sprintf("line %d: %s (%s)", e.Line, e.Message, e.Kind))
 		}
 		return Check{
-			ID:        "codeowners_errors",
-			Title:     "CODEOWNERS parses cleanly",
+			ID:        checkIDCodeownersErrors,
+			Title:     checkTitleCodeowners,
 			Passed:    false,
 			Detail:    strings.Join(msgs, "; "),
 			Rationale: "GitHub silently ignores CODEOWNERS lines referencing non-existent teams/users; this endpoint surfaces them.",
 		}
 	}
 	return Check{
-		ID:     "codeowners_errors",
-		Title:  "CODEOWNERS parses cleanly",
+		ID:     checkIDCodeownersErrors,
+		Title:  checkTitleCodeowners,
 		Passed: true,
 	}
 }
@@ -228,7 +236,7 @@ func ghGet(ctx context.Context, token, url string, out any) error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("GitHub %s: %s — %s", resp.Status, url, strings.TrimSpace(string(body)))

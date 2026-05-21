@@ -14,8 +14,12 @@ type Criterion struct {
 	Line     int    // 1-based line number in the source
 }
 
+// CriterionState is the two-state lifecycle of a markdown criterion:
+// planned ("- [ ]") or done ("- [x]"). L0 enforces that no PR may flip
+// done→planned and that done→done text is byte-identical post-normalize.
 type CriterionState int
 
+// Criterion lifecycle states. iota ordering must match String().
 const (
 	StatePlanned CriterionState = iota
 	StateDone

@@ -50,7 +50,7 @@ func (d *DB) ListEvents(ctx context.Context, limit int) ([]Event, error) {
 	if err != nil {
 		return nil, fmt.Errorf("state: list events: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []Event
 	for rows.Next() {
 		var e Event

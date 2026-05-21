@@ -6,7 +6,7 @@ description: Capture and surface repo-resident lessons in regatta. Use when the 
 # learn-from-mistakes
 
 Regatta-scoped capture and read flow for the lessons stored in
-`AGENTS.md` (brief), `docs/notes/<topic>.md` (repo-wide deep notes),
+`AGENTS.md` (brief), `` (repo-wide deep notes),
 and `.claude/notes/<topic>.md` (agent-internal deep notes).
 
 ## When to activate
@@ -36,7 +36,7 @@ prompts — so be conservative.
 
 `AGENTS.md` is auto-loaded by the standard agent convention. When
 session work touches a topic listed in either topic index, read the
-corresponding `docs/notes/<topic>.md` or `.claude/notes/<topic>.md`
+corresponding `` or `.claude/notes/<topic>.md`
 *before* taking the first action in that area.
 
 **Verify before acting on a cited lesson.** If a lesson cites a file +
@@ -53,47 +53,47 @@ For every new or updated entry:
 Compose:
 
 - **Title.** Short imperative case (`Run make ci before commit`, not
-  `Running make ci`).
+ `Running make ci`).
 - **Body.** 1–3 sentences. What happened / why it matters / what to do.
 - **Anchor.** File path + line, test name, command, or grep query that
-  would catch regression if removed. Required.
+ would catch regression if removed. Required.
 
 ### 2. Pick destination
 
 - **Load-bearing.** The lesson belongs in every session's prompt.
-  Destination: `AGENTS.md` under `## Load-bearing lessons`. Promotion
-  into this section requires the user to explicitly say "load-bearing"
-  or equivalent — default to a topic note.
+ Destination: `AGENTS.md` under `## Load-bearing lessons`. Promotion
+ into this section requires the user to explicitly say "load-bearing"
+ or equivalent — default to a topic note.
 - **Topic note — repo-wide.** A lesson a human contributor would care
-  about (CI, code style, PR workflow, reproducibility, branch
-  protection, conftest, code review). Destination:
-  `docs/notes/<topic>.md`. If the topic file does not exist, create
-  it (see template in `docs/notes/README.md`) and add one index line
-  to `AGENTS.md` under `## Topic index — repo-wide`.
+ about (CI, code style, PR workflow, reproducibility, branch
+ protection, conftest, code review). Destination:
+ ``. If the topic file does not exist, create
+ it (see template in ``) and add one index line
+ to `AGENTS.md` under `## Topic index — repo-wide`.
 - **Topic note — agent-internal.** A lesson a human contributor would
-  not encounter: slash-command side effects, classifier behavior,
-  durable agent memory, skill authoring, multi-agent review patterns,
-  background-job session hygiene. Destination:
-  `.claude/notes/<topic>.md`. If the topic file does not exist,
-  create it (format mirrors `docs/notes/README.md`; see
-  `.claude/notes/README.md`) and add one index line to `AGENTS.md`
-  under `## Topic index — agent-internal`.
+ not encounter: slash-command side effects, classifier behavior,
+ durable agent memory, skill authoring, multi-agent review patterns,
+ background-job session hygiene. Destination:
+ `.claude/notes/<topic>.md`. If the topic file does not exist,
+ create it (format mirrors ``; see
+ `.claude/notes/README.md`) and add one index line to `AGENTS.md`
+ under `## Topic index — agent-internal`.
 
 ### 3. Run the format check
 
 Reject the draft if any of these is true:
 
 - **Banned vocabulary.** The draft contains any of (case-insensitive
-  substring): `ralph`, `Loop N`, `Pass N`, `four-loop`, `subagent`,
-  `reviewer agent`, `loop design`, `loop prompt`.
+ substring): `ralph`, `Loop N`, `Pass N`, `four-loop`, `subagent`,
+ `reviewer agent`, `loop design`, `loop prompt`.
 - **First-person AI phrasing.** The draft contains any of (case-
-  insensitive substring): `as an AI`, `the model`, `the session`, `we
-  (AI)`, `I (the assistant)`.
+ insensitive substring): `as an AI`, `the model`, `the session`, `we
+ (AI)`, `I (the assistant)`.
 - **AI attribution.** The draft contains any of: `Assisted-by:`,
-  `Co-Authored-By: Claude`.
+ `Co-Authored-By: Claude`.
 - **Missing anchor.** No `Anchor:` line in the entry body.
 - **Brief-cap violation.** Destination is `AGENTS.md` and the resulting
-  file would exceed 200 lines.
+ file would exceed 200 lines.
 
 On any failure: surface the offending line(s), explain which check
 failed, and ask the user to revise. Do not proceed to step 4 until the
@@ -121,15 +121,15 @@ Accept / edit / reject.
 Write the file(s). Stage and commit:
 
 - Subject style: `[docs] <imperative title>` for `AGENTS.md`,
-  `docs/notes/*`, `.claude/notes/*`, and changes to this skill
-  itself. Match the area
-  prefix style observed in recent `git log`.
+ `*`, `.claude/notes/*`, and changes to this skill
+ itself. Match the area
+ prefix style observed in recent `git log`.
 - DCO trailer: include `Signed-off-by: <Name> <email>`. Use
-  `git commit -s`.
+ `git commit -s`.
 - **No AI attribution trailers.** No `Assisted-by:`. No
-  `Co-Authored-By:` for AI.
+ `Co-Authored-By:` for AI.
 - Body optional. If present, plain contributor prose; no banned
-  workflow vocabulary; no first-person AI phrasing.
+ workflow vocabulary; no first-person AI phrasing.
 
 ## Curation flow (stale entries)
 
@@ -137,7 +137,7 @@ When you notice a stale entry during session work:
 
 1. Open the capture flow with the change being a remove or rewrite.
 2. The anchor for the curation is the evidence of staleness (commit
-   hash, current file content, test that now fails differently).
+ hash, current file content, test that now fails differently).
 3. Same diff → user-approval → commit cycle.
 
 No automatic pruning. Entries only leave a file via a user-approved
@@ -146,10 +146,10 @@ diff.
 ## Pointers
 
 - Brief: `AGENTS.md` at repo root.
-- Repo-wide topic notes (human + agent): `docs/notes/<topic>.md`.
+- Repo-wide topic notes (human + agent): ``.
 - Agent-internal topic notes: `.claude/notes/<topic>.md`.
-- Format reminder: `docs/notes/README.md` (mirrored by
-  `.claude/notes/README.md`).
+- Format reminder: `` (mirrored by
+ `.claude/notes/README.md`).
 - This skill: `.claude/skills/learn-from-mistakes/SKILL.md`.
 
 No external scripts. No plugin install. The format check is a set of

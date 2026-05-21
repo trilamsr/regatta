@@ -6,8 +6,15 @@
 // recovery stay invariant. Callers MUST NOT issue ad-hoc UPDATEs on
 // the agents table; use TransitionAgent.
 //
-// Concurrency: a *DB is safe for concurrent use; the underlying
-// modernc.org/sqlite driver serializes writes internally.
+// Concurrency: a *DB is safe for concurrent use. Open() caps the
+// underlying *sql.DB pool at one connection so writers serialize at
+// the application layer. database/sql's pool default is unbounded;
+// modernc.org/sqlite serializes writes within a single *sql.Conn but
+// not across pool members, and sqlite's file lock + per-connection
+// busy_timeout will retry-fight rather than queue under bursty
+// concurrent recovery. The MaxOpenConns(1) contract is pinned by
+// TestOpenCapsConnectionPoolAtOne so a silent refactor cannot
+// regress.
 package state
 
 import (
@@ -31,6 +38,7 @@ const CurrentSchemaVersion = 1
 // AgentState mirrors the state-machine in docs/design.md §378.
 type AgentState string
 
+// Agent lifecycle states; full state-machine in docs/design.md §378.
 const (
 	AgentPending       AgentState = "pending"
 	AgentSpawning      AgentState = "spawning"
@@ -69,6 +77,7 @@ func Open(ctx context.Context, dsn string) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("state: open sqlite: %w", err)
 	}
+	raw.SetMaxOpenConns(1)
 	if err := raw.PingContext(ctx); err != nil {
 		_ = raw.Close()
 		return nil, fmt.Errorf("state: ping sqlite: %w", err)
@@ -101,7 +110,7 @@ func (d *DB) migrate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("state: begin migrate tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("state: apply schema: %w", err)
 	}
