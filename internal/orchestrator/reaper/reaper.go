@@ -70,9 +70,21 @@ func (r *Reaper) SetLogger(f func(format string, args ...any)) {
 // child, remove the worktree, release any leftover locks. The agent
 // row itself is left in place so the audit trail survives.
 //
+// Reap refuses to operate on an agent that is not currently in a
+// terminal state (done | withdrawn | escalated): killing a live
+// agent's child and removing its worktree mid-run would corrupt
+// the agent's PR and leave the state machine inconsistent.
+//
 // Returns nil if the agent has no leftover state (the common case
 // for already-reaped agents).
 func (r *Reaper) Reap(ctx context.Context, agentID int64) error {
+	agent, err := r.db.GetAgent(ctx, agentID)
+	if err != nil {
+		return fmt.Errorf("reaper: load agent %d: %w", agentID, err)
+	}
+	if !r.isTerminal(agent.State) {
+		return fmt.Errorf("%w: agent %d is in %s", ErrAgentNotTerminal, agentID, agent.State)
+	}
 	if r.killer != nil {
 		signaled, err := r.killer.KillAgent(agentID)
 		if err != nil {
@@ -118,6 +130,19 @@ func (r *Reaper) ReapAll(ctx context.Context) error {
 	return firstErr
 }
 
+// ErrAgentNotTerminal is returned by Reap when called on an agent
+// whose state is not one of done | withdrawn | escalated.
+var ErrAgentNotTerminal = errors.New("reaper: agent is not in a terminal state")
+
 // ErrNoKiller is returned by stub ChildKillers that cannot signal a
 // process. Callers may ignore it; Reaper treats it as a no-op.
 var ErrNoKiller = errors.New("reaper: no child-killer configured")
+
+func (r *Reaper) isTerminal(s state.AgentState) bool {
+	for _, t := range r.terminal {
+		if t == s {
+			return true
+		}
+	}
+	return false
+}

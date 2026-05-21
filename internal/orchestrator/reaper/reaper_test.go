@@ -113,6 +113,7 @@ func TestReapIsIdempotent(t *testing.T) {
 	if _, err := wm.Create(ctx, a.ID, "HEAD"); err != nil {
 		t.Fatalf("create worktree: %v", err)
 	}
+	driveToDone(t, db, a.ID)
 
 	if err := r.Reap(ctx, a.ID); err != nil {
 		t.Fatalf("reap 1: %v", err)
@@ -160,6 +161,34 @@ func TestReapAllSweepsTerminalAgents(t *testing.T) {
 	if _, err := wm.Create(ctx, c.ID, "HEAD"); err != nil {
 		// c had no worktree yet - this just proves the path is free.
 		t.Fatalf("c worktree path not free: %v", err)
+	}
+}
+
+func TestReapRefusesNonTerminalAgent(t *testing.T) {
+	ctx := context.Background()
+	db := newDB(t)
+	wm := newWM(t)
+	killer := &fakeKiller{}
+	r := New(db, wm, killer)
+
+	a := upsert(t, db, "WORK-1", "server")
+	mustTransition(t, db, a.ID, state.AgentSpawning)
+	mustTransition(t, db, a.ID, state.AgentRunning)
+	if _, err := wm.Create(ctx, a.ID, "HEAD"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	err := r.Reap(ctx, a.ID)
+	if !errors.Is(err, ErrAgentNotTerminal) {
+		t.Fatalf("want ErrAgentNotTerminal, got %v", err)
+	}
+	// Worktree must still exist; the live agent's filesystem state
+	// has not been touched.
+	if _, statErr := os.Stat(wm.PathFor(a.ID)); statErr != nil {
+		t.Fatalf("worktree was removed despite refusal: %v", statErr)
+	}
+	if killer.signal[a.ID] != 0 {
+		t.Fatalf("killer must not be invoked on a live agent; got %d signals", killer.signal[a.ID])
 	}
 }
 
