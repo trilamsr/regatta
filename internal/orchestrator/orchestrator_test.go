@@ -213,6 +213,38 @@ func TestRecoverIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestOrchestratorRecordsEvents pins the audit-trail contract: every
+// spawn and every crash-recovery requeue lands a typed event row so
+// the audit sink writer (future LessonCapture) has something to walk.
+func TestOrchestratorRecordsEvents(t *testing.T) {
+	ctx := context.Background()
+	o, _, db, _ := newHarness(t, 1)
+	if err := o.PollOnce(ctx); err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+	if err := o.ScheduleOnce(ctx); err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+	if err := o.Recover(ctx); err != nil {
+		t.Fatalf("recover: %v", err)
+	}
+
+	events, err := db.ListEvents(ctx, 100)
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	kinds := map[string]int{}
+	for _, e := range events {
+		kinds[e.Kind]++
+	}
+	if kinds["spawned"] != 1 {
+		t.Errorf("expected 1 spawned event, got %d (all: %v)", kinds["spawned"], kinds)
+	}
+	if kinds["recovered_crashed"] != 1 {
+		t.Errorf("expected 1 recovered_crashed event, got %d (all: %v)", kinds["recovered_crashed"], kinds)
+	}
+}
+
 // TestPollPropagatesLaneChange pins the orchestrator end-to-end on the
 // lane-drift bug in state.UpsertPending: a markdown item whose `lane:`
 // frontmatter is rewritten must be reflected on the existing agent row
