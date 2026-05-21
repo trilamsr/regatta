@@ -29,6 +29,7 @@ import (
 	"github.com/trilamsr/regatta/internal/l0"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
+	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/verifyrepo"
@@ -201,6 +202,10 @@ func runServe(args []string) int {
 	tickDur := fs.Duration("tick", 5*time.Second, "Scheduler tick interval")
 	heartDur := fs.Duration("heartbeat", 60*time.Second, "Lock heartbeat interval")
 	lockTTL := fs.Duration("lock-ttl", 15*time.Minute, "Hotspot lock heartbeat lease")
+	spawnerName := fs.String("spawner", "stub", "Spawner backend: stub | claude")
+	repoRoot := fs.String("repo", ".", "Repo root for the claude spawner (worktrees live under <repo>/.regatta/worktrees)")
+	claudeBin := fs.String("claude", "claude", "Path to the claude binary (used when -spawner=claude)")
+	baseRef := fs.String("base-ref", "HEAD", "Git ref a new agent worktree branches from")
 	laneCaps := laneCapsFlag{}
 	fs.Var(laneCaps, "lane", "Per-lane concurrency cap, repeatable (e.g. -lane server:1)")
 	_ = fs.Parse(args)
@@ -224,7 +229,13 @@ func runServe(args []string) int {
 		return 2
 	}
 
-	o := orchestrator.New(db, ad, spawner.NewStub(), orchestrator.Config{
+	sp, killer, wm, err := buildSpawner(*spawnerName, *repoRoot, *claudeBin, *baseRef)
+	if err != nil {
+		logger.Printf("spawner: %v", err)
+		return 2
+	}
+
+	o := orchestrator.New(db, ad, sp, orchestrator.Config{
 		PollInterval:      *pollDur,
 		TickInterval:      *tickDur,
 		HeartbeatInterval: *heartDur,
@@ -232,6 +243,9 @@ func runServe(args []string) int {
 		LaneCaps:          map[string]int(laneCaps),
 	})
 	o.SetLogger(logger.Printf)
+	if wm != nil {
+		o.SetReaper(reaper.New(db, wm, killer))
+	}
 
 	if err := o.Recover(ctx); err != nil {
 		logger.Printf("recover: %v", err)
@@ -247,6 +261,10 @@ func runServe(args []string) int {
 			logger.Printf("schedule: %v", err)
 			return 1
 		}
+		if err := o.ReapTerminal(ctx); err != nil {
+			logger.Printf("reap: %v", err)
+			return 1
+		}
 		return 0
 	}
 
@@ -255,6 +273,32 @@ func runServe(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// buildSpawner returns the Spawner + optional ChildKiller + optional
+// WorktreeManager selected by the -spawner flag. Only the claude
+// backend exposes a WorktreeManager today; the stub returns nil so
+// the Reaper is skipped.
+func buildSpawner(name, repoRoot, claudeBin, baseRef string) (spawner.Spawner, reaper.ChildKiller, *spawner.WorktreeManager, error) {
+	switch name {
+	case "", "stub":
+		return spawner.NewStub(), nil, nil, nil
+	case "claude":
+		wm, err := spawner.NewWorktreeManager(spawner.WorktreeManagerConfig{RepoRoot: repoRoot})
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("worktree manager: %w", err)
+		}
+		cs, err := spawner.NewClaudeSpawner(wm, spawner.ClaudeSpawnerConfig{
+			Command: claudeBin,
+			BaseRef: baseRef,
+		})
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("claude spawner: %w", err)
+		}
+		return cs, cs, wm, nil
+	default:
+		return nil, nil, nil, fmt.Errorf("unknown spawner %q (want stub|claude)", name)
+	}
 }
 
 func runVerifyRepoConfig(args []string) int {
