@@ -26,6 +26,17 @@ import (
 // ErrUnverifiable is returned when a signature does not match.
 var ErrUnverifiable = errors.New("schemas: signature unverifiable")
 
+const (
+	// SigAlg is the signature algorithm pinned for every signed
+	// artifact (handoff, program_brief, gate_result). One alg keeps
+	// the audit trail homogeneous.
+	SigAlg = "HMAC-SHA256"
+	// SigKey is the JSON key for the signature subdocument inside
+	// signed payloads. Stripping this key recovers the bytes that
+	// were signed.
+	SigKey = "signature"
+)
+
 // SignatureBlock is the structured signature subdocument carried by
 // signed artifacts (handoff.schema.json, gate_result.schema.json).
 //
@@ -33,7 +44,7 @@ var ErrUnverifiable = errors.New("schemas: signature unverifiable")
 // backward compat with v0 GateResults; new signed types use this
 // struct directly.
 type SignatureBlock struct {
-	Alg   string `json:"alg"`    // "HMAC-SHA256"
+	Alg   string `json:"alg"`    // SigAlg
 	KeyID string `json:"key_id"` // operator-controlled label, e.g. "k1"
 	MAC   string `json:"mac"`    // lowercase hex sha256 mac
 }
@@ -120,7 +131,7 @@ func Sign(payload map[string]any, key []byte, keyID string) (SignatureBlock, err
 	h := hmac.New(sha256.New, key)
 	h.Write(canon)
 	return SignatureBlock{
-		Alg:   "HMAC-SHA256",
+		Alg:   SigAlg,
 		KeyID: keyID,
 		MAC:   hex.EncodeToString(h.Sum(nil)),
 	}, nil
@@ -131,7 +142,7 @@ func Sign(payload map[string]any, key []byte, keyID string) (SignatureBlock, err
 // signature's key_id in keyring. Returns ErrUnverifiable on
 // mismatch.
 func Verify(payload map[string]any, keyring map[string][]byte) error {
-	sigRaw, ok := payload["signature"]
+	sigRaw, ok := payload[SigKey]
 	if !ok {
 		return fmt.Errorf("%w: no signature field", ErrUnverifiable)
 	}
@@ -140,7 +151,7 @@ func Verify(payload map[string]any, keyring map[string][]byte) error {
 		return fmt.Errorf("%w: signature is not an object", ErrUnverifiable)
 	}
 	alg, _ := sigMap["alg"].(string)
-	if alg != "HMAC-SHA256" {
+	if alg != SigAlg {
 		return fmt.Errorf("%w: unsupported alg %q", ErrUnverifiable, alg)
 	}
 	keyID, _ := sigMap["key_id"].(string)
@@ -169,7 +180,7 @@ func Verify(payload map[string]any, keyring map[string][]byte) error {
 func stripSignature(payload map[string]any) map[string]any {
 	out := make(map[string]any, len(payload))
 	for k, v := range payload {
-		if k == "signature" {
+		if k == SigKey {
 			continue
 		}
 		out[k] = v

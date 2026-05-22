@@ -117,11 +117,11 @@ func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) 
 	args := append([]string(nil), s.cfg.Args...)
 	cmd, err := s.starter(ctx, s.cfg.Command, args, strings.NewReader(prompt), path)
 	if err != nil {
-		_ = s.wm.Remove(context.Background(), req.AgentID)
+		_ = s.wm.Remove(context.WithoutCancel(ctx), req.AgentID)
 		return Result{}, fmt.Errorf("spawner: start claude: %w", err)
 	}
 	if cmd.Process == nil {
-		_ = s.wm.Remove(context.Background(), req.AgentID)
+		_ = s.wm.Remove(context.WithoutCancel(ctx), req.AgentID)
 		return Result{}, errors.New("spawner: starter returned cmd with nil Process")
 	}
 	pid := cmd.Process.Pid

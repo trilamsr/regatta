@@ -54,7 +54,7 @@ linters:
       - path: _test\.go
         linters: [goconst]
       # L0 invisible-glyph corpus comments belong in non-test source too.
-      - path: internal/l0/normalize\.go
+      - path: internal/gates/l0/normalize\.go
         linters: [staticcheck]
         text: "ST1018"
       # Markdown adapter intentionally reads user-supplied work-item paths
@@ -67,22 +67,23 @@ linters:
       # L0 ref-resolver invokes `git diff` with bounded args. The "variable"
       # is the base-ref string the caller passes; gosec cannot prove the
       # bound, but it is L0's contract surface.
-      - path: internal/l0/refs\.go
+      - path: internal/gates/l0/refs\.go
         linters: [gosec]
         text: "G204"
       # validate-config CLI reads the operator-supplied regatta.yaml path.
       # G304 cannot prove safety; the operator IS the trust root for this
       # path (same as `cat <file>`).
-      - path: internal/validateconfig/load\.go
+      - path: internal/config/validate/load\.go
         linters: [gosec]
         text: "G304"
       # internal/program is the MVP-1 program-layer foundation. The
-      # goconst hits inside provider_anthropic.go are JSON Schema
-      # vocabulary tokens ("type", "array", "items", "string", etc.),
-      # not configuration; extracting them as constants would obscure
-      # the schema shape. The gosec G304 hits are operator-supplied
-      # paths the operator IS trust root for (same shape as L0/diff).
-      - path: internal/program/provider_anthropic\.go
+      # goconst hits inside program/*.go are JSON Schema vocabulary
+      # tokens (severity tiers "high", "medium"; state strings "fail",
+      # "failure", "inconclusive"; gate-id strings "security"). The
+      # words have semantic meaning at each call site and match the
+      # schema enum verbatim; extracting them as Go constants would
+      # obscure that the literal is the schema-pinned token.
+      - path: internal/program/.*\.go
         linters: [goconst]
       - path: internal/program/handoff\.go
         linters: [gosec]
@@ -90,13 +91,24 @@ linters:
       - path: internal/program/corpus_test\.go
         linters: [gosec]
         text: "G122"
-      # internal/securitygate shells out to operator-pinned binaries
+      # internal/gates/security shells out to operator-pinned binaries
       # (gitleaks, osv-scanner) via safety.tool_versions. The command
       # name is bounded; arguments are not user-tainted. Allowlist
       # mirrors L0 refs.go's G204 exemption.
-      - path: internal/securitygate/gate\.go
+      - path: internal/gates/security/gate\.go
         linters: [gosec]
         text: "G204"
+      # AgentSpawner + WorktreeManager invoke `claude` and `git` with
+      # operator-pinned binary paths from regatta.yaml. The command
+      # name is operator-supplied at config time (trust root); arg
+      # vectors are bounded. G204 here is the spawner's whole point.
+      # G301 perm 0755 on worktree parent dirs is intentional: peer
+      # agent processes must traverse the parent to reach their
+      # isolated worktree; 0750 would block the spawner runtime user
+      # when group differs.
+      - path: internal/orchestrator/spawner/.*\.go
+        linters: [gosec]
+        text: "G204|G301"
 
 issues:
   max-issues-per-linter: 0

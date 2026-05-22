@@ -94,7 +94,7 @@ func (a *AnthropicPlanner) Plan(ctx context.Context, parent schemas.WorkItem) (*
 	if err != nil {
 		return nil, fmt.Errorf("anthropic: http: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("anthropic: read body: %w", err)

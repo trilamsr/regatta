@@ -131,7 +131,7 @@ func readRunningAgentPID(t *testing.T, dbPath, workItemID string) int {
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

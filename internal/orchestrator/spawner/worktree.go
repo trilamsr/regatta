@@ -133,7 +133,7 @@ func (w *WorktreeManager) Remove(ctx context.Context, agentID int64) error {
 		// Fall back to a plain rm; the worktree-list metadata is
 		// pruned lazily by git on the next operation.
 		if rmErr := os.RemoveAll(path); rmErr != nil {
-			return fmt.Errorf("spawner: git worktree remove: %w (output: %s); rm fallback: %v", err, strings.TrimSpace(string(out)), rmErr)
+			return fmt.Errorf("spawner: git worktree remove: %w (output: %s); rm fallback: %w", err, strings.TrimSpace(string(out)), rmErr)
 		}
 		// Run `git worktree prune` so the leftover metadata does not
 		// haunt future operations.

@@ -41,6 +41,7 @@ const (
 // telemetry.skipped_reason set, or are not invoked at all.
 type Verdict string
 
+// Verdict values: top-level gate outcome.
 const (
 	VerdictPass     Verdict = "pass"
 	VerdictFail     Verdict = "fail"
@@ -52,6 +53,7 @@ const (
 // enum that includes "info"; see FindingSeverity).
 type Severity string
 
+// Severity values: top-level gate severity (no "info" tier).
 const (
 	SeverityNone     Severity = "none"
 	SeverityLow      Severity = "low"
@@ -86,6 +88,8 @@ type Finding struct {
 	TrapPattern string           `json:"trap_pattern,omitempty"` // "P1" .. "P13"
 }
 
+// FindingEvidence is the schema-required nested location block for
+// each Finding (file path, line range, optional SHA + snippet).
 type FindingEvidence struct {
 	Path      string `json:"path,omitempty"`
 	LineStart int    `json:"line_start,omitempty"`
