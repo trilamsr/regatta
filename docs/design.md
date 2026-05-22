@@ -1108,16 +1108,43 @@ per MTok; 5m cache write 1.25×, read 0.1×), mandatory prompt caching:
 | L4 (Sonnet 4.6) | $0.11 | $1.65 | $7.15 |
 | L5 (Haiku 4.5) | $0.014 | $0.21 | $0.91 |
 | Custom gates (avg) | $0.05 | $0.75 | $3.25 |
-| **Total** | **~$1.15** | **~$17.93** | **~$77.66** |
+| **Total (×1.2 tokenizer)** | **~$1.38** | **~$21.52** | **~$93.19** |
 
-Two cost-risk landmines on top of the table. **Opus 4.7 ships a new
-tokenizer** producing up to 35% more tokens per text than its
-predecessor -- real bills run ~1.2× the table until prompt sizes are
-re-tuned. **Prompt-caching is load-bearing**: Claude Code's March 2026
-cache regression dropped hit rate to 4-17% and inflated cost 10-20×;
-Regatta must halt the fleet if rolling `cache_hit_rate < 30%`. The
-minimum cacheable block on current Opus / Haiku is 4,096 tokens -- L5
-prompts under that silently bypass caching with no error.
+(Bottom row applies the +1.2× Opus 4.7 tokenizer multiplier verified
+2026-05-20 -- see landmine note below. The unmultiplied subtotal is
+~$1.15/PR; the bill is ~$1.38/PR.)
+
+### Worked example: 4-feature program at MVP-3
+
+A program-decomposed PR set with one planner one-shot + four child PRs
+each going through the L0-L6 stack + the security custom gate (issue
+#47):
+
+| Component | Per program |
+|---|---|
+| Planner one-shot (Opus 4.7) | ~$0.12 |
+| 4 × child (L0-L5, cached agent + gates) at $1.15 each | ~$4.60 |
+| 4 × security custom gate (gitleaks + osv floor + Opus AI phase) at ~$0.20 each | ~$0.80 |
+| 4 × handoff verify (orchestrator-side re-run) at ~$0.02 each | ~$0.08 |
+| **Subtotal** | **~$5.60** |
+| **× 1.2 Opus 4.7 tokenizer** | **~$6.72** |
+
+A 10-feature program runs ~$15-17 fully-loaded; a 16-day Slack-class
+program (40 features, 5-round security iteration cap) projects
+~$220-280 at healthy cache hit-rate. The MVP-3 acceptance bar (≥+5pp
+net-helpfulness over single-agent baseline on the canary corpus)
+must clear at this cost envelope or the program layer is killed per
+\`§Stop conditions\`.
+
+Two cost-risk landmines: **Opus 4.7 ships a new tokenizer** producing
+up to 35% more tokens per text than its predecessor (verified
+2026-05-20; the +1.2× multiplier is the empirical mean, not the
+worst case). **Prompt-caching is load-bearing**: Claude Code's
+March 2026 cache regression dropped hit rate to 4-17% and inflated
+cost 10-20×; Regatta must halt the fleet if rolling
+\`cache_hit_rate < 30%\`. The minimum cacheable block on current
+Opus / Haiku is 4,096 tokens -- L5 prompts under that silently
+bypass caching with no error.
 
 For comparison (mid-2026 list pricing, *unverified*, fully-loaded
 on a 10-eng team at 15 PRs/week): Devin Team + CodeRabbit ~$50/PR;
@@ -1216,6 +1243,38 @@ window for ≥2 consecutive windows; or cost per completed item exceeds
   rule; any bot or service account present → refuse to start until
   removed.
 
+## SLOs (operator-visible operations)
+
+p50 / p95 latency budgets per operator-visible operation. The
+`alarm` column is what `regatta gate-calibrate` (issue #54) fails
+on. Numbers are projection from the cost-section assumptions
+(cached agent, Opus 4.7, mid-2026 prices); production data will
+calibrate.
+
+| Operation | p50 | p95 | Alarm |
+|---|---|---|---|
+| L0 verdict (deterministic) | <1s | <5s | >10s |
+| L1 CI gate (repo's own command) | <30s | <2m | >5m |
+| L3 spec-conformance (Opus 4.7, cached) | <2m | <5m | >10m |
+| L4 adversarial (Sonnet 4.6, cached) | <2m | <5m | >10m |
+| L5 drift (Haiku 4.5) | <30s | <90s | >3m |
+| Security custom gate (floor + AI) | <90s | <4m | >8m |
+| Planner one-shot (Opus 4.7) | <30s | <2m | >5m |
+| Handoff verify (HMAC + schema) | <100ms | <500ms | >2s |
+| Program-publish PR open | <10s | <30s | >2m |
+| Worker spawn -> first commit | <2m | <5m | >10m |
+
+Wire-up: `regatta gate-calibrate --fail-over=5m` (issue #54) walks
+each row, runs the operation against a canary fixture, and fails
+the run if any row's observed p95 exceeds the alarm threshold.
+Calibration tooling sits at issue #54; the SLO contract is the
+table above.
+
+Mission-class workloads (16-day Slack-class programs) explicitly
+relax the program-publish SLO to <10m p95 because they are
+multi-day workflows; the per-gate SLOs stay tight regardless of
+program duration.
+
 ## Alternatives
 
 **(a) No orchestrator, single-shot agent.** Accepted as Day 1 mode in
@@ -1309,7 +1368,7 @@ Rejected adoptions:
 | **Pricing** | Self-host + API at cost | $500/mo + ACUs | $40/seat/mo + usage | $39/seat/mo + usage | API at cost | OSS + API | $24/dev/mo | (stealth, $9M) |
 | **Gate transparency** | open, configurable | proprietary | proprietary | proprietary | open via Code | open | semi-open | semi-open |
 | **Runtime-agnostic** | thesis (deferred) | no | no | no | Claude only | yes | model-agnostic | yes |
-| **Published incident defenses** | yes (10-pattern Trap Catalog) | partial | partial | partial | partial | no | partial | partial |
+| **Published incident defenses** | yes (13-pattern Trap Catalog) | partial | partial | partial | partial | no | partial | partial |
 | **Deterministic spec-immutability gate** | **yes (L0)** | no | no | no | no | no | no | no |
 | **Tamper-evident audit log out-of-band** | yes | no | no | no | no | no | no | no |
 | **Canary-PR injection** | yes (8 archetypes ship) | no | partial (BugBot self-test) | no | no | no | no | no |
@@ -1330,6 +1389,29 @@ depth caps as integers**, **(9) heartbeat-anchored silent-bypass**.
 (1), (3), (4), and (5) are publishable as standalone OSS primitives
 even if the rest of Regatta never ships -- they raise the floor for
 every other agent vendor by their mere existence.
+
+### Wedge evidence (code or fixture)
+
+Each row above asserts Regatta has a wedge a named competitor does
+not. Below: the code path or fixture in this repository that proves
+the wedge ships, not just exists in prose.
+
+| # | Wedge | Evidence |
+|---|---|---|
+| 1 | Deterministic spec-immutability gate (L0) | `internal/l0/gate.go::Check`; corpus `gates/l0/testdata/{pass,fail,edge}/` |
+| 2 | Tamper-evident audit log out-of-band | `schemas/sign.go::Sign` / `Verify`; HMAC chokepoint test `schemas/sign_test.go::TestVerifyDetectsTamper` |
+| 3 | Published canary archetype corpus | `gates/canary/testdata/program_archetypes.ndjson` (3 archetypes); base corpus catalog in `gates/canary/testdata/` |
+| 4 | Cryptographically reproducible PR verdicts | `schemas/gate_result.go::SignatureBlock`; round-trip lockstep `schemas/gate_result_test.go::TestGateResultSchemaLockstep`; HMAC verify `schemas/sign.go::Verify` |
+| 5 | Fixture-corpus-as-contract | `internal/l0/fixture_test.go::TestL0Fixtures`; program-handoff corpus `internal/program/corpus_test.go::TestHandoffCorpus` |
+| 6 | Worker re-run mismatch (defeats incident #1) | `internal/program/handoff.go::Handoff.ReRunMismatch`; covered by `internal/program/handoff_test.go::TestReRunMismatch_*` (match, exit-code mismatch, length mismatch) |
+| 7 | Deterministic Go progression | `internal/program/route.go::RouteVerdicts` (no LLM call site in the package); 13 routing tests in `internal/program/route_test.go::TestRouteVerdicts` |
+| 8 | Per-axis depth caps as enforced integers | `internal/program/route.go::Depth.Over`; defaults `DefaultDepthCap`; tests `route_test.go::TestRouteVerdicts/depth_*` |
+| 9 | Heartbeat-anchored silent-bypass detection | `internal/program/route.go::RouteVerdicts` heartbeat check (`v.StartedAt == nil \|\| v.FinishedAt == nil`); test `route_test.go::TestRouteVerdicts/missing_heartbeat_halts` |
+
+Issue #53 tracks the date-stamped competitor confirmation
+research (`research/13-wedge-confirmation.md`); until that lands,
+the right-hand columns of the main table are author-asserted, not
+peer-reviewed.
 
 ## Open questions
 

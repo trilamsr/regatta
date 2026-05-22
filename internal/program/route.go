@@ -100,19 +100,21 @@ type Child struct {
 type Action string
 
 // Action values: the closed enum of decisions RouteVerdicts may emit.
+// Reroute-on-indeterminate is intentionally NOT in the enum until a
+// production indeterminate verdict surfaces; the rule per PRINCIPLES
+// #2 is no abstraction before the second concrete use. Wiring path
+// tracked at issue #48.
 const (
-	Advance           Action = "advance"
-	Iterate           Action = "iterate"
-	HaltHuman         Action = "halt_human"
-	RerouteValidator  Action = "reroute_validator"
+	Advance   Action = "advance"
+	Iterate   Action = "iterate"
+	HaltHuman Action = "halt_human"
 )
 
 // Decision is the typed output of RouteVerdicts.
 type Decision struct {
-	Action       Action
-	Reason       string         // operator-facing English
-	FixFeatures  []FixFeature   // populated when Action == Iterate
-	RerouteGate  string         // populated when Action == RerouteValidator
+	Action      Action
+	Reason      string       // operator-facing English
+	FixFeatures []FixFeature // populated when Action == Iterate
 }
 
 // FixFeature is a new child WorkItem the orchestrator should inject
