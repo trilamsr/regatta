@@ -30,7 +30,7 @@ section consolidates and adapts them to closed-source posture.
    onboarding, not external-contributor outreach.
 
 2. **Boundaries match gate-stack vocabulary.** Directory names use the
-   product nouns: *adapters, gates, programs, orchestrator, audit,
+   product nouns: *adapters, gates, program, orchestrator, audit,
    config, canary, tenant, prompts*. No invented categories. No
    grab-bag packages (`util`, `helpers`, `common`, `models`).
    (PRINCIPLES #8 names earn their slot.)
@@ -230,8 +230,22 @@ surface is these gaps; code shape rules below follow from them:
   call; cost summary at PR close.
 
 Rule that follows: every customer-visible string (error, log line,
-PR-comment template, CLI help text) is reviewed for clarity. Strings
-ARE the product for the operator.
+PR-comment template, CLI help text) passes the **string clarity
+checklist (F10)**:
+
+- [ ] Names the failed precondition or expected state (not just
+      "validation failed").
+- [ ] Suggests the corrective action OR cites a runbook URL.
+- [ ] No internal jargon — pkg names, function names, internal
+      error types.
+- [ ] If irreversible, the headline says so.
+- [ ] Fits in one terminal line (≤80 cols) where possible; multi-
+      line reserved for paste-into-issue cases.
+
+At solo scale, self-review with a 24-hour cooling-off before merge
+on any PR that adds customer-visible strings; checklist lives in
+`docs/engineer/string-review.md`. Strings ARE the product for the
+operator.
 
 ### Standardization rules (priority 6)
 
@@ -439,6 +453,18 @@ of restructure):**
   bump; default model/gate/audit-sink change; post-incident rule
   change.
 
+  Worked example (when ADR fires vs not):
+  - Moving `internal/program/handoff.Sign` → `contracts/go/sign.go`
+    (now an operator-visible interface) — **ADR required**.
+  - Adding a method to an already-promoted interface in
+    `contracts/go/specadapter.go` — **ADR required** (operator
+    upgrade impact).
+  - Renaming `internal/gates/l0/match.go` to `matcher.go` — no ADR.
+  - Adding a new private helper inside `internal/orchestrator/` —
+    no ADR.
+  - Bumping `contracts/schemas/regatta.v1.cue` to v2 — **ADR
+    required** (operator migration tool).
+
 **Dropped at solo scale (named activation triggers):**
 
 | Dropped | Activation trigger |
@@ -486,10 +512,52 @@ Each wave = one PR, green CI, mergeable on its own. Rollback = revert
 the PR. No partial state across waves. Adopt-when-needed applies: a
 wave whose justification doesn't hold mid-flight gets cut.
 
+**Pre-flight (F12).** This spec must land on `main` before Wave 1
+opens. Order:
+
+1. Spec PR (this branch, `worktree-docs+org-repo-restructure-design`)
+   → merge to `main` first.
+2. Wave 1 branches from updated `main` and cites the merged spec.
+3. Waves 2 and 3 follow Wave 1 in strict order.
+
+Implementation plan branches do NOT cherry-pick the spec; they read
+it from `main`. Avoids divergent-spec-on-multiple-branches risk.
+
 ### Wave 1 — Foundation
 
 Tree moves + contracts surface + baseline docs + baseline automation.
 Everything pure-mechanical or doc-only.
+
+**`make check` budget partition (F4).** STYLE.md caps `make check`
+under 60 seconds. Wave 1 adds enough checks (doc-check,
+examples-validate, banned-phrase, typed-link-prefix, stale-TODO)
+that stacked execution exceeds the budget on cold cache. Partition:
+
+- `make check` (local, under 60s): commit-lint, go vet, fast unit
+  tests, gofmt.
+- `make ci-check` (CI workflows, no local budget): doc-check,
+  examples-validate, stale-TODO scan, banned-phrase, typed-link,
+  full test suite.
+
+Both must pass before merge; only the fast set blocks the local
+edit-loop.
+
+**Wave 1 sub-commit discipline (F5).** Wave 1 is large; bisect cost
+matters more than review headcount. Sub-commits inside the PR
+follow this strict order so a future bisect lands cleanly:
+
+1. Path-citation rewrites in docs (no code moves yet).
+2. Git-mv batch 1: `schemas/` → `contracts/schemas/` +
+   `contracts/go/` + `contracts/prompts/`.
+3. Git-mv batch 2: `internal/{l0,securitygate,validateconfig,verifyrepo}` →
+   `internal/{gates/l0,gates/security,config}` merges.
+4. Git-mv batch 3: testdata consolidation under `testdata/`.
+5. New top-level scaffold files (docs + automation).
+6. Workflow + Makefile updates.
+
+Each sub-commit compiles, tests pass, doc-check green. Atomic-
+commits-where-cheap is normally advisory (§5); for Wave 1 it is
+load-bearing because of the move volume.
 
 **Tree moves (P1+P2+P6):**
 
@@ -498,17 +566,27 @@ Everything pure-mechanical or doc-only.
   for `planner.md`, `security_gate.md`, etc.).
 - `gates/{l0,canary,security}/testdata/` →
   `testdata/gates/{l0,canary,security}/`.
-- `internal/program/testdata/handoffs/` → `testdata/programs/handoffs/`.
+- `internal/program/testdata/handoffs/` → `testdata/program/handoffs/`.
 - `internal/l0` → `internal/gates/l0`.
 - `internal/securitygate` → `internal/gates/security`.
 - `internal/validateconfig` + `internal/verifyrepo` →
   `internal/config` (single package).
-- `internal/program` → `internal/programs`.
+- `internal/program` stays (F7: rename to `programs` dropped; cost
+  outweighs cosmetic benefit; design.md uses both singular and
+  plural forms).
 - Delete top-level `gates/` once impls + testdata moved.
 - Placeholder READMEs in earned-but-empty dirs (`internal/cli`,
   `internal/audit`, `internal/tenant`, `internal/canary`,
   `internal/modelclient`) — one paragraph plus activation trigger
   per P9.
+- **Path-citation rewrites (F6, load-bearing).** Every path
+  reference in `docs/design.md`, `AGENTS.md`, `README.md`,
+  `STYLE.md`, `PRINCIPLES.md`, and `.github/PULL_REQUEST_TEMPLATE.md`
+  is rewritten to the new locations in sub-commit #1 (before any
+  `git mv`). Falsifier: doc-check link-validation passes on the
+  sub-commit; `grep -rE 'schemas/|internal/l0|internal/securitygate|gates/(l0|canary|security)/testdata'`
+  across `docs/`, `*.md`, and `.github/` returns zero hits after
+  Wave 1 merges.
 
 **Contracts surface (P3):**
 
@@ -528,10 +606,18 @@ Everything pure-mechanical or doc-only.
 - `CHANGELOG.md` (Keep-a-Changelog; `## Unreleased`).
 - `LICENSE` (proprietary).
 - `NOTICES.md` (third-party scan via `go-licenses`).
-- `ARCHITECTURE.md` (1-page mental model + tree + read order).
-- `CONTRIBUTING.md` (slim internal-eng onboarding).
+- `ARCHITECTURE.md` (≤1 page — F9). Strict tree map + read-order
+  pointer ONLY. Does NOT restate `docs/design.md` §Architecture
+  (D3). If under 30 lines, may merge into `README.md` as a "READ
+  ORDER" section instead — implementation plan picks.
+- `CONTRIBUTING.md` (≤30-line stub — F8). Points at `AGENTS.md`,
+  `STYLE.md`, `PRINCIPLES.md`; carries only the human-specific
+  delta (run `make install-hooks`, branch naming `<type>/<slug>`,
+  Conventional-Commit prefix table). No content duplicated; D3
+  enforced.
 - `SECURITY.md` (procurement-doc shape: data flow + escalation).
-- `INDEX.md` (D14 — points at all docs).
+- `INDEX.md` (D14 — machine-target only; doc-check enforces every
+  doc appears here; humans land at AGENTS.md or README first).
 
 **Automation:**
 
@@ -596,6 +682,7 @@ Implements Section 3 priority 1 (customer impact).
 - `how-to-add-a-gate.md`.
 - `how-to-add-an-adapter.md`.
 - `release-runbook.md`.
+- `string-review.md` (F10 checklist; cited from §3 priority 1).
 - `post-mortems/.gitkeep` (G13 surface ready when first incident).
 - Cross-linked from `CONTRIBUTING.md`.
 
@@ -638,8 +725,9 @@ Branch protection + workflow tightening + final dedupe.
 - Update `STYLE.md` to reflect new tree + automation.
 - Update `INDEX.md` with final doc set.
 
-**Tag `v0.2.0`:** CHANGELOG `Unreleased` → `0.2.0`; signed tag;
-release-notes generated.
+**Tag next-minor (F11):** CHANGELOG `Unreleased` → next-minor
+section (implementation plan picks the exact number based on
+current `main` state); signed tag; release-notes generated.
 
 **Falsifier:** open test PR with intentional violations across each
 new gate (force-push attempt, broken doc link, stale TODO, bad
