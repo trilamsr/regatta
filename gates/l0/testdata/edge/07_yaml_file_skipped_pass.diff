@@ -1,0 +1,6 @@
+diff --git a/config.yaml b/config.yaml
+--- a/config.yaml
++++ b/config.yaml
+@@ -1,1 +1,1 @@
+-version: 1
++version: 2

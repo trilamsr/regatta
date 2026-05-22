@@ -13,6 +13,8 @@
 
 package regattav1
 
+import "list"
+
 #Config: {
 	version: 1
 	repo:          #Repo
@@ -94,8 +96,8 @@ package regattav1
 }
 
 #Safety: {
-	destructive_ops_deny:    [...string]
-	agent_creds_scope:       "dev_only" | "test" | "scoped"
+	destructive_ops_deny:    *[] | [...string]
+	agent_creds_scope:       *"dev_only" | "test" | "scoped"
 	iteration_cap:           *50 | int & >=1 & <=500
 	spend_cap_usd:           *50 | int & >=0
 	spend_cap_usd_per_day:   *200 | int & >=0

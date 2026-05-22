@@ -1,0 +1,6 @@
+diff --git a/script.py b/script.py
+--- a/script.py
++++ b/script.py
+@@ -1,1 +1,1 @@
+-print("old")
++print("new")

@@ -101,20 +101,43 @@ the most load-bearing.
   under `gates/l0/testdata/` is the contract; `go test ./internal/l0`
   exercises pass / fail / edge sweeps plus unit-level normalization.
 - **`regatta verify-repo-config`.** Pre-flight audit of a GitHub repo
-  against the P2 canonical recipe — branch protection
-  (`required_approving_review_count≥2`, `require_code_owner_reviews`,
+  against the P2 canonical recipe - branch protection
+  (`required_approving_review_count>=2`, `require_code_owner_reviews`,
   `require_last_push_approval`, `dismiss_stale_reviews`,
   `enforce_admins`), CODEOWNERS presence, and the
   `/codeowners/errors` silent-ignore catcher. Requires `GITHUB_TOKEN`.
+- **`regatta validate-config`.** CUE-validates `regatta.yaml` against
+  the embedded `schemas/regatta.v1.cue`. Multi-error output enumerates
+  every offending field with `file:line` positions instead of eliding
+  with `(and N more errors)`.
+
+- **Orchestrator skeleton.** `regatta serve` runs a daemon backed by
+  a sqlite state store (`modernc.org/sqlite`) that implements three of
+  the nine responsibilities in `docs/design.md` §Orchestrator shape:
+  the SpecWatcher (markdown_catalog adapter reading
+  `<root>/.regatta/items/*.md`), the Scheduler with sorted-lock
+  hotspot acquisition and per-lane concurrency caps, and the
+  AgentSpawner (currently a stub that records spawn calls). The state
+  machine in `docs/design.md` §State, persistence, recovery is
+  enforced in `internal/orchestrator/state`; crash recovery requeues
+  dead agents on startup. `--tick-once` runs a single poll+schedule
+  cycle for CI smoke tests. PRWatcher, RejectionRouter,
+  CanaryInjector, SupervisorLimits, Reaper, and LessonCapture are
+  deferred to follow-up commits.
 
 ## Next steps
 
 1. **Expand the L0 fixture corpus toward the 200-fixture target.**
-2. **`regatta validate-config` + `regatta validate-spec`.** CUE
-   validation under the hood; first-class adapters land alongside.
-3. **Orchestrator skeleton.** Daemon, sqlite state, scheduler with
-   sorted-lock acquisition, agent spawner.
-4. **Gate runners for L3 / L4 / L5.** Anthropic SDK clients with
+2. **`regatta validate-spec`.** Connect to the configured `SpecAdapter`,
+   list ready work items, surface NFC + invisible-glyph cleanliness,
+   verify the dependency DAG.
+3. **Production AgentSpawner.** Replace the stub with a real worktree
+   + `claude --resume` launcher; wire SupervisorLimits (cgroups on
+   Linux, rlimits on macOS).
+4. **PRWatcher + RejectionRouter.** Drive agents past `running` so
+   the rest of the state machine (`pr_open` through `done`) gets
+   exercised.
+5. **Gate runners for L3 / L4 / L5.** Anthropic SDK clients with
    prompt-caching, structured-output enforcement.
 
 ## Why "regatta"

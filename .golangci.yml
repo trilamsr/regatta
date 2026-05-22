@@ -1,0 +1,82 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - bodyclose
+    - contextcheck
+    - errcheck
+    - errorlint
+    - forcetypeassert
+    - goconst
+    - gocritic
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - nilerr
+    - prealloc
+    - predeclared
+    - revive
+    - staticcheck
+    - unconvert
+    - unused
+    - whitespace
+
+  settings:
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+        - name: var-naming
+        - name: indent-error-flow
+        - name: error-return
+        - name: error-naming
+
+  exclusions:
+    rules:
+      # Test files exercise the L0 invisible-glyph + Trojan-source defenses.
+      # The literals MUST contain the actual codepoints (visual fidelity to
+      # the attack) so an editor + diff reader sees what an attacker would
+      # paste. Escape-sequence rewrites lose that signal. The defenses are
+      # under test; this is intentional in fixtures, not code.
+      - path: _test\.go
+        linters: [gosec, staticcheck]
+        text: "G116|G204|G304|G301|G306|ST1018"
+      - path: _test\.go
+        linters: [goconst]
+      # L0 invisible-glyph corpus comments belong in non-test source too.
+      - path: internal/l0/normalize\.go
+        linters: [staticcheck]
+        text: "ST1018"
+      # Markdown adapter intentionally reads user-supplied work-item paths
+      # (catalog root from regatta.yaml). The path is bounded by the
+      # adapter's root field and the .regatta/items/ glob; G304 here is the
+      # adapter's whole purpose.
+      - path: internal/orchestrator/adapter/markdown\.go
+        linters: [gosec]
+        text: "G304|G306|G703"
+      # L0 ref-resolver invokes `git diff` with bounded args. The "variable"
+      # is the base-ref string the caller passes; gosec cannot prove the
+      # bound, but it is L0's contract surface.
+      - path: internal/l0/refs\.go
+        linters: [gosec]
+        text: "G204"
+      # validate-config CLI reads the operator-supplied regatta.yaml path.
+      # G304 cannot prove safety; the operator IS the trust root for this
+      # path (same as `cat <file>`).
+      - path: internal/validateconfig/load\.go
+        linters: [gosec]
+        text: "G304"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

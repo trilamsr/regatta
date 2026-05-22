@@ -187,3 +187,65 @@ for raw in sys.stdin:
   fi
   echo "doc-check: em-dash + en-dash diff gate clean (vs $base_ref)"
 fi
+
+# Comment-noise diff-scope gate. Same shape as em-dash gate above.
+# Blocks three patterns on PR-added lines that rot in long-lived files:
+# review-cycle inline tags, bare PR-number backreferences in source-code
+# comments, and ASCII section-banner comments. Rationale in STYLE.md.
+# Mutation-verify recipe lives in the PR that landed this gate.
+
+if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
+  echo "doc-check: comment-noise diff gate skipped (base ref not resolvable)"
+else
+  noise_hits=$(git diff --unified=0 "$base_ref"...HEAD -- '*.go' '*.md' '*.sh' '*.py' '*.yaml' '*.yml' 'Makefile' 'Dockerfile*' 2>/dev/null \
+    | python3 -c '
+import re, sys
+exempt = re.compile(r"^(research/|docs/rfcs/|\.claude/)")
+# reviewer-tag fires in any file; banner + pr-ref restrict to source-code
+# comment leaders (// or shell #), because in markdown # introduces a
+# heading and would false-positive on legitimate doc structure.
+reviewer_tag = re.compile(r"[Rr]eviewer\s+[A-Z0-9][A-Za-z0-9/.#-]*[-/]?[A-Za-z0-9]")
+source_pr_ref = re.compile(r"//.*\bPR\s*#\d+|^\s*#\s.*\bPR\s*#\d+")
+source_banner = re.compile(r"^//\s*[-=]{2,}\s*\S.*\s*[-=]{2,}\s*$|^#\s*[-=]{2,}\s*\S.*\s*[-=]{2,}\s*$")
+file = ""
+skip = False
+is_markdown = False
+lineno = 0
+for raw in sys.stdin:
+    line = raw.rstrip("\n")
+    if line.startswith("+++ "):
+        file = line[6:]
+        skip = bool(exempt.match(file))
+        is_markdown = file.endswith(".md")
+        continue
+    if line.startswith("@@ "):
+        m = re.search(r"\+(\d+)", line)
+        lineno = int(m.group(1)) if m else 0
+        continue
+    if skip:
+        continue
+    if line.startswith("+") and not line.startswith("+++"):
+        body = line[1:]
+        kind = None
+        if reviewer_tag.search(body):
+            kind = "reviewer-tag"
+        elif not is_markdown and source_pr_ref.search(body):
+            kind = "pr-ref"
+        elif not is_markdown and source_banner.search(body):
+            kind = "banner-comment"
+        if kind:
+            print(f"{file}:{lineno}: [{kind}] {body.strip()}")
+        lineno += 1
+')
+
+  if [ -n "$noise_hits" ]; then
+    echo "doc-check: comment-noise detected in PR-diff additions (vs $base_ref):"
+    echo "$noise_hits" | sed 's/^/  - /'
+    echo
+    echo "Patterns blocked: reviewer tags, bare \"PR #N\" refs, section-banner comments."
+    echo "Why: STYLE.md defaults to no comments; these rot in long-lived files."
+    echo "Existing tree usage is grandfathered; only lines added in this PR are checked."
+    exit 1
+  fi
+  echo "doc-check: comment-noise diff gate clean (vs $base_ref)"
+fi

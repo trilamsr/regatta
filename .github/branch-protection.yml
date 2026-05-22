@@ -1,0 +1,32 @@
+# Settings to apply to `main` via Settings -> Branches -> Branch protection
+# rules. The GitHub UI is the source of truth; this file is the intent.
+# `scripts/apply-branch-protection.sh` enforces this intent via gh api.
+#
+# Regatta's own `verifyrepo` binary audits the LIVE state; this file
+# documents what verifyrepo expects to find. Keep both in sync.
+
+branch: main
+
+require_pull_request_before_merge: true
+require_linear_history: true
+allow_force_push: false
+allow_deletions: false
+require_conversation_resolution: true
+
+# Solo maintainer. GitHub does not allow authors to approve their own
+# PRs, so `1` review required with a single maintainer produces
+# unmergeable PRs. Bump to `2` + `require_codeowners_review: true` the
+# day a second maintainer joins - that is what gets verifyrepo's P2
+# canonical recipe over the finish line.
+required_approving_review_count: 0
+require_codeowners_review: false
+dismiss_stale_reviews_on_push: true
+require_last_push_approval: false
+
+require_signed_commits: false
+enforce_admins: true
+
+required_status_checks_strict: false
+required_status_checks:
+  - verify
+  - pr-lint

@@ -2,8 +2,12 @@
 //
 // Subcommands shipped today (pre-fleet):
 //
-//	regatta l0 <diff-file>          Run L0 spec-immutability check against a unified diff.
+//	regatta l0 <diff-file>          Run L0 against a unified diff.
+//	regatta l0-refs ...             Run L0 against git refs (merge-base diff).
+//	regatta l0-merge ...            Re-run L0 on a merge commit vs its first parent.
+//	regatta validate-config         CUE-validate regatta.yaml.
 //	regatta verify-repo-config      Audit a GitHub repo against the P2 canonical recipe.
+//	regatta serve                   Run the orchestrator daemon (skeleton).
 //	regatta program plan            One-shot decompose a parent WorkItem (kind: program) into a signed ProgramBrief.
 //	regatta program verify-handoff  Structurally validate (+ optionally verify HMAC of) a handoff.json.
 //	regatta version                 Print build info.
@@ -17,10 +21,22 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log"
 	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
 
 	"github.com/trilamsr/regatta/internal/l0"
+	"github.com/trilamsr/regatta/internal/orchestrator"
+	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
+	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
+	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/program"
+	"github.com/trilamsr/regatta/internal/validateconfig"
 	"github.com/trilamsr/regatta/internal/verifyrepo"
 	"github.com/trilamsr/regatta/schemas"
 )
@@ -35,10 +51,18 @@ func main() {
 	switch os.Args[1] {
 	case "l0":
 		os.Exit(runL0(os.Args[2:]))
+	case "l0-refs":
+		os.Exit(runL0Refs(os.Args[2:]))
+	case "l0-merge":
+		os.Exit(runL0Merge(os.Args[2:]))
 	case "verify-repo-config":
 		os.Exit(runVerifyRepoConfig(os.Args[2:]))
 	case "program":
 		os.Exit(runMission(os.Args[2:]))
+	case "serve":
+		os.Exit(runServe(os.Args[2:]))
+	case "validate-config":
+		os.Exit(runValidateConfig(os.Args[2:]))
 	case "version", "-v", "--version":
 		fmt.Println("regatta", version)
 	case "help", "-h", "--help":
@@ -51,19 +75,34 @@ func main() {
 }
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `Usage:
-  regatta l0 <diff-file>                       Run L0 spec-immutability check
-  regatta verify-repo-config                   Audit GitHub repo against P2 recipe
-  regatta program plan <work-item.json>        One-shot decompose into signed ProgramBrief
-  regatta program verify-handoff <path>        Validate a handoff.json (schema + optional HMAC)
-  regatta version                              Print build info
-  regatta help                                 This message
+	_, _ = fmt.Fprint(w, `Usage:
+  regatta l0 <diff-file>                              Run L0 against a unified diff
+  regatta l0-refs -repo <dir> -base <ref> -head <ref> Run L0 against git refs (merge-base diff)
+  regatta l0-merge -repo <dir> -commit <sha>          Re-run L0 on a merge commit vs first parent
+  regatta validate-config                             CUE-validate regatta.yaml
+  regatta verify-repo-config                          Audit GitHub repo against P2 recipe
+  regatta serve                                       Run the orchestrator daemon (skeleton)
+  regatta program plan <work-item.json>               One-shot decompose into signed ProgramBrief
+  regatta program verify-handoff <path>               Validate a handoff.json (schema + optional HMAC)
+  regatta version                                     Print build info
+  regatta help                                        This message
 
-L0 reads a unified diff from <diff-file> ("-" for stdin) and emits a
-GateResult JSON document to stdout. Exit code 0 on pass, 1 on fail,
-2 on usage error.
+All L0 commands emit a GateResult JSON document to stdout. Exit code 0
+on pass, 1 on fail, 2 on usage error.
+
+l0-refs computes the diff base as git merge-base(base, head), closing
+the TOCTOU window where the base branch tightens a criterion while a
+PR is in flight (testdata/README.md §1).
+
+l0-merge re-runs the gate on a merge commit against its first parent.
+This catches rubber-stamp merges that revert criterion tightening
+landed on the base after the PR passed (testdata/README.md §7).
 
 verify-repo-config requires GITHUB_TOKEN and -owner/-repo flags.
+
+serve runs the markdown_catalog adapter against <root>/.regatta/items
+and spawns a stub agent for each ready item. Pass --tick-once to run
+a single poll+schedule cycle and exit.
 
 program plan:
   -model        <id>   Claude model id (default "claude-opus-4-7")
@@ -82,7 +121,7 @@ program verify-handoff:
 func runL0(args []string) int {
 	fs := flag.NewFlagSet("l0", flag.ExitOnError)
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "Usage: regatta l0 <diff-file>  ('-' for stdin)")
+		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta l0 <diff-file>  ('-' for stdin)")
 	}
 	_ = fs.Parse(args)
 	if fs.NArg() != 1 {
@@ -101,13 +140,196 @@ func runL0(args []string) int {
 		return 2
 	}
 	result := l0.Check(l0.Default(), l0.ParseUnifiedDiff(string(data)))
+	return emitL0(result)
+}
+
+func runL0Refs(args []string) int {
+	fs := flag.NewFlagSet("l0-refs", flag.ExitOnError)
+	repoDir := fs.String("repo", ".", "Path to the git repository")
+	baseRef := fs.String("base", "", "Base ref (branch, tag, or sha)")
+	headRef := fs.String("head", "", "Head ref (branch, tag, or sha)")
+	_ = fs.Parse(args)
+	if *baseRef == "" || *headRef == "" {
+		fs.Usage()
+		fmt.Fprintln(os.Stderr, "regatta l0-refs: -base and -head required")
+		return 2
+	}
+	result, err := l0.CheckRefs(context.Background(), l0.Default(), *repoDir, *baseRef, *headRef)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "regatta l0-refs:", err)
+		return 2
+	}
+	return emitL0(result)
+}
+
+func runL0Merge(args []string) int {
+	fs := flag.NewFlagSet("l0-merge", flag.ExitOnError)
+	repoDir := fs.String("repo", ".", "Path to the git repository")
+	commit := fs.String("commit", "", "Merge commit sha")
+	_ = fs.Parse(args)
+	if *commit == "" {
+		fs.Usage()
+		fmt.Fprintln(os.Stderr, "regatta l0-merge: -commit required")
+		return 2
+	}
+	result, err := l0.CheckMergeCommit(context.Background(), l0.Default(), *repoDir, *commit)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "regatta l0-merge:", err)
+		return 2
+	}
+	return emitL0(result)
+}
+
+func emitL0(result schemas.GateResult) int {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(result)
-	if result.Verdict != "pass" {
+	if result.Verdict != schemas.VerdictPass {
 		return 1
 	}
 	return 0
+}
+
+// laneCapsFlag implements flag.Value for repeated `-lane name:cap` flags.
+type laneCapsFlag map[string]int
+
+func (l laneCapsFlag) String() string {
+	parts := make([]string, 0, len(l))
+	for k, v := range l {
+		parts = append(parts, fmt.Sprintf("%s:%d", k, v))
+	}
+	return strings.Join(parts, ",")
+}
+
+func (l laneCapsFlag) Set(s string) error {
+	name, capStr, ok := strings.Cut(s, ":")
+	if !ok {
+		return fmt.Errorf("expected name:cap, got %q", s)
+	}
+	n, err := strconv.Atoi(capStr)
+	if err != nil {
+		return fmt.Errorf("invalid cap %q: %w", capStr, err)
+	}
+	if n < 0 {
+		return fmt.Errorf("cap must be non-negative, got %d", n)
+	}
+	l[strings.TrimSpace(name)] = n
+	return nil
+}
+
+func runServe(args []string) int {
+	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	dbPath := fs.String("db", "regatta.db", "Path to sqlite state DB")
+	itemsRoot := fs.String("items-root", ".", "Repo root containing .regatta/items/*.md")
+	tickOnce := fs.Bool("tick-once", false, "Run one poll+schedule cycle and exit")
+	pollDur := fs.Duration("poll", 30*time.Second, "SpecAdapter poll interval")
+	tickDur := fs.Duration("tick", 5*time.Second, "Scheduler tick interval")
+	heartDur := fs.Duration("heartbeat", 60*time.Second, "Lock heartbeat interval")
+	lockTTL := fs.Duration("lock-ttl", 15*time.Minute, "Hotspot lock heartbeat lease")
+	spawnerName := fs.String("spawner", "stub", "Spawner backend: stub | claude")
+	repoRoot := fs.String("repo", ".", "Repo root for the claude spawner (worktrees live under <repo>/.regatta/worktrees)")
+	claudeBin := fs.String("claude", "claude", "Path to the claude binary (used when -spawner=claude)")
+	baseRef := fs.String("base-ref", "HEAD", "Git ref a new agent worktree branches from")
+	laneCaps := laneCapsFlag{}
+	fs.Var(laneCaps, "lane", "Per-lane concurrency cap, repeatable (e.g. -lane server:1)")
+	_ = fs.Parse(args)
+
+	logger := log.New(os.Stderr, "regatta: ", log.LstdFlags|log.Lmicroseconds)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", *dbPath)
+	db, err := state.Open(ctx, dsn)
+	if err != nil {
+		logger.Printf("open db: %v", err)
+		return 2
+	}
+	defer func() { _ = db.Close() }()
+
+	ad, err := adapter.NewMarkdownCatalog(adapter.MarkdownCatalogConfig{Root: *itemsRoot})
+	if err != nil {
+		logger.Printf("adapter: %v", err)
+		return 2
+	}
+
+	set, err := buildSpawner(*spawnerName, *repoRoot, *claudeBin, *baseRef)
+	if err != nil {
+		logger.Printf("spawner: %v", err)
+		return 2
+	}
+
+	o := orchestrator.New(db, ad, set.Spawner, orchestrator.Config{
+		PollInterval:      *pollDur,
+		TickInterval:      *tickDur,
+		HeartbeatInterval: *heartDur,
+		LockTTL:           *lockTTL,
+		LaneCaps:          map[string]int(laneCaps),
+	})
+	o.SetLogger(logger.Printf)
+	if set.Worktrees != nil {
+		o.SetReaper(reaper.New(db, set.Worktrees, set.Killer))
+	}
+
+	if err := o.Recover(ctx); err != nil {
+		logger.Printf("recover: %v", err)
+		return 1
+	}
+
+	if *tickOnce {
+		if err := o.PollOnce(ctx); err != nil {
+			logger.Printf("poll: %v", err)
+			return 1
+		}
+		if err := o.ScheduleOnce(ctx); err != nil {
+			logger.Printf("schedule: %v", err)
+			return 1
+		}
+		if err := o.ReapTerminal(ctx); err != nil {
+			logger.Printf("reap: %v", err)
+			return 1
+		}
+		return 0
+	}
+
+	if err := o.Run(ctx); err != nil {
+		logger.Printf("run: %v", err)
+		return 1
+	}
+	return 0
+}
+
+// spawnerSet bundles the three handles a serve invocation needs to
+// wire the Spawner + Reaper. Only the claude backend populates
+// Killer + Worktrees; the stub leaves them nil so runServe knows to
+// skip the Reaper.
+type spawnerSet struct {
+	Spawner   spawner.Spawner
+	Killer    reaper.ChildKiller
+	Worktrees *spawner.WorktreeManager
+}
+
+// buildSpawner returns the spawnerSet selected by the -spawner flag.
+func buildSpawner(name, repoRoot, claudeBin, baseRef string) (spawnerSet, error) {
+	switch name {
+	case "", "stub":
+		return spawnerSet{Spawner: spawner.NewStub()}, nil
+	case "claude":
+		wm, err := spawner.NewWorktreeManager(spawner.WorktreeManagerConfig{RepoRoot: repoRoot})
+		if err != nil {
+			return spawnerSet{}, fmt.Errorf("worktree manager: %w", err)
+		}
+		cs, err := spawner.NewClaudeSpawner(wm, spawner.ClaudeSpawnerConfig{
+			Command: claudeBin,
+			BaseRef: baseRef,
+		})
+		if err != nil {
+			return spawnerSet{}, fmt.Errorf("claude spawner: %w", err)
+		}
+		return spawnerSet{Spawner: cs, Killer: cs, Worktrees: wm}, nil
+	default:
+		return spawnerSet{}, fmt.Errorf("unknown spawner %q (want stub|claude)", name)
+	}
 }
 
 func runVerifyRepoConfig(args []string) int {
@@ -305,5 +527,18 @@ func runMissionVerifyHandoff(args []string) int {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(report)
+	return 0
+}
+
+func runValidateConfig(args []string) int {
+	fs := flag.NewFlagSet("validate-config", flag.ExitOnError)
+	cfgPath := fs.String("config", "regatta.yaml", "Path to regatta.yaml")
+	_ = fs.Parse(args)
+
+	if err := validateconfig.LoadFile(*cfgPath); err != nil {
+		fmt.Fprintf(os.Stderr, "validate-config: FAIL\n%s\n", err)
+		return 1
+	}
+	fmt.Printf("validate-config: PASS - %s validates against regatta.v1\n", *cfgPath)
 	return 0
 }

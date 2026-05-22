@@ -1,0 +1,9 @@
+diff --git a/MILESTONES.md b/MILESTONES.md
+--- a/MILESTONES.md
++++ b/MILESTONES.md
+@@ -1,2 +1,5 @@
+ # M1
+ - [ ] Stable criterion.
++
++# M2 (invented)
++- [ ] Newly invented criterion in newly invented section.

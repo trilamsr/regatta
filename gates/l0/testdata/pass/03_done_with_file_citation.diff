@@ -1,0 +1,7 @@
+diff --git a/MILESTONES.md b/MILESTONES.md
+--- a/MILESTONES.md
++++ b/MILESTONES.md
+@@ -1,2 +1,2 @@
+ # M1
+-- [ ] Auth handler returns 401 on bad token.
++- [x] Auth handler returns 401 on bad token. file=src/auth.go:42

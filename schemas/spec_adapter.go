@@ -66,25 +66,33 @@ type WorkItem struct {
 	Source             SourceRef    `json:"source"`                    // points to the immutable source-of-truth for L0 to verify
 }
 
+// Criterion is one acceptance criterion under a WorkItem.
 type Criterion struct {
 	ID    string         `json:"id"`    // stable within a WorkItem; format adapter-defined
 	Text  string         `json:"text"`  // immutable post-publication; L0 enforces byte-equality after UTF-8 NFC normalization
 	State CriterionState `json:"state,omitempty"`
 }
 
+// WorkItemID uniquely identifies a WorkItem within a spec source.
 type WorkItemID string
+
+// LaneID names a lane that a WorkItem participates in.
 type LaneID string
 
+// Status names a WorkItem's lifecycle state.
 type Status string
 
+// Status values; the only legal payload of WorkItem.Status.
 const (
 	StatusPlanned    Status = "planned"
 	StatusInProgress Status = "in_progress"
 	StatusDone       Status = "done"
 )
 
+// CriterionState names a Criterion's lifecycle state.
 type CriterionState string
 
+// CriterionState values; the only legal payload of Criterion.State.
 const (
 	CriterionPlanned    CriterionState = "planned"
 	CriterionInProgress CriterionState = "in_progress"
@@ -151,6 +159,7 @@ var (
 // Default timeout: 30s. Configurable via `spec_adapter.timeout_seconds`.
 // SIGTERM at timeout + 5s; SIGKILL at timeout + 10s.
 
+// CustomAdapterRequest is the stdin payload sent to a `custom` adapter.
 type CustomAdapterRequest struct {
 	Version int    `json:"version"` // protocol version; current = 1
 	Op      string `json:"op"`      // "list" | "get" | "update_status" | "capabilities"
@@ -159,6 +168,7 @@ type CustomAdapterRequest struct {
 	Citation string `json:"citation,omitempty"`
 }
 
+// CustomAdapterResponse is the stdout payload returned by a `custom` adapter.
 type CustomAdapterResponse struct {
 	Version int       `json:"version"`
 	Items   []WorkItem `json:"items,omitempty"`

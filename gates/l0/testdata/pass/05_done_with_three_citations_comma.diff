@@ -1,0 +1,7 @@
+diff --git a/MILESTONES.md b/MILESTONES.md
+--- a/MILESTONES.md
++++ b/MILESTONES.md
+@@ -1,2 +1,2 @@
+ # M1
+-- [ ] Migrate users table to v2 schema.
++- [x] Migrate users table to v2 schema. test=TestMigrateV2,file=db/migrate.go,commit=deadbeef
