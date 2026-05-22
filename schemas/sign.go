@@ -10,11 +10,11 @@ import (
 	"sort"
 )
 
-// HMAC signing for tamper-evident gate results and mission handoffs.
+// HMAC signing for tamper-evident gate results and program handoffs.
 //
 // Same key, same alg (HMAC-SHA256) for every signed artifact in
 // Regatta -- see docs/design.md §Threat Model §Tamper-evident audit.
-// The mission layer REUSES this key; it does not introduce a new
+// The program layer REUSES this key; it does not introduce a new
 // keyring (recursive-attack-surface defense).
 //
 // Canonical serialization is JCS-flavored: object keys sorted, no

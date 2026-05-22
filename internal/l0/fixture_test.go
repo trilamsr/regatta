@@ -47,15 +47,11 @@ func TestFixtureCorpus(t *testing.T) {
 						if r.Verdict != schemas.VerdictFail {
 							t.Errorf("expected fail; got %s findings=%+v", r.Verdict, r.Findings)
 						}
-						blocking := false
-						for _, f := range r.Findings {
-							if f.Blocking {
-								blocking = true
-								break
-							}
+						if !r.Blocking {
+							t.Errorf("expected blocking=true on fail; got %+v", r)
 						}
-						if !blocking {
-							t.Errorf("expected at least one blocking finding; got %+v", r.Findings)
+						if len(r.Findings) == 0 {
+							t.Errorf("expected at least one finding on fail; got %+v", r)
 						}
 					case "edge":
 						expectedPath := strings.TrimSuffix(filepath.Join(dir, name), ".diff") + ".expected.json"

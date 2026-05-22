@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/trilamsr/regatta/schemas/handoff.schema.json",
   "title": "Handoff",
-  "description": "Signed worker-to-orchestrator handoff for one feature (child WorkItem) of a Mission. The worker's claims are ADVISORY: the orchestrator independently re-runs commands_run and compares. Mismatch is a hard fail (incident #1 pattern). See docs/design.md §Missions.",
+  "description": "Signed worker-to-orchestrator handoff for one feature (child WorkItem) of a Program. The worker's claims are ADVISORY: the orchestrator independently re-runs commands_run and compares. Mismatch is a hard fail (incident #1 pattern). See docs/design.md §Programs.",
   "type": "object",
   "required": [
     "schema_version",
-    "mission_id",
+    "program_id",
     "feature_id",
     "worker_run_id",
     "base_sha",
@@ -23,10 +23,10 @@
       "const": 1,
       "description": "Major version of this schema. Bumps are breaking."
     },
-    "mission_id": {
+    "program_id": {
       "type": "string",
       "pattern": "^m-[0-9a-f]{12}$",
-      "description": "Parent mission ID. Worker MUST NOT invent this; the spawner injects it."
+      "description": "Parent program ID. Worker MUST NOT invent this; the spawner injects it."
     },
     "feature_id": {
       "type": "string",
@@ -71,7 +71,7 @@
     },
     "commands_run": {
       "type": "array",
-      "description": "Commands the worker executed (build/test/lint). Each tuple is RE-RUN by the orchestrator in a sibling sandbox; the orchestrator's re-run result is HMAC-signed into mission_verdicts. A mismatch on exit_code OR stdout_sha is a hard fail.",
+      "description": "Commands the worker executed (build/test/lint). Each tuple is RE-RUN by the orchestrator in a sibling sandbox; the orchestrator's re-run result is HMAC-signed into program_verdicts. A mismatch on exit_code OR stdout_sha is a hard fail.",
       "items": {
         "type": "object",
         "required": ["cmd", "exit_code"],
@@ -112,7 +112,7 @@
     },
     "falsifications": {
       "type": "array",
-      "description": "Adversarial self-review the worker performed before handoff. Each entry MUST carry a citation (^(test|file|commit)=\\S+$ discipline); plain counts are not accepted. See docs/design.md §Missions §Handoff schema.",
+      "description": "Adversarial self-review the worker performed before handoff. Each entry MUST carry a citation (^(test|file|commit)=\\S+$ discipline); plain counts are not accepted. See docs/design.md §Programs §Handoff schema.",
       "items": {
         "type": "object",
         "required": ["hypothesis", "mutation_kind", "target_invariant", "citation", "outcome"],
@@ -190,7 +190,7 @@
     "return_to_orchestrator": {
       "type": "boolean",
       "default": false,
-      "description": "If true, mission halts pending orchestrator decision before next feature spawns."
+      "description": "If true, program halts pending orchestrator decision before next feature spawns."
     },
     "produced_at": {
       "type": "string",

@@ -44,10 +44,10 @@ func TestRun_AIStubEmitsAdvisoryOnly(t *testing.T) {
 	if len(gr.Findings) != 1 {
 		t.Fatalf("expected 1 stub finding, got %d", len(gr.Findings))
 	}
-	if gr.Findings[0].Blocking {
-		t.Fatalf("stub finding must not be blocking")
+	if gr.Blocking {
+		t.Fatalf("gate must not be blocking when only AI stub finding present")
 	}
-	if gr.GateKind != "ai_adversarial" {
+	if gr.GateKind != schemas.GateKindAIAdversarial {
 		t.Fatalf("expected gate_kind ai_adversarial when AI enabled, got %s", gr.GateKind)
 	}
 }

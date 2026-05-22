@@ -13,6 +13,28 @@
 
 ## Summary
 
+### Operator TL;DR (60-second read)
+
+**What it is.** A single Go daemon you self-host. You point it at a
+git repo plus a machine-readable work source (GitHub issues, Jira,
+Linear, `RFC.md`, custom adapter) plus a deterministic CI command.
+Regatta spawns one Claude agent per ready work item in an isolated
+worktree, runs a configurable gate stack (L0-L6) on every PR push,
+and routes feedback to the agent. **You always merge.** Regatta
+refuses to.
+
+**What it explicitly is not.** Not hosted SaaS. Not multi-repo
+(today). Not multi-vendor (today: Claude only; cross-vendor adapter
+behind a measured trigger). Not an unstructured-spec discoverer
+(your repo must encode "done" somewhere). Not a merge button (L6 is
+mandatory human review).
+
+**What ships today.** Two commands you can run right now:
+`regatta l0 <diff>` (deterministic spec-immutability verdict) and
+`regatta verify-repo-config -owner -repo` (audit a GitHub repo
+against the P2 canonical recipe). Everything else in this doc is
+the contract; the binary follows.
+
 Regatta is a standalone service that orchestrates autonomous Claude
 agents against any git-hosted repo. The repo declares its planned work
 (GitHub issues, Jira, Linear, an `RFC.md`, custom adapter, etc.), its
@@ -44,16 +66,16 @@ gates run first in parallel; AI gates run after the deterministic
 floor passes. Default-deny on any blocking finding. L0 is mandatory.
 
 **Multi-feature work** (RFC-class decomposition into a DAG of
-related PRs) is handled by an opt-in mission layer
-([§Missions](#missions-multi-feature-decomposition)) that decomposes
-a parent `WorkItem{kind: mission}` into child WorkItems and adds
+related PRs) is handled by an opt-in program layer
+([§Programs](#programs-multi-feature-decomposition)) that decomposes
+a parent `WorkItem{kind: program}` into child WorkItems and adds
 a signed handoff schema + one optional security custom gate. The
-mission layer does **not** introduce a parallel agent runtime,
-validator subsystem, or LLM verdict-routing agent; mission progression
+program layer does **not** introduce a parallel agent runtime,
+validator subsystem, or LLM verdict-routing agent; program progression
 is a deterministic Go function over signed `GateResult`s. The
 layer ships as MVP-1 → MVP-3 with a measured kill switch: if
-mission decomposition does not yield ≥5 pp net-helpfulness gain
-over single-agent on the canary corpus, the mission concept is
+program decomposition does not yield ≥5 pp net-helpfulness gain
+over single-agent on the canary corpus, the program concept is
 abandoned and the doc reverts to base Regatta.
 
 ### Companion artifacts
@@ -63,7 +85,7 @@ abandoned and the doc reverts to base Regatta.
 `schemas/{gate_result,work_item}.schema.json` (JSON Schemas);
 `schemas/regatta.v1.cue` (config schema); `gates/l0/testdata/` (L0
 fixture corpus contract); `gates/canary/testdata/` (canary archetype
-corpus). Mission-layer additions arrive in MVP-1 → MVP-3:
+corpus). Program-layer additions arrive in MVP-1 → MVP-3:
 `schemas/handoff.schema.json` (signed inter-feature handoff,
 normative), `gates/security/` (the only new gate kind).
 
@@ -93,6 +115,34 @@ and the destructive surface.
 The threat model is the floor every other section sits on. If you
 disagree with any assumption here, the design downstream is wrong for
 your environment.
+
+### Adversary stance (normative)
+
+Every defense in this doc is built against three explicit adversary
+assumptions; each section below names which adversary it defends
+against:
+
+1. **The agent is compromised.** Worker sessions are assumed
+   capable of producing any output text within their tool
+   surface, including outputs that lie about exit codes, fabricate
+   citations, embed invisible glyphs, or attempt to mutate the
+   spec. Defenses MUST not depend on the agent's good faith.
+2. **All sources are attacker-controlled text.** Issue bodies,
+   RFC files, MCP-tool outputs, linked artifacts, validator
+   subagent text, prior gate output, and `AGENTS.md`-class
+   guidance are DATA, never INSTRUCTIONS. The only trusted
+   instructions are `prompts/*.md` files signed and pinned at the
+   orchestrator boundary, loaded from `main@SHA`.
+3. **The planner is honest-but-coerceable.** The planner agent
+   itself is not adversarial, but its inputs are. A poisoned RFC
+   linked from a parent `WorkItem` can steer the planner's
+   `program_brief.json` into a malicious DAG. Defense: every
+   `linked_artifact` is L0-normalized + glyph-stripped + scanned
+   for imperative second-person instructions to the planner
+   BEFORE the planner sees it.
+
+These three assumptions are the audit framework. A defense that
+fails under any of them is a defect.
 
 ### Assets
 
@@ -459,49 +509,49 @@ The `severity_block: ['critical', '2*high']` mini-DSL: `critical` OR
 ≥2 `high` blocks. Only `&`, `|`, and `count*severity` operators
 permitted; the validator rejects others.
 
-## Missions (multi-feature decomposition)
+## Programs (multi-feature decomposition)
 
-A **Mission** is a parent `WorkItem` marked `kind: mission` that
+A **Program** is a parent `WorkItem` marked `kind: program` that
 decomposes into a DAG of child `WorkItem`s. Each child runs through
 the existing single-agent flow (worktree, L0-L6, human merge). The
-mission layer adds a planner front end, a tamper-evident handoff
+program layer adds a planner front end, a tamper-evident handoff
 between siblings, and one new custom gate; **it does not introduce a
 parallel agent runtime, validator subsystem, or LLM-driven decision
 agent.**
 
-### Why missions
+### Why programs
 
 Single agents hit context-window and attention-degradation limits on
-multi-day work (Factory's published Missions data: 14% of multi-agent
+multi-day work (Factory's published Programs data: 14% of multi-agent
 runs >24 h; the longest 16 days). SWE-bench-Verified 2026 shows
 ~6pp improvement from decomposition under the same model (Opus 4.5:
-45.9% → 51.8% with better scaffolding). The mission layer is
+45.9% → 51.8% with better scaffolding). The program layer is
 Regatta's bid for that 6pp, gated on canary-corpus measurement at
 MVP-3.
 
-### What missions are NOT
+### What programs are NOT
 
-The mission layer is **not** Factory Missions. Specifically:
+The program layer is **not** Factory Programs. Specifically:
 
 - **No new agent roles.** No "validator agent process," no
-  "decision agent," no "user-testing agent." Mission PRs traverse
+  "decision agent," no "user-testing agent." Program PRs traverse
   the existing L0-L6 gate stack. Decomposition is a planner step,
   not an agent topology.
-- **No LLM verdict routing.** Mission progression is a
+- **No LLM verdict routing.** Program progression is a
   deterministic Go function over signed `GateResult`s (P1: a
   deterministic gate sits before any AI gate on destructive ops).
   The LLM may *explain* the decision into the audit log; it never
   *makes* the decision.
-- **No mission-immutability gate ("L0M") at v1.** L0's fixture
-  corpus is at **15 / 200** target. Extending L0 to cover mission
+- **No program-immutability gate ("L0M") at v1.** L0's fixture
+  corpus is at **15 / 200** target. Extending L0 to cover program
   artifacts before L0 itself ships green at corpus is the
   "police what you don't have" failure (PRINCIPLES #4). L0M is
   deferred until the L0 corpus contract is met.
-- **No bespoke `ModelProvider` abstraction at the mission layer.**
+- **No bespoke `ModelProvider` abstraction at the program layer.**
   Even the base agent is honestly Claude-only today; cross-vendor
-  is the deferred deliverable in §Alternatives (e). The mission
+  is the deferred deliverable in §Alternatives (e). The program
   layer reuses whatever cross-vendor story the base layer ships.
-- **No new validator process tree.** Where missions need extra
+- **No new validator process tree.** Where programs need extra
   scrutiny, the existing L3/L4/L5 receive `handoff.json` as
   additional grounding; one **new custom gate** (security) joins
   the stack via the same `gates:` config block any repo already
@@ -514,10 +564,10 @@ The mission layer is **not** Factory Missions. Specifically:
 ### Architecture
 
 ```
-WorkItem{kind: mission} ─► Planner (one-shot Opus 4.7 call)
+WorkItem{kind: program} ─► Planner (one-shot Opus 4.7 call)
                               │
-                              ▼ emits features.json (DAG of child WorkItems)
-                          Mission publish PR
+                              ▼ emits program_brief.json (DAG of child WorkItems)
+                          Program publish PR
                               │ CODEOWNERS-gated; human merge to `main` (P3)
                               ▼
                           Existing orchestrator
@@ -539,9 +589,9 @@ WorkItem{kind: mission} ─► Planner (one-shot Opus 4.7 call)
                                        uncovered → halt to human
 ```
 
-The mission planner runs **exactly once** per mission (one-shot
-`features.json` emission, then exit). It is not a long-lived agent
-session; there is no planner state to recover from on crash. Mission
+The program planner runs **exactly once** per program (one-shot
+`program_brief.json` emission, then exit). It is not a long-lived agent
+session; there is no planner state to recover from on crash. Program
 state lives in `regatta.db` as it does for any `WorkItem`.
 
 ### Planner contract
@@ -550,17 +600,17 @@ The planner is a Claude (or any configured base-layer agent)
 invocation with a templated prompt (`prompts/planner.md`, signed +
 SHA-pinned). Input:
 
-- The parent `WorkItem` (`kind: mission`)
+- The parent `WorkItem` (`kind: program`)
 - The parent's `linked_artifact` (RFC, design doc, MILESTONES.md)
 - `AGENTS.md` / `CLAUDE.md`
 - The existing L0 immutability rules
 
-Output: `features.json`, written to a `mission/<id>` branch and
-opened as a **mission-publish PR to `main`**. The PR is L0-gated,
+Output: `program_brief.json`, written to a `program/<id>` branch and
+opened as a **program-publish PR to `main`**. The PR is L0-gated,
 CODEOWNERS-gated, and requires a human merge (P3 -- until artifacts
 land on `main`, no worker reads them). The planner cannot mutate
-`features.json` once merged; re-planning requires a new mission
-with a `parent_mission` link, costing the iteration budget.
+`program_brief.json` once merged; re-planning requires a new program
+with a `parent_program` link, costing the iteration budget.
 
 Coverage invariant (every child `fulfills` an acceptance criterion
 of the parent, and no criterion is double-claimed) is checked
@@ -568,7 +618,7 @@ of the parent, and no criterion is double-claimed) is checked
 
 ### Handoff schema
 
-`schemas/handoff.schema.json` (new). The only mission-specific
+`schemas/handoff.schema.json` (new). The only program-specific
 inter-agent artifact. Written by a worker on PR-open; read by the
 next worker in the DAG; verified by L0 on every push (the existing
 fixture-corpus mechanism -- no L0M needed).
@@ -596,8 +646,8 @@ Required fields:
 
 ### Decision logic (deterministic Go, not LLM)
 
-The mission's progression past each child is a Go function in
-`internal/missions/route.go`:
+The program's progression past each child is a Go function in
+`internal/program/route.go`:
 
 ```go
 func RouteVerdicts(child Child, kr KeyRing) Decision {
@@ -625,7 +675,7 @@ func RouteVerdicts(child Child, kr KeyRing) Decision {
 Three properties this gives us that an LLM decision agent cannot:
 
 1. **No prompt-injection surface.** The decision logic has no
-   prompt. The mission-internal `synthesis.json` files cannot
+   prompt. The program-internal `synthesis.json` files cannot
    influence the decision other than via their signed verdicts.
 2. **Heartbeat-anchored silence detection.** Missing
    `gate_finished` (audit silent-bypass -- Crit) becomes `halt`,
@@ -640,19 +690,19 @@ existing `GateResult` schema -- additive, no new gate kind).
 
 ### Depth caps (typed, enforced in Go spawner)
 
-Mission iteration is bounded by a typed cap, enforced in the parent
+Program iteration is bounded by a typed cap, enforced in the parent
 spawner process (P5 -- out-of-band of the LLM):
 
-- `mission_depth.functional ≤ 2` (default; rework iterations for
+- `program_depth.functional ≤ 2` (default; rework iterations for
   pure functional fixes)
-- `mission_depth.security   ≤ 5` (default; legitimate CVE
+- `program_depth.security   ≤ 5` (default; legitimate CVE
   remediation often needs 3-5 rounds: patch → test reveals
   incomplete → widen → regress → clean)
-- `mission_depth.user_testing ≤ 3` (default)
+- `program_depth.user_testing ≤ 3` (default)
 
 Per-axis caps prevent one failure class from consuming the budget
 of another. Each axis-overshoot requires P2 two-key human approval
-to continue; enforcement is in `internal/missions/route.go`, not in
+to continue; enforcement is in `internal/program/route.go`, not in
 the planner prompt.
 
 ### Security custom gate (the only new gate)
@@ -686,7 +736,7 @@ already valid); no new schema.
 
 The security AI prompt targets **Regatta's Trap Catalog (P1-P13)**,
 not OWASP generic -- commercial code-review tools cover OWASP
-already; the mission layer's incremental value is incident-pattern
+already; the program layer's incremental value is incident-pattern
 coverage. Skipping commercial AI judges (CodeRabbit/Greptile/Snyk)
 also keeps P13: their judge model is opaque and may be same-family
 as the worker.
@@ -721,11 +771,11 @@ Second indeterminate → halt; any indeterminate where
 ### State (sqlite, three tables)
 
 ```
-missions(id, parent_work_item_id, planner_session_id, status,
+programs(id, parent_work_item_id, planner_session_id, status,
          depth_functional, depth_security, depth_user_testing,
          created_at)
-mission_artifacts(mission_id, kind, sha, signature, published_at)
-mission_verdicts(mission_id, child_work_item_id, gate_id, verdict,
+program_artifacts(program_id, kind, sha, signature, published_at)
+program_verdicts(program_id, child_work_item_id, gate_id, verdict,
                  falsifications_json, signature, recorded_at,
                  gate_started_at, gate_finished_at)
 ```
@@ -743,24 +793,24 @@ earlier than N.
 
 | Stage | Operator can… | Operator cannot… |
 |---|---|---|
-| **Today (pre-MVP)** | Run `regatta l0 <diff>` on a unified diff and get a deterministic spec-immutability verdict. Run `regatta verify-repo-config -owner -repo` and audit branch protection against the P2 recipe. Print version. | Spawn an agent. Run a gate stack. Decompose a mission. Verify a handoff. |
-| **MVP-1 (Planner-as-DAG)** | Author a `WorkItem{kind: mission}` JSON file. Run `regatta mission plan` to one-shot decompose it into a signed, coverage-checked, DAG-validated `features.json`. Audit the planner's output by file (every criterion ID is claimed by exactly one feature; cycles rejected; HMAC verifiable). | Spawn child workers. Open a mission-publish PR. Persist mission state. Run any security gate beyond L0-L5. |
-| **MVP-2 (Tamper-evident handoff)** | Run `regatta mission verify-handoff <path>` and get a structural + HMAC verdict on any handoff JSON. Use `internal/missions.RouteVerdicts` to make deterministic Go-only advance/iterate/halt decisions over signed gate results. Detect missing heartbeat anchors (silent audit-bypass). Catch worker re-run mismatches (`ReRunMismatch`) on independently-rerun commands. | Run a real worker → handoff → orchestrator round-trip in CI. Inject fix-features back into a live spec adapter. |
+| **Today (pre-MVP)** | Run `regatta l0 <diff>` on a unified diff and get a deterministic spec-immutability verdict. Run `regatta verify-repo-config -owner -repo` and audit branch protection against the P2 recipe. Print version. | Spawn an agent. Run a gate stack. Decompose a program. Verify a handoff. |
+| **MVP-1 (Planner-as-DAG)** | Author a `WorkItem{kind: program}` JSON file. Run `regatta program plan` to one-shot decompose it into a signed, coverage-checked, DAG-validated `program_brief.json`. Audit the planner's output by file (every criterion ID is claimed by exactly one feature; cycles rejected; HMAC verifiable). | Spawn child workers. Open a program-publish PR. Persist program state. Run any security gate beyond L0-L5. |
+| **MVP-2 (Tamper-evident handoff)** | Run `regatta program verify-handoff <path>` and get a structural + HMAC verdict on any handoff JSON. Use `internal/program.RouteVerdicts` to make deterministic Go-only advance/iterate/halt decisions over signed gate results. Detect missing heartbeat anchors (silent audit-bypass). Catch worker re-run mismatches (`ReRunMismatch`) on independently-rerun commands. | Run a real worker → handoff → orchestrator round-trip in CI. Inject fix-features back into a live spec adapter. |
 | **MVP-3 (Security gate)** | Wire `gates/security` into `regatta.yaml gates:` row. Get a hybrid floor (`gitleaks` + `osv-scanner` + optional `semgrep`/`syft`) plus an AI threat-model against the Trap Catalog. Refuse advance on `injection_suspected: true` or any blocking finding. Enforce cross-family validator-vs-worker lineage at config load. | Run the user-testing gate (deferred). Cross-vendor route through LiteLLM (deferred). Hosted multi-tenant (deferred). |
-| **P2.1 (sqlite state)** | Run >1 concurrent mission. Survive orchestrator restart with all in-flight missions recoverable from `regatta.db`. Query mission/feature/verdict state via SQL. | Survive cross-region failover. Multi-tenant isolation. |
-| **P2.2 (publish PR machinery)** | Run `regatta mission publish <plan>` and have it open a CODEOWNERS-gated PR to `main` carrying the signed `features.json`. Branch protection refuses merge without 2 distinct human approvals. Workers only spawn after the publish PR merges. | Auto-merge mission-publish PRs (forbidden by design; P3). |
-| **P2.3 (typed depth caps)** | Configure per-axis caps in `regatta.yaml safety.mission` (functional ≤ 2, security ≤ 5, user_testing ≤ 3). Caps enforced in the Go spawner -- the LLM planner cannot raise them. Each axis-overshoot demands a P2 two-key approval. | Allow an LLM to grant itself more iterations. |
+| **P2.1 (sqlite state)** | Run >1 concurrent program. Survive orchestrator restart with all in-flight programs recoverable from `regatta.db`. Query program/feature/verdict state via SQL. | Survive cross-region failover. Multi-tenant isolation. |
+| **P2.2 (publish PR machinery)** | Run `regatta program publish <plan>` and have it open a CODEOWNERS-gated PR to `main` carrying the signed `program_brief.json`. Branch protection refuses merge without 2 distinct human approvals. Workers only spawn after the publish PR merges. | Auto-merge program-publish PRs (forbidden by design; P3). |
+| **P2.3 (typed depth caps)** | Configure per-axis caps in `regatta.yaml safety.program` (functional ≤ 2, security ≤ 5, user_testing ≤ 3). Caps enforced in the Go spawner -- the LLM planner cannot raise them. Each axis-overshoot demands a P2 two-key approval. | Allow an LLM to grant itself more iterations. |
 | **P2.4 (audit reconciler)** | Run `regatta audit --reconcile` and detect any `gate_started` row without matching `gate_finished` past 30 min × 2. CUSUM-style drift detector on positive count delta. | Silently advance when a validator never wrote its verdict (now hard-halts). |
-| **P2.5 (Temporal)** | Sustain ≥30 concurrent missions. Use Temporal workflow history as the second tamper-evident timeline alongside the audit sink. 3-day human approval pauses survive across restart. | Run without Postgres. |
+| **P2.5 (Temporal)** | Sustain ≥30 concurrent programs. Use Temporal workflow history as the second tamper-evident timeline alongside the audit sink. 3-day human approval pauses survive across restart. | Run without Postgres. |
 | **P2.6 (Vector audit transport)** | Ship 100 MB+/day of signed audit events to S3 object-lock with backpressure handling and disk-buffered durability. | Sustain ≥1 GB/day without further tuning. |
 | **P2.7 (Vault dynamic secrets)** | Issue per-spawn short-lived provider credentials. Long-lived provider keys never present in worker processes. Revoke a spawn's credentials in <60 s via `regatta halt`. | Run without HashiCorp Vault (the abstraction sits at the credential boundary). |
 | **P2.8 (LiteLLM proxy for validators)** | Configure a non-Claude binding (GPT-5 / Gemini 2.5 Pro / etc.) for any *validator* role while workers stay on Anthropic direct via `claude --resume`. Family-stratified canary catch-rate live. | Route worker traffic through LiteLLM (cache fidelity loss). |
 | **P3.1 (user-testing gate)** | Add a Playwright-CLI-backed user-testing custom gate to `regatta.yaml gates:`. Browser-flow validators produce per-assertion verdicts with screenshot evidence. | Run computer-use-only browser drivers (locks to Anthropic, kills agent-agnostic story). |
 | **P3.2 (ModelProvider abstraction)** | Configure planner / worker / validator bindings against any of: anthropic, openai, google-gemini, bedrock, vertex, ollama, openrouter, litellm. Capability floor enforced per role at config load. | Route validator and worker through the same model family (`lineage_isolation: cross_family` default-denies). |
 | **P3.3 (cross-vendor L4 benchmark)** | Run the canary corpus through (Opus, Sonnet) vs (Opus, GPT-5) vs (Opus, Gemini) and publish the family-stratified catch-rate delta. | Claim cross-vendor parity without published numbers. |
-| **P3.4 (L0M)** | Extend L0 byte-equality to mission artifacts (`mission.md`, `features.json`, `validation-state.json`, library files). Catch invisible-glyph injection into LLM-authored artifacts. | Ship L0M before the base L0 fixture corpus hits 200 fixtures (currently 15). |
+| **P3.4 (L0M)** | Extend L0 byte-equality to program artifacts (`program.md`, `program_brief.json`, `validation-state.json`, library files). Catch invisible-glyph injection into LLM-authored artifacts. | Ship L0M before the base L0 fixture corpus hits 200 fixtures (currently 15). |
 | **P3.5 (hosted multi-tenant)** | Onboard a customer with a `regatta deploy --hosted` flow. Per-tenant key isolation. SLA-backed audit sink. | Run on-prem only. |
-| **P3.6 (Postgres backend)** | Sustain mission concurrency past sqlite's single-writer ceiling. Use `regatta migrate --to postgres` in-place. | Roll back from Postgres to sqlite (one-way migration). |
+| **P3.6 (Postgres backend)** | Sustain program concurrency past sqlite's single-writer ceiling. Use `regatta migrate --to postgres` in-place. | Roll back from Postgres to sqlite (one-way migration). |
 | **P3.7 (lineage map strict mode)** | Reject any role mapping that violates the published lineage map at config load. Operators see family-distance per (worker, validator) pair in `regatta validate-config`. | Run with `cross_series` lineage without `--accept-degraded-lineage` and an audit-sink note. |
 
 The MVP-3 acceptance gate (next subsection) decides whether Phase
@@ -768,18 +818,18 @@ The MVP-3 acceptance gate (next subsection) decides whether Phase
 
 ### Phasing (MVP → measure → full product)
 
-The mission layer ships in **three MVP milestones to a measurable
+The program layer ships in **three MVP milestones to a measurable
 go/no-go gate**, then enters **eight conditional adoption phases**
 that are triggered only by observed pain (PRINCIPLES #4 --
 adopt-when-needed, never on speculation). The base L0-L6 gate
 stack remains intact through every milestone.
 
-#### Phase 1 -- MVP (mission layer earns the right to exist)
+#### Phase 1 -- MVP (program layer earns the right to exist)
 
 | ID | Title | Scope | LOC | New schemas | Acceptance |
 |---|---|---|---|---|---|
-| **MVP-1** | Planner-as-DAG | `WorkItem{kind: mission}` → planner one-shot → `features.json` → existing orchestrator consumes a DAG of children. Anthropic-direct ModelClient. Coverage + DAG validators. HMAC-signed plan. CLI: `regatta mission plan`. | ~600 | `features.schema.json` | One mission produces ≥3 child PRs through unmodified L0-L6 |
-| **MVP-2** | Tamper-evident handoff | `handoff.json` signed + schema'd + falsification-citation discipline. `RouteVerdicts` deterministic Go decision function. CLI: `regatta mission verify-handoff`. Reuses existing L0 fixture infrastructure (no L0M). | ~600 | `handoff.schema.json` | +6 handoff fixtures pass/fail corpus; deterministic decision function covers 7 routing cases |
+| **MVP-1** | Planner-as-DAG | `WorkItem{kind: program}` → planner one-shot → `program_brief.json` → existing orchestrator consumes a DAG of children. Anthropic-direct ModelClient. Coverage + DAG validators. HMAC-signed plan. CLI: `regatta program plan`. | ~600 | `program_brief.schema.json` | One program produces ≥3 child PRs through unmodified L0-L6 |
+| **MVP-2** | Tamper-evident handoff | `handoff.json` signed + schema'd + falsification-citation discipline. `RouteVerdicts` deterministic Go decision function. CLI: `regatta program verify-handoff`. Reuses existing L0 fixture infrastructure (no L0M). | ~600 | `handoff.schema.json` | +6 handoff fixtures pass/fail corpus; deterministic decision function covers 7 routing cases |
 | **MVP-3** | Security custom gate | `gitleaks` + `osv-scanner` deterministic floor + Trap-Catalog AI threat-modeler. Wired via `regatta.yaml gates:` row. Cross-family lineage enforced at config-load. 3 new canary archetypes (planner-glyph, fabricated-handoff, fallback-coercion). | ~500 | none (extends `GateResult`) | Net-helpfulness ≥+5 pp over single-agent on canary corpus |
 
 **MVP-3 gate (go/no-go).** Measure on the extended canary corpus.
@@ -787,7 +837,7 @@ SWE-bench's published 2026 decomposition delta is ~6 pp (Opus 4.5:
 45.9% → 51.8% with better scaffolding); we set the bar one point
 below as our acceptance threshold.
 
-- **If MVP-3 misses the bar:** kill the mission concept, document
+- **If MVP-3 misses the bar:** kill the program concept, document
   the empirical result, ship base Regatta. PRINCIPLES #4 -- burden
   of proof on the proposer.
 - **If MVP-3 clears the bar:** enter Phase 2.
@@ -800,11 +850,11 @@ windows. No speculative adoption.
 
 | ID | Adopt | Trigger metric | Acceptance |
 |---|---|---|---|
-| **P2.1** | Mission state in sqlite (3 tables per §State) | First mission concurrency >1 | All in-flight missions recoverable across orchestrator restart |
-| **P2.2** | Mission-publish PR machinery + CODEOWNERS gate | First non-toy mission (≥5 features) | Publish PR refuses to merge without 2 distinct human approvals matching `verify-repo-config` recipe |
-| **P2.3** | Per-axis depth caps enforced in Go spawner | First fix-feature loop >3 rounds in production | `mission_depth.{functional,security,user_testing}` enforced before LLM ever sees a verdict |
+| **P2.1** | Program state in sqlite (3 tables per §State) | First program concurrency >1 | All in-flight programs recoverable across orchestrator restart |
+| **P2.2** | Program-publish PR machinery + CODEOWNERS gate | First non-toy program (≥5 features) | Publish PR refuses to merge without 2 distinct human approvals matching `verify-repo-config` recipe |
+| **P2.3** | Per-axis depth caps enforced in Go spawner | First fix-feature loop >3 rounds in production | `program_depth.{functional,security,user_testing}` enforced before LLM ever sees a verdict |
 | **P2.4** | Audit reconciler (`regatta audit --reconcile`) | First missing-`gate_finished` heartbeat observed | Silent-bypass = halt, not advance. CUSUM detector live. |
-| **P2.5** | Temporal OSS migration | sqlite contention >5 % of mission writes OR ≥30 concurrent missions | Mission state machine + crash recovery off the daemon; existing 3-table model fits Temporal workflow history |
+| **P2.5** | Temporal OSS migration | sqlite contention >5 % of program writes OR ≥30 concurrent programs | Program state machine + crash recovery off the daemon; existing 3-table model fits Temporal workflow history |
 | **P2.6** | Vector audit transport | Audit S3 backpressure events ≥1/week OR audit volume >100 MB/day | HMAC stays in Regatta; Vector handles batching + retry + disk-buffered durability |
 | **P2.7** | Vault dynamic secrets | First enterprise procurement ask OR per-spawn token rotation ≥10×/day | Long-lived provider keys never present in worker process; revocation lag <60 s |
 | **P2.8** | LiteLLM proxy for validators (workers stay `claude --resume`) | Second paying customer with a non-Claude validator binding | Cross-family validator/worker pair shipped end-to-end on canary corpus |
@@ -820,9 +870,9 @@ demand materializes:
 | **P3.1** | User-testing custom gate via Playwright CLI | Customer with browser-served product asks. Microsoft's 2026 recommendation is CLI over MCP for coding agents (4× fewer tokens/session). |
 | **P3.2** | ModelProvider abstraction (cross-vendor) | Second paying customer + Phase 2 P2.8 in production |
 | **P3.3** | Cross-vendor L4 benchmark + family-stratified catch-rate | Phase 3 P3.2 lands |
-| **P3.4** | L0M (mission-immutability extension) | L0's base fixture corpus reaches 200-fixture target (currently 15) AND first mission-artifact tampering attempt observed |
+| **P3.4** | L0M (program-immutability extension) | L0's base fixture corpus reaches 200-fixture target (currently 15) AND first program-artifact tampering attempt observed |
 | **P3.5** | Hosted multi-tenant service | Self-host customer count ≥10 AND ≥3 ask for managed |
-| **P3.6** | Postgres backend swap | Phase 2 P2.5 lands AND mission concurrency justifies it |
+| **P3.6** | Postgres backend swap | Phase 2 P2.5 lands AND program concurrency justifies it |
 | **P3.7** | Lineage map + `regatta validate-config` strict mode | Second model family adopted AND Preference Leakage measurement on canary corpus |
 
 Phases 2 and 3 do **not** form a critical-path Gantt; they are
@@ -831,17 +881,17 @@ the order they appear here.
 
 #### What ships before Phase 1 begins (already done at this PR)
 
-- §Missions design doc (this section) and §Alternatives (h)
+- §Programs design doc (this section) and §Alternatives (h)
   adopt-when-needed table.
-- `schemas/handoff.schema.json` + `schemas/features.schema.json`
+- `schemas/handoff.schema.json` + `schemas/program_brief.schema.json`
   + `schemas/sign.go` (shared HMAC, no new key per artifact type).
-- `internal/missions/` package: `route.go` (deterministic verdict
+- `internal/program/` package: `route.go` (deterministic verdict
   router), `handoff.go` (load/validate/coverage/re-run-mismatch),
   `planner.go` (one-shot pipeline + Validate + Sign), and
   `provider_anthropic.go` (single ModelClient implementation).
 - `internal/securitygate/gate.go` skeleton (floor wired, AI stub
   pointing at unwritten `prompts/security_gate.md`).
-- CLI: `regatta mission plan` and `regatta mission verify-handoff`.
+- CLI: `regatta program plan` and `regatta program verify-handoff`.
 - Fixtures: 6 handoff fixtures (3 pass, 3 fail) + 3 canary
   archetypes.
 
@@ -853,9 +903,9 @@ ships with table-driven contract tests against the fixture corpus.
 1. **Worker isolation per feature** (own session, fresh context).
    Already true in single-agent flow.
 2. **Tamper-evident handoff** (signed, schema-validated). The
-   recursive-taint defense at mission scope.
-3. **Human approval on mission spawn** (L6-equivalent via branch
-   protection on the mission-publish PR). Inherits from base
+   recursive-taint defense at program scope.
+3. **Human approval on program spawn** (L6-equivalent via branch
+   protection on the program-publish PR). Inherits from base
    thesis (§Gate stack).
 4. **Reuse base audit sink + signing key.** No fork of the
    tamper-evident pipeline.
@@ -1099,6 +1149,14 @@ escalation.
 | Long autonomous trajectory (GTG-1002) | tool-call sequence anomaly | `regatta agent-trace --work-id N` | pause | require fresh approval |
 | Force-push or destructive git op | P1 deny + P2 two-key | (auto-rejected) | `regatta audit --since 1h` | audit sink entry |
 | Orchestrator broken / API outage | heartbeat dead-man / gate timeouts | `regatta health` | `regatta serve --pause` | restart; running agents reaped on next start |
+| Validator-binary supply-chain (Shai-Hulud) | SLSA L3+ provenance mismatch on Regatta release artifact | `regatta version --provenance` | refuse to launch on mismatch | rotate release keys |
+| Audit-sink unavailable | S3 PUT 5xx ≥30 s OR ≥3 consecutive backpressure events | `regatta audit --sink-status` | **gate fails CLOSED** (advance blocked) | escalate to operator; do NOT advance on absence |
+| Secrets in audit log | denylist regex hits in gate-result payload pre-sign | `regatta audit --scan-secrets --since 1h` | rotate exposed credential | block release of affected audit window |
+| Cache-poisoning across work items | cache hit on prefix whose signed-prompt-pack SHA differs from current | `regatta cache-stats --by-pack` | flush cache scope | halt; review prompt-pack history |
+| Canary corpus leaked into model training | family-stratified catch-rate drops ≥10pp without prompt change | `regatta canary-report --family-strata` | rotate canary archetypes from private holdout | freeze published catalog; refresh |
+| DAG composition laundering | per-feature L4 pass but whole-`program_brief` L4 fails | `regatta gate-rerun l4 --program <id>` | reject brief; require re-plan | escalate to human |
+| Bot-account CODEOWNERS bypass | `verify-repo-config` enumerates bot satisfiers | (auto-blocked at config-load) | `regatta verify-repo-config --enumerate-bots` | remove bot from CODEOWNERS |
+| Heartbeat-anchor forgery (worker self-attests) | anchor signature key_id == worker session key | (auto-rejected at route-time) | `regatta gate-rerun --pr N` from sibling sandbox | rotate per-spawn keys |
 
 ## Stop conditions (measurable)
 
@@ -1110,31 +1168,53 @@ closedAt,createdAt`); agent completion rate <60% across rolling 10-PR
 window for ≥2 consecutive windows; or cost per completed item exceeds
 `safety.spend_cap_usd` consistently for 3+ items in a row.
 
-**Mission-layer stop conditions** (additional, see §Missions):
+**Program-layer stop conditions** (additional, see §Programs):
 
 - **MVP-3 acceptance bar miss.** Net-helpfulness improvement of
-  mission-decomposed flow over single-agent baseline on the canary
-  corpus is < +5 pp after 20 rolling missions. → Kill the mission
-  concept; remove `Missions` section from this doc; ship base
+  program-decomposed flow over single-agent baseline on the canary
+  corpus is < +5 pp after 20 rolling programs. → Kill the program
+  concept; remove `Programs` section from this doc; ship base
   Regatta.
 - **Handoff fabrication rate ≥ 1%.** Worker `handoff.json`
   `commands_run.exit_code` mismatch with the orchestrator's
   independent CI re-run (incident #1 pattern) over rolling 100
-  handoffs. → Halt all missions; audit-sink escalation; planner
+  handoffs. → Halt all programs; audit-sink escalation; planner
   prompt review.
 - **Missing `gate_finished` heartbeat ≥ 1.** Any silent-bypass
   detected by `regatta audit --reconcile` is a hard failure of the
-  P5 dead-man's-switch. → Halt all missions; investigate
+  P5 dead-man's-switch. → Halt all programs; investigate
   orchestrator integrity.
 - **Cross-family fallback collapse.** Indeterminate verdict on the
   primary binding routes to a same-family fallback because no
   cross-family fallback is configured. → Refuse to advance; require
   operator to declare cross-family fallback in `regatta.yaml` before
   resuming.
-- **Mission-publish PR auto-merge.** Any mission-publish PR merges
+- **Program-publish PR auto-merge.** Any program-publish PR merges
   to `main` without ≥2 human approvals matching the CODEOWNERS
   recipe enforced by `verify-repo-config`. → Halt the deployment;
   this is a P3 (trusted-instructions-from-main) violation.
+- **Audit sink unavailable ≥ `T_sink_timeout` (default 30 s).** Any
+  gate whose signed result cannot be persisted to the immutable
+  sink halts the work item. Absence is never advance. The HMAC key
+  history is externalized to the same trust boundary as the sink
+  credential, not co-located with `regatta.db`.
+- **Worker session without heartbeat trio.** Every spawned agent
+  MUST emit signed `worker_started`, `worker_alive` (every 60 s),
+  `worker_exited` records to the audit sink. A session that ends
+  without `worker_exited` past 30 min × 2 → halt; treat as
+  silent-bypass.
+- **TOCTOU between L0 verdict and worker read.** Workers read spec
+  artifacts from a content-addressed (hash-pinned) snapshot of
+  `main@SHA`, not from working-tree files. Hash is pinned in the
+  worker invocation; mismatch at read time → halt.
+- **DAG composition fail despite per-feature pass.** L4 on the
+  whole `program_brief.json` fails after all per-feature L4 passes
+  → halt; require human review of the brief. Coverage invariant
+  did not catch composition-safety.
+- **Bot-account CODEOWNERS bypass detected.** `verify-repo-config`
+  enumerates every account whose approval satisfies a CODEOWNERS
+  rule; any bot or service account present → refuse to start until
+  removed.
 
 ## Alternatives
 
@@ -1193,21 +1273,21 @@ catch-rate ratio `< 0.85` triggers cross-vendor L4.
 Regatta independently versionable; lets one deployment serve many
 repos; avoids forking gate logic per consumer.
 
-**(h) Adopt-When-Needed OSS plumbing (mission-layer trigger).**
+**(h) Adopt-When-Needed OSS plumbing (program-layer trigger).**
 Hand-rolled state machine, audit transport, credential plumbing,
 multi-provider routing, and browser automation are explicitly
 deferred to OSS adoption -- each gated on a measured trigger
-out of the mission-layer MVP-3 phase (see §Missions). Component
+out of the program-layer MVP-3 phase (see §Programs). Component
 mapping:
 
 | Trigger | Adopt | Notes |
 |---|---|---|
-| State machine outgrows sqlite (≥30 concurrent missions, or a documented schema-rewrite forcing function) | **Temporal OSS** 1.25+ via Go SDK | Real cost: 3 services + Postgres + metrics + workers; ~$480-610/mo small deploy; 37 tables; 145 SQL/3-activity workflow. Requires SRE capability. Defer hard until base sqlite hurts. |
+| State machine outgrows sqlite (≥30 concurrent programs, or a documented schema-rewrite forcing function) | **Temporal OSS** 1.25+ via Go SDK | Real cost: 3 services + Postgres + metrics + workers; ~$480-610/mo small deploy; 37 tables; 145 SQL/3-activity workflow. Requires SRE capability. Defer hard until base sqlite hurts. |
 | Audit volume >100 MB/day OR S3 backpressure under load | **Vector** (Rust, single binary, S3 object-lock sink, OTLP input, disk-buffered durability) | Keep HMAC signing in Regatta; Vector handles transport only. |
 | Customer asks enterprise procurement story | **HashiCorp Vault OSS** + dynamic secrets engine | Maps to P4. Defer until first regulated-customer ask. |
 | Second paying customer asks non-Claude provider | **LiteLLM** proxy (Python sidecar) for **validators only**; workers stay `claude --resume` to preserve `cache_control` placement | LiteLLM strips Anthropic cache annotations on some routes -- verified failure 2025. Validators tolerate; workers don't. |
 | Customer asks browser-based validation | **Playwright CLI** (not Playwright MCP -- Microsoft recommends CLI for coding agents as of 2026, 4× fewer tokens/session) | Persistent profile auth in `ms-playwright/mcp-{channel}-{workspace-hash}`. |
-| MVP-3 net-helpfulness < +5pp vs single-agent baseline on canary corpus | **None -- kill the mission concept** | PRINCIPLES #4 acceptance criterion. Document the empirical result; ship base Regatta. |
+| MVP-3 net-helpfulness < +5pp vs single-agent baseline on canary corpus | **None -- kill the program concept** | PRINCIPLES #4 acceptance criterion. Document the empirical result; ship base Regatta. |
 
 Rejected adoptions:
 
@@ -1234,11 +1314,22 @@ Rejected adoptions:
 | **Tamper-evident audit log out-of-band** | yes | no | no | no | no | no | no | no |
 | **Canary-PR injection** | yes (8 archetypes ship) | no | partial (BugBot self-test) | no | no | no | no | no |
 | **SWE-bench-style benchmark** | not yet | yes | yes | yes | yes | yes | no | no |
+| **Cryptographically reproducible PR verdicts** (`regatta verify-pr <url>` offline, six months later) | **yes** (HMAC over canonical JSON; signed audit) | no | no | no | no | no | no | no |
+| **Fixture-corpus-as-contract** (customer-authored counterexample is binding spec) | **yes** (`gates/l0/testdata/`, `program/testdata/handoffs/`) | no | no | no | no | no | no | no |
+| **Worker re-run mismatch** (orchestrator-independent CI re-run defeats incident-#1 by construction) | **yes** (`Handoff.ReRunMismatch`) | no | no | no | no | no | no | no |
+| **Deterministic Go progression** (no LLM router, structurally no prompt-injection on the routing path) | **yes** (`RouteVerdicts` is a Go switch) | LLM router | LLM router | LLM router | LLM router | LLM router | n/a | n/a |
+| **Per-axis depth caps as enforced integers** (functional ≤ 2 / security ≤ 5 / user_testing ≤ 3, audit-visible) | **yes** | prose | prose | prose | prose | prose | prose | prose |
+| **Heartbeat-anchored silent-bypass detection** (missing `gate_finished` = halt) | **yes** (`regatta audit --reconcile` + CUSUM) | no | no | no | no | no | no | no |
 
-The defensible differentiators: **(1) deterministic L0**, **(2)
-out-of-band audit**, **(3) published canary archetype corpus**. None
-are reproducible in a sprint; (1) and (3) are publishable as
-standalone OSS primitives.
+The nine defensible differentiators, in publishability order: **(1)
+deterministic L0**, **(2) out-of-band audit**, **(3) published canary
+archetype corpus**, **(4) cryptographically reproducible PR
+verdicts**, **(5) fixture-corpus-as-contract**, **(6) worker re-run
+mismatch**, **(7) deterministic Go progression**, **(8) per-axis
+depth caps as integers**, **(9) heartbeat-anchored silent-bypass**.
+(1), (3), (4), and (5) are publishable as standalone OSS primitives
+even if the rest of Regatta never ships -- they raise the floor for
+every other agent vendor by their mere existence.
 
 ## Open questions
 
@@ -1259,7 +1350,7 @@ standalone OSS primitives.
 5. **Cross-vendor L4 benchmark.** When the cross-vendor adapter
    lands, re-run the canary corpus on `(Opus, Sonnet)` vs `(Opus,
    GPT-5)` and publish the same-family-vs-cross-family delta.
-6. **Mission decomposition empirical floor.** Published 2026
+6. **Program decomposition empirical floor.** Published 2026
    SWE-bench-Verified gain from decomposition is ~6 pp under the
    same model (Opus 4.5: 45.9% → 51.8% with better scaffolding).
    The MVP-3 acceptance bar is set at ≥5 pp on Regatta's canary
@@ -1276,7 +1367,7 @@ standalone OSS primitives.
    archetype corpus carry mutation pairs the way mutation-testing
    benchmarks do?
 8. **Decision-agent vs deterministic Go function.** Resolved in
-   §Missions in favor of deterministic Go (P1 applied one layer
+   §Programs in favor of deterministic Go (P1 applied one layer
    up). Open: do we need an *advisory* LLM rationale generator
    (writes to audit log, never to verdict) for human reviewers?
    Cost is ~$0.10/decision; value is forensic clarity. Defer

@@ -1,4 +1,4 @@
-package missions
+package programs
 
 import (
 	"context"
@@ -12,12 +12,12 @@ import (
 // stubClient is a deterministic ModelClient for tests. It returns
 // the configured plan; the planner pipeline fills in the rest.
 type stubClient struct {
-	plan *FeaturePlan
+	plan *ProgramBrief
 	err  error
 	id   string
 }
 
-func (s *stubClient) Plan(_ context.Context, _ schemas.WorkItem) (*FeaturePlan, error) {
+func (s *stubClient) Plan(_ context.Context, _ schemas.WorkItem) (*ProgramBrief, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -43,8 +43,8 @@ func sampleParent() schemas.WorkItem {
 	}
 }
 
-func goodModelPlan() *FeaturePlan {
-	return &FeaturePlan{
+func goodModelPlan() *ProgramBrief {
+	return &ProgramBrief{
 		Features: []PlannedFeature{
 			{ID: "F-JWT", Title: "JWT validation hardening", Fulfills: []string{"AC-1"}},
 			{ID: "F-SESSION", Title: "session mutex", Fulfills: []string{"AC-2"}, DependsOnFeatures: []string{"F-JWT"}},
@@ -62,8 +62,8 @@ func TestRun_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if plan.MissionID == "" || plan.MissionID[:2] != "m-" {
-		t.Fatalf("bad mission_id: %q", plan.MissionID)
+	if plan.ProgramID == "" || plan.ProgramID[:2] != "m-" {
+		t.Fatalf("bad program_id: %q", plan.ProgramID)
 	}
 	if plan.PlannerModelID != "anthropic:claude-opus-4-7" {
 		t.Fatalf("planner_model_id not stamped: %q", plan.PlannerModelID)
@@ -119,7 +119,7 @@ func TestRun_CoveragePhantom(t *testing.T) {
 }
 
 func TestRun_FeatureCycle(t *testing.T) {
-	bad := &FeaturePlan{
+	bad := &ProgramBrief{
 		Features: []PlannedFeature{
 			{ID: "F-A", Title: "a", Fulfills: []string{"AC-1"}, DependsOnFeatures: []string{"F-B"}},
 			{ID: "F-B", Title: "b", Fulfills: []string{"AC-2"}, DependsOnFeatures: []string{"F-A"}},

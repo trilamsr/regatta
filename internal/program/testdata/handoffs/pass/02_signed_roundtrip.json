@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "mission_id": "m-bbbbbbbbbbbb",
+  "program_id": "m-bbbbbbbbbbbb",
   "feature_id": "F-SIGN-03",
   "worker_run_id": "33333333-3333-3333-3333-333333333333",
   "base_sha": "1111111111111111111111111111111111111111",

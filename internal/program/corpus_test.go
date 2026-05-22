@@ -1,4 +1,4 @@
-package missions
+package programs
 
 import (
 	"encoding/json"

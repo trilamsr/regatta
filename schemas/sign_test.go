@@ -40,7 +40,7 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 	keyring := map[string][]byte{keyID: key}
 
 	payload := map[string]any{
-		"mission_id":   "m-000000000001",
+		"program_id":   "m-000000000001",
 		"feature_id":   "F-AUTH-01",
 		"success_state": "success",
 	}
@@ -76,7 +76,7 @@ func TestVerifyDetectsTamper(t *testing.T) {
 	keyring := map[string][]byte{keyID: key}
 
 	payload := map[string]any{
-		"mission_id":    "m-000000000001",
+		"program_id":    "m-000000000001",
 		"success_state": "success",
 	}
 	sig, _ := Sign(payload, key, keyID)

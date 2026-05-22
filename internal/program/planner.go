@@ -1,14 +1,14 @@
-// Planner is the one-shot decomposition step for a Mission.
+// Planner is the one-shot decomposition step for a Program.
 //
 // The planner is NOT a long-lived agent session. It is exactly one
-// model call: read a parent WorkItem (kind: mission), emit a
-// FeaturePlan (child WorkItems with fulfills coverage), validate the
+// model call: read a parent WorkItem (kind: program), emit a
+// ProgramBrief (child WorkItems with fulfills coverage), validate the
 // coverage invariant, sign, return. There is no planner state to
 // recover from on crash; if the call fails, re-run from scratch.
 //
-// See docs/design.md §Missions §Planner contract.
+// See docs/design.md §Programs §Planner contract.
 
-package missions
+package programs
 
 import (
 	"context"
@@ -23,10 +23,10 @@ import (
 	"github.com/trilamsr/regatta/schemas"
 )
 
-// FeaturePlan is the Go form of schemas/features.schema.json.
-type FeaturePlan struct {
+// ProgramBrief is the Go form of schemas/features.schema.json.
+type ProgramBrief struct {
 	SchemaVersion    int                  `json:"schema_version"`
-	MissionID        string               `json:"mission_id"`
+	ProgramID        string               `json:"program_id"`
 	ParentWorkItemID string               `json:"parent_work_item_id"`
 	ParentCriteria   []PlanCriterion      `json:"parent_criteria"`
 	PlannerModelID   string               `json:"planner_model_id"`
@@ -63,15 +63,15 @@ var (
 	ErrPlanSchemaInvalid     = errors.New("planner: feature plan schema invalid")
 )
 
-// Validate runs every invariant on a freshly-produced FeaturePlan
+// Validate runs every invariant on a freshly-produced ProgramBrief
 // EXCEPT signature verification (which is a separate step that
 // needs the keyring). Run this before signing AND after loading.
-func (p *FeaturePlan) Validate() error {
+func (p *ProgramBrief) Validate() error {
 	if p.SchemaVersion != 1 {
 		return fmt.Errorf("%w: schema_version must be 1, got %d", ErrPlanSchemaInvalid, p.SchemaVersion)
 	}
-	if !missionIDRe.MatchString(p.MissionID) {
-		return fmt.Errorf("%w: bad mission_id %q", ErrPlanSchemaInvalid, p.MissionID)
+	if !programIDRe.MatchString(p.ProgramID) {
+		return fmt.Errorf("%w: bad program_id %q", ErrPlanSchemaInvalid, p.ProgramID)
 	}
 	if p.ParentWorkItemID == "" {
 		return fmt.Errorf("%w: parent_work_item_id required", ErrPlanSchemaInvalid)
@@ -114,7 +114,7 @@ func (p *FeaturePlan) Validate() error {
 //
 //	⋃ features[*].fulfills == parent_criteria[*].id
 //	pairwise disjoint
-func (p *FeaturePlan) checkCoverage() error {
+func (p *ProgramBrief) checkCoverage() error {
 	parent := make(map[string]bool, len(p.ParentCriteria))
 	for _, c := range p.ParentCriteria {
 		parent[c.ID] = true
@@ -146,7 +146,7 @@ func (p *FeaturePlan) checkCoverage() error {
 }
 
 // checkDAG rejects unknown deps and cycles in depends_on_features.
-func (p *FeaturePlan) checkDAG() error {
+func (p *ProgramBrief) checkDAG() error {
 	known := make(map[string]bool, len(p.Features))
 	for _, f := range p.Features {
 		known[f.ID] = true
@@ -192,7 +192,7 @@ func (p *FeaturePlan) checkDAG() error {
 // Sign returns a signed copy of p. Validate() is called first; an
 // invalid plan never gets a signature (the signature attests to a
 // well-formed payload, not arbitrary bytes).
-func (p *FeaturePlan) Sign(key []byte, keyID string) (*FeaturePlan, error) {
+func (p *ProgramBrief) Sign(key []byte, keyID string) (*ProgramBrief, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
 	}
@@ -214,7 +214,7 @@ func (p *FeaturePlan) Sign(key []byte, keyID string) (*FeaturePlan, error) {
 }
 
 // VerifySignature checks the plan's HMAC under keyring.
-func (p *FeaturePlan) VerifySignature(keyring map[string][]byte) error {
+func (p *ProgramBrief) VerifySignature(keyring map[string][]byte) error {
 	raw, err := json.Marshal(p)
 	if err != nil {
 		return err
@@ -235,11 +235,11 @@ func (p *FeaturePlan) VerifySignature(keyring map[string][]byte) error {
 // not know it's calling Anthropic.
 type ModelClient interface {
 	// Plan submits the planner prompt + parent WorkItem context and
-	// returns the model's structured FeaturePlan response.
+	// returns the model's structured ProgramBrief response.
 	// Implementations parse the model output into the schema; the
 	// returned plan is NOT validated yet (caller calls Validate +
 	// Sign).
-	Plan(ctx context.Context, parent schemas.WorkItem) (*FeaturePlan, error)
+	Plan(ctx context.Context, parent schemas.WorkItem) (*ProgramBrief, error)
 
 	// ModelID returns the provider-qualified id, e.g.
 	// "anthropic:claude-opus-4-7", to stamp into planner_model_id.
@@ -256,14 +256,14 @@ type PlannerOptions struct {
 // Run executes the one-shot planner pipeline:
 //
 //  1. Call the model with the parent WorkItem context.
-//  2. Fill in the planner-fixed fields (mission_id, parent_*,
+//  2. Fill in the planner-fixed fields (program_id, parent_*,
 //     planner_model_id, produced_at).
 //  3. Validate (coverage + DAG + schema invariants).
 //  4. Sign with the shared HMAC key.
 //
 // On any failure, returns the partial plan (for forensic dumping)
 // alongside the error.
-func Run(ctx context.Context, opts PlannerOptions, parent schemas.WorkItem) (*FeaturePlan, error) {
+func Run(ctx context.Context, opts PlannerOptions, parent schemas.WorkItem) (*ProgramBrief, error) {
 	if opts.Client == nil {
 		return nil, errors.New("planner: nil ModelClient")
 	}
@@ -281,7 +281,7 @@ func Run(ctx context.Context, opts PlannerOptions, parent schemas.WorkItem) (*Fe
 	// Planner-owned fields (the model proposes features; the
 	// orchestrator stamps identity + provenance).
 	plan.SchemaVersion = 1
-	plan.MissionID = newMissionID()
+	plan.ProgramID = newMissionID()
 	plan.ParentWorkItemID = string(parent.ID)
 	plan.ParentCriteria = copyCriteria(parent.AcceptanceCriteria)
 	plan.PlannerModelID = opts.Client.ModelID()
@@ -302,8 +302,8 @@ func copyCriteria(crit []schemas.Criterion) []PlanCriterion {
 	return out
 }
 
-// newMissionID returns a 12-hex-char mission ID. 48 bits of entropy
-// is enough for human-scale uniqueness; mission state lives in
+// newMissionID returns a 12-hex-char program ID. 48 bits of entropy
+// is enough for human-scale uniqueness; program state lives in
 // sqlite with a UNIQUE constraint as the real durability anchor.
 func newMissionID() string {
 	var b [6]byte

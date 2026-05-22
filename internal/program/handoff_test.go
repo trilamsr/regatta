@@ -1,4 +1,4 @@
-package missions
+package programs
 
 import (
 	"encoding/json"
@@ -12,7 +12,7 @@ import (
 func validHandoff() Handoff {
 	return Handoff{
 		SchemaVersion: 1,
-		MissionID:     "m-aaaaaaaaaaaa",
+		ProgramID:     "m-aaaaaaaaaaaa",
 		FeatureID:     "F-AUTH-01",
 		WorkerRunID:   "11111111-1111-1111-1111-111111111111",
 		BaseSHA:       "0123456789abcdef0123456789abcdef01234567",
@@ -53,7 +53,7 @@ func TestParseAndValidate_Valid(t *testing.T) {
 
 func TestParseAndValidate_RejectsBadMissionID(t *testing.T) {
 	h := validHandoff()
-	h.MissionID = "not-a-mission-id"
+	h.ProgramID = "not-a-program-id"
 	raw, _ := json.Marshal(h)
 	_, err := ParseAndValidate(raw)
 	if !errors.Is(err, ErrSchemaInvalid) {

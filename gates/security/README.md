@@ -3,8 +3,8 @@
 Status: **Draft design, pre-implementation.** Schema + this README
 are the contract; the binary follows.
 
-This is the only new gate kind the mission layer introduces. See
-[`docs/design.md` §Missions §Security custom gate](../../docs/design.md).
+This is the only new gate kind the program layer introduces. See
+[`docs/design.md` §Programs §Security custom gate](../../docs/design.md).
 A repo opts in by adding it to the `gates:` list in `regatta.yaml`
 the same way any other custom gate is added.
 
@@ -74,7 +74,7 @@ gate at v1).
 ## Determinism floor -- invocation contract
 
 Each tool is shelled out as a single binary, version-pinned via
-`safety.tool_versions` (mission-layer addition to `regatta.yaml`,
+`safety.tool_versions` (program-layer addition to `regatta.yaml`,
 TBD), JSON output parsed into the existing `GateResult.findings[]`
 shape. **No wrapper library** (Trivy, etc.) -- keep per-tool version
 pinning and per-tool failure attribution.
@@ -111,12 +111,12 @@ The AI phase uses a SHA-pinned prompt template at
    state, or sibling validator output (P9 context segregation).
 6. NEVER suggest changes; only emit findings. Fixes are
    orchestrator-driven via `Decision{Action: Iterate, FixFeatures}`
-   from `internal/missions/route.go`.
+   from `internal/program/route.go`.
 
 ## What this gate is NOT
 
 - **Not a parallel validator subsystem.** It's one row in the
-  existing `gates:` list. Mission PRs flow through L0-L5 plus this
+  existing `gates:` list. Program PRs flow through L0-L5 plus this
   gate plus L6 like any other PR.
 - **Not a replacement for L4 adversarial.** L4 stays. This gate
   has narrower scope (security-only) but deeper falsification
@@ -148,9 +148,9 @@ Each testdata case ships with: input diff, expected `GateResult`
 JSON, expected `findings[]` digest. Same shape as
 `gates/l0/testdata/` -- keep one fixture-corpus discipline.
 
-## Stop condition (mission-layer §Stop conditions)
+## Stop condition (program-layer §Stop conditions)
 
 If this gate's net-helpfulness improvement on the canary corpus
 does not show ≥5 pp gain over no-security-gate baseline at MVP-3,
-the gate is documented as not-yet-useful and the mission layer is
+the gate is documented as not-yet-useful and the program layer is
 re-evaluated per the §Stop conditions kill switch.

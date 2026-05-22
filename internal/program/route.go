@@ -1,12 +1,12 @@
-// Package missions holds the mission-layer decision logic. See
-// docs/design.md §Missions for the design contract.
+// Package programs holds the program-layer decision logic. See
+// docs/design.md §Programs for the design contract.
 //
-// The package is deliberately tiny: mission-progression past each
+// The package is deliberately tiny: program-progression past each
 // child is a deterministic Go function over signed gate_results.
 // There is no LLM agent here. P1 (deterministic gate before AI gate
 // on destructive ops) is applied one layer up: advancing a milestone
 // IS the destructive op.
-package missions
+package programs
 
 import (
 	"errors"
@@ -51,7 +51,7 @@ type VerifyFunc func(v Verdict) error
 
 // DepthCap is the typed iteration bound, enforced in the Go spawner.
 // Per-axis caps prevent one failure class from consuming another's
-// budget. See docs/design.md §Missions §Depth caps.
+// budget. See docs/design.md §Programs §Depth caps.
 type DepthCap struct {
 	Functional  int // default 2
 	Security    int // default 5
@@ -125,7 +125,7 @@ type FixFeature struct {
 const HeartbeatStale = 2 * 30 * time.Minute // 30 min cap × 2
 
 // RouteVerdicts is THE deterministic decision function. It owns the
-// mission's progression past each child. It takes no LLM input,
+// program's progression past each child. It takes no LLM input,
 // emits no LLM output, and is the implementation of P1 applied one
 // layer up the stack.
 //

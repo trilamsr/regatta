@@ -1,4 +1,4 @@
-package missions
+package programs
 
 import (
 	"context"
@@ -159,7 +159,7 @@ func TestPlannerWithAnthropicAdapter_EndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("end-to-end run: %v", err)
 	}
-	if plan.MissionID == "" || plan.PlannerModelID != "anthropic:claude-opus-4-7" {
+	if plan.ProgramID == "" || plan.PlannerModelID != "anthropic:claude-opus-4-7" {
 		t.Fatalf("planner-fixed fields missing: %+v", plan)
 	}
 	// Verify signature with the same key.

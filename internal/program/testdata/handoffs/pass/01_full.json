@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "mission_id": "m-aaaaaaaaaaaa",
+  "program_id": "m-aaaaaaaaaaaa",
   "feature_id": "F-AUTH-02",
   "worker_run_id": "22222222-2222-2222-2222-222222222222",
   "worker_model_id": "anthropic:claude-sonnet-4-6",

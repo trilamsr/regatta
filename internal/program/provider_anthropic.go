@@ -11,7 +11,7 @@
 // used here is minimal (Messages API + tool_use + JSON Schema
 // input_schema) so the cost of staying SDK-free is low.
 
-package missions
+package programs
 
 import (
 	"bytes"
@@ -29,7 +29,7 @@ import (
 )
 
 // AnthropicPlanner is a ModelClient that calls Anthropic's
-// Messages API with a tool_use schema corresponding to FeaturePlan.
+// Messages API with a tool_use schema corresponding to ProgramBrief.
 type AnthropicPlanner struct {
 	APIKey   string
 	Model    string        // e.g. "claude-opus-4-7"
@@ -63,16 +63,16 @@ func NewAnthropicPlanner(model string) (*AnthropicPlanner, error) {
 }
 
 // ModelID implements ModelClient. Provider-qualified id stamped into
-// FeaturePlan.PlannerModelID for audit.
+// ProgramBrief.PlannerModelID for audit.
 func (a *AnthropicPlanner) ModelID() string {
 	return "anthropic:" + a.Model
 }
 
 // Plan invokes the Anthropic Messages API with a tool_use schema
-// mirroring FeaturePlan. The model is required to call the tool
+// mirroring ProgramBrief. The model is required to call the tool
 // (`tool_choice: {type: "tool", name: "emit_feature_plan"}`),
 // which gives us server-enforced JSON Schema output.
-func (a *AnthropicPlanner) Plan(ctx context.Context, parent schemas.WorkItem) (*FeaturePlan, error) {
+func (a *AnthropicPlanner) Plan(ctx context.Context, parent schemas.WorkItem) (*ProgramBrief, error) {
 	body, err := a.buildRequest(parent)
 	if err != nil {
 		return nil, err
@@ -145,7 +145,7 @@ Linked artifact: %s
 		"tools": []tool{
 			{
 				Name:        "emit_feature_plan",
-				Description: "Emit a FeaturePlan decomposing the parent WorkItem into child features. Every parent criterion id MUST appear in exactly one feature.fulfills (no overlap, no gaps).",
+				Description: "Emit a ProgramBrief decomposing the parent WorkItem into child features. Every parent criterion id MUST appear in exactly one feature.fulfills (no overlap, no gaps).",
 				InputSchema: featurePlanToolSchema(),
 			},
 		},
@@ -160,7 +160,7 @@ Linked artifact: %s
 
 // featurePlanToolSchema is the JSON Schema the model fills in. Kept
 // in sync with schemas/features.schema.json -- but trimmed to the
-// fields the model is responsible for (mission_id / signature /
+// fields the model is responsible for (program_id / signature /
 // parent_criteria / planner_model_id / produced_at are stamped by
 // the planner pipeline, not the model).
 func featurePlanToolSchema() any {
@@ -205,9 +205,9 @@ func featurePlanToolSchema() any {
 }
 
 // parseResponse pulls the tool_use block out of an Anthropic
-// Messages response and unmarshals it into a partial FeaturePlan.
+// Messages response and unmarshals it into a partial ProgramBrief.
 // The planner pipeline fills in the rest.
-func (a *AnthropicPlanner) parseResponse(raw []byte) (*FeaturePlan, error) {
+func (a *AnthropicPlanner) parseResponse(raw []byte) (*ProgramBrief, error) {
 	var msg struct {
 		Content []struct {
 			Type  string          `json:"type"`
@@ -229,7 +229,7 @@ func (a *AnthropicPlanner) parseResponse(raw []byte) (*FeaturePlan, error) {
 		if err := json.Unmarshal(c.Input, &partial); err != nil {
 			return nil, fmt.Errorf("anthropic: tool_use input invalid: %w", err)
 		}
-		return &FeaturePlan{Features: partial.Features}, nil
+		return &ProgramBrief{Features: partial.Features}, nil
 	}
 	return nil, fmt.Errorf("anthropic: no tool_use block in response (stop_reason=%s)", msg.StopReason)
 }
@@ -241,7 +241,7 @@ func truncate(s string, n int) string {
 	return s[:n] + "..."
 }
 
-// defaultPlannerPrompt is the system prompt for one-shot mission
+// defaultPlannerPrompt is the system prompt for one-shot program
 // decomposition. SHA-pin in prompts/planner.md is the eventual
 // home; embedded here for v1 to keep the build hermetic.
 //
@@ -251,7 +251,7 @@ func truncate(s string, n int) string {
 //   - No re-planning; one-shot only.
 //   - Verbatim criterion IDs (mutation is L0's catch but the prompt
 //     explicitly forbids it as the first line of defense).
-const defaultPlannerPrompt = `You are Regatta's mission planner.
+const defaultPlannerPrompt = `You are Regatta's program planner.
 
 Your one job is to decompose a parent WorkItem into a DAG of child
 features that, together, fully cover the parent's acceptance
@@ -272,7 +272,7 @@ CRITICAL RULES (violations are rejected by the orchestrator):
 
 4. Naming. Feature IDs match ^F-[A-Z0-9_-]{1,32}$.
 
-5. You run exactly once per mission. There is no "v2" -- if you are
+5. You run exactly once per program. There is no "v2" -- if you are
    uncertain, prefer fewer, broader features over many speculative
    ones. The orchestrator will inject fix-features for issues it
    discovers; you do not pre-empt them.

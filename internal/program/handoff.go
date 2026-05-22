@@ -1,13 +1,13 @@
 // Handoff loading, verification, and coverage checks for the
-// mission layer. The handoff.json schema is the only mission-
-// specific inter-agent artifact (see docs/design.md §Missions).
+// program layer. The handoff.json schema is the only program-
+// specific inter-agent artifact (see docs/design.md §Programs).
 //
 // IMPORTANT: a worker's claims in Handoff.CommandsRun are
 // ADVISORY. Callers MUST independently re-run each command in a
 // sibling sandbox and compare (exit_code, stdout_sha256) before
 // trusting any claim of success. See ReRunMismatch.
 
-package missions
+package programs
 
 import (
 	"encoding/json"
@@ -25,7 +25,7 @@ import (
 // names. New fields require a schema bump in lockstep.
 type Handoff struct {
 	SchemaVersion       int                `json:"schema_version"`
-	MissionID           string             `json:"mission_id"`
+	ProgramID           string             `json:"program_id"`
 	FeatureID           string             `json:"feature_id"`
 	WorkerRunID         string             `json:"worker_run_id"`
 	WorkerModelID       string             `json:"worker_model_id,omitempty"`
@@ -76,7 +76,7 @@ type DiscoveredIssue struct {
 
 // allowed enums kept in lockstep with handoff.schema.json.
 var (
-	missionIDRe   = regexp.MustCompile(`^m-[0-9a-f]{12}$`)
+	programIDRe   = regexp.MustCompile(`^m-[0-9a-f]{12}$`)
 	shaRe         = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	citationRe    = regexp.MustCompile(`^(test|file|commit|run)=\S+$`)
 	trapPatternRe = regexp.MustCompile(`^P([1-9]|1[0-3])$`)
@@ -152,8 +152,8 @@ func (h *Handoff) validate() error {
 	if h.SchemaVersion != 1 {
 		return fmt.Errorf("%w: schema_version must be 1, got %d", ErrSchemaInvalid, h.SchemaVersion)
 	}
-	if !missionIDRe.MatchString(h.MissionID) {
-		return fmt.Errorf("%w: mission_id %q does not match ^m-[0-9a-f]{12}$", ErrSchemaInvalid, h.MissionID)
+	if !programIDRe.MatchString(h.ProgramID) {
+		return fmt.Errorf("%w: program_id %q does not match ^m-[0-9a-f]{12}$", ErrSchemaInvalid, h.ProgramID)
 	}
 	if h.FeatureID == "" {
 		return fmt.Errorf("%w: feature_id is required", ErrSchemaInvalid)

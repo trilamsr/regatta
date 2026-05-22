@@ -1,6 +1,6 @@
 // Package securitygate is the MVP-3 hybrid security gate. See
 // gates/security/README.md for the design contract and
-// docs/design.md §Missions §Security custom gate.
+// docs/design.md §Programs §Security custom gate.
 //
 // Phase: SKELETON. The deterministic floor wires gitleaks /
 // osv-scanner shell-outs and parses their JSON output into the
@@ -73,78 +73,91 @@ type Input struct {
 func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) {
 	started := time.Now()
 	gr := schemas.GateResult{
-		GateID:   cfg.GateID,
-		GateKind: "deterministic", // promoted to ai_adversarial if AI phase runs
-		PRSha:    in.PRSHA,
-		RunID:    in.RunID,
-		Verdict:  schemas.VerdictPass,
-		Findings: []schemas.Finding{},
+		SchemaVersion: 1,
+		GateID:        cfg.GateID,
+		GateKind:      schemas.GateKindDeterministic, // promoted to ai_adversarial if AI phase runs
+		PRSHA:         in.PRSHA,
+		RunID:         in.RunID,
+		Verdict:       schemas.VerdictPass,
+		Findings:      []schemas.Finding{},
 		Telemetry: schemas.Telemetry{
 			StartedAt: started,
 		},
 	}
 
-	floorFindings, err := runFloor(ctx, cfg.DeterminismFloor, in)
+	floorFindings, blocking, err := runFloor(ctx, cfg.DeterminismFloor, in)
 	if err != nil {
 		gr.Verdict = schemas.VerdictFail
+		gr.Blocking = true
 		gr.Findings = append(gr.Findings, schemas.Finding{
-			Severity: schemas.SeverityHigh,
-			Message:  fmt.Sprintf("deterministic floor errored: %v", err),
-			Blocking: true,
+			ID:       "FLOOR-ERR",
+			Severity: schemas.FindingHigh,
+			Claim:    fmt.Sprintf("deterministic floor errored: %v", err),
 		})
-		gr.Telemetry.DurationMs = time.Since(started).Milliseconds()
+		finalize(&gr, started)
 		return gr, err
 	}
 	gr.Findings = append(gr.Findings, floorFindings...)
-
-	if anyBlocking(gr.Findings) {
+	if blocking {
 		gr.Verdict = schemas.VerdictFail
-		gr.Telemetry.DurationMs = time.Since(started).Milliseconds()
+		gr.Blocking = true
+		finalize(&gr, started)
 		return gr, nil // floor failure short-circuits; no AI spend
 	}
 
 	if cfg.AI.Enabled {
-		gr.GateKind = "ai_adversarial"
-		aiFindings, err := runAI(ctx, cfg.AI, in)
+		gr.GateKind = schemas.GateKindAIAdversarial
+		aiFindings, aiBlocking, err := runAI(ctx, cfg.AI, in)
 		if err != nil {
+			// Advisory only; deterministic floor remains the hard bar.
 			gr.Findings = append(gr.Findings, schemas.Finding{
-				Severity: schemas.SeverityMedium,
-				Message:  fmt.Sprintf("AI phase errored: %v", err),
-				Blocking: false, // advisory; deterministic floor remains the hard bar
+				ID:       "AI-ERR",
+				Severity: schemas.FindingMedium,
+				Claim:    fmt.Sprintf("AI phase errored: %v", err),
 			})
 		}
 		gr.Findings = append(gr.Findings, aiFindings...)
+		if aiBlocking {
+			gr.Verdict = schemas.VerdictFail
+			gr.Blocking = true
+		}
 	}
 
-	if anyBlocking(gr.Findings) {
-		gr.Verdict = schemas.VerdictFail
-	}
-	gr.Telemetry.DurationMs = time.Since(started).Milliseconds()
+	finalize(&gr, started)
 	return gr, nil
 }
 
-// runFloor invokes each enabled static tool. Errors propagate; a
-// tool failure is itself a gate-level signal.
-func runFloor(ctx context.Context, fc FloorConfig, in Input) ([]schemas.Finding, error) {
+func finalize(gr *schemas.GateResult, started time.Time) {
+	gr.Telemetry.DurationMs = time.Since(started).Milliseconds()
+	gr.Telemetry.FinishedAt = time.Now()
+}
+
+// runFloor invokes each enabled static tool. Returns findings, a
+// boolean indicating whether any are blocking, and any tool error.
+// A tool failure is itself a gate-level signal.
+func runFloor(ctx context.Context, fc FloorConfig, in Input) ([]schemas.Finding, bool, error) {
 	var out []schemas.Finding
+	var blocking bool
 
 	if fc.Gitleaks.Enabled {
-		fs, err := runGitleaks(ctx, in)
+		fs, b, err := runGitleaks(ctx, in)
 		if err != nil {
-			return nil, fmt.Errorf("gitleaks: %w", err)
+			return nil, false, fmt.Errorf("gitleaks: %w", err)
 		}
 		out = append(out, fs...)
+		blocking = blocking || b
 	}
 	if fc.OSVScanner.Enabled {
-		fs, err := runOSVScanner(ctx, in)
+		fs, b, err := runOSVScanner(ctx, in)
 		if err != nil {
-			return nil, fmt.Errorf("osv-scanner: %w", err)
+			return nil, false, fmt.Errorf("osv-scanner: %w", err)
 		}
 		out = append(out, fs...)
+		blocking = blocking || b
 	}
 	// semgrep / syft wire in the same shape. Deferred until fixtures
 	// exist that exercise their output shapes deterministically.
-	return out, nil
+	return out, blocking, nil
 }
 
 // gitleaksFinding is the subset of gitleaks's JSON output that
@@ -157,9 +170,9 @@ type gitleaksFinding struct {
 	Secret      string `json:"Secret"` // never include in Finding.Message -- leakage risk
 }
 
-func runGitleaks(ctx context.Context, in Input) ([]schemas.Finding, error) {
+func runGitleaks(ctx context.Context, in Input) ([]schemas.Finding, bool, error) {
 	if _, err := exec.LookPath("gitleaks"); err != nil {
-		return nil, fmt.Errorf("gitleaks binary not on PATH (pin via safety.tool_versions): %w", err)
+		return nil, false, fmt.Errorf("gitleaks binary not on PATH (pin via safety.tool_versions): %w", err)
 	}
 	cmd := exec.CommandContext(ctx, "gitleaks", "detect",
 		"--source", in.RepoRoot,
@@ -173,27 +186,30 @@ func runGitleaks(ctx context.Context, in Input) ([]schemas.Finding, error) {
 	// non-1/non-0 as a tool error.
 	var exitErr *exec.ExitError
 	if err != nil && (!errors.As(err, &exitErr) || exitErr.ExitCode() != 1) {
-		return nil, fmt.Errorf("invoke gitleaks: %w", err)
+		return nil, false, fmt.Errorf("invoke gitleaks: %w", err)
 	}
 	if len(raw) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 	var findings []gitleaksFinding
 	if err := json.Unmarshal(raw, &findings); err != nil {
-		return nil, fmt.Errorf("parse gitleaks output: %w", err)
+		return nil, false, fmt.Errorf("parse gitleaks output: %w", err)
 	}
 	out := make([]schemas.Finding, 0, len(findings))
-	for _, f := range findings {
+	for i, f := range findings {
 		out = append(out, schemas.Finding{
-			Severity:    schemas.SeverityCritical, // secret-in-source is always critical
-			Message:     fmt.Sprintf("gitleaks: %s -- %s", f.RuleID, f.Description),
-			Path:        f.File,
-			Line:        f.StartLine,
+			ID:       fmt.Sprintf("GITLEAKS-%d", i),
+			Severity: schemas.FindingCritical, // secret-in-source is always critical
+			Claim:    fmt.Sprintf("gitleaks: %s -- %s", f.RuleID, f.Description),
+			Evidence: &schemas.FindingEvidence{
+				Path:      f.File,
+				LineStart: f.StartLine,
+			},
 			TrapPattern: "P4", // P4: least-privilege ephemeral creds
-			Blocking:    true,
 		})
 	}
-	return out, nil
+	// Any gitleaks finding is blocking.
+	return out, len(out) > 0, nil
 }
 
 // osvFinding mirrors the subset of osv-scanner JSON we read.
@@ -217,41 +233,45 @@ type osvScanResult struct {
 	} `json:"results"`
 }
 
-func runOSVScanner(ctx context.Context, in Input) ([]schemas.Finding, error) {
+func runOSVScanner(ctx context.Context, in Input) ([]schemas.Finding, bool, error) {
 	if _, err := exec.LookPath("osv-scanner"); err != nil {
-		return nil, fmt.Errorf("osv-scanner binary not on PATH (pin via safety.tool_versions): %w", err)
+		return nil, false, fmt.Errorf("osv-scanner binary not on PATH (pin via safety.tool_versions): %w", err)
 	}
 	cmd := exec.CommandContext(ctx, "osv-scanner", "--format=json", in.RepoRoot)
 	raw, err := cmd.Output()
 	var exitErr *exec.ExitError
 	if err != nil && (!errors.As(err, &exitErr) || exitErr.ExitCode() != 1) {
-		return nil, fmt.Errorf("invoke osv-scanner: %w", err)
+		return nil, false, fmt.Errorf("invoke osv-scanner: %w", err)
 	}
 	if len(raw) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 	var res osvScanResult
 	if err := json.Unmarshal(raw, &res); err != nil {
-		return nil, fmt.Errorf("parse osv-scanner output: %w", err)
+		return nil, false, fmt.Errorf("parse osv-scanner output: %w", err)
 	}
 	var out []schemas.Finding
+	var blocking bool
 	for _, r := range res.Results {
 		for _, p := range r.Packages {
 			for _, v := range p.Vulnerabilities {
-				sev := schemas.SeverityHigh
+				sev := schemas.FindingHigh
 				if vSev := highestSeverity(v.Severity); vSev != "" {
 					sev = mapCVSSToSeverity(vSev)
 				}
 				out = append(out, schemas.Finding{
+					ID:          fmt.Sprintf("OSV-%s", v.ID),
 					Severity:    sev,
-					Message:     fmt.Sprintf("osv: %s in %s@%s -- %s", v.ID, p.Package.Name, p.Package.Version, v.Summary),
+					Claim:       fmt.Sprintf("osv: %s in %s@%s -- %s", v.ID, p.Package.Name, p.Package.Version, v.Summary),
 					TrapPattern: "P11", // supply chain
-					Blocking:    sev == schemas.SeverityCritical || sev == schemas.SeverityHigh,
 				})
+				if sev == schemas.FindingCritical || sev == schemas.FindingHigh {
+					blocking = true
+				}
 			}
 		}
 	}
-	return out, nil
+	return out, blocking, nil
 }
 
 func highestSeverity(scores []struct {
@@ -267,39 +287,32 @@ func highestSeverity(scores []struct {
 }
 
 // mapCVSSToSeverity converts a CVSS vector or numeric score to our
-// severity enum. Conservative: anything we can't parse is "high".
-func mapCVSSToSeverity(score string) schemas.Severity {
+// finding-severity enum. Conservative: anything we can't parse is
+// "high".
+func mapCVSSToSeverity(score string) schemas.FindingSeverity {
 	if len(score) == 0 {
-		return schemas.SeverityHigh
+		return schemas.FindingHigh
 	}
 	// CVSS vector strings start with "CVSS:" -- we don't parse the
 	// vector at this layer. The osv-scanner output usually also
 	// carries a numeric score in a sibling field for newer schemas;
 	// when it does, callers should branch on that. For v1, conservative.
-	return schemas.SeverityHigh
+	return schemas.FindingHigh
 }
 
 // runAI is the stub for the threat-modeler subagent. It returns
 // one advisory finding pointing at the prompt template that needs
 // to land. Real implementation follows the contract in
 // gates/security/README.md §AI phase.
-func runAI(_ context.Context, cfg AIConfig, _ Input) ([]schemas.Finding, error) {
+//
+// Returns (findings, anyBlocking, error).
+func runAI(_ context.Context, cfg AIConfig, _ Input) ([]schemas.Finding, bool, error) {
 	if !cfg.Enabled {
-		return nil, nil
+		return nil, false, nil
 	}
 	return []schemas.Finding{{
-		Severity:    schemas.SeverityInfo,
-		Message:     "security gate AI phase: prompts/security_gate.md not yet implemented (MVP-3); contract in gates/security/README.md",
-		TrapPattern: "",
-		Blocking:    false,
-	}}, nil
-}
-
-func anyBlocking(fs []schemas.Finding) bool {
-	for _, f := range fs {
-		if f.Blocking {
-			return true
-		}
-	}
-	return false
+		ID:       "AI-STUB",
+		Severity: schemas.FindingInfo,
+		Claim:    "security gate AI phase: prompts/security_gate.md not yet implemented (MVP-3); contract in gates/security/README.md",
+	}}, false, nil
 }
