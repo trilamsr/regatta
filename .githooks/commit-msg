@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# commit-msg hook: validate Conventional Commits subject line.
+# Installed by `make hooks` (sets core.hooksPath=.githooks).
+# Bypass with `git commit --no-verify` if you must; CI will catch.
+#
+# Subject form:
+#   <type>(<scope>)?: <subject>
+# Types: feat fix docs style refactor perf test chore build security revert
+# Subject <=50 chars, imperative present, no trailing period.
+#
+# Falsifier: commit with subject "foo: bar", hook fails citing missing
+# type prefix; commit with "feat: this is a subject longer than fifty
+# characters by design", hook fails citing length.
+
+set -euo pipefail
+
+msg_file="$1"
+subject=$(head -1 "$msg_file")
+
+# Empty subject (e.g. only a body) is rejected outright.
+if [ -z "${subject// }" ]; then
+  echo "commit-msg: subject line is empty." >&2
+  exit 1
+fi
+
+# Allow a leading "Revert " from git revert; otherwise enforce type.
+case "$subject" in
+  "Revert "*) exit 0 ;;
+esac
+
+# Type + optional (scope) + ": " + subject. Subject body is opaque.
+re='^(feat|fix|docs|style|refactor|perf|test|chore|build|security|revert)(\([a-z0-9._/-]+\))?: .+'
+if ! [[ "$subject" =~ $re ]]; then
+  cat >&2 <<EOF
+commit-msg: subject line does not match Conventional Commits.
+
+  got: $subject
+
+Expected: <type>(<scope>)?: <subject>
+Types:    feat fix docs style refactor perf test chore build security revert
+Example:  feat(orchestrator): add lane-scoped concurrency cap
+
+Fix the subject and re-commit. Bypass: --no-verify (CI will still catch).
+EOF
+  exit 1
+fi
+
+# Length cap. 50 is the convention; 72 is the hard cap. Warn at 50,
+# fail at 72.
+len=${#subject}
+if [ "$len" -gt 72 ]; then
+  echo "commit-msg: subject is $len chars; hard cap is 72." >&2
+  exit 1
+fi
+if [ "$len" -gt 50 ]; then
+  echo "commit-msg: subject is $len chars; convention is <=50. Consider tightening." >&2
+fi
+
+# Trailing period in subject is a noise-marker.
+if [[ "$subject" =~ \.$ ]]; then
+  echo "commit-msg: drop the trailing period from the subject." >&2
+  exit 1
+fi
+
+exit 0

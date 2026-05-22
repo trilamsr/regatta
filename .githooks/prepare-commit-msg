@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# prepare-commit-msg hook: auto-append Signed-off-by (DCO) when absent.
+# Installed by `make hooks`. Idempotent: no-op when sign-off already
+# present.
+#
+# Skip for merges, squashes, and template-only commits (no message yet)
+# since the user has not typed anything to attribute.
+
+set -euo pipefail
+
+msg_file="$1"
+source="${2:-}"
+
+case "$source" in
+  merge|squash|template) exit 0 ;;
+esac
+
+name=$(git config --get user.name || true)
+email=$(git config --get user.email || true)
+
+if [ -z "$name" ] || [ -z "$email" ]; then
+  exit 0
+fi
+
+signoff="Signed-off-by: ${name} <${email}>"
+
+if grep -qF "$signoff" "$msg_file"; then
+  exit 0
+fi
+
+if grep -qE '^Signed-off-by: ' "$msg_file"; then
+  exit 0
+fi
+
+printf '\n%s\n' "$signoff" >> "$msg_file"

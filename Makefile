@@ -1,4 +1,4 @@
-.PHONY: help check doc-check go-check cover vet lint tidy-check mod-verify hooks ci
+.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify hooks install-hooks uninstall-hooks stale-todo ci
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -27,12 +27,25 @@ tidy-check:  ## Verify go.mod / go.sum are tidy without mutating; fails with a d
 mod-verify:  ## Verify go.mod / go.sum hashes match upstream.
 	go mod verify
 
-hooks:  ## Install repo-managed Git hooks (sets core.hooksPath to .githooks).
+stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
+	bash scripts/stale-todo.sh
+
+hooks: install-hooks  ## Alias for install-hooks (kept for backwards compatibility).
+
+install-hooks:  ## Install repo-managed Git hooks (sets core.hooksPath to .githooks).
 	@git config core.hooksPath .githooks
-	@echo "Hooks installed under .githooks/ - all two now active:"
-	@echo "  pre-commit  -> make check"
-	@echo "  pre-push    -> make ci"
+	@echo "Hooks installed under .githooks/. Active hooks:"
+	@echo "  prepare-commit-msg -> auto-append Signed-off-by"
+	@echo "  commit-msg         -> validate Conventional Commits subject"
+	@echo "  pre-commit         -> make check"
+	@echo "  pre-push           -> make ci"
 
-check: doc-check vet tidy-check mod-verify go-check  ## Single source of truth for what is verified locally and in CI.
+uninstall-hooks:  ## Detach repo-managed hooks (resets core.hooksPath).
+	@git config --unset core.hooksPath || true
+	@echo "Hooks detached. Git falls back to .git/hooks/."
 
-ci: check  ## CI entrypoint: `check` only. CI runs lint as a separate job via golangci-lint-action; `make lint` remains available locally.
+check: doc-check vet tidy-check mod-verify go-check  ## Local gate; <60s. Single source of truth for what is verified locally.
+
+ci-check: check stale-todo  ## CI gate; supersedes `check` with longer-running scans (stale-todo).
+
+ci: ci-check  ## CI entrypoint. Runs lint as a separate job via golangci-lint-action; `make lint` remains available locally.
