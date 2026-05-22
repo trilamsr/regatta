@@ -32,6 +32,12 @@ mirrored here until that PR merges to main.)
 - [contracts/README.md](contracts/README.md)
 - [contracts/prompts/README.md](contracts/prompts/README.md)
 
+## examples/
+
+- [examples/minimal/README.md](examples/minimal/README.md)
+- [examples/full/README.md](examples/full/README.md)
+- [examples/target-repo/README.md](examples/target-repo/README.md)
+
 ## internal/
 
 - [internal/audit/README.md](internal/audit/README.md)

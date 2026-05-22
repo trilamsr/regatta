@@ -1,0 +1,76 @@
+# Full regatta.yaml.
+#
+# Every option exercised. Reference for operators tuning a real
+# deployment. Schema source of truth:
+# contracts/schemas/regatta.v1.cue.
+
+version: 1
+
+repo:
+  host: github
+  owner: example
+  name: myproject
+  default_branch: main
+
+spec_adapter:
+  type: github_issues
+  selector: 'label:planned'
+  acceptance_section: '## Acceptance'
+
+ci:
+  command: 'make test && make lint'
+  timeout_minutes: 30
+
+pr_template:
+  citation_section_required: true
+  release_notes_required: true
+
+gates:
+  - id: spec_conformance
+    type: ai
+    model: claude-opus-4-7
+    severity_block: ['fail']
+  - id: adversarial
+    type: ai
+    model: claude-sonnet-4-6
+    severity_block: ['critical', '2*high']
+  - id: drift
+    type: ai
+    model: claude-haiku-4-5
+    severity_block: ['drift']
+  - id: security
+    type: ai
+    model: claude-opus-4-7
+    severity_block: ['critical']
+
+lanes:
+  - id: server
+    paths: ['src/server/**']
+    max_concurrency: 1
+  - id: client
+    paths: ['src/client/**']
+    max_concurrency: 1
+
+hotspots:
+  - CHANGELOG.md
+  - package.json
+  - README.md
+
+safety:
+  destructive_ops_deny: ['rm -rf', 'git push --force']
+  agent_creds_scope: scoped
+  iteration_cap: 50
+  spend_cap_usd: 50
+  spend_cap_usd_per_day: 200
+  canary_rate: 0.05
+
+context:
+  trusted_doc_paths:
+    - PRINCIPLES.md
+    - STYLE.md
+    - AGENTS.md
+  agent_guidance_path: AGENTS.md
+  agent_guidance_codeowners_check: true
+
+telemetry:
+  audit_sink: 's3://acme-audit/regatta/?object-lock=COMPLIANCE'

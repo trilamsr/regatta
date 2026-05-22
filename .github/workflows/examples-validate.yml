@@ -1,0 +1,41 @@
+name: examples-validate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'examples/**'
+      - 'contracts/schemas/**'
+      - 'internal/config/**'
+      - 'cmd/regatta/**'
+      - '.github/workflows/examples-validate.yml'
+  schedule:
+    - cron: '23 8 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5  # v6.0.0
+        with:
+          go-version-file: .go-version
+
+      - name: validate examples/*/regatta.yaml
+        run: |
+          set -euo pipefail
+          fail=0
+          for f in examples/*/regatta.yaml; do
+            [ -f "$f" ] || continue
+            echo "validating $f"
+            if ! go run ./cmd/regatta validate-config --config "$f"; then
+              echo "::error file=$f::validate-config failed"
+              fail=1
+            fi
+          done
+          exit "$fail"
