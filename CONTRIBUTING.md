@@ -32,3 +32,11 @@ PR body needs: 1-line What + release-notes fenced block (category
 prefix). For bugfixes, also a Root-Cause line (Wave 1 pr-lint
 workflow enforces). Self-merge after gates green; branch
 protection blocks force-push and skip-hooks.
+
+## Engineer reference
+
+- [docs/engineer/how-to-add-a-gate.md](docs/engineer/how-to-add-a-gate.md)
+- [docs/engineer/how-to-add-an-adapter.md](docs/engineer/how-to-add-an-adapter.md)
+- [docs/engineer/release-runbook.md](docs/engineer/release-runbook.md)
+- [docs/engineer/string-review.md](docs/engineer/string-review.md)
+- [docs/rfcs/0000-template.md](docs/rfcs/0000-template.md) (ADR template)

@@ -44,6 +44,17 @@ mirrored here until that PR merges to main.)
 - [docs/auditor/reproducibility.md](docs/auditor/reproducibility.md)
 - [docs/auditor/data-flow.md](docs/auditor/data-flow.md)
 
+### docs/engineer/
+
+- [docs/engineer/how-to-add-a-gate.md](docs/engineer/how-to-add-a-gate.md)
+- [docs/engineer/how-to-add-an-adapter.md](docs/engineer/how-to-add-an-adapter.md)
+- [docs/engineer/release-runbook.md](docs/engineer/release-runbook.md)
+- [docs/engineer/string-review.md](docs/engineer/string-review.md)
+
+### docs/rfcs/
+
+- [docs/rfcs/0000-template.md](docs/rfcs/0000-template.md)
+
 ## contracts/
 
 - [contracts/README.md](contracts/README.md)
