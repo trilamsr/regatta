@@ -21,6 +21,15 @@ belong in a topic note instead.
   or write `NONE` for changes with no user-visible effect. Anchor:
   `.github/PULL_REQUEST_TEMPLATE.md` "Release notes" section.
 
+- **TDD enforcement gate: production `*.go` additions ship with a
+  matching `*_test.go` in the same PR.** `scripts/check-tdd.sh` runs
+  in `pr-lint` and walks the PR diff; any non-test `*.go` with added
+  lines requires at least one `*_test.go` (with a real `func Test...`
+  / `Benchmark...` / `Example...`) in a shared ancestor directory.
+  Exemptions: generated files (`Code generated` preamble), test-only
+  PRs, release-notes categories `[DOCS]` / `[CHORE]` / `[CI]` /
+  `[NONE]`, or the maintainer-set `tdd-justified` label.
+
 - **`make check` is the single source of truth for what is verified
   locally and in CI.** Run it before declaring a change complete or
   opening a PR. Today `check` aliases `doc-check`; as gates land

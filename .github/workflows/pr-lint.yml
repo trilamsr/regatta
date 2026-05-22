@@ -2,7 +2,7 @@ name: PR lint
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -112,3 +112,13 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/doc-check.sh
+
+      - name: check-tdd
+        if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'tdd-justified')
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          bash scripts/check-tdd.sh
