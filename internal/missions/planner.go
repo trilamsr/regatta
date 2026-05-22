@@ -231,7 +231,7 @@ func (p *FeaturePlan) VerifySignature(keyring map[string][]byte) error {
 // ─────────────────────────────────────────────────────────────────
 
 // ModelClient is the minimal contract the planner needs from a
-// model-provider. Provider-agnostic by design — the planner does
+// model-provider. Provider-agnostic by design -- the planner does
 // not know it's calling Anthropic.
 type ModelClient interface {
 	// Plan submits the planner prompt + parent WorkItem context and

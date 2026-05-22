@@ -39,7 +39,7 @@ func TestRun_AIStubEmitsAdvisoryOnly(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if gr.Verdict != schemas.VerdictPass {
-		t.Fatalf("AI stub must be advisory, not blocking — got verdict %s", gr.Verdict)
+		t.Fatalf("AI stub must be advisory, not blocking -- got verdict %s", gr.Verdict)
 	}
 	if len(gr.Findings) != 1 {
 		t.Fatalf("expected 1 stub finding, got %d", len(gr.Findings))
@@ -64,7 +64,7 @@ func TestRun_MissingGitleaksBinaryFailsLoud(t *testing.T) {
 	}
 	gr, err := Run(context.Background(), cfg, Input{PRSHA: "abc", RunID: "00000000-0000-0000-0000-000000000000", RepoRoot: "."})
 	// If gitleaks happens to be installed on the developer's machine,
-	// the test gracefully degrades to "ran successfully" — that's
+	// the test gracefully degrades to "ran successfully" -- that's
 	// also a valid pass.
 	if err == nil {
 		if gr.Verdict != schemas.VerdictPass {

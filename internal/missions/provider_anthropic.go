@@ -7,7 +7,7 @@
 // ModelClient interface is the contract and this is its single
 // implementation.
 //
-// Scope: stdlib HTTP only — no SDK dep. The Anthropic API surface
+// Scope: stdlib HTTP only -- no SDK dep. The Anthropic API surface
 // used here is minimal (Messages API + tool_use + JSON Schema
 // input_schema) so the cost of staying SDK-free is low.
 
@@ -131,7 +131,7 @@ Title: %s
 Body:
 %s
 
-Acceptance criteria (IMMUTABLE — copy IDs verbatim into features.fulfills):
+Acceptance criteria (IMMUTABLE -- copy IDs verbatim into features.fulfills):
 %s
 
 Linked artifact: %s
@@ -159,7 +159,7 @@ Linked artifact: %s
 }
 
 // featurePlanToolSchema is the JSON Schema the model fills in. Kept
-// in sync with schemas/features.schema.json — but trimmed to the
+// in sync with schemas/features.schema.json -- but trimmed to the
 // fields the model is responsible for (mission_id / signature /
 // parent_criteria / planner_model_id / produced_at are stamped by
 // the planner pipeline, not the model).
@@ -261,7 +261,7 @@ CRITICAL RULES (violations are rejected by the orchestrator):
 
 1. Coverage invariant. Every acceptance-criterion ID in the parent
    MUST appear in exactly one feature.fulfills entry. No gaps. No
-   overlaps. Criterion IDs MUST be copied verbatim — do not edit,
+   overlaps. Criterion IDs MUST be copied verbatim -- do not edit,
    normalize, paraphrase, or "fix" them.
 
 2. DAG. depends_on_features must be acyclic. If feature B reads
@@ -272,7 +272,7 @@ CRITICAL RULES (violations are rejected by the orchestrator):
 
 4. Naming. Feature IDs match ^F-[A-Z0-9_-]{1,32}$.
 
-5. You run exactly once per mission. There is no "v2" — if you are
+5. You run exactly once per mission. There is no "v2" -- if you are
    uncertain, prefer fewer, broader features over many speculative
    ones. The orchestrator will inject fix-features for issues it
    discovers; you do not pre-empt them.

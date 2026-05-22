@@ -219,7 +219,7 @@ func anyBlockingFail(child Child) bool {
 
 // collectFixFeatures pulls fix-feature suggestions out of blocking
 // fails. A blocking fail with NO actionable findings is NOT
-// converted to a fix-feature (caller halts to human instead) — that
+// converted to a fix-feature (caller halts to human instead) -- that
 // case is the symptom of a gate that knows something's wrong but
 // can't say what, which is exactly the moment to involve a human.
 func collectFixFeatures(child Child) []FixFeature {

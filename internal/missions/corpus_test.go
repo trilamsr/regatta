@@ -20,7 +20,7 @@ var testHMACKey = []byte("regatta-handoff-test-key-32-bytes!")
 // TestHandoffCorpus is the contract test for the handoff schema.
 // It walks testdata/handoffs/{pass,fail} and asserts the expected
 // outcome for each fixture. Adding a fixture file is the way to
-// extend the contract — no registration code.
+// extend the contract -- no registration code.
 func TestHandoffCorpus(t *testing.T) {
 	walk(t, "testdata/handoffs/pass", func(path string, data []byte) {
 		t.Run("pass/"+filepath.Base(path), func(t *testing.T) {
@@ -45,7 +45,7 @@ func TestHandoffCorpus(t *testing.T) {
 
 // TestSignedRoundtripFixture verifies that the documented test fixture
 // signs and verifies under testHMACKey. If a contributor edits the
-// fixture body, the MAC is recomputed here — preventing fixture rot.
+// fixture body, the MAC is recomputed here -- preventing fixture rot.
 func TestSignedRoundtripFixture(t *testing.T) {
 	path := "testdata/handoffs/pass/02_signed_roundtrip.json"
 	raw, err := os.ReadFile(path)

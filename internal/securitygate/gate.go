@@ -4,7 +4,7 @@
 //
 // Phase: SKELETON. The deterministic floor wires gitleaks /
 // osv-scanner shell-outs and parses their JSON output into the
-// existing schemas.GateResult shape. The AI phase is stubbed —
+// existing schemas.GateResult shape. The AI phase is stubbed --
 // it returns a single advisory finding pointing at the prompt
 // template that needs to land before MVP-3 ships.
 //
@@ -154,7 +154,7 @@ type gitleaksFinding struct {
 	Description string `json:"Description"`
 	File        string `json:"File"`
 	StartLine   int    `json:"StartLine"`
-	Secret      string `json:"Secret"` // never include in Finding.Message — leakage risk
+	Secret      string `json:"Secret"` // never include in Finding.Message -- leakage risk
 }
 
 func runGitleaks(ctx context.Context, in Input) ([]schemas.Finding, error) {
@@ -168,7 +168,7 @@ func runGitleaks(ctx context.Context, in Input) ([]schemas.Finding, error) {
 		"--report-path=-",
 	)
 	raw, err := cmd.Output()
-	// Exit 1 from gitleaks means "secrets found" — that's a SUCCESS
+	// Exit 1 from gitleaks means "secrets found" -- that's a SUCCESS
 	// in the sense that we got parseable output; only treat
 	// non-1/non-0 as a tool error.
 	var exitErr *exec.ExitError
@@ -186,7 +186,7 @@ func runGitleaks(ctx context.Context, in Input) ([]schemas.Finding, error) {
 	for _, f := range findings {
 		out = append(out, schemas.Finding{
 			Severity:    schemas.SeverityCritical, // secret-in-source is always critical
-			Message:     fmt.Sprintf("gitleaks: %s — %s", f.RuleID, f.Description),
+			Message:     fmt.Sprintf("gitleaks: %s -- %s", f.RuleID, f.Description),
 			Path:        f.File,
 			Line:        f.StartLine,
 			TrapPattern: "P4", // P4: least-privilege ephemeral creds
@@ -244,7 +244,7 @@ func runOSVScanner(ctx context.Context, in Input) ([]schemas.Finding, error) {
 				}
 				out = append(out, schemas.Finding{
 					Severity:    sev,
-					Message:     fmt.Sprintf("osv: %s in %s@%s — %s", v.ID, p.Package.Name, p.Package.Version, v.Summary),
+					Message:     fmt.Sprintf("osv: %s in %s@%s -- %s", v.ID, p.Package.Name, p.Package.Version, v.Summary),
 					TrapPattern: "P11", // supply chain
 					Blocking:    sev == schemas.SeverityCritical || sev == schemas.SeverityHigh,
 				})
@@ -272,7 +272,7 @@ func mapCVSSToSeverity(score string) schemas.Severity {
 	if len(score) == 0 {
 		return schemas.SeverityHigh
 	}
-	// CVSS vector strings start with "CVSS:" — we don't parse the
+	// CVSS vector strings start with "CVSS:" -- we don't parse the
 	// vector at this layer. The osv-scanner output usually also
 	// carries a numeric score in a sibling field for newer schemas;
 	// when it does, callers should branch on that. For v1, conservative.

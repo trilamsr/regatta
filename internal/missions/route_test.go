@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// stub verifier — toggles per test case.
+// stub verifier -- toggles per test case.
 func okVerify(_ Verdict) error  { return nil }
 func badVerify(_ Verdict) error { return ErrUnverifiable }
 

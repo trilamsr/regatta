@@ -1,4 +1,4 @@
-# gates/security — hybrid security custom gate (MVP-3)
+# gates/security -- hybrid security custom gate (MVP-3)
 
 Status: **Draft design, pre-implementation.** Schema + this README
 are the contract; the binary follows.
@@ -10,16 +10,17 @@ the same way any other custom gate is added.
 
 ## Why a security gate
 
-Regatta's value is incident-pattern coverage (Trap Catalog P1–P13),
+Regatta's value is incident-pattern coverage (Trap Catalog P1-P13),
 not OWASP-generic SAST. Commercial AI code-review tools
 (CodeRabbit, Greptile, Snyk) already cover OWASP; their AI judge
 models are opaque, so we cannot satisfy P13 (judge-LLM lineage
 isolation) if we delegate the AI phase to them.
 
-This gate composes battle-tested OSS static tools as the
-deterministic floor (P1: deterministic gate before AI gate on
-destructive ops) with an in-house AI threat-modeler whose prompt
-is pinned to the Trap Catalog.
+This gate composes single-binary OSS static tools (gitleaks,
+osv-scanner, semgrep, syft -- each a CLI with stable JSON output)
+as the deterministic floor (P1: deterministic gate before AI gate
+on destructive ops) with an in-house AI threat-modeler whose
+prompt is pinned to the Trap Catalog.
 
 ## Hybrid shape
 
@@ -70,12 +71,12 @@ binding's model family equals the security gate's AI model family,
 the config is rejected (no `--accept-degraded-lineage` for this
 gate at v1).
 
-## Determinism floor — invocation contract
+## Determinism floor -- invocation contract
 
 Each tool is shelled out as a single binary, version-pinned via
 `safety.tool_versions` (mission-layer addition to `regatta.yaml`,
 TBD), JSON output parsed into the existing `GateResult.findings[]`
-shape. **No wrapper library** (Trivy, etc.) — keep per-tool version
+shape. **No wrapper library** (Trivy, etc.) -- keep per-tool version
 pinning and per-tool failure attribution.
 
 | Tool | Pin | JSON output | Trap pattern mapping |
@@ -87,9 +88,9 @@ pinning and per-tool failure attribution.
 
 Each finding emitted by a floor tool gets a `trap_pattern` field
 on the resulting `findings[]` entry (existing `gate_result.schema.json`
-property — additive, no schema change).
+property -- additive, no schema change).
 
-## AI phase — prompt contract
+## AI phase -- prompt contract
 
 The AI phase uses a SHA-pinned prompt template at
 `prompts/security_gate.md` (TBD). The template MUST:
@@ -104,7 +105,7 @@ The AI phase uses a SHA-pinned prompt template at
    auth_bypass | path_traversal | ssrf | deserialization |
    regex_dos | supply_chain | other`).
 4. Refuse to emit a `pass` verdict if fewer than 3 falsifications
-   with `outcome != "inconclusive"` are produced — schema-enforced
+   with `outcome != "inconclusive"` are produced -- schema-enforced
    `minItems: 3` + Go-side post-validation lint.
 5. Forbid the AI from reading worker chain-of-thought, session
    state, or sibling validator output (P9 context segregation).
@@ -115,7 +116,7 @@ The AI phase uses a SHA-pinned prompt template at
 ## What this gate is NOT
 
 - **Not a parallel validator subsystem.** It's one row in the
-  existing `gates:` list. Mission PRs flow through L0–L5 plus this
+  existing `gates:` list. Mission PRs flow through L0-L5 plus this
   gate plus L6 like any other PR.
 - **Not a replacement for L4 adversarial.** L4 stays. This gate
   has narrower scope (security-only) but deeper falsification
@@ -145,7 +146,7 @@ gates/security/
 
 Each testdata case ships with: input diff, expected `GateResult`
 JSON, expected `findings[]` digest. Same shape as
-`gates/l0/testdata/` — keep one fixture-corpus discipline.
+`gates/l0/testdata/` -- keep one fixture-corpus discipline.
 
 ## Stop condition (mission-layer §Stop conditions)
 

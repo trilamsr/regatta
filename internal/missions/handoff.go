@@ -104,7 +104,7 @@ var (
 
 // LoadAndValidate reads a handoff JSON file, structurally
 // validates it against the schema's invariants, and returns the
-// parsed Handoff. It does NOT verify the signature — that is a
+// parsed Handoff. It does NOT verify the signature -- that is a
 // separate step that takes a keyring (see VerifySignature).
 func LoadAndValidate(path string) (*Handoff, error) {
 	data, err := os.ReadFile(path)
@@ -194,7 +194,7 @@ func (h *Handoff) validate() error {
 
 	// Every claimed trap pattern must have at least one falsification
 	// with a non-inconclusive outcome. Plain counts don't satisfy the
-	// schema — the discipline is "citation OR it didn't happen."
+	// schema -- the discipline is "citation OR it didn't happen."
 	for _, p := range h.TrapPatternsClaimed {
 		if !trapPatternRe.MatchString(p) {
 			return fmt.Errorf("%w: trap_patterns_claimed contains invalid %q", ErrSchemaInvalid, p)
@@ -226,7 +226,7 @@ func (h *Handoff) validate() error {
 
 // VerifySignature checks the HMAC over the canonical payload. It
 // re-serializes the handoff through a generic map to use the
-// shared schemas.Verify implementation — the canonical form is the
+// shared schemas.Verify implementation -- the canonical form is the
 // same one Sign produced.
 func (h *Handoff) VerifySignature(keyring map[string][]byte) error {
 	raw, err := json.Marshal(h)
@@ -275,7 +275,7 @@ type ReRunResult struct {
 func (h *Handoff) ReRunMismatch(orchestratorRuns []ReRunResult) []int {
 	var bad []int
 	if len(orchestratorRuns) != len(h.CommandsRun) {
-		// Differing length is itself a mismatch — orchestrator ran
+		// Differing length is itself a mismatch -- orchestrator ran
 		// a different command set than the worker claimed.
 		for i := range h.CommandsRun {
 			bad = append(bad, i)

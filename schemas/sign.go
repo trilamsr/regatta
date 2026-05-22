@@ -13,7 +13,7 @@ import (
 // HMAC signing for tamper-evident gate results and mission handoffs.
 //
 // Same key, same alg (HMAC-SHA256) for every signed artifact in
-// Regatta — see docs/design.md §Threat Model §Tamper-evident audit.
+// Regatta -- see docs/design.md §Threat Model §Tamper-evident audit.
 // The mission layer REUSES this key; it does not introduce a new
 // keyring (recursive-attack-surface defense).
 //
@@ -100,7 +100,7 @@ func canonicalize(v any) ([]byte, error) {
 		buf = append(buf, ']')
 		return buf, nil
 	default:
-		// Strings, numbers, booleans, nil — encoding/json's default
+		// Strings, numbers, booleans, nil -- encoding/json's default
 		// emission is canonical enough for HMAC purposes.
 		return json.Marshal(t)
 	}
@@ -108,7 +108,7 @@ func canonicalize(v any) ([]byte, error) {
 
 // Sign returns a SignatureBlock for payload using key under keyID.
 // The signature is computed over CanonicalJSON(payload) with the
-// "signature" field STRIPPED at the top level — so the signature
+// "signature" field STRIPPED at the top level -- so the signature
 // describes the payload-sans-signature, which is the only shape a
 // verifier can reconstruct.
 func Sign(payload map[string]any, key []byte, keyID string) (SignatureBlock, error) {

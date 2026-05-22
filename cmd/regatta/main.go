@@ -144,7 +144,7 @@ func runVerifyRepoConfig(args []string) int {
 			if !c.Passed {
 				mark = "✗"
 			}
-			fmt.Printf("%s %s — %s\n", mark, c.ID, c.Title)
+			fmt.Printf("%s %s -- %s\n", mark, c.ID, c.Title)
 			if c.Detail != "" {
 				fmt.Printf("    %s\n", c.Detail)
 			}
@@ -153,9 +153,9 @@ func runVerifyRepoConfig(args []string) int {
 			}
 		}
 		if res.OK {
-			fmt.Println("\nverify-repo-config: PASS — repo is configured for Regatta deployment")
+			fmt.Println("\nverify-repo-config: PASS -- repo is configured for Regatta deployment")
 		} else {
-			fmt.Printf("\nverify-repo-config: FAIL — %d check(s) failed: %v\n", len(res.FailedOK), res.FailedOK)
+			fmt.Printf("\nverify-repo-config: FAIL -- %d check(s) failed: %v\n", len(res.FailedOK), res.FailedOK)
 		}
 	}
 	if !res.OK {
@@ -183,7 +183,7 @@ func runMission(args []string) int {
 
 // runMissionPlan: read a WorkItem from a JSON file on disk, call
 // the Anthropic planner, validate + sign the resulting FeaturePlan,
-// emit to stdout. Source adapters are deferred — for v1, operators
+// emit to stdout. Source adapters are deferred -- for v1, operators
 // hand-author the parent WorkItem JSON file or extract it from
 // their adapter into one.
 func runMissionPlan(args []string) int {
