@@ -1,4 +1,4 @@
-package securitygate
+package security
 
 import (
 	"context"

@@ -19,11 +19,10 @@ import (
 func TestFixtureCorpus(t *testing.T) {
 	for _, kind := range []string{"pass", "fail", "edge"} {
 		t.Run(kind, func(t *testing.T) {
-			dir := filepath.Join("..", "..", "testdata", "gates", "l0", kind)
+			dir := filepath.Join("..", "..", "..", "testdata", "gates", "l0", kind)
 			ents, err := os.ReadDir(dir)
 			if err != nil {
-				t.Skipf("no %s dir yet: %v", kind, err)
-				return
+				t.Fatalf("fixture dir %q unreadable: %v (path drift?)", dir, err)
 			}
 			seen := 0
 			for _, e := range ents {

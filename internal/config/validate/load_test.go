@@ -1,4 +1,4 @@
-package validateconfig
+package validate
 
 import (
 	"strings"

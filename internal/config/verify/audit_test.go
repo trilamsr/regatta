@@ -1,4 +1,4 @@
-package verifyrepo
+package verify
 
 import (
 	"context"

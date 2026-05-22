@@ -1,5 +1,5 @@
-// Package securitygate is the MVP-3 hybrid security gate. See
-// gates/security/README.md for the design contract and
+// Package security is the MVP-3 hybrid security gate. See
+// internal/gates/security/README.md for the design contract and
 // docs/design.md §Programs §Security custom gate.
 //
 // Phase: SKELETON. The deterministic floor wires gitleaks /
@@ -9,9 +9,9 @@
 // template that needs to land before MVP-3 ships.
 //
 // This file is deliberately small. Real expansion happens in
-// `internal/securitygate/{floor,ai,trap_pattern_map}.go` once
-// the canary fixtures in gates/security/testdata/ are populated.
-package securitygate
+// `internal/gates/security/{floor,ai,trap_pattern_map}.go` once
+// the canary fixtures in testdata/gates/security/ are populated.
+package security
 
 import (
 	"context"
@@ -25,7 +25,7 @@ import (
 )
 
 // Config is the per-repo gate config (the `regatta.yaml` `gates:`
-// row mapped into Go). See gates/security/README.md for the YAML
+// row mapped into Go). See internal/gates/security/README.md for the YAML
 // shape.
 type Config struct {
 	GateID            string
@@ -308,7 +308,7 @@ func mapCVSSToSeverity(score string) schemas.FindingSeverity {
 // runAI is the stub for the threat-modeler subagent. It returns
 // one advisory finding pointing at the prompt template that needs
 // to land. Real implementation follows the contract in
-// gates/security/README.md §AI phase.
+// internal/gates/security/README.md §AI phase.
 //
 // Returns (findings, anyBlocking, error).
 func runAI(_ context.Context, cfg AIConfig, _ Input) ([]schemas.Finding, bool, error) {
@@ -318,6 +318,6 @@ func runAI(_ context.Context, cfg AIConfig, _ Input) ([]schemas.Finding, bool, e
 	return []schemas.Finding{{
 		ID:       "AI-STUB",
 		Severity: schemas.FindingInfo,
-		Claim:    "security gate AI phase: prompts/security_gate.md not yet implemented (MVP-3); contract in gates/security/README.md",
+		Claim:    "security gate AI phase: prompts/security_gate.md not yet implemented (MVP-3); contract in internal/gates/security/README.md",
 	}}, false, nil
 }

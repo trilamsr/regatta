@@ -1,4 +1,4 @@
-// Package verifyrepo implements `regatta verify-repo-config`: a
+// Package verify implements `regatta verify-repo-config`: a
 // pre-flight audit of the target GitHub repo against the P2 canonical
 // recipe and the silent-bypass classes documented in
 // docs/design.md §Threat Model.
@@ -12,7 +12,7 @@
 //   - CODEOWNERS pattern references non-existent team/user (silent ignore)
 //   - CODEOWNERS file missing
 //   - Required status checks list includes a job that can SKIP
-package verifyrepo
+package verify
 
 import (
 	"context"

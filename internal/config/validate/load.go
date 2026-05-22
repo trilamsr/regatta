@@ -1,6 +1,6 @@
-// Package validateconfig loads and CUE-validates regatta.yaml against
+// Package validate loads and CUE-validates regatta.yaml against
 // schemas/regatta.v1.cue. Exit point for `regatta validate-config`.
-package validateconfig
+package validate
 
 import (
 	"errors"

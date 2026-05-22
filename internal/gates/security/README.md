@@ -4,7 +4,7 @@ Status: **Draft design, pre-implementation.** Schema + this README
 are the contract; the binary follows.
 
 This is the only new gate kind the program layer introduces. See
-[`docs/design.md` §Programs §Security custom gate](../../docs/design.md).
+[`docs/design.md` §Programs §Security custom gate](../../../docs/design.md).
 A repo opts in by adding it to the `gates:` list in `regatta.yaml`
 the same way any other custom gate is added.
 
@@ -132,7 +132,7 @@ The AI phase uses a SHA-pinned prompt template at
 ## Testdata layout (when implementation begins)
 
 ```
-gates/security/
+internal/gates/security/
 ├── README.md                                 (this file)
 └── testdata/
     ├── pass/                                 (clean diffs, gate passes)
@@ -146,7 +146,7 @@ gates/security/
 
 Each testdata case ships with: input diff, expected `GateResult`
 JSON, expected `findings[]` digest. Same shape as
-`gates/l0/testdata/` -- keep one fixture-corpus discipline.
+`testdata/gates/l0/` -- keep one fixture-corpus discipline.
 
 ## Stop condition (program-layer §Stop conditions)
 

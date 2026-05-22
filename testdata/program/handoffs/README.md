@@ -4,7 +4,7 @@ These fixtures are the contract for `handoff.schema.json` and the
 `internal/program` parse/validate path. They are exercised by
 `TestHandoffCorpus` in `corpus_test.go`.
 
-Layout mirrors the L0 corpus shape (`gates/l0/testdata/`):
+Layout mirrors the L0 corpus shape (`testdata/gates/l0/`):
 
 ```
 testdata/handoffs/

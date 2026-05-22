@@ -6,7 +6,7 @@ Signed agent prompts loaded by the orchestrator + gate runners.
 
 Empty until MVP-1 lands. Activation trigger: first `prompts/*.md`
 referenced by code (`internal/program/planner.go` will load
-`planner.md`; `internal/securitygate` will load
+`planner.md`; `internal/gates/security` will load
 `security_gate.md`).
 
 ## Discipline
