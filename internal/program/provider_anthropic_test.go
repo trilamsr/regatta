@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // stubAnthropicServer returns a fake Anthropic Messages API.

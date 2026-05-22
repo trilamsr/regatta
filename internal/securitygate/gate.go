@@ -21,7 +21,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // Config is the per-repo gate config (the `regatta.yaml` `gates:`

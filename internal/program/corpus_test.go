@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // testHMACKey is the documented test key used by the

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // Config controls which files L0 treats as spec sources. For the

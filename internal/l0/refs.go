@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // CheckRefs runs L0 against the diff between baseRef and headRef in repoDir.

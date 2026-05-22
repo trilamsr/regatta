@@ -38,7 +38,7 @@ import (
 	"github.com/trilamsr/regatta/internal/program"
 	"github.com/trilamsr/regatta/internal/validateconfig"
 	"github.com/trilamsr/regatta/internal/verifyrepo"
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 const version = "0.0.1-dev"

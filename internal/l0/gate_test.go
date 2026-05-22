@@ -3,7 +3,7 @@ package l0
 import (
 	"testing"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 func runCheck(t *testing.T, diff string) schemas.GateResult {

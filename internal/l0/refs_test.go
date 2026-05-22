@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // testRepo wraps a temp git repo for harness tests. All operations run with

@@ -13,7 +13,7 @@ import (
 	cueerrors "cuelang.org/go/cue/errors"
 	"cuelang.org/go/encoding/yaml"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // LoadFile reads path and runs LoadBytes on its contents.

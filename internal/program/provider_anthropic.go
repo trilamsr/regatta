@@ -25,7 +25,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // AnthropicPlanner is a ModelClient that calls Anthropic's

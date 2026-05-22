@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // TestFixtureCorpus sweeps testdata/gates/l0/{pass,fail,edge}/ and

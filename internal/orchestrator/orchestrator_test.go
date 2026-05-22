@@ -12,7 +12,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 const tmplItem = `---

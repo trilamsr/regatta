@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 func TestRun_FloorDisabledAndAIDisabled_Passes(t *testing.T) {
