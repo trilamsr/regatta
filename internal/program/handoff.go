@@ -17,7 +17,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // Handoff is the Go form of schemas/handoff.schema.json.

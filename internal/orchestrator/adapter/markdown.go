@@ -18,7 +18,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // MarkdownCatalogConfig configures a file-backed adapter that reads

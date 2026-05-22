@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // parseMarkdownItem extracts a WorkItem from a single markdown file.

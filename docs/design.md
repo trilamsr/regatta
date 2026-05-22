@@ -81,12 +81,12 @@ abandoned and the doc reverts to base Regatta.
 ### Companion artifacts
 
 `docs/incidents.md` (19 incidents + full P1-P10 prose);
-`schemas/spec_adapter.go` (Go interface, normative);
-`schemas/{gate_result,work_item}.schema.json` (JSON Schemas);
-`schemas/regatta.v1.cue` (config schema); `gates/l0/testdata/` (L0
-fixture corpus contract); `gates/canary/testdata/` (canary archetype
+`contracts/schemas/spec_adapter.go` (Go interface, normative);
+`contracts/schemas/{gate_result,work_item}.schema.json` (JSON Schemas);
+`contracts/schemas/regatta.v1.cue` (config schema); `testdata/gates/l0/` (L0
+fixture corpus contract); `testdata/gates/canary/` (canary archetype
 corpus). Program-layer additions arrive in MVP-1 → MVP-3:
-`schemas/handoff.schema.json` (signed inter-feature handoff,
+`contracts/schemas/handoff.schema.json` (signed inter-feature handoff,
 normative), `gates/security/` (the only new gate kind).
 
 ## Motivation
@@ -204,7 +204,7 @@ iteration brakes), P10 (invisible-glyph normalization + signed prompts).
 ### Tamper-evident audit
 
 Every gate result is HMAC-signed against an orchestrator key that
-rotates per restart (see `schemas/gate_result.schema.json:signature`).
+rotates per restart (see `contracts/schemas/gate_result.schema.json:signature`).
 Gate results are written to an append-only out-of-band sink (S3
 object-lock or transparency log per `regatta.yaml: telemetry.audit_sink`),
 *not* solely to `regatta.db` or to PR comments. This closes the
@@ -272,7 +272,7 @@ opens a PR; the gate stack runs on every push.
 
 A work item is the agent's complete spec. Regatta declares a
 `SpecAdapter` interface
-([`schemas/spec_adapter.go`](../schemas/spec_adapter.go) -- normative);
+([`contracts/schemas/spec_adapter.go`](../contracts/schemas/spec_adapter.go) -- normative);
 the repo selects an implementation.
 
 Built-in adapters: `github_issues`, `gitlab_issues`,
@@ -298,7 +298,7 @@ tier and refuses to advance without explicit acknowledgement when the
 tier is degraded.
 
 `WorkItem` shape: see
-[`schemas/work_item.schema.json`](../schemas/work_item.schema.json).
+[`contracts/schemas/work_item.schema.json`](../contracts/schemas/work_item.schema.json).
 Load-bearing fields:
 
 - `acceptance_criteria[].text` -- **immutable post-publication**. L0
@@ -350,7 +350,7 @@ asserts the only change is the `state` field flip. Acceptance-criteria
 text edits fail hard. Full normative behavior -- merge-base choice,
 UTF-8 NFC, rename handling, invisible-glyph stripping, merge-time
 re-run -- is specified in
-[`gates/l0/testdata/README.md`](../gates/l0/testdata/README.md). The
+[`testdata/gates/l0/README.md`](../testdata/gates/l0/README.md). The
 fixture corpus there is the contract; L0 implementations pass if and
 only if they pass every fixture.
 
@@ -366,7 +366,7 @@ release-notes section.
 For each flipped criterion in L0's output: read criterion text
 **fetched from `main` SHA** (not PR branch -- P3), the PR diff, the
 citation. Emits a `GateResult` per
-[`schemas/gate_result.schema.json`](../schemas/gate_result.schema.json)
+[`contracts/schemas/gate_result.schema.json`](../contracts/schemas/gate_result.schema.json)
 with `gate_kind: ai_judicial`. Any per-criterion `verdict: fail`
 blocks. Strong-judgment task → most-capable model. Does not evaluate
 code quality (L4's job).
@@ -422,7 +422,7 @@ Responsibilities:
    agent's last commit wakes the agent. K=3 rejections → "needs
    human", agent unspawned (P8).
 6. **CanaryInjector** -- Bernoulli(p=`safety.canary_rate`) on each
-   spawn; archetype patches from `gates/canary/testdata/catalog.ndjson`.
+   spawn; archetype patches from `testdata/gates/canary/catalog.ndjson`.
    See [§Test harness](#test-harness).
 7. **SupervisorLimits** -- wall-clock, disk, network, iteration, spend
    enforced in the parent process via cgroups (Linux) or rlimits
@@ -484,7 +484,7 @@ throttle to 1 in-flight PR globally + alert.
 
 ### Per-repo configuration (`regatta.yaml`)
 
-Full schema in [`schemas/regatta.v1.cue`](../schemas/regatta.v1.cue);
+Full schema in [`contracts/schemas/regatta.v1.cue`](../contracts/schemas/regatta.v1.cue);
 migration via `regatta migrate-config --from 1 --to 2`. Minimal
 example:
 
@@ -618,7 +618,7 @@ of the parent, and no criterion is double-claimed) is checked
 
 ### Handoff schema
 
-`schemas/handoff.schema.json` (new). The only program-specific
+`contracts/schemas/handoff.schema.json` (new). The only program-specific
 inter-agent artifact. Written by a worker on PR-open; read by the
 next worker in the DAG; verified by L0 on every push (the existing
 fixture-corpus mechanism -- no L0M needed).
@@ -883,8 +883,8 @@ the order they appear here.
 
 - §Programs design doc (this section) and §Alternatives (h)
   adopt-when-needed table.
-- `schemas/handoff.schema.json` + `schemas/program_brief.schema.json`
-  + `schemas/sign.go` (shared HMAC, no new key per artifact type).
+- `contracts/schemas/handoff.schema.json` + `contracts/schemas/program_brief.schema.json`
+  + `contracts/schemas/sign.go` (shared HMAC, no new key per artifact type).
 - `internal/program/` package: `route.go` (deterministic verdict
   router), `handoff.go` (load/validate/coverage/re-run-mismatch),
   `planner.go` (one-shot pipeline + Validate + Sign), and
@@ -959,7 +959,7 @@ $ regatta gate-calibrate --canary-corpus            # all 8 archetypes
 
 `gate-calibrate` runs L0-L5 against the chosen PRs and emits a
 per-gate confusion matrix. The 8 canary archetypes (see
-[`gates/canary/testdata/README.md`](../gates/canary/testdata/README.md))
+[`testdata/gates/canary/README.md`](../testdata/gates/canary/README.md))
 have known-expected verdicts. Tune `gates[*].severity_block` until
 calibration is clean (typical fixes: raise L4 threshold to `critical`
 only when over-cautious; add path filters when L5 false-drifts on
@@ -1031,7 +1031,7 @@ fixes `src/server/http-client.js`, runs `npm test`, updates
 
 It opens PR #259 with a citation block. The orchestrator runs gates and
 posts five `GateResult` comments (full schema:
-[`gate_result.schema.json`](../schemas/gate_result.schema.json)):
+[`gate_result.schema.json`](../contracts/schemas/gate_result.schema.json)):
 
 ```jsonc
 L0  pass   findings=[]                              duration=34ms
@@ -1053,7 +1053,7 @@ statistically auditable only: live-replay + drift alerting.
 
 **Deterministic-tier.** L0/L1/L2/L6 + custom deterministic gates ship
 with a fixture corpus. The L0 corpus at
-[`gates/l0/testdata/`](../gates/l0/testdata/) is the v1 contract
+[`testdata/gates/l0/`](../testdata/gates/l0/) is the v1 contract
 (target: 200 fixtures by v1.0). CI runs the full corpus on every
 commit.
 
@@ -1062,7 +1062,7 @@ mechanisms: a **golden corpus** of ≥30 historical PRs with
 maintainer-recorded verdicts, replayed weekly with ≥95% agreement
 required to ship a new prompt or model; **VCR fixtures** for
 deterministic unit-test replay; and the **canary catch-rate** from
-`gates/canary/testdata/` -- 18 known-bad archetypes that must each be
+`testdata/gates/canary/` -- 18 known-bad archetypes that must each be
 caught at the expected layer. The 30-PR golden floor is adequate for
 gross-regression detection only (Wilson 95% CI on 28/30 = [78.7%,
 98.2%]); target 200 PRs over 6 months, with a CUSUM-style drift
@@ -1374,7 +1374,7 @@ Rejected adoptions:
 | **Canary-PR injection** | yes (8 archetypes ship) | no | partial (BugBot self-test) | no | no | no | no | no |
 | **SWE-bench-style benchmark** | not yet | yes | yes | yes | yes | yes | no | no |
 | **Cryptographically reproducible PR verdicts** (`regatta verify-pr <url>` offline, six months later) | **yes** (HMAC over canonical JSON; signed audit) | no | no | no | no | no | no | no |
-| **Fixture-corpus-as-contract** (customer-authored counterexample is binding spec) | **yes** (`gates/l0/testdata/`, `program/testdata/handoffs/`) | no | no | no | no | no | no | no |
+| **Fixture-corpus-as-contract** (customer-authored counterexample is binding spec) | **yes** (`testdata/gates/l0/`, `testdata/program/handoffs/`) | no | no | no | no | no | no | no |
 | **Worker re-run mismatch** (orchestrator-independent CI re-run defeats incident-#1 by construction) | **yes** (`Handoff.ReRunMismatch`) | no | no | no | no | no | no | no |
 | **Deterministic Go progression** (no LLM router, structurally no prompt-injection on the routing path) | **yes** (`RouteVerdicts` is a Go switch) | LLM router | LLM router | LLM router | LLM router | LLM router | n/a | n/a |
 | **Per-axis depth caps as enforced integers** (functional ≤ 2 / security ≤ 5 / user_testing ≤ 3, audit-visible) | **yes** | prose | prose | prose | prose | prose | prose | prose |
@@ -1398,10 +1398,10 @@ the wedge ships, not just exists in prose.
 
 | # | Wedge | Evidence |
 |---|---|---|
-| 1 | Deterministic spec-immutability gate (L0) | `internal/l0/gate.go::Check`; corpus `gates/l0/testdata/{pass,fail,edge}/` |
-| 2 | Tamper-evident audit log out-of-band | `schemas/sign.go::Sign` / `Verify`; HMAC chokepoint test `schemas/sign_test.go::TestVerifyDetectsTamper` |
-| 3 | Published canary archetype corpus | `gates/canary/testdata/program_archetypes.ndjson` (3 archetypes); base corpus catalog in `gates/canary/testdata/` |
-| 4 | Cryptographically reproducible PR verdicts | `schemas/gate_result.go::SignatureBlock`; round-trip lockstep `schemas/gate_result_test.go::TestGateResultSchemaLockstep`; HMAC verify `schemas/sign.go::Verify` |
+| 1 | Deterministic spec-immutability gate (L0) | `internal/l0/gate.go::Check`; corpus `testdata/gates/l0/{pass,fail,edge}/` |
+| 2 | Tamper-evident audit log out-of-band | `contracts/schemas/sign.go::Sign` / `Verify`; HMAC chokepoint test `contracts/schemas/sign_test.go::TestVerifyDetectsTamper` |
+| 3 | Published canary archetype corpus | `testdata/gates/canary/program_archetypes.ndjson` (3 archetypes); base corpus catalog in `testdata/gates/canary/` |
+| 4 | Cryptographically reproducible PR verdicts | `contracts/schemas/gate_result.go::SignatureBlock`; round-trip lockstep `contracts/schemas/gate_result_test.go::TestGateResultSchemaLockstep`; HMAC verify `contracts/schemas/sign.go::Verify` |
 | 5 | Fixture-corpus-as-contract | `internal/l0/fixture_test.go::TestL0Fixtures`; program-handoff corpus `internal/program/corpus_test.go::TestHandoffCorpus` |
 | 6 | Worker re-run mismatch (defeats incident #1) | `internal/program/handoff.go::Handoff.ReRunMismatch`; covered by `internal/program/handoff_test.go::TestReRunMismatch_*` (match, exit-code mismatch, length mismatch) |
 | 7 | Deterministic Go progression | `internal/program/route.go::RouteVerdicts` (no LLM call site in the package); 13 routing tests in `internal/program/route_test.go::TestRouteVerdicts` |
@@ -1458,12 +1458,12 @@ peer-reviewed.
 ## References
 
 - `incidents.md` -- AI-agent incident catalog + full prose for the Trap Catalog patterns.
-- `schemas/spec_adapter.go` -- normative Go interface.
-- `schemas/gate_result.schema.json` -- normative gate output schema.
-- `schemas/work_item.schema.json` -- normative work item schema.
-- `schemas/regatta.v1.cue` -- CUE schema for `regatta.yaml`.
-- `gates/l0/testdata/` -- L0 fixture corpus contract.
-- `gates/canary/testdata/` -- canary archetype corpus contract.
+- `contracts/schemas/spec_adapter.go` -- normative Go interface.
+- `contracts/schemas/gate_result.schema.json` -- normative gate output schema.
+- `contracts/schemas/work_item.schema.json` -- normative work item schema.
+- `contracts/schemas/regatta.v1.cue` -- CUE schema for `regatta.yaml`.
+- `testdata/gates/l0/` -- L0 fixture corpus contract.
+- `testdata/gates/canary/` -- canary archetype corpus contract.
 - Anthropic, *Claude 4 System Card* (2025).
 - Palisade Research, *Shutdown Resistance in Reasoning Models* (2025).
 - arXiv:2509.10540 -- EchoLeak technical writeup.

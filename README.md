@@ -55,17 +55,17 @@ config.
 - [`docs/design.md`](docs/design.md) — full design
 - [`docs/incidents.md`](docs/incidents.md) — AI-agent incident
   catalog with primary sources, root causes, and prevention patterns
-- [`schemas/spec_adapter.go`](schemas/spec_adapter.go) — normative Go
+- [`contracts/schemas/spec_adapter.go`](contracts/schemas/spec_adapter.go) - normative Go
   interface for `SpecAdapter` (with custom-adapter wire protocol)
-- [`schemas/gate_result.schema.json`](schemas/gate_result.schema.json)
-  — JSON Schema for the structured payload every gate emits
-- [`schemas/work_item.schema.json`](schemas/work_item.schema.json) —
+- [`contracts/schemas/gate_result.schema.json`](contracts/schemas/gate_result.schema.json)
+  - JSON Schema for the structured payload every gate emits
+- [`contracts/schemas/work_item.schema.json`](contracts/schemas/work_item.schema.json) -
   JSON Schema for `WorkItem`
-- [`schemas/regatta.v1.cue`](schemas/regatta.v1.cue) — CUE schema for
+- [`contracts/schemas/regatta.v1.cue`](contracts/schemas/regatta.v1.cue) - CUE schema for
   `regatta.yaml`
-- [`gates/l0/testdata/`](gates/l0/testdata/) — L0 spec-immutability
+- [`testdata/gates/l0/`](testdata/gates/l0/) - L0 spec-immutability
   fixture corpus (the contract)
-- [`gates/canary/testdata/`](gates/canary/testdata/) — canary
+- [`testdata/gates/canary/`](testdata/gates/canary/) - canary
   archetype corpus + injection mechanism
 
 ## The Trap Catalog
@@ -98,7 +98,7 @@ the most load-bearing.
 - **L0 spec-immutability gate.** `cmd/regatta l0 <diff>` reads a
   unified diff, runs invisible-glyph stripping + NFC + criterion
   byte-equality, and emits a `GateResult` JSON. The fixture corpus
-  under `gates/l0/testdata/` is the contract; `go test ./internal/l0`
+  under `testdata/gates/l0/` is the contract; `go test ./internal/gates/l0`
   exercises pass / fail / edge sweeps plus unit-level normalization.
 - **`regatta verify-repo-config`.** Pre-flight audit of a GitHub repo
   against the P2 canonical recipe - branch protection
@@ -107,7 +107,7 @@ the most load-bearing.
   `enforce_admins`), CODEOWNERS presence, and the
   `/codeowners/errors` silent-ignore catcher. Requires `GITHUB_TOKEN`.
 - **`regatta validate-config`.** CUE-validates `regatta.yaml` against
-  the embedded `schemas/regatta.v1.cue`. Multi-error output enumerates
+  the embedded `contracts/schemas/regatta.v1.cue`. Multi-error output enumerates
   every offending field with `file:line` positions instead of eliding
   with `(and N more errors)`.
 

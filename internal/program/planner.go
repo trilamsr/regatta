@@ -20,7 +20,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // ProgramBrief is the Go form of schemas/features.schema.json.

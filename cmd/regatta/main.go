@@ -29,16 +29,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/l0"
+	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
+	verifyrepo "github.com/trilamsr/regatta/internal/config/verify"
+	"github.com/trilamsr/regatta/internal/gates/l0"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/program"
-	"github.com/trilamsr/regatta/internal/validateconfig"
-	"github.com/trilamsr/regatta/internal/verifyrepo"
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 const version = "0.0.1-dev"

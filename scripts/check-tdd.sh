@@ -56,7 +56,10 @@ if [ -n "${BODY:-}" ]; then
     capture              { print }
   ' | grep -oE '\[[A-Z]+\]' | head -1 || true)
   case "$category" in
-    "[DOCS]"|"[CHORE]"|"[CI]"|"[NONE]")
+    "[DOCS]"|"[CHORE]"|"[CI]"|"[NONE]"|"[CHANGE]")
+      # [CHANGE] covers structural reshape (moves, renames, contract
+      # promotion); no new behavior to test, so the existing test
+      # suite continues to falsify the moved code.
       echo "check-tdd: release-notes category $category - test-first not required"
       exit 0
       ;;

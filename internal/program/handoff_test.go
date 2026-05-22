@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trilamsr/regatta/schemas"
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 func validHandoff() Handoff {

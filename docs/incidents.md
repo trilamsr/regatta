@@ -305,7 +305,7 @@ These are the rules a fleet orchestrator should enforce at the platform layer. E
 ### Pattern 10 — Render-the-invisible + signed prompt artifacts
 **Rule:** All instruction and rules files pass through invisible-glyph normalization before reaching the model — *strip* the bidi/format/PUA ranges from instructions, *annotate* in data (so non-Latin user content survives). Prompt-pack changes require human review and are cryptographically signed; runtime verifies signature.
 **Prevents:** Rules-File Backdoor (#9), Amazon Q wiper (#7), Copilot Unicode injection (#9/#10), Cursor MCPoison config swap (#9), Cowork PromptArmor (#29).
-**Implementation:** Pre-process step strips the Default_Ignorable ∪ Bidi_Control closure (see `gates/l0/testdata/README.md` §6 for the normative set); CI signs `prompts/*.md` and `*.cursorrules`; agent refuses to load unsigned or mismatched artifacts; diff viewers render invisibles on PR.
+**Implementation:** Pre-process step strips the Default_Ignorable ∪ Bidi_Control closure (see `testdata/gates/l0/README.md` §6 for the normative set); CI signs `prompts/*.md` and `*.cursorrules`; agent refuses to load unsigned or mismatched artifacts; diff viewers render invisibles on PR.
 
 ### Pattern 11 — Agent-artifact release pipelines are themselves attack surface
 **Rule:** Agent prompt-packs, CLI binaries, MCP server images, and dependency closures must pass an artifact-content audit (no source maps, no debug symbols, no stray secrets), build-attestation verification (provenance signature + reproducible build), runner-memory isolation (so OIDC / publish credentials cannot be lifted from `/proc/<pid>/mem` mid-build), and a minimum-package-age gate before customers receive them.
