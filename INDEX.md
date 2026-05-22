@@ -27,6 +27,16 @@ Humans should start at `README.md` (operators) or `AGENTS.md`
 (Design spec for the current restructure is hosted on PR #57; not
 mirrored here until that PR merges to main.)
 
+### docs/operator/
+
+- [docs/operator/quickstart.md](docs/operator/quickstart.md)
+- [docs/operator/install.md](docs/operator/install.md)
+- [docs/operator/configure.md](docs/operator/configure.md)
+- [docs/operator/day1.md](docs/operator/day1.md)
+- [docs/operator/day7.md](docs/operator/day7.md)
+- [docs/operator/day30.md](docs/operator/day30.md)
+- [docs/operator/upgrade.md](docs/operator/upgrade.md)
+
 ## contracts/
 
 - [contracts/README.md](contracts/README.md)
