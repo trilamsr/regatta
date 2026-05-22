@@ -47,12 +47,24 @@ section consolidates and adapts them to closed-source posture.
    plugin dirs are ceremony without a consumer (AGENTS.md load-bearing
    lesson #4).
 
-5. **PR purity.** Every PR is one of: feature, enhancement, root-cause
-   bugfix, refactor, doc, chore. Workarounds are discouraged. A
-   workaround is acceptable only when root cause is identified and
-   demonstrably unfixable (upstream dep, platform limit, etc.).
-   Workaround PRs declare the unfixable root cause inline. L2 gate
-   enforces.
+5. **PR purity.** Governs *change content*, NOT *PR atomicity*.
+   Every change inside a PR is one of: feature, enhancement,
+   root-cause bugfix, refactor, doc, chore. Workarounds are
+   discouraged. A workaround is acceptable only when root cause is
+   identified and demonstrably unfixable (upstream dep, platform
+   limit, etc.); workaround changes declare the unfixable root cause
+   inline in the commit body or PR description.
+
+   Bundled multi-purpose PRs are allowed at solo scale (Section 5
+   v4) — each change-set inside the bundle still satisfies this
+   content rule. The rule is "no workaround masquerading as a fix,"
+   not "one PR one purpose."
+
+   Enforcement: PR template carries a Root-Cause / Workaround
+   field. The pr-lint workflow (Wave 1 deliverable; see §6 Wave 1
+   automation) validates the field is non-empty when the
+   release-notes category is `[BUGFIX]`. Until that workflow lands,
+   this rule is advisory.
 
 6. **Comments answer WHY, not WHAT.** Default is no comment. One line
    where possible. Add a comment only when the WHY is non-obvious
@@ -531,8 +543,12 @@ Everything pure-mechanical or doc-only.
   typed-link-prefix).
 - `.github/workflows/commit-lint.yml` (PR-level Conventional
   Commits check).
+- `.github/workflows/pr-lint.yml` extended: when release-notes
+  category is `[BUGFIX]`, require non-empty Root-Cause line in PR
+  body (closes the §1 #5 PR-purity rule gap; rule is advisory
+  until this workflow lands).
 - `.github/PULL_REQUEST_TEMPLATE.md` minimal rewrite (1-line What +
-  release-notes block only).
+  Root-Cause field + release-notes block).
 - `Makefile`: `check` target extended with commit-lint advisory +
   changelog dry-run; new `install-hooks` / `uninstall-hooks`
   targets.
