@@ -37,6 +37,13 @@ mirrored here until that PR merges to main.)
 - [docs/operator/day30.md](docs/operator/day30.md)
 - [docs/operator/upgrade.md](docs/operator/upgrade.md)
 
+### docs/auditor/
+
+- [docs/auditor/threat-model.md](docs/auditor/threat-model.md)
+- [docs/auditor/audit-log.md](docs/auditor/audit-log.md)
+- [docs/auditor/reproducibility.md](docs/auditor/reproducibility.md)
+- [docs/auditor/data-flow.md](docs/auditor/data-flow.md)
+
 ## contracts/
 
 - [contracts/README.md](contracts/README.md)
