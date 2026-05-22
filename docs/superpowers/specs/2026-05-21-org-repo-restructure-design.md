@@ -1,4 +1,4 @@
-# Regatta repo restructure — design spec
+# Regatta repo restructure  -  design spec
 
 Reader: internal engineer + (future) security auditor under NDA.
 Read time: 20 minutes.
@@ -56,7 +56,7 @@ section consolidates and adapts them to closed-source posture.
    inline in the commit body or PR description.
 
    Bundled multi-purpose PRs are allowed at solo scale (Section 5
-   v4) — each change-set inside the bundle still satisfies this
+   v4)  -  each change-set inside the bundle still satisfies this
    content rule. The rule is "no workaround masquerading as a fix,"
    not "one PR one purpose."
 
@@ -72,7 +72,7 @@ section consolidates and adapts them to closed-source posture.
    pin). Names + tests document WHAT (PRINCIPLES #7).
 
 Closed-source posture: every adoption decision filters through
-"does this help a paying operator + an auditor under NDA?" — not
+"does this help a paying operator + an auditor under NDA?"  -  not
 "does this help open-source community visibility." OSS-flavored
 ceremony (Code of Conduct, public bug-bounty channels, OpenSSF
 Scorecard badge, public ROADMAP) is dropped or deferred to named
@@ -91,13 +91,13 @@ activation triggers.
 
 ### External best practices rejected (with reason)
 
-- `pkg/` separate directory (PRINCIPLES #6 — `internal/` first;
+- `pkg/` separate directory (PRINCIPLES #6  -  `internal/` first;
   contracts in `contracts/`).
-- Monorepo tooling (Bazel/Nx/Lerna) — single Go module, no polyglot
+- Monorepo tooling (Bazel/Nx/Lerna)  -  single Go module, no polyglot
   subprojects. Re-evaluate at Phase 3 P3.5.
-- OpenSSF Scorecard badge — repo is private; badge is ceremony
+- OpenSSF Scorecard badge  -  repo is private; badge is ceremony
   without consumer.
-- Public Code of Conduct — solo maintainer until second human joins.
+- Public Code of Conduct  -  solo maintainer until second human joins.
 
 ## 2. Tree-shape principles
 
@@ -117,7 +117,7 @@ one path per noun.
 
 Directory names equal product nouns. No grab-bag names. If a new dir
 name doesn't appear in `STYLE.md` or `docs/design.md`, it is an
-invented category — reject or document first.
+invented category  -  reject or document first.
 
 ### P3. Contracts colocate; implementations scatter
 
@@ -144,7 +144,7 @@ falsifying consumer. Empty extension-point dirs forbidden.
 
 Fixture corpora live under one root. Currently fragmented across
 `gates/l0/testdata`, `gates/canary/testdata`, `gates/security/testdata`,
-`internal/program/testdata` — pick one root.
+`internal/program/testdata`  -  pick one root.
 
 Trade-off accepted: Go convention puts `testdata/` adjacent to the
 package. Overridden here because corpora ARE the contract per
@@ -236,7 +236,7 @@ checklist (F10)**:
 - [ ] Names the failed precondition or expected state (not just
       "validation failed").
 - [ ] Suggests the corrective action OR cites a runbook URL.
-- [ ] No internal jargon — pkg names, function names, internal
+- [ ] No internal jargon  -  pkg names, function names, internal
       error types.
 - [ ] If irreversible, the headline says so.
 - [ ] Fits in one terminal line (≤80 cols) where possible; multi-
@@ -330,8 +330,8 @@ When the fact is in code or config, prose cites file:line.
 ### D4. Falsifiable claims only
 
 Every assertion is testable, dated, or labeled aspirational. Banned:
-marketing language ("battle-tested", "production-grade",
-"industry-leading"). Doc-check gate enforces.
+unfalsifiable marketing adjectives (see `scripts/doc-check.sh` for
+the active list). Doc-check gate enforces.
 
 ### D5. Length is a cost
 
@@ -455,14 +455,14 @@ of restructure):**
 
   Worked example (when ADR fires vs not):
   - Moving `internal/program/handoff.Sign` → `contracts/go/sign.go`
-    (now an operator-visible interface) — **ADR required**.
+    (now an operator-visible interface)  -  **ADR required**.
   - Adding a method to an already-promoted interface in
-    `contracts/go/specadapter.go` — **ADR required** (operator
+    `contracts/go/specadapter.go`  -  **ADR required** (operator
     upgrade impact).
-  - Renaming `internal/gates/l0/match.go` to `matcher.go` — no ADR.
-  - Adding a new private helper inside `internal/orchestrator/` —
+  - Renaming `internal/gates/l0/match.go` to `matcher.go`  -  no ADR.
+  - Adding a new private helper inside `internal/orchestrator/`  - 
     no ADR.
-  - Bumping `contracts/schemas/regatta.v1.cue` to v2 — **ADR
+  - Bumping `contracts/schemas/regatta.v1.cue` to v2  -  **ADR
     required** (operator migration tool).
 
 **Dropped at solo scale (named activation triggers):**
@@ -506,7 +506,7 @@ When an incident happens, file: post-mortem at
 includes a rule change; fixture added to relevant gate corpus so the
 next attempt fails the gate. Post-mortems internal-only.
 
-## 6. Migration plan — three waves
+## 6. Migration plan  -  three waves
 
 Each wave = one PR, green CI, mergeable on its own. Rollback = revert
 the PR. No partial state across waves. Adopt-when-needed applies: a
@@ -523,7 +523,7 @@ opens. Order:
 Implementation plan branches do NOT cherry-pick the spec; they read
 it from `main`. Avoids divergent-spec-on-multiple-branches risk.
 
-### Wave 1 — Foundation
+### Wave 1  -  Foundation
 
 Tree moves + contracts surface + baseline docs + baseline automation.
 Everything pure-mechanical or doc-only.
@@ -577,7 +577,7 @@ load-bearing because of the move volume.
 - Delete top-level `gates/` once impls + testdata moved.
 - Placeholder READMEs in earned-but-empty dirs (`internal/cli`,
   `internal/audit`, `internal/tenant`, `internal/canary`,
-  `internal/modelclient`) — one paragraph plus activation trigger
+  `internal/modelclient`)  -  one paragraph plus activation trigger
   per P9.
 - **Path-citation rewrites (F6, load-bearing).** Every path
   reference in `docs/design.md`, `AGENTS.md`, `README.md`,
@@ -594,10 +594,10 @@ load-bearing because of the move volume.
   `docs/design.md` §Spec contract.
 - `contracts/wire/custom_gate_jsonio.md` extracted from
   `docs/design.md` §Custom gates.
-- `contracts/README.md` — index + versioning policy + deprecation
+- `contracts/README.md`  -  index + versioning policy + deprecation
   cycle.
 - `docs/rfcs/` dir + `0000-template.md` (Michael-Nygard).
-- `docs/rfcs/0001-contracts-surface.md` — records the promotion.
+- `docs/rfcs/0001-contracts-surface.md`  -  records the promotion.
 - `docs/design.md` updated to link `contracts/wire/` rather than
   restate (D3 dedupe).
 
@@ -606,17 +606,17 @@ load-bearing because of the move volume.
 - `CHANGELOG.md` (Keep-a-Changelog; `## Unreleased`).
 - `LICENSE` (proprietary).
 - `NOTICES.md` (third-party scan via `go-licenses`).
-- `ARCHITECTURE.md` (≤1 page — F9). Strict tree map + read-order
+- `ARCHITECTURE.md` (≤1 page  -  F9). Strict tree map + read-order
   pointer ONLY. Does NOT restate `docs/design.md` §Architecture
   (D3). If under 30 lines, may merge into `README.md` as a "READ
-  ORDER" section instead — implementation plan picks.
-- `CONTRIBUTING.md` (≤30-line stub — F8). Points at `AGENTS.md`,
+  ORDER" section instead  -  implementation plan picks.
+- `CONTRIBUTING.md` (≤30-line stub  -  F8). Points at `AGENTS.md`,
   `STYLE.md`, `PRINCIPLES.md`; carries only the human-specific
   delta (run `make install-hooks`, branch naming `<type>/<slug>`,
   Conventional-Commit prefix table). No content duplicated; D3
   enforced.
 - `SECURITY.md` (procurement-doc shape: data flow + escalation).
-- `INDEX.md` (D14 — machine-target only; doc-check enforces every
+- `INDEX.md` (D14  -  machine-target only; doc-check enforces every
   doc appears here; humans land at AGENTS.md or README first).
 
 **Automation:**
@@ -647,23 +647,23 @@ real test asserting doc-vs-Go-interface coverage. doc-check passes.
 
 **Rollback:** revert single PR; tree restored.
 
-### Wave 2 — Customer surface
+### Wave 2  -  Customer surface
 
 Operator-, auditor-, engineer-facing docs + runnable examples.
 Implements Section 3 priority 1 (customer impact).
 
 **Examples (P5/P9 falsifying consumers for the binary itself):**
 
-- `examples/minimal/regatta.yaml` + README — smallest viable config.
-- `examples/full/regatta.yaml` — every option exercised.
-- `examples/target-repo/` — toy repo pinned SHA, used by e2e smoke.
+- `examples/minimal/regatta.yaml` + README  -  smallest viable config.
+- `examples/full/regatta.yaml`  -  every option exercised.
+- `examples/target-repo/`  -  toy repo pinned SHA, used by e2e smoke.
 - `.github/workflows/examples-validate.yml` runs
   `regatta validate-config` against each example on PR + monthly
   (D15 falsifier).
 
 **Operator docs (`docs/operator/`):**
 
-- `quickstart.md` — <60s binary → validated config; CI runs steps
+- `quickstart.md`  -  <60s binary → validated config; CI runs steps
   end-to-end.
 - `install.md`, `configure.md`, `upgrade.md`.
 - `day1.md`, `day7.md`, `day30.md` (hoisted from `docs/design.md`
@@ -674,7 +674,7 @@ Implements Section 3 priority 1 (customer impact).
 
 - `threat-model.md` (extracted from `docs/design.md` §Threat Model;
   D3 dedupe).
-- `audit-log.md`, `reproducibility.md`, `data-flow.md` — stubs with
+- `audit-log.md`, `reproducibility.md`, `data-flow.md`  -  stubs with
   activation triggers when impls land.
 
 **Engineer docs (`docs/engineer/`):**
@@ -694,13 +694,13 @@ CLI/error/log reviewed for clarity (priority 1 implementation).
 
 **Rollback:** revert single PR; docs gone, no code impact.
 
-### Wave 3 — Governance + closeout
+### Wave 3  -  Governance + closeout
 
 Branch protection + workflow tightening + final dedupe.
 
 **Branch protection on `main`:**
 
-- `required_status_checks`: L0–L5 aggregator + `make check` +
+- `required_status_checks`: L0-L5 aggregator + `make check` +
   commit-lint + doc-check + stale-todo + examples-validate.
 - `required_approving_review_count: 0` (solo posture).
 - `enforce_admins: true`.
@@ -709,9 +709,9 @@ Branch protection + workflow tightening + final dedupe.
 **Workflow aggregator hardened:**
 
 - `.github/workflows/gates.yml` aggregator uses `if: always()` +
-  explicit `needs.*.result` checks (load-bearing lesson — no silent
+  explicit `needs.*.result` checks (load-bearing lesson  -  no silent
   SKIPPED bypass).
-- `.github/workflows/release.yml` — tag-triggered: signed tag,
+- `.github/workflows/release.yml`  -  tag-triggered: signed tag,
   provenance attestation, CHANGELOG section flip, customer-release-
   notes derivation.
 
@@ -737,15 +737,15 @@ Audit-log entry verified for each block.
 **Rollback:** branch-protection rollback = repo-admin removes
 required checks (audit-logged). Doc/script rollback = revert PR.
 
-### Adopt-when-needed — NOT a wave, deferred
+### Adopt-when-needed  -  NOT a wave, deferred
 
 - `plugins/adapters/example-jsonio/` + `plugins/gates/example-license/`
-  + `make plugins-validate` — land when first customer asks OR a
+  + `make plugins-validate`  -  land when first customer asks OR a
   Phase 2/3 milestone hits.
 - `internal/audit/` impl, `internal/tenant/` impl, cross-vendor
-  `ModelClient` — per `docs/design.md` phasing.
+  `ModelClient`  -  per `docs/design.md` phasing.
 - Two-key automation, public CONTRIBUTING framing, scheduled
-  release cadence, Code of Conduct — per Section 5 activation
+  release cadence, Code of Conduct  -  per Section 5 activation
   triggers.
 
 ### Wave dependency
@@ -775,17 +775,17 @@ Strict sequence. Each PR green + mergeable independently.
 
 ## References
 
-- `docs/design.md` — full product design.
-- `docs/incidents.md` — AI-agent incident catalog.
-- `PRINCIPLES.md` — why behind the rules.
-- `STYLE.md` — current contributor conventions.
-- `AGENTS.md` — agent / contributor onboarding brief.
+- `docs/design.md`  -  full product design.
+- `docs/incidents.md`  -  AI-agent incident catalog.
+- `PRINCIPLES.md`  -  why behind the rules.
+- `STYLE.md`  -  current contributor conventions.
+- `AGENTS.md`  -  agent / contributor onboarding brief.
 
 [golang-standards/project-layout](https://github.com/golang-standards/project-layout) ·
 [go.dev module layout](https://go.dev/doc/modules/layout) ·
-[Alex Edwards — 11 tips structuring Go](https://www.alexedwards.net/blog/11-tips-for-structuring-your-go-projects) ·
+[Alex Edwards  -  11 tips structuring Go](https://www.alexedwards.net/blog/11-tips-for-structuring-your-go-projects) ·
 [GitHub repo best practices](https://docs.github.com/en/repositories/creating-and-managing-repositories/best-practices-for-repositories) ·
 [OpenSSF SLSA](https://openssf.org/projects/slsa/) ·
 [SLSA v1.2 spec](https://slsa.dev/) ·
-[adr.github.io — AD practices](https://adr.github.io/ad-practices/) ·
-[Joel Parker Henderson — ADR examples](https://github.com/joelparkerhenderson/architecture-decision-record)
+[adr.github.io  -  AD practices](https://adr.github.io/ad-practices/) ·
+[Joel Parker Henderson  -  ADR examples](https://github.com/joelparkerhenderson/architecture-decision-record)
