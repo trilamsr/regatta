@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/trilamsr/regatta/schemas/features.schema.json",
+  "title": "FeaturePlan",
+  "description": "The planner's one-shot output for a Mission. Decomposes a parent WorkItem{kind: mission} into a DAG of child WorkItems. Immutable post-publication; the planner runs exactly once per mission. See docs/design.md §Missions §Planner contract.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "mission_id",
+    "parent_work_item_id",
+    "planner_model_id",
+    "features",
+    "produced_at",
+    "signature"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "const": 1 },
+    "mission_id": {
+      "type": "string",
+      "pattern": "^m-[0-9a-f]{12}$",
+      "description": "Stable mission ID. Format mirrors handoff.schema.json."
+    },
+    "parent_work_item_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ID of the parent WorkItem{kind: mission} the planner decomposed."
+    },
+    "parent_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "description": "VERBATIM copy of the parent WorkItem's acceptance criteria at plan-time. Stored for L0 byte-equality at publish + at each child handoff (P3, P10).",
+      "items": {
+        "type": "object",
+        "required": ["id", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "id":   { "type": "string", "minLength": 1 },
+          "text": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "planner_model_id": {
+      "type": "string",
+      "description": "Provider-qualified model ID, e.g. 'anthropic:claude-opus-4-7'."
+    },
+    "features": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Child WorkItems in topological order. Every parent_criteria[].id MUST appear in exactly one feature.fulfills.",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "fulfills", "depends_on_features"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^F-[A-Z0-9_-]{1,32}$",
+            "description": "Stable child ID. Planner-assigned; unique within a mission."
+          },
+          "title":       { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "fulfills": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1 },
+            "description": "Parent criterion IDs this feature claims. Coverage invariant: union over all features == parent_criteria[*].id; pairwise disjoint."
+          },
+          "depends_on_features": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "pattern": "^F-[A-Z0-9_-]{1,32}$" },
+            "description": "Other feature IDs that must complete before this one spawns. DAG; cycles rejected at validate time."
+          },
+          "estimated_complexity": {
+            "enum": ["trivial", "small", "medium", "large"],
+            "default": "medium"
+          }
+        }
+      }
+    },
+    "produced_at": { "type": "string", "format": "date-time" },
+    "signature": {
+      "type": "object",
+      "required": ["alg", "key_id", "mac"],
+      "additionalProperties": false,
+      "properties": {
+        "alg":    { "const": "HMAC-SHA256" },
+        "key_id": { "type": "string", "minLength": 1 },
+        "mac":    { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}

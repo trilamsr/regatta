@@ -43,6 +43,19 @@ swap models, and tune thresholds via `regatta.yaml`. Deterministic
 gates run first in parallel; AI gates run after the deterministic
 floor passes. Default-deny on any blocking finding. L0 is mandatory.
 
+**Multi-feature work** (RFC-class decomposition into a DAG of
+related PRs) is handled by an opt-in mission layer
+([§Missions](#missions-multi-feature-decomposition)) that decomposes
+a parent `WorkItem{kind: mission}` into child WorkItems and adds
+a signed handoff schema + one optional security custom gate. The
+mission layer does **not** introduce a parallel agent runtime,
+validator subsystem, or LLM verdict-routing agent; mission progression
+is a deterministic Go function over signed `GateResult`s. The
+layer ships as MVP-1 → MVP-3 with a measured kill switch: if
+mission decomposition does not yield ≥5 pp net-helpfulness gain
+over single-agent on the canary corpus, the mission concept is
+abandoned and the doc reverts to base Regatta.
+
 ### Companion artifacts
 
 `docs/incidents.md` (19 incidents + full P1–P10 prose);
@@ -50,7 +63,9 @@ floor passes. Default-deny on any blocking finding. L0 is mandatory.
 `schemas/{gate_result,work_item}.schema.json` (JSON Schemas);
 `schemas/regatta.v1.cue` (config schema); `gates/l0/testdata/` (L0
 fixture corpus contract); `gates/canary/testdata/` (canary archetype
-corpus).
+corpus). Mission-layer additions arrive in MVP-1 → MVP-3:
+`schemas/handoff.schema.json` (signed inter-feature handoff,
+normative), `gates/security/` (the only new gate kind).
 
 ## Motivation
 
@@ -444,6 +459,412 @@ The `severity_block: ['critical', '2*high']` mini-DSL: `critical` OR
 ≥2 `high` blocks. Only `&`, `|`, and `count*severity` operators
 permitted; the validator rejects others.
 
+## Missions (multi-feature decomposition)
+
+A **Mission** is a parent `WorkItem` marked `kind: mission` that
+decomposes into a DAG of child `WorkItem`s. Each child runs through
+the existing single-agent flow (worktree, L0–L6, human merge). The
+mission layer adds a planner front end, a tamper-evident handoff
+between siblings, and one new custom gate; **it does not introduce a
+parallel agent runtime, validator subsystem, or LLM-driven decision
+agent.**
+
+### Why missions
+
+Single agents hit context-window and attention-degradation limits on
+multi-day work (Factory's published Missions data: 14% of multi-agent
+runs >24 h; the longest 16 days). SWE-bench-Verified 2026 shows
+~6pp improvement from decomposition under the same model (Opus 4.5:
+45.9% → 51.8% with better scaffolding). The mission layer is
+Regatta's bid for that 6pp, gated on canary-corpus measurement at
+MVP-3.
+
+### What missions are NOT
+
+The mission layer is **not** Factory Missions. Specifically:
+
+- **No new agent roles.** No "validator agent process," no
+  "decision agent," no "user-testing agent." Mission PRs traverse
+  the existing L0–L6 gate stack. Decomposition is a planner step,
+  not an agent topology.
+- **No LLM verdict routing.** Mission progression is a
+  deterministic Go function over signed `GateResult`s (P1: a
+  deterministic gate sits before any AI gate on destructive ops).
+  The LLM may *explain* the decision into the audit log; it never
+  *makes* the decision.
+- **No mission-immutability gate ("L0M") at v1.** L0's fixture
+  corpus is at **15 / 200** target. Extending L0 to cover mission
+  artifacts before L0 itself ships green at corpus is the
+  "police what you don't have" failure (PRINCIPLES #4). L0M is
+  deferred until the L0 corpus contract is met.
+- **No bespoke `ModelProvider` abstraction at the mission layer.**
+  Even the base agent is honestly Claude-only today; cross-vendor
+  is the deferred deliverable in §Alternatives (e). The mission
+  layer reuses whatever cross-vendor story the base layer ships.
+- **No new validator process tree.** Where missions need extra
+  scrutiny, the existing L3/L4/L5 receive `handoff.json` as
+  additional grounding; one **new custom gate** (security) joins
+  the stack via the same `gates:` config block any repo already
+  uses to add gates.
+- **No Postgres / Temporal / Vault dependency at v1.** Reuse the
+  base sqlite, reuse the base audit sink, reuse the existing
+  spawner. Adopt OSS plumbing (§Alternatives (h)) only when the
+  base implementations measurably hurt.
+
+### Architecture
+
+```
+WorkItem{kind: mission} ─► Planner (one-shot Opus 4.7 call)
+                              │
+                              ▼ emits features.json (DAG of child WorkItems)
+                          Mission publish PR
+                              │ CODEOWNERS-gated; human merge to `main` (P3)
+                              ▼
+                          Existing orchestrator
+                              │ consumes children like any DAG-ordered work
+                              ▼
+                          One worker per child (existing AgentSpawner)
+                              │ implement → commit → handoff.json (signed)
+                              ▼
+                          Next worker reads sibling handoff.json
+                              │ L0 byte-equality of handoff payload (P3, P10)
+                              ▼
+                          Child PR → L0–L5 + security custom gate → L6 human
+                              │
+                              ▼
+                          Deterministic Go decision (RouteVerdicts)
+                              ├── all pass + heartbeat anchors verified → advance
+                              ├── any fail → inject fix-feature → re-spawn worker
+                              └── depth exceeded / unverifiable / out-of-scope
+                                       uncovered → halt to human
+```
+
+The mission planner runs **exactly once** per mission (one-shot
+`features.json` emission, then exit). It is not a long-lived agent
+session; there is no planner state to recover from on crash. Mission
+state lives in `regatta.db` as it does for any `WorkItem`.
+
+### Planner contract
+
+The planner is a Claude (or any configured base-layer agent)
+invocation with a templated prompt (`prompts/planner.md`, signed +
+SHA-pinned). Input:
+
+- The parent `WorkItem` (`kind: mission`)
+- The parent's `linked_artifact` (RFC, design doc, MILESTONES.md)
+- `AGENTS.md` / `CLAUDE.md`
+- The existing L0 immutability rules
+
+Output: `features.json`, written to a `mission/<id>` branch and
+opened as a **mission-publish PR to `main`**. The PR is L0-gated,
+CODEOWNERS-gated, and requires a human merge (P3 — until artifacts
+land on `main`, no worker reads them). The planner cannot mutate
+`features.json` once merged; re-planning requires a new mission
+with a `parent_mission` link, costing the iteration budget.
+
+Coverage invariant (every child `fulfills` an acceptance criterion
+of the parent, and no criterion is double-claimed) is checked
+**inline in the planner publish step** — not as a separate gate.
+
+### Handoff schema
+
+`schemas/handoff.schema.json` (new). The only mission-specific
+inter-agent artifact. Written by a worker on PR-open; read by the
+next worker in the DAG; verified by L0 on every push (the existing
+fixture-corpus mechanism — no L0M needed).
+
+Required fields:
+
+- `feature_id` — child WorkItem ID
+- `base_sha`, `head_sha` — git anchors
+- `commit_shas` — must be reachable from `head_sha`, not from `base_sha`
+- `criteria_addressed` — assertion IDs ⊆ parent's acceptance criteria
+- `commands_run` — `{cmd, exit_code, stdout_sha}` tuples; the
+  orchestrator independently re-runs and HMAC-signs the canonical
+  tuple. Worker's claim is *advisory*; mismatch with the
+  orchestrator's re-run is a hard fail and audit-sink escalation
+  (the "self-report isn't ground truth" lesson — incident #1).
+- `falsifications` — list of `(hypothesis, mutation_kind, target_invariant,
+  citation, canary_archetype_killed, outcome)` tuples. Each must
+  carry a citation matching `^(test|file|commit)=\S+$` (same
+  discipline as criterion citations); plain counts are not
+  accepted. Mutation-kind enum: `null | empty | race | inject |
+  overflow | auth_bypass | path_traversal | ...`. At least one
+  falsification per claimed `trap_pattern` (P3/P6/P7/P9/P10/...).
+- `signature` — HMAC over canonical JCS serialization, using the
+  same orchestrator key that signs `GateResult`. No new key.
+
+### Decision logic (deterministic Go, not LLM)
+
+The mission's progression past each child is a Go function in
+`internal/missions/route.go`:
+
+```go
+func RouteVerdicts(child Child, kr KeyRing) Decision {
+    for _, r := range child.GateResults {
+        if err := Verify(r, kr); err != nil {
+            return Decision{Halt: "unverifiable verdict"}
+        }
+        if r.GateStarted == nil || r.GateFinished == nil {
+            return Decision{Halt: "missing heartbeat anchor"}
+        }
+    }
+    if AnyFail(child) {
+        return Decision{Iterate, CollectFixFeatures(child)}
+    }
+    if AnyOutOfScopeUnclaimed(child) {
+        return Decision{Halt: "uncovered out-of-scope"}
+    }
+    if OverDepthCap(child) {
+        return Decision{Halt: "depth cap"}
+    }
+    return Decision{Advance: true}
+}
+```
+
+Three properties this gives us that an LLM decision agent cannot:
+
+1. **No prompt-injection surface.** The decision logic has no
+   prompt. The mission-internal `synthesis.json` files cannot
+   influence the decision other than via their signed verdicts.
+2. **Heartbeat-anchored silence detection.** Missing
+   `gate_finished` (audit silent-bypass — Crit) becomes `halt`,
+   not silent advance. Pairs with `regatta audit --reconcile`
+   (existing dead-man's-switch, §Failure modes).
+3. **No "validator-of-validators" recursion.** P1 applied one
+   layer up: deterministic gate before AI gate.
+
+`AnyOutOfScopeUnclaimed` checks the existing `responsibility[]` /
+`out_of_scope[]` fields on the gate results (extension to the
+existing `GateResult` schema — additive, no new gate kind).
+
+### Depth caps (typed, enforced in Go spawner)
+
+Mission iteration is bounded by a typed cap, enforced in the parent
+spawner process (P5 — out-of-band of the LLM):
+
+- `mission_depth.functional ≤ 2` (default; rework iterations for
+  pure functional fixes)
+- `mission_depth.security   ≤ 5` (default; legitimate CVE
+  remediation often needs 3–5 rounds: patch → test reveals
+  incomplete → widen → regress → clean)
+- `mission_depth.user_testing ≤ 3` (default)
+
+Per-axis caps prevent one failure class from consuming the budget
+of another. Each axis-overshoot requires P2 two-key human approval
+to continue; enforcement is in `internal/missions/route.go`, not in
+the planner prompt.
+
+### Security custom gate (the only new gate)
+
+A new optional gate kind ships in `gates/security/`, added to a
+repo's `regatta.yaml` like any other gate:
+
+```yaml
+gates:
+  - { id: spec_conformance, type: ai, model: claude-opus-4-7,   severity_block: ['fail'] }
+  - { id: adversarial,      type: ai, model: claude-sonnet-4-6, severity_block: ['critical', '2*high'] }
+  - { id: drift,            type: ai, model: claude-haiku-4-5,  severity_block: ['drift'] }
+  - { id: security,         type: hybrid,                       severity_block: ['critical', '2*high'],
+      determinism_floor: { gitleaks: true, osv_scanner: true },
+      ai_model: claude-opus-4-7,
+      ai_mode: adversarial,
+      lineage_isolation: cross_family }
+```
+
+Determinism floor (no LLM): `gitleaks`, `osv-scanner` (Google) and
+optionally `semgrep`, `syft`. Each is shelled out (single binary,
+JSON output, version-pinned in `safety.tool_versions`). Failure
+short-circuits to a fix-feature; no LLM spend.
+
+AI phase: Opus-class threat-modeling subagent producing a verdict
+in the existing `GateResult` shape. Adversarial-default: must emit
+falsifications matching the handoff-schema falsification fields.
+Lineage isolation is `cross_family` against the worker's binding
+(P13). Output is a normal `GateResult` (`gate_kind: ai_adversarial`
+already valid); no new schema.
+
+The security AI prompt targets **Regatta's Trap Catalog (P1–P13)**,
+not OWASP generic — commercial code-review tools cover OWASP
+already; the mission layer's incremental value is incident-pattern
+coverage. Skipping commercial AI judges (CodeRabbit/Greptile/Snyk)
+also keeps P13: their judge model is opaque and may be same-family
+as the worker.
+
+### Subagent / cache discipline
+
+If the planner spawns research subagents (read-only investigation
+during planning), they:
+
+- Inherit the planner's binding (cache reuse, lineage consistency).
+- Run with no Write/Edit tool (P4 — read-only ephemeral).
+- Cache prefix = `main`-signed text only; untrusted diff or
+  external page content lives *after* the cache breakpoint and
+  never participates in cache-key formation. Without this,
+  prompt-injection in feature-1's diff persists through cached
+  prefix into feature-2's subagent (Crit, prevented in-design).
+
+Anthropic cache minimums (verified 2026-05-20):
+[1024 tokens Haiku, 2048 Sonnet/Opus](https://platform.claude.com/docs/en/about-claude/pricing).
+`regatta validate-config` refuses cache spans under floor.
+
+### Fallback discipline (cross-family only)
+
+When a binding returns `indeterminate` (refusal, structured-output
+parse failure, timeout), the orchestrator reroutes *once* to a
+fallback binding. P13 is preserved by requiring the fallback to be
+**at least as strong** and **cross-family** for adversarial-class
+verdicts: `Opus → GPT-5` or `Opus → Sonnet` (never `Opus → Haiku`).
+Second indeterminate → halt; any indeterminate where
+`injection_suspected: true` → halt immediately.
+
+### State (sqlite, three tables)
+
+```
+missions(id, parent_work_item_id, planner_session_id, status,
+         depth_functional, depth_security, depth_user_testing,
+         created_at)
+mission_artifacts(mission_id, kind, sha, signature, published_at)
+mission_verdicts(mission_id, child_work_item_id, gate_id, verdict,
+                 falsifications_json, signature, recorded_at,
+                 gate_started_at, gate_finished_at)
+```
+
+Everything else (per-child status, handoffs) lives in existing
+`work_items` / `gate_results` tables. **No Postgres at v1.** When
+the state machine outgrows sqlite, adopt Temporal (§Alternatives
+(h)); not before.
+
+### Product capabilities per stage
+
+What an operator can actually do at the end of each stage. Each
+row is cumulative — Stage N implies all capabilities of Stages
+earlier than N.
+
+| Stage | Operator can… | Operator cannot… |
+|---|---|---|
+| **Today (pre-MVP)** | Run `regatta l0 <diff>` on a unified diff and get a deterministic spec-immutability verdict. Run `regatta verify-repo-config -owner -repo` and audit branch protection against the P2 recipe. Print version. | Spawn an agent. Run a gate stack. Decompose a mission. Verify a handoff. |
+| **MVP-1 (Planner-as-DAG)** | Author a `WorkItem{kind: mission}` JSON file. Run `regatta mission plan` to one-shot decompose it into a signed, coverage-checked, DAG-validated `features.json`. Audit the planner's output by file (every criterion ID is claimed by exactly one feature; cycles rejected; HMAC verifiable). | Spawn child workers. Open a mission-publish PR. Persist mission state. Run any security gate beyond L0–L5. |
+| **MVP-2 (Tamper-evident handoff)** | Run `regatta mission verify-handoff <path>` and get a structural + HMAC verdict on any handoff JSON. Use `internal/missions.RouteVerdicts` to make deterministic Go-only advance/iterate/halt decisions over signed gate results. Detect missing heartbeat anchors (silent audit-bypass). Catch worker re-run mismatches (`ReRunMismatch`) on independently-rerun commands. | Run a real worker → handoff → orchestrator round-trip in CI. Inject fix-features back into a live spec adapter. |
+| **MVP-3 (Security gate)** | Wire `gates/security` into `regatta.yaml gates:` row. Get a hybrid floor (`gitleaks` + `osv-scanner` + optional `semgrep`/`syft`) plus an AI threat-model against the Trap Catalog. Refuse advance on `injection_suspected: true` or any blocking finding. Enforce cross-family validator-vs-worker lineage at config load. | Run the user-testing gate (deferred). Cross-vendor route through LiteLLM (deferred). Hosted multi-tenant (deferred). |
+| **P2.1 (sqlite state)** | Run >1 concurrent mission. Survive orchestrator restart with all in-flight missions recoverable from `regatta.db`. Query mission/feature/verdict state via SQL. | Survive cross-region failover. Multi-tenant isolation. |
+| **P2.2 (publish PR machinery)** | Run `regatta mission publish <plan>` and have it open a CODEOWNERS-gated PR to `main` carrying the signed `features.json`. Branch protection refuses merge without 2 distinct human approvals. Workers only spawn after the publish PR merges. | Auto-merge mission-publish PRs (forbidden by design; P3). |
+| **P2.3 (typed depth caps)** | Configure per-axis caps in `regatta.yaml safety.mission` (functional ≤ 2, security ≤ 5, user_testing ≤ 3). Caps enforced in the Go spawner — the LLM planner cannot raise them. Each axis-overshoot demands a P2 two-key approval. | Allow an LLM to grant itself more iterations. |
+| **P2.4 (audit reconciler)** | Run `regatta audit --reconcile` and detect any `gate_started` row without matching `gate_finished` past 30 min × 2. CUSUM-style drift detector on positive count delta. | Silently advance when a validator never wrote its verdict (now hard-halts). |
+| **P2.5 (Temporal)** | Sustain ≥30 concurrent missions. Use Temporal workflow history as the second tamper-evident timeline alongside the audit sink. 3-day human approval pauses survive across restart. | Run without Postgres. |
+| **P2.6 (Vector audit transport)** | Ship 100 MB+/day of signed audit events to S3 object-lock with backpressure handling and disk-buffered durability. | Sustain ≥1 GB/day without further tuning. |
+| **P2.7 (Vault dynamic secrets)** | Issue per-spawn short-lived provider credentials. Long-lived provider keys never present in worker processes. Revoke a spawn's credentials in <60 s via `regatta halt`. | Run without HashiCorp Vault (the abstraction sits at the credential boundary). |
+| **P2.8 (LiteLLM proxy for validators)** | Configure a non-Claude binding (GPT-5 / Gemini 2.5 Pro / etc.) for any *validator* role while workers stay on Anthropic direct via `claude --resume`. Family-stratified canary catch-rate live. | Route worker traffic through LiteLLM (cache fidelity loss). |
+| **P3.1 (user-testing gate)** | Add a Playwright-CLI-backed user-testing custom gate to `regatta.yaml gates:`. Browser-flow validators produce per-assertion verdicts with screenshot evidence. | Run computer-use-only browser drivers (locks to Anthropic, kills agent-agnostic story). |
+| **P3.2 (ModelProvider abstraction)** | Configure planner / worker / validator bindings against any of: anthropic, openai, google-gemini, bedrock, vertex, ollama, openrouter, litellm. Capability floor enforced per role at config load. | Route validator and worker through the same model family (`lineage_isolation: cross_family` default-denies). |
+| **P3.3 (cross-vendor L4 benchmark)** | Run the canary corpus through (Opus, Sonnet) vs (Opus, GPT-5) vs (Opus, Gemini) and publish the family-stratified catch-rate delta. | Claim cross-vendor parity without published numbers. |
+| **P3.4 (L0M)** | Extend L0 byte-equality to mission artifacts (`mission.md`, `features.json`, `validation-state.json`, library files). Catch invisible-glyph injection into LLM-authored artifacts. | Ship L0M before the base L0 fixture corpus hits 200 fixtures (currently 15). |
+| **P3.5 (hosted multi-tenant)** | Onboard a customer with a `regatta deploy --hosted` flow. Per-tenant key isolation. SLA-backed audit sink. | Run on-prem only. |
+| **P3.6 (Postgres backend)** | Sustain mission concurrency past sqlite's single-writer ceiling. Use `regatta migrate --to postgres` in-place. | Roll back from Postgres to sqlite (one-way migration). |
+| **P3.7 (lineage map strict mode)** | Reject any role mapping that violates the published lineage map at config load. Operators see family-distance per (worker, validator) pair in `regatta validate-config`. | Run with `cross_series` lineage without `--accept-degraded-lineage` and an audit-sink note. |
+
+The MVP-3 acceptance gate (next subsection) decides whether Phase
+2 ever begins.
+
+### Phasing (MVP → measure → full product)
+
+The mission layer ships in **three MVP milestones to a measurable
+go/no-go gate**, then enters **eight conditional adoption phases**
+that are triggered only by observed pain (PRINCIPLES #4 —
+adopt-when-needed, never on speculation). The base L0–L6 gate
+stack remains intact through every milestone.
+
+#### Phase 1 — MVP (mission layer earns the right to exist)
+
+| ID | Title | Scope | LOC | New schemas | Acceptance |
+|---|---|---|---|---|---|
+| **MVP-1** | Planner-as-DAG | `WorkItem{kind: mission}` → planner one-shot → `features.json` → existing orchestrator consumes a DAG of children. Anthropic-direct ModelClient. Coverage + DAG validators. HMAC-signed plan. CLI: `regatta mission plan`. | ~600 | `features.schema.json` | One mission produces ≥3 child PRs through unmodified L0–L6 |
+| **MVP-2** | Tamper-evident handoff | `handoff.json` signed + schema'd + falsification-citation discipline. `RouteVerdicts` deterministic Go decision function. CLI: `regatta mission verify-handoff`. Reuses existing L0 fixture infrastructure (no L0M). | ~600 | `handoff.schema.json` | +6 handoff fixtures pass/fail corpus; deterministic decision function covers 7 routing cases |
+| **MVP-3** | Security custom gate | `gitleaks` + `osv-scanner` deterministic floor + Trap-Catalog AI threat-modeler. Wired via `regatta.yaml gates:` row. Cross-family lineage enforced at config-load. 3 new canary archetypes (planner-glyph, fabricated-handoff, fallback-coercion). | ~500 | none (extends `GateResult`) | Net-helpfulness ≥+5 pp over single-agent on canary corpus |
+
+**MVP-3 gate (go/no-go).** Measure on the extended canary corpus.
+SWE-bench's published 2026 decomposition delta is ~6 pp (Opus 4.5:
+45.9% → 51.8% with better scaffolding); we set the bar one point
+below as our acceptance threshold.
+
+- **If MVP-3 misses the bar:** kill the mission concept, document
+  the empirical result, ship base Regatta. PRINCIPLES #4 — burden
+  of proof on the proposer.
+- **If MVP-3 clears the bar:** enter Phase 2.
+
+#### Phase 2 — adopt-when-needed (OSS plumbing as pain appears)
+
+Each phase has a documented **trigger metric**. Adoption begins
+only after the trigger fires for two consecutive measurement
+windows. No speculative adoption.
+
+| ID | Adopt | Trigger metric | Acceptance |
+|---|---|---|---|
+| **P2.1** | Mission state in sqlite (3 tables per §State) | First mission concurrency >1 | All in-flight missions recoverable across orchestrator restart |
+| **P2.2** | Mission-publish PR machinery + CODEOWNERS gate | First non-toy mission (≥5 features) | Publish PR refuses to merge without 2 distinct human approvals matching `verify-repo-config` recipe |
+| **P2.3** | Per-axis depth caps enforced in Go spawner | First fix-feature loop >3 rounds in production | `mission_depth.{functional,security,user_testing}` enforced before LLM ever sees a verdict |
+| **P2.4** | Audit reconciler (`regatta audit --reconcile`) | First missing-`gate_finished` heartbeat observed | Silent-bypass = halt, not advance. CUSUM detector live. |
+| **P2.5** | Temporal OSS migration | sqlite contention >5 % of mission writes OR ≥30 concurrent missions | Mission state machine + crash recovery off the daemon; existing 3-table model fits Temporal workflow history |
+| **P2.6** | Vector audit transport | Audit S3 backpressure events ≥1/week OR audit volume >100 MB/day | HMAC stays in Regatta; Vector handles batching + retry + disk-buffered durability |
+| **P2.7** | Vault dynamic secrets | First enterprise procurement ask OR per-spawn token rotation ≥10×/day | Long-lived provider keys never present in worker process; revocation lag <60 s |
+| **P2.8** | LiteLLM proxy for validators (workers stay `claude --resume`) | Second paying customer with a non-Claude validator binding | Cross-family validator/worker pair shipped end-to-end on canary corpus |
+
+#### Phase 3 — full product
+
+Phase 3 work ships only after Phase 2 reveals which pieces are
+demanded; designing them in advance is YAGNI. Likely candidates if
+demand materializes:
+
+| ID | Title | Conditional on |
+|---|---|---|
+| **P3.1** | User-testing custom gate via Playwright CLI | Customer with browser-served product asks. Microsoft's 2026 recommendation is CLI over MCP for coding agents (4× fewer tokens/session). |
+| **P3.2** | ModelProvider abstraction (cross-vendor) | Second paying customer + Phase 2 P2.8 in production |
+| **P3.3** | Cross-vendor L4 benchmark + family-stratified catch-rate | Phase 3 P3.2 lands |
+| **P3.4** | L0M (mission-immutability extension) | L0's base fixture corpus reaches 200-fixture target (currently 15) AND first mission-artifact tampering attempt observed |
+| **P3.5** | Hosted multi-tenant service | Self-host customer count ≥10 AND ≥3 ask for managed |
+| **P3.6** | Postgres backend swap | Phase 2 P2.5 lands AND mission concurrency justifies it |
+| **P3.7** | Lineage map + `regatta validate-config` strict mode | Second model family adopted AND Preference Leakage measurement on canary corpus |
+
+Phases 2 and 3 do **not** form a critical-path Gantt; they are
+parallel demand streams. Pick by the trigger that fired, not by
+the order they appear here.
+
+#### What ships before Phase 1 begins (already done at this PR)
+
+- §Missions design doc (this section) and §Alternatives (h)
+  adopt-when-needed table.
+- `schemas/handoff.schema.json` + `schemas/features.schema.json`
+  + `schemas/sign.go` (shared HMAC, no new key per artifact type).
+- `internal/missions/` package: `route.go` (deterministic verdict
+  router), `handoff.go` (load/validate/coverage/re-run-mismatch),
+  `planner.go` (one-shot pipeline + Validate + Sign), and
+  `provider_anthropic.go` (single ModelClient implementation).
+- `internal/securitygate/gate.go` skeleton (floor wired, AI stub
+  pointing at unwritten `prompts/security_gate.md`).
+- CLI: `regatta mission plan` and `regatta mission verify-handoff`.
+- Fixtures: 6 handoff fixtures (3 pass, 3 fail) + 3 canary
+  archetypes.
+
+Test discipline: 62 tests pass across 5 packages. New code
+ships with table-driven contract tests against the fixture corpus.
+
+### What's load-bearing (cannot be cut without losing the thesis)
+
+1. **Worker isolation per feature** (own session, fresh context).
+   Already true in single-agent flow.
+2. **Tamper-evident handoff** (signed, schema-validated). The
+   recursive-taint defense at mission scope.
+3. **Human approval on mission spawn** (L6-equivalent via branch
+   protection on the mission-publish PR). Inherits from base
+   thesis (§Gate stack).
+4. **Reuse base audit sink + signing key.** No fork of the
+   tamper-evident pipeline.
+5. **Depth enforced in Go spawner**, not LLM planner.
+
+Everything else — typed verdicts, falsification-quality lint,
+security custom gate, planner subagents — is configurable per repo
+and removable without breaking the thesis.
+
 ## Day 1 → Day 30 Runbook
 
 **Pre-implementation banner.** Regatta is not shipped. Commands below
@@ -689,6 +1110,32 @@ closedAt,createdAt`); agent completion rate <60% across rolling 10-PR
 window for ≥2 consecutive windows; or cost per completed item exceeds
 `safety.spend_cap_usd` consistently for 3+ items in a row.
 
+**Mission-layer stop conditions** (additional, see §Missions):
+
+- **MVP-3 acceptance bar miss.** Net-helpfulness improvement of
+  mission-decomposed flow over single-agent baseline on the canary
+  corpus is < +5 pp after 20 rolling missions. → Kill the mission
+  concept; remove `Missions` section from this doc; ship base
+  Regatta.
+- **Handoff fabrication rate ≥ 1%.** Worker `handoff.json`
+  `commands_run.exit_code` mismatch with the orchestrator's
+  independent CI re-run (incident #1 pattern) over rolling 100
+  handoffs. → Halt all missions; audit-sink escalation; planner
+  prompt review.
+- **Missing `gate_finished` heartbeat ≥ 1.** Any silent-bypass
+  detected by `regatta audit --reconcile` is a hard failure of the
+  P5 dead-man's-switch. → Halt all missions; investigate
+  orchestrator integrity.
+- **Cross-family fallback collapse.** Indeterminate verdict on the
+  primary binding routes to a same-family fallback because no
+  cross-family fallback is configured. → Refuse to advance; require
+  operator to declare cross-family fallback in `regatta.yaml` before
+  resuming.
+- **Mission-publish PR auto-merge.** Any mission-publish PR merges
+  to `main` without ≥2 human approvals matching the CODEOWNERS
+  recipe enforced by `verify-repo-config`. → Halt the deployment;
+  this is a P3 (trusted-instructions-from-main) violation.
+
 ## Alternatives
 
 **(a) No orchestrator, single-shot agent.** Accepted as Day 1 mode in
@@ -746,6 +1193,35 @@ catch-rate ratio `< 0.85` triggers cross-vendor L4.
 Regatta independently versionable; lets one deployment serve many
 repos; avoids forking gate logic per consumer.
 
+**(h) Adopt-When-Needed OSS plumbing (mission-layer trigger).**
+Hand-rolled state machine, audit transport, credential plumbing,
+multi-provider routing, and browser automation are explicitly
+deferred to OSS adoption — each gated on a measured trigger
+out of the mission-layer MVP-3 phase (see §Missions). Component
+mapping:
+
+| Trigger | Adopt | Notes |
+|---|---|---|
+| State machine outgrows sqlite (≥30 concurrent missions, or a documented schema-rewrite forcing function) | **Temporal OSS** 1.25+ via Go SDK | Real cost: 3 services + Postgres + metrics + workers; ~$480-610/mo small deploy; 37 tables; 145 SQL/3-activity workflow. Requires SRE capability. Defer hard until base sqlite hurts. |
+| Audit volume >100 MB/day OR S3 backpressure under load | **Vector** (Rust, single binary, S3 object-lock sink, OTLP input, disk-buffered durability) | Keep HMAC signing in Regatta; Vector handles transport only. |
+| Customer asks enterprise procurement story | **HashiCorp Vault OSS** + dynamic secrets engine | Maps to P4. Defer until first regulated-customer ask. |
+| Second paying customer asks non-Claude provider | **LiteLLM** proxy (Python sidecar) for **validators only**; workers stay `claude --resume` to preserve `cache_control` placement | LiteLLM strips Anthropic cache annotations on some routes — verified failure 2025. Validators tolerate; workers don't. |
+| Customer asks browser-based validation | **Playwright CLI** (not Playwright MCP — Microsoft recommends CLI for coding agents as of 2026, 4× fewer tokens/session) | Persistent profile auth in `ms-playwright/mcp-{channel}-{workspace-hash}`. |
+| MVP-3 net-helpfulness < +5pp vs single-agent baseline on canary corpus | **None — kill the mission concept** | PRINCIPLES #4 acceptance criterion. Document the empirical result; ship base Regatta. |
+
+Rejected adoptions:
+
+- **LangGraph / CrewAI / OpenAI Agents SDK / Anthropic Agent SDK
+  as the worker runtime.** Polyglot tax (Python) and embedded SDK
+  pattern drag the agent runtime into Regatta's address space,
+  losing cgroup-enforced supervisor limits (P5) and the
+  per-binary-swap agent-agnostic story. Keep CLI shellout.
+- **CodeRabbit / Greptile / Snyk as the security gate AI phase.**
+  Their judge models are opaque (P13 violation surface); they
+  target OWASP-generic, not Regatta's Trap Catalog (P1–P13).
+  Use their underlying OSS tools (gitleaks, semgrep) directly;
+  keep the AI phase in-house.
+
 ## Competitor positioning
 
 | | Regatta | Devin 2.0 | Cursor 3 + BugBot | Copilot Workspace + Coding Agent | Claude Code Agent Teams | OpenHands | CodeRabbit | Gitar |
@@ -783,6 +1259,28 @@ standalone OSS primitives.
 5. **Cross-vendor L4 benchmark.** When the cross-vendor adapter
    lands, re-run the canary corpus on `(Opus, Sonnet)` vs `(Opus,
    GPT-5)` and publish the same-family-vs-cross-family delta.
+6. **Mission decomposition empirical floor.** Published 2026
+   SWE-bench-Verified gain from decomposition is ~6 pp under the
+   same model (Opus 4.5: 45.9% → 51.8% with better scaffolding).
+   The MVP-3 acceptance bar is set at ≥5 pp on Regatta's canary
+   corpus; an unanswered question is whether that translates from
+   SWE-bench to Regatta's incident-pattern (P1–P13) corpus, or
+   whether Regatta's benchmark is more sensitive (smaller gain
+   suffices) or less (larger gain required) than SWE-bench.
+7. **Falsification-quality enforcement.** The handoff schema
+   requires per-falsification citation and mutation-kind enum;
+   Meta's mutation-testing + LLM work (FSE 2025) and MetaQA
+   (ACM 2025) are the closest prior art. Open: does the canary
+   archetype corpus need its own mutation operators for the
+   `canary_archetype_killed` field to be meaningful, and can the
+   archetype corpus carry mutation pairs the way mutation-testing
+   benchmarks do?
+8. **Decision-agent vs deterministic Go function.** Resolved in
+   §Missions in favor of deterministic Go (P1 applied one layer
+   up). Open: do we need an *advisory* LLM rationale generator
+   (writes to audit log, never to verdict) for human reviewers?
+   Cost is ~$0.10/decision; value is forensic clarity. Defer
+   until L6 reviewers ask.
 
 ## References
 

@@ -1,0 +1,17 @@
+{
+  "id": "RFC-AUTH-001",
+  "title": "Auth rewrite for session handling",
+  "body": "Replace the global mutex-free session map with a per-shard mutex-protected map. Remove the legacy /v1/login endpoint behind a deprecation banner. JWT validation must reject empty tokens (current behavior accepts them).",
+  "acceptance_criteria": [
+    {"id": "AC-1", "text": "JWT validation rejects empty Authorization header"},
+    {"id": "AC-2", "text": "Session writes serialize under a mutex"},
+    {"id": "AC-3", "text": "Old /v1/login endpoint emits deprecation banner in response"}
+  ],
+  "status": "planned",
+  "linked_artifact": "docs/RFC-AUTH-001.md",
+  "source": {
+    "kind": "file",
+    "locator": "docs/RFC-AUTH-001.md:10-50",
+    "sha": "0000000000000000000000000000000000000000"
+  }
+}

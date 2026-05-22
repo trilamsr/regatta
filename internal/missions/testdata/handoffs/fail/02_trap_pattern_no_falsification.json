@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "mission_id": "m-000000000003",
+  "feature_id": "F-FAIL-03",
+  "worker_run_id": "66666666-6666-6666-6666-666666666666",
+  "base_sha": "0000000000000000000000000000000000000000",
+  "head_sha": "0000000000000000000000000000000000000001",
+  "success_state": "success",
+  "criteria_addressed": ["AC-1"],
+  "falsifications": [
+    {
+      "hypothesis": "noop falsification",
+      "mutation_kind": "other",
+      "target_invariant": "thing",
+      "citation": "file=internal/x.go:1",
+      "outcome": "inconclusive"
+    }
+  ],
+  "trap_patterns_claimed": ["P3"],
+  "produced_at": "2026-05-21T00:00:00Z",
+  "signature": {
+    "alg": "HMAC-SHA256",
+    "key_id": "k1",
+    "mac": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

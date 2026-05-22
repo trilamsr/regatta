@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "mission_id": "m-aaaaaaaaaaaa",
+  "feature_id": "F-AUTH-02",
+  "worker_run_id": "22222222-2222-2222-2222-222222222222",
+  "worker_model_id": "anthropic:claude-sonnet-4-6",
+  "base_sha": "0123456789abcdef0123456789abcdef01234567",
+  "head_sha": "fedcba9876543210fedcba9876543210fedcba98",
+  "commit_shas": [
+    "fedcba9876543210fedcba9876543210fedcba98"
+  ],
+  "success_state": "success",
+  "criteria_addressed": ["AC-1", "AC-2"],
+  "commands_run": [
+    {
+      "cmd": "go test ./...",
+      "exit_code": 0,
+      "duration_ms": 4321,
+      "stdout_sha": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+      "log_path": ".regatta/logs/F-AUTH-02-test.log"
+    }
+  ],
+  "tests_added": [
+    {
+      "name": "TestAuth_RejectsEmptyToken",
+      "file": "internal/auth/handler_test.go",
+      "addresses": ["AC-1"]
+    }
+  ],
+  "falsifications": [
+    {
+      "hypothesis": "handler returns 200 on empty Authorization header",
+      "mutation_kind": "empty",
+      "target_invariant": "empty Authorization always yields 401, never 200",
+      "citation": "test=internal/auth/handler_test.go:TestAuth_RejectsEmptyToken",
+      "outcome": "disproved_worker"
+    },
+    {
+      "hypothesis": "concurrent requests with same token race the session map",
+      "mutation_kind": "race",
+      "target_invariant": "session writes serialize under the mutex",
+      "citation": "test=internal/auth/session_test.go:TestSession_ConcurrentWrites",
+      "outcome": "confirmed_worker"
+    },
+    {
+      "hypothesis": "malformed JWT segment is not handled",
+      "mutation_kind": "inject",
+      "target_invariant": "JWT parser returns error, never panics",
+      "citation": "test=internal/auth/jwt_test.go:TestJWT_MalformedSegment",
+      "outcome": "disproved_worker"
+    }
+  ],
+  "trap_patterns_claimed": ["P3"],
+  "discovered_issues": [
+    {
+      "severity": "low",
+      "summary": "logger formats raw token in debug path; not in prod path",
+      "suggests_new_criterion": false
+    }
+  ],
+  "produced_at": "2026-05-21T00:00:00Z",
+  "signature": {
+    "alg": "HMAC-SHA256",
+    "key_id": "k1",
+    "mac": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

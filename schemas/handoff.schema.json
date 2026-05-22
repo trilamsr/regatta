@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/trilamsr/regatta/schemas/handoff.schema.json",
+  "title": "Handoff",
+  "description": "Signed worker-to-orchestrator handoff for one feature (child WorkItem) of a Mission. The worker's claims are ADVISORY: the orchestrator independently re-runs commands_run and compares. Mismatch is a hard fail (incident #1 pattern). See docs/design.md §Missions.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "mission_id",
+    "feature_id",
+    "worker_run_id",
+    "base_sha",
+    "head_sha",
+    "success_state",
+    "criteria_addressed",
+    "produced_at",
+    "signature"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "Major version of this schema. Bumps are breaking."
+    },
+    "mission_id": {
+      "type": "string",
+      "pattern": "^m-[0-9a-f]{12}$",
+      "description": "Parent mission ID. Worker MUST NOT invent this; the spawner injects it."
+    },
+    "feature_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Child WorkItem ID this handoff describes."
+    },
+    "worker_run_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Stable identifier for this worker invocation. A second attempt on the same feature gets a new worker_run_id."
+    },
+    "worker_model_id": {
+      "type": "string",
+      "description": "Provider-qualified model id (e.g. 'anthropic:claude-sonnet-4-6'). Provider-agnostic — no Claude assumption."
+    },
+    "base_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Worktree base commit at worker spawn."
+    },
+    "head_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "Worktree HEAD at handoff. MUST be reachable from base_sha + commit_shas."
+    },
+    "commit_shas": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+      "description": "Every commit the worker authored in this feature run. Orchestrator verifies reachability from head_sha and unreachability from base_sha."
+    },
+    "success_state": {
+      "enum": ["success", "partial", "failure"],
+      "description": "Worker's self-assessment. ADVISORY; orchestrator-independent re-runs are the ground truth."
+    },
+    "criteria_addressed": {
+      "type": "array",
+      "minItems": 0,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Acceptance-criterion IDs from the parent WorkItem the worker claims to have addressed. MUST be a subset of feature.acceptance_criteria[*].id (coverage check pre-merge)."
+    },
+    "commands_run": {
+      "type": "array",
+      "description": "Commands the worker executed (build/test/lint). Each tuple is RE-RUN by the orchestrator in a sibling sandbox; the orchestrator's re-run result is HMAC-signed into mission_verdicts. A mismatch on exit_code OR stdout_sha is a hard fail.",
+      "items": {
+        "type": "object",
+        "required": ["cmd", "exit_code"],
+        "additionalProperties": false,
+        "properties": {
+          "cmd": { "type": "string", "minLength": 1 },
+          "exit_code": { "type": "integer" },
+          "duration_ms": { "type": "integer", "minimum": 0 },
+          "stdout_sha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "sha256 of UTF-8-decoded stdout. Computed by the worker; verified by orchestrator re-run."
+          },
+          "log_path": {
+            "type": "string",
+            "description": "Worktree-relative path to the full log (for forensics). Not signed."
+          }
+        }
+      }
+    },
+    "tests_added": {
+      "type": "array",
+      "description": "Tests the worker added in this feature run.",
+      "items": {
+        "type": "object",
+        "required": ["name", "file"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "file": { "type": "string", "minLength": 1 },
+          "addresses": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Optional: acceptance-criterion IDs this test specifically pins."
+          }
+        }
+      }
+    },
+    "falsifications": {
+      "type": "array",
+      "description": "Adversarial self-review the worker performed before handoff. Each entry MUST carry a citation (^(test|file|commit)=\\S+$ discipline); plain counts are not accepted. See docs/design.md §Missions §Handoff schema.",
+      "items": {
+        "type": "object",
+        "required": ["hypothesis", "mutation_kind", "target_invariant", "citation", "outcome"],
+        "additionalProperties": false,
+        "properties": {
+          "hypothesis": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Concrete way the implementation could be wrong."
+          },
+          "mutation_kind": {
+            "enum": [
+              "null",
+              "empty",
+              "boundary",
+              "race",
+              "inject",
+              "overflow",
+              "auth_bypass",
+              "path_traversal",
+              "ssrf",
+              "deserialization",
+              "regex_dos",
+              "supply_chain",
+              "other"
+            ],
+            "description": "Class of mutation tested. 'other' requires a non-empty 'target_invariant' that names the specific class."
+          },
+          "target_invariant": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What property the mutation tried to break."
+          },
+          "citation": {
+            "type": "string",
+            "pattern": "^(test|file|commit|run)=\\S+$",
+            "description": "Evidence the falsification was actually executed. Same regex as WorkItem.acceptance_criteria.citation."
+          },
+          "canary_archetype_killed": {
+            "type": "string",
+            "description": "If this falsification corresponds to a canary archetype, the archetype ID. Empty if the falsification is bespoke to this feature."
+          },
+          "outcome": {
+            "enum": ["disproved_worker", "confirmed_worker", "inconclusive"],
+            "description": "Whether the falsification disproved (good, found bug), confirmed (good, ruled out), or was inconclusive (no signal — does NOT count toward falsification quality)."
+          }
+        }
+      }
+    },
+    "trap_patterns_claimed": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^P([1-9]|1[0-3])$" },
+      "description": "Trap Catalog patterns the worker claims to have considered (P1–P13). For each pattern claimed, at least one falsifications[] entry MUST exist with outcome != 'inconclusive'."
+    },
+    "discovered_issues": {
+      "type": "array",
+      "description": "Issues the worker found but did not fix (out-of-scope, blocked, deferred).",
+      "items": {
+        "type": "object",
+        "required": ["severity", "summary"],
+        "additionalProperties": false,
+        "properties": {
+          "severity": { "enum": ["info", "low", "medium", "high", "critical"] },
+          "summary": { "type": "string", "minLength": 1 },
+          "suggests_new_criterion": { "type": "boolean", "default": false }
+        }
+      }
+    },
+    "unfinished_work": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Acceptance-criterion IDs the worker did NOT address in this run, with reason inline."
+    },
+    "return_to_orchestrator": {
+      "type": "boolean",
+      "default": false,
+      "description": "If true, mission halts pending orchestrator decision before next feature spawns."
+    },
+    "produced_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 timestamp at handoff write."
+    },
+    "signature": {
+      "type": "object",
+      "required": ["alg", "key_id", "mac"],
+      "additionalProperties": false,
+      "description": "HMAC over canonicalized JCS payload (RFC 8785). Same key as gate_result.signature. Reused, NOT a new key.",
+      "properties": {
+        "alg": { "const": "HMAC-SHA256" },
+        "key_id": { "type": "string", "minLength": 1 },
+        "mac": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    }
+  }
+}
