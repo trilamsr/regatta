@@ -18,11 +18,12 @@ import (
 var testHMACKey = []byte("regatta-handoff-test-key-32-bytes!")
 
 // TestHandoffCorpus is the contract test for the handoff schema.
-// It walks testdata/handoffs/{pass,fail} and asserts the expected
-// outcome for each fixture. Adding a fixture file is the way to
-// extend the contract -- no registration code.
+// It walks the consolidated testdata/program/handoffs/{pass,fail}
+// corpus and asserts the expected outcome for each fixture. Adding
+// a fixture file is the way to extend the contract -- no
+// registration code.
 func TestHandoffCorpus(t *testing.T) {
-	walk(t, "testdata/handoffs/pass", func(path string, data []byte) {
+	walk(t, "../../testdata/program/handoffs/pass", func(path string, data []byte) {
 		t.Run("pass/"+filepath.Base(path), func(t *testing.T) {
 			if _, err := ParseAndValidate(data); err != nil {
 				t.Fatalf("expected pass, got error: %v", err)
@@ -30,7 +31,7 @@ func TestHandoffCorpus(t *testing.T) {
 		})
 	})
 
-	walk(t, "testdata/handoffs/fail", func(path string, data []byte) {
+	walk(t, "../../testdata/program/handoffs/fail", func(path string, data []byte) {
 		t.Run("fail/"+filepath.Base(path), func(t *testing.T) {
 			_, err := ParseAndValidate(data)
 			if err == nil {
@@ -47,7 +48,7 @@ func TestHandoffCorpus(t *testing.T) {
 // signs and verifies under testHMACKey. If a contributor edits the
 // fixture body, the MAC is recomputed here -- preventing fixture rot.
 func TestSignedRoundtripFixture(t *testing.T) {
-	path := "testdata/handoffs/pass/02_signed_roundtrip.json"
+	path := "../../testdata/program/handoffs/pass/02_signed_roundtrip.json"
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

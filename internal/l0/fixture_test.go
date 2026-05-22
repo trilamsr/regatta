@@ -10,7 +10,7 @@ import (
 	"github.com/trilamsr/regatta/schemas"
 )
 
-// TestFixtureCorpus sweeps gates/l0/testdata/{pass,fail,edge}/ and
+// TestFixtureCorpus sweeps testdata/gates/l0/{pass,fail,edge}/ and
 // asserts each *.diff fixture produces the expected verdict.
 //
 // - pass/*.diff   → schemas.VerdictPass, empty findings
@@ -19,7 +19,7 @@ import (
 func TestFixtureCorpus(t *testing.T) {
 	for _, kind := range []string{"pass", "fail", "edge"} {
 		t.Run(kind, func(t *testing.T) {
-			dir := filepath.Join("..", "..", "gates", "l0", "testdata", kind)
+			dir := filepath.Join("..", "..", "testdata", "gates", "l0", kind)
 			ents, err := os.ReadDir(dir)
 			if err != nil {
 				t.Skipf("no %s dir yet: %v", kind, err)

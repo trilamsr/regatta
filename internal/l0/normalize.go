@@ -5,7 +5,7 @@
 // entry's only change is the state flip, and fails hard on any text
 // edit (visible or invisible).
 //
-// Normative behavior is specified in gates/l0/testdata/README.md.
+// Normative behavior is specified in testdata/gates/l0/README.md.
 package l0
 
 import (

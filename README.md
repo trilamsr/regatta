@@ -63,9 +63,9 @@ config.
   JSON Schema for `WorkItem`
 - [`schemas/regatta.v1.cue`](schemas/regatta.v1.cue) — CUE schema for
   `regatta.yaml`
-- [`gates/l0/testdata/`](gates/l0/testdata/) — L0 spec-immutability
+- [`testdata/gates/l0/`](testdata/gates/l0/) — L0 spec-immutability
   fixture corpus (the contract)
-- [`gates/canary/testdata/`](gates/canary/testdata/) — canary
+- [`testdata/gates/canary/`](testdata/gates/canary/) — canary
   archetype corpus + injection mechanism
 
 ## The Trap Catalog
@@ -98,7 +98,7 @@ the most load-bearing.
 - **L0 spec-immutability gate.** `cmd/regatta l0 <diff>` reads a
   unified diff, runs invisible-glyph stripping + NFC + criterion
   byte-equality, and emits a `GateResult` JSON. The fixture corpus
-  under `gates/l0/testdata/` is the contract; `go test ./internal/l0`
+  under `testdata/gates/l0/` is the contract; `go test ./internal/l0`
   exercises pass / fail / edge sweeps plus unit-level normalization.
 - **`regatta verify-repo-config`.** Pre-flight audit of a GitHub repo
   against the P2 canonical recipe - branch protection
