@@ -2,12 +2,15 @@
 //
 // Subcommands shipped today (pre-fleet):
 //
-//	regatta l0 <diff-file>      Run L0 against a unified diff.
-//	regatta l0-refs ...         Run L0 against git refs (merge-base diff).
-//	regatta l0-merge ...        Re-run L0 on a merge commit vs its first parent.
-//	regatta verify-repo-config  Audit a GitHub repo against the P2 canonical recipe.
-//	regatta serve               Run the orchestrator daemon (skeleton).
-//	regatta version             Print build info.
+//	regatta l0 <diff-file>          Run L0 against a unified diff.
+//	regatta l0-refs ...             Run L0 against git refs (merge-base diff).
+//	regatta l0-merge ...            Re-run L0 on a merge commit vs its first parent.
+//	regatta validate-config         CUE-validate regatta.yaml.
+//	regatta verify-repo-config      Audit a GitHub repo against the P2 canonical recipe.
+//	regatta serve                   Run the orchestrator daemon (skeleton).
+//	regatta program plan            One-shot decompose a parent WorkItem (kind: program) into a signed ProgramBrief.
+//	regatta program verify-handoff  Structurally validate (+ optionally verify HMAC of) a handoff.json.
+//	regatta version                 Print build info.
 //
 // All other subcommands from docs/design.md are pending implementation.
 package main
@@ -32,6 +35,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/program"
 	"github.com/trilamsr/regatta/internal/validateconfig"
 	"github.com/trilamsr/regatta/internal/verifyrepo"
 	"github.com/trilamsr/regatta/schemas"
@@ -53,6 +57,8 @@ func main() {
 		os.Exit(runL0Merge(os.Args[2:]))
 	case "verify-repo-config":
 		os.Exit(runVerifyRepoConfig(os.Args[2:]))
+	case "program":
+		os.Exit(runMission(os.Args[2:]))
 	case "serve":
 		os.Exit(runServe(os.Args[2:]))
 	case "validate-config":
@@ -76,6 +82,8 @@ func usage(w io.Writer) {
   regatta validate-config                             CUE-validate regatta.yaml
   regatta verify-repo-config                          Audit GitHub repo against P2 recipe
   regatta serve                                       Run the orchestrator daemon (skeleton)
+  regatta program plan <work-item.json>               One-shot decompose into signed ProgramBrief
+  regatta program verify-handoff <path>               Validate a handoff.json (schema + optional HMAC)
   regatta version                                     Print build info
   regatta help                                        This message
 
@@ -95,6 +103,18 @@ verify-repo-config requires GITHUB_TOKEN and -owner/-repo flags.
 serve runs the markdown_catalog adapter against <root>/.regatta/items
 and spawns a stub agent for each ready item. Pass --tick-once to run
 a single poll+schedule cycle and exit.
+
+program plan:
+  -model        <id>   Claude model id (default "claude-opus-4-7")
+  -hmac-key-env <ENV>  Env var holding the HMAC key (required)
+  -hmac-key-id  <ID>   key_id stamped into the signature (default "k1")
+  Requires ANTHROPIC_API_KEY in the environment.
+
+program verify-handoff:
+  -hmac-key-env <ENV>   If set, verify handoff.signature against the key
+                        held in the named environment variable. Without
+                        this flag, only structural validation runs.
+  -hmac-key-id <ID>     key_id to assign in the keyring (default "k1").
 `)
 }
 
@@ -346,7 +366,7 @@ func runVerifyRepoConfig(args []string) int {
 			if !c.Passed {
 				mark = "✗"
 			}
-			fmt.Printf("%s %s — %s\n", mark, c.ID, c.Title)
+			fmt.Printf("%s %s -- %s\n", mark, c.ID, c.Title)
 			if c.Detail != "" {
 				fmt.Printf("    %s\n", c.Detail)
 			}
@@ -355,14 +375,158 @@ func runVerifyRepoConfig(args []string) int {
 			}
 		}
 		if res.OK {
-			fmt.Println("\nverify-repo-config: PASS — repo is configured for Regatta deployment")
+			fmt.Println("\nverify-repo-config: PASS -- repo is configured for Regatta deployment")
 		} else {
-			fmt.Printf("\nverify-repo-config: FAIL — %d check(s) failed: %v\n", len(res.FailedOK), res.FailedOK)
+			fmt.Printf("\nverify-repo-config: FAIL -- %d check(s) failed: %v\n", len(res.FailedOK), res.FailedOK)
 		}
 	}
 	if !res.OK {
 		return 1
 	}
+	return 0
+}
+
+// runMission dispatches the `program ...` subcommand tree.
+func runMission(args []string) int {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "regatta program: expected sub-subcommand (verify-handoff)")
+		return 2
+	}
+	switch args[0] {
+	case "plan":
+		return runMissionPlan(args[1:])
+	case "verify-handoff":
+		return runMissionVerifyHandoff(args[1:])
+	default:
+		fmt.Fprintf(os.Stderr, "regatta program: unknown subcommand %q\n", args[0])
+		return 2
+	}
+}
+
+// runMissionPlan: read a WorkItem from a JSON file on disk, call
+// the Anthropic planner, validate + sign the resulting ProgramBrief,
+// emit to stdout. Source adapters are deferred -- for v1, operators
+// hand-author the parent WorkItem JSON file or extract it from
+// their adapter into one.
+func runMissionPlan(args []string) int {
+	fs := flag.NewFlagSet("program plan", flag.ExitOnError)
+	model := fs.String("model", "claude-opus-4-7", "Claude model id")
+	keyEnv := fs.String("hmac-key-env", "", "Env var holding HMAC key (required)")
+	keyID := fs.String("hmac-key-id", "k1", "key_id to stamp into signature")
+	fs.Usage = func() {
+		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta program plan <work-item.json>")
+		fs.PrintDefaults()
+	}
+	_ = fs.Parse(args)
+	if fs.NArg() != 1 {
+		fs.Usage()
+		return 2
+	}
+	if *keyEnv == "" {
+		fmt.Fprintln(os.Stderr, "regatta program plan: -hmac-key-env is required")
+		return 2
+	}
+	key := os.Getenv(*keyEnv)
+	if key == "" {
+		fmt.Fprintf(os.Stderr, "regatta program plan: $%s is empty\n", *keyEnv)
+		return 2
+	}
+
+	raw, err := os.ReadFile(fs.Arg(0))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "regatta program plan:", err)
+		return 2
+	}
+	var parent schemas.WorkItem
+	if err := json.Unmarshal(raw, &parent); err != nil {
+		fmt.Fprintln(os.Stderr, "regatta program plan: parse work-item.json:", err)
+		return 2
+	}
+	if parent.ID == "" || len(parent.AcceptanceCriteria) == 0 {
+		fmt.Fprintln(os.Stderr, "regatta program plan: work-item must have id and acceptance_criteria")
+		return 2
+	}
+
+	client, err := programs.NewAnthropicPlanner(*model)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "regatta program plan:", err)
+		return 2
+	}
+
+	plan, err := programs.Run(context.Background(), programs.PlannerOptions{
+		Client:    client,
+		HMACKey:   []byte(key),
+		HMACKeyID: *keyID,
+	}, parent)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "regatta program plan:", err)
+		return 1
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(plan)
+	return 0
+}
+
+func runMissionVerifyHandoff(args []string) int {
+	fs := flag.NewFlagSet("program verify-handoff", flag.ExitOnError)
+	keyEnv := fs.String("hmac-key-env", "", "Env var holding the HMAC key (if set, verify signature)")
+	keyID := fs.String("hmac-key-id", "k1", "key_id to expect in the signature")
+	fs.Usage = func() {
+		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta program verify-handoff <handoff.json>")
+		fs.PrintDefaults()
+	}
+	_ = fs.Parse(args)
+	if fs.NArg() != 1 {
+		fs.Usage()
+		return 2
+	}
+
+	h, err := programs.LoadAndValidate(fs.Arg(0))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "regatta program verify-handoff:", err)
+		return 1
+	}
+
+	report := struct {
+		ProgramID         string `json:"program_id"`
+		FeatureID         string `json:"feature_id"`
+		WorkerRunID       string `json:"worker_run_id"`
+		SuccessState      string `json:"success_state"`
+		SchemaOK          bool   `json:"schema_ok"`
+		SignatureVerified bool   `json:"signature_verified"`
+		SignatureChecked  bool   `json:"signature_checked"`
+	}{
+		ProgramID:    h.ProgramID,
+		FeatureID:    h.FeatureID,
+		WorkerRunID:  h.WorkerRunID,
+		SuccessState: h.SuccessState,
+		SchemaOK:     true,
+	}
+
+	if *keyEnv != "" {
+		report.SignatureChecked = true
+		key := os.Getenv(*keyEnv)
+		if key == "" {
+			fmt.Fprintf(os.Stderr, "regatta program verify-handoff: $%s is empty\n", *keyEnv)
+			return 2
+		}
+		keyring := map[string][]byte{*keyID: []byte(key)}
+		if err := h.VerifySignature(keyring); err != nil {
+			fmt.Fprintln(os.Stderr, "regatta program verify-handoff: signature:", err)
+			report.SignatureVerified = false
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(report)
+			return 1
+		}
+		report.SignatureVerified = true
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(report)
 	return 0
 }
 

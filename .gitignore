@@ -1,3 +1,4 @@
 .claude/*.local.md
 .claude/settings.local.json
 .claude/worktrees/
+.claude/scheduled_tasks.lock

@@ -27,9 +27,10 @@ func Default() Config {
 func Check(cfg Config, changes []FileChange) schemas.GateResult {
 	start := time.Now()
 	out := schemas.GateResult{
-		GateID:   "l0_spec_immutability",
-		GateKind: "deterministic",
-		Verdict:  schemas.VerdictPass,
+		SchemaVersion: 1,
+		GateID:        "l0_spec_immutability",
+		GateKind:      schemas.GateKindDeterministic,
+		Verdict:       schemas.VerdictPass,
 	}
 	for _, fc := range changes {
 		if !cfg.isSpecPath(fc) {
@@ -37,11 +38,11 @@ func Check(cfg Config, changes []FileChange) schemas.GateResult {
 		}
 		out.Findings = append(out.Findings, compareCriteria(fc)...)
 	}
-	for _, f := range out.Findings {
-		if f.Blocking {
-			out.Verdict = schemas.VerdictFail
-			break
-		}
+	// L0 emits only critical findings; any finding is blocking.
+	if len(out.Findings) > 0 {
+		out.Verdict = schemas.VerdictFail
+		out.Blocking = true
+		out.Severity = schemas.SeverityCritical
 	}
 	out.Telemetry = schemas.Telemetry{
 		StartedAt:  start,
@@ -75,11 +76,11 @@ func compareCriteria(fc FileChange) []schemas.Finding {
 
 	if len(oldCs) != len(newCs) {
 		findings = append(findings, schemas.Finding{
-			Severity:    schemas.SeverityCritical,
-			Message:     fmt.Sprintf("criterion count changed: %d → %d (spec criteria are immutable; only state flips are permitted)", len(oldCs), len(newCs)),
-			Path:        path,
+			ID:          "L0-COUNT",
+			Severity:    schemas.FindingCritical,
+			Claim:       fmt.Sprintf("criterion count changed: %d -> %d (spec criteria are immutable; only state flips are permitted)", len(oldCs), len(newCs)),
+			Evidence:    &schemas.FindingEvidence{Path: path},
 			TrapPattern: "P3",
-			Blocking:    true,
 		})
 		return findings
 	}
@@ -90,12 +91,11 @@ func compareCriteria(fc FileChange) []schemas.Finding {
 		nNorm := Normalize(n.Text)
 		if oNorm != nNorm {
 			findings = append(findings, schemas.Finding{
-				Severity:    schemas.SeverityCritical,
-				Message:     fmt.Sprintf("criterion text edited (line %d): %q → %q", n.Line, o.Text, n.Text),
-				Path:        path,
-				Line:        n.Line,
+				ID:       fmt.Sprintf("L0-TEXT-%d", i),
+				Severity: schemas.FindingCritical,
+				Claim:    fmt.Sprintf("criterion text edited (line %d): %q -> %q", n.Line, o.Text, n.Text),
+				Evidence: &schemas.FindingEvidence{Path: path, LineStart: n.Line},
 				TrapPattern: "P3",
-				Blocking:    true,
 			})
 			continue
 		}
@@ -103,23 +103,21 @@ func compareCriteria(fc FileChange) []schemas.Finding {
 		if o.State == StatePlanned && n.State == StateDone {
 			if n.Citation == "" {
 				findings = append(findings, schemas.Finding{
-					Severity:    schemas.SeverityCritical,
-					Message:     fmt.Sprintf("criterion flipped to done without required citation (line %d)", n.Line),
-					Path:        path,
-					Line:        n.Line,
+					ID:       fmt.Sprintf("L0-CITATION-%d", i),
+					Severity: schemas.FindingCritical,
+					Claim:    fmt.Sprintf("criterion flipped to done without required citation (line %d)", n.Line),
+					Evidence: &schemas.FindingEvidence{Path: path, LineStart: n.Line},
 					TrapPattern: "P6",
-					Blocking:    true,
 				})
 			}
 		}
 		if o.State == StateDone && n.State == StatePlanned {
 			findings = append(findings, schemas.Finding{
-				Severity:    schemas.SeverityCritical,
-				Message:     fmt.Sprintf("criterion reverted from done → planned (line %d); state monotonicity violated", n.Line),
-				Path:        path,
-				Line:        n.Line,
+				ID:       fmt.Sprintf("L0-REVERT-%d", i),
+				Severity: schemas.FindingCritical,
+				Claim:    fmt.Sprintf("criterion reverted from done -> planned (line %d); state monotonicity violated", n.Line),
+				Evidence: &schemas.FindingEvidence{Path: path, LineStart: n.Line},
 				TrapPattern: "P3",
-				Blocking:    true,
 			})
 		}
 	}

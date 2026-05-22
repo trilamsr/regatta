@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "program_id": "m-000000000002",
+  "feature_id": "F-FAIL-02",
+  "worker_run_id": "55555555-5555-5555-5555-555555555555",
+  "base_sha": "0000000000000000000000000000000000000000",
+  "head_sha": "0000000000000000000000000000000000000001",
+  "success_state": "success",
+  "criteria_addressed": ["AC-1"],
+  "falsifications": [
+    {
+      "hypothesis": "what if input is null",
+      "mutation_kind": "null",
+      "target_invariant": "handler is null-safe",
+      "citation": "I thought about it real hard",
+      "outcome": "disproved_worker"
+    }
+  ],
+  "produced_at": "2026-05-21T00:00:00Z",
+  "signature": {
+    "alg": "HMAC-SHA256",
+    "key_id": "k1",
+    "mac": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

@@ -53,24 +53,24 @@ type SpecAdapter interface {
 }
 
 // WorkItem is the canonical unit of work the fleet operates on.
-// See schemas/work_item.schema.json for the JSON form.
+// See schemas/work_item.schema.json for the JSON form (snake_case).
 type WorkItem struct {
-	ID                 WorkItemID
-	Title              string
-	Body               string
-	AcceptanceCriteria []Criterion
-	Dependencies       []WorkItemID // topological order; cycles MUST be reported via ErrDependencyCycle on List
-	Lane               LaneID       // empty string means the default lane
-	Status             Status
-	LinkedArtifact     string    // URL or repo-relative path to deeper context (RFC, design doc, ADR)
-	Source             SourceRef // points to the immutable source-of-truth for L0 to verify
+	ID                 WorkItemID  `json:"id"`
+	Title              string      `json:"title"`
+	Body               string      `json:"body,omitempty"`
+	AcceptanceCriteria []Criterion `json:"acceptance_criteria"`
+	Dependencies       []WorkItemID `json:"dependencies,omitempty"` // topological order; cycles MUST be reported via ErrDependencyCycle on List
+	Lane               LaneID       `json:"lane,omitempty"`        // empty string means the default lane
+	Status             Status       `json:"status"`
+	LinkedArtifact     string       `json:"linked_artifact,omitempty"` // URL or repo-relative path to deeper context (RFC, design doc, ADR)
+	Source             SourceRef    `json:"source"`                    // points to the immutable source-of-truth for L0 to verify
 }
 
 // Criterion is one acceptance criterion under a WorkItem.
 type Criterion struct {
-	ID    string // stable within a WorkItem; format adapter-defined
-	Text  string // immutable post-publication; L0 enforces byte-equality after UTF-8 NFC normalization
-	State CriterionState
+	ID    string         `json:"id"`    // stable within a WorkItem; format adapter-defined
+	Text  string         `json:"text"`  // immutable post-publication; L0 enforces byte-equality after UTF-8 NFC normalization
+	State CriterionState `json:"state,omitempty"`
 }
 
 // WorkItemID uniquely identifies a WorkItem within a spec source.
@@ -104,9 +104,9 @@ const (
 // SHA is the commit SHA the WorkItem was read at. For API-backed adapters,
 // Kind="issue"|"ticket" and SHA is an opaque ETag or version string.
 type SourceRef struct {
-	Kind    string // "file" | "issue" | "ticket"
-	Locator string // file path with line range, or external system ID
-	SHA     string
+	Kind    string `json:"kind"`    // "file" | "issue" | "ticket"
+	Locator string `json:"locator"` // file path with line range, or external system ID
+	SHA     string `json:"sha"`
 }
 
 // Capabilities reports per-adapter feature flags. Defaults are zero-valued

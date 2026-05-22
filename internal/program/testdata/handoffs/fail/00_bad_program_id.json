@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "program_id": "not-a-valid-id",
+  "feature_id": "F-FAIL-01",
+  "worker_run_id": "44444444-4444-4444-4444-444444444444",
+  "base_sha": "0000000000000000000000000000000000000000",
+  "head_sha": "0000000000000000000000000000000000000001",
+  "success_state": "success",
+  "criteria_addressed": ["AC-1"],
+  "produced_at": "2026-05-21T00:00:00Z",
+  "signature": {
+    "alg": "HMAC-SHA256",
+    "key_id": "k1",
+    "mac": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

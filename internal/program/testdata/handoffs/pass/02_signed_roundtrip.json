@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "program_id": "m-bbbbbbbbbbbb",
+  "feature_id": "F-SIGN-03",
+  "worker_run_id": "33333333-3333-3333-3333-333333333333",
+  "base_sha": "1111111111111111111111111111111111111111",
+  "head_sha": "2222222222222222222222222222222222222222",
+  "success_state": "partial",
+  "criteria_addressed": ["AC-3"],
+  "produced_at": "2026-05-21T00:00:00Z",
+  "signature": {
+    "alg": "HMAC-SHA256",
+    "key_id": "k1",
+    "mac": "0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}
