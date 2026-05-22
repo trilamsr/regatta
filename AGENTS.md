@@ -93,6 +93,20 @@ Read the relevant note when work touches that area.
   slot, fast-feedback bias, commit / changelog conventions.
 - [Principles](PRINCIPLES.md) - the why behind the rules and the
   lenses for situations no rule covers.
+- [Architecture](ARCHITECTURE.md) - tree map + read order; where
+  does X live.
+- [Contributing](CONTRIBUTING.md) - human-engineer onboarding
+  delta (this file is the AI peer).
+- [Adding a gate](docs/engineer/how-to-add-a-gate.md) - built-in
+  vs custom; fixture-corpus contract test pattern.
+- [Adding an adapter](docs/engineer/how-to-add-an-adapter.md) -
+  tier discipline; SpecAdapter interface walkthrough.
+- [Release runbook](docs/engineer/release-runbook.md) - pre-Wave-3
+  manual cut + customer-notes derivation.
+- [String review](docs/engineer/string-review.md) - 5-item
+  checklist for customer-visible strings.
+- [ADR template](docs/rfcs/0000-template.md) - Michael-Nygard
+  shape + falsifying-consumer Compliance section.
 
 ## Topic index - agent-internal
 
