@@ -34,6 +34,8 @@ type Config struct {
 	SeverityBlock     []string // mini-DSL: ["critical","2*high"]
 }
 
+// FloorConfig configures which deterministic-floor tools the gate
+// invokes.
 type FloorConfig struct {
 	Gitleaks    ToolPin
 	OSVScanner  ToolPin
@@ -41,11 +43,14 @@ type FloorConfig struct {
 	Syft        ToolPin
 }
 
+// ToolPin pins one floor tool by version. Operator-supplied via
+// safety.tool_versions in regatta.yaml.
 type ToolPin struct {
 	Enabled bool
 	Version string // pinned via safety.tool_versions
 }
 
+// AIConfig configures the security gate's AI threat-modeler phase.
 type AIConfig struct {
 	Enabled            bool
 	Model              string

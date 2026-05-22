@@ -45,6 +45,8 @@ type Handoff struct {
 	Signature           schemas.SignatureBlock `json:"signature"`
 }
 
+// HandoffCommand is one orchestrator-re-runnable command the worker
+// claimed to have executed during a feature run.
 type HandoffCommand struct {
 	Cmd        string `json:"cmd"`
 	ExitCode   int    `json:"exit_code"`
@@ -53,12 +55,16 @@ type HandoffCommand struct {
 	LogPath    string `json:"log_path,omitempty"`
 }
 
+// HandoffTest is one test the worker claims to have added.
 type HandoffTest struct {
 	Name      string   `json:"name"`
 	File      string   `json:"file"`
 	Addresses []string `json:"addresses,omitempty"`
 }
 
+// Falsification is one adversarial probe the worker performed before
+// handoff. Each entry MUST carry a citation; plain counts are not
+// accepted (see docs/design.md §Programs §Handoff schema).
 type Falsification struct {
 	Hypothesis            string `json:"hypothesis"`
 	MutationKind          string `json:"mutation_kind"`
@@ -68,6 +74,8 @@ type Falsification struct {
 	Outcome               string `json:"outcome"`
 }
 
+// DiscoveredIssue is a worker-reported issue outside the feature's
+// fulfills set.
 type DiscoveredIssue struct {
 	Severity              string `json:"severity"`
 	Summary               string `json:"summary"`
@@ -120,7 +128,7 @@ func ParseAndValidate(data []byte) (*Handoff, error) {
 	dec := json.NewDecoder(bytesReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&h); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrSchemaInvalid, err)
+		return nil, fmt.Errorf("%w: %w", ErrSchemaInvalid, err)
 	}
 	if err := h.validate(); err != nil {
 		return nil, err

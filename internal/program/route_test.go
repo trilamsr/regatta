@@ -64,7 +64,7 @@ func TestRouteVerdicts(t *testing.T) {
 		name    string
 		child   Child
 		verify  VerifyFunc
-		cap     DepthCap
+		capCfg  DepthCap
 		want    Action
 		wantSub string
 	}{
@@ -72,56 +72,56 @@ func TestRouteVerdicts(t *testing.T) {
 			name:   "no verdicts halts",
 			child:  Child{WorkItemID: "F-1"},
 			verify: okVerify,
-			cap:    DefaultDepthCap(),
+			capCfg: DefaultDepthCap(),
 			want:   HaltHuman, wantSub: "no verdicts",
 		},
 		{
 			name:   "unverifiable halts",
 			child:  Child{Verdicts: []Verdict{passVerdict}},
 			verify: badVerify,
-			cap:    DefaultDepthCap(),
+			capCfg: DefaultDepthCap(),
 			want:   HaltHuman, wantSub: "unverifiable",
 		},
 		{
 			name:   "missing heartbeat halts",
 			child:  Child{Verdicts: []Verdict{missingHeartbeat}},
 			verify: okVerify,
-			cap:    DefaultDepthCap(),
+			capCfg: DefaultDepthCap(),
 			want:   HaltHuman, wantSub: "heartbeat",
 		},
 		{
 			name:   "all pass advances",
 			child:  Child{Verdicts: []Verdict{passVerdict}},
 			verify: okVerify,
-			cap:    DefaultDepthCap(),
+			capCfg: DefaultDepthCap(),
 			want:   Advance,
 		},
 		{
 			name:   "blocking fail with findings iterates",
 			child:  Child{Verdicts: []Verdict{passVerdict, failVerdict}},
 			verify: okVerify,
-			cap:    DefaultDepthCap(),
+			capCfg: DefaultDepthCap(),
 			want:   Iterate, wantSub: "fix-feature",
 		},
 		{
 			name:   "blocking fail no findings halts",
 			child:  Child{Verdicts: []Verdict{failNoFindings}},
 			verify: okVerify,
-			cap:    DefaultDepthCap(),
+			capCfg: DefaultDepthCap(),
 			want:   HaltHuman, wantSub: "without actionable",
 		},
 		{
 			name:   "out-of-scope uncovered halts",
 			child:  Child{Verdicts: []Verdict{oosUncovered}},
 			verify: okVerify,
-			cap:    DefaultDepthCap(),
+			capCfg: DefaultDepthCap(),
 			want:   HaltHuman, wantSub: "out-of-scope",
 		},
 		{
 			name:   "out-of-scope covered by sibling advances",
 			child:  Child{Verdicts: []Verdict{oosCovered, oosCovering}},
 			verify: okVerify,
-			cap:    DefaultDepthCap(),
+			capCfg: DefaultDepthCap(),
 			want:   Advance,
 		},
 		{
@@ -131,7 +131,7 @@ func TestRouteVerdicts(t *testing.T) {
 				Depth:    Depth{Functional: 3},
 			},
 			verify: okVerify,
-			cap:    DefaultDepthCap(),
+			capCfg: DefaultDepthCap(),
 			want:   HaltHuman, wantSub: "functional",
 		},
 		{
@@ -141,7 +141,7 @@ func TestRouteVerdicts(t *testing.T) {
 				Depth:    Depth{Security: 5},
 			},
 			verify: okVerify,
-			cap:    DefaultDepthCap(),
+			capCfg: DefaultDepthCap(),
 			want:   Advance,
 		},
 		{
@@ -151,21 +151,21 @@ func TestRouteVerdicts(t *testing.T) {
 				Depth:    Depth{Security: 6},
 			},
 			verify: okVerify,
-			cap:    DefaultDepthCap(),
+			capCfg: DefaultDepthCap(),
 			want:   HaltHuman, wantSub: "security",
 		},
 		{
 			name:   "nil verifier halts",
 			child:  Child{Verdicts: []Verdict{passVerdict}},
 			verify: nil,
-			cap:    DefaultDepthCap(),
+			capCfg: DefaultDepthCap(),
 			want:   HaltHuman, wantSub: "no verifier",
 		},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := RouteVerdicts(tc.child, tc.verify, tc.cap)
+			got := RouteVerdicts(tc.child, tc.verify, tc.capCfg)
 			if got.Action != tc.want {
 				t.Fatalf("Action: got %q, want %q (reason=%q)", got.Action, tc.want, got.Reason)
 			}

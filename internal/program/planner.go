@@ -35,11 +35,14 @@ type ProgramBrief struct {
 	Signature        schemas.SignatureBlock `json:"signature"`
 }
 
+// PlanCriterion is one verbatim copy of the parent WorkItem's
+// acceptance criterion at plan-time.
 type PlanCriterion struct {
 	ID   string `json:"id"`
 	Text string `json:"text"`
 }
 
+// PlannedFeature is one child node in the planner's emitted DAG.
 type PlannedFeature struct {
 	ID                  string   `json:"id"`
 	Title               string   `json:"title"`
@@ -49,6 +52,7 @@ type PlannedFeature struct {
 	EstimatedComplexity string   `json:"estimated_complexity,omitempty"`
 }
 
+// Sentinel errors and validation regexps for ProgramBrief.
 var (
 	featureIDRe         = regexp.MustCompile(`^F-[A-Z0-9_-]{1,32}$`)
 	allowedComplexities = map[string]bool{

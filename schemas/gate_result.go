@@ -28,6 +28,7 @@ type GateResult struct {
 // GateKind matches gate_result.schema.json enum.
 type GateKind string
 
+// GateKind values: the closed enum of gate categorization tags.
 const (
 	GateKindDeterministic   GateKind = "deterministic"
 	GateKindAIJudicial      GateKind = "ai_judicial"
@@ -63,6 +64,7 @@ const (
 // "info" here but not at the top level.
 type FindingSeverity string
 
+// FindingSeverity values: per-finding severity (info included).
 const (
 	FindingInfo     FindingSeverity = "info"
 	FindingLow      FindingSeverity = "low"

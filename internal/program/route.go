@@ -30,6 +30,8 @@ type Verdict struct {
 	Signature        Signature
 }
 
+// Finding mirrors schemas.Finding for the in-package route logic.
+// Reused fields only; the canonical shape is schemas.Finding.
 type Finding struct {
 	ID          string
 	Severity    string
@@ -37,6 +39,8 @@ type Finding struct {
 	TrapPattern string
 }
 
+// Signature mirrors schemas.SignatureBlock for the in-package route
+// logic.
 type Signature struct {
 	Alg   string
 	KeyID string
@@ -71,13 +75,13 @@ type Depth struct {
 }
 
 // Over reports whether any axis exceeds its cap.
-func (d Depth) Over(cap DepthCap) (string, bool) {
+func (d Depth) Over(capCfg DepthCap) (string, bool) {
 	switch {
-	case d.Functional > cap.Functional:
+	case d.Functional > capCfg.Functional:
 		return "functional", true
-	case d.Security > cap.Security:
+	case d.Security > capCfg.Security:
 		return "security", true
-	case d.UserTesting > cap.UserTesting:
+	case d.UserTesting > capCfg.UserTesting:
 		return "user_testing", true
 	}
 	return "", false
@@ -95,6 +99,7 @@ type Child struct {
 // Action is the deterministic decision the orchestrator must take.
 type Action string
 
+// Action values: the closed enum of decisions RouteVerdicts may emit.
 const (
 	Advance           Action = "advance"
 	Iterate           Action = "iterate"
@@ -145,7 +150,7 @@ const HeartbeatStale = 2 * 30 * time.Minute // 30 min cap × 2
 // The function is intentionally branchy and verbose; the design
 // thesis is that this code path is auditable by a human reading the
 // switch statement, not by reading a prompt.
-func RouteVerdicts(child Child, verify VerifyFunc, cap DepthCap) Decision {
+func RouteVerdicts(child Child, verify VerifyFunc, capCfg DepthCap) Decision {
 	if verify == nil {
 		return Decision{Action: HaltHuman, Reason: "no verifier configured"}
 	}
@@ -197,7 +202,7 @@ func RouteVerdicts(child Child, verify VerifyFunc, cap DepthCap) Decision {
 		}
 	}
 
-	if axis, over := child.Depth.Over(cap); over {
+	if axis, over := child.Depth.Over(capCfg); over {
 		return Decision{
 			Action: HaltHuman,
 			Reason: fmt.Sprintf("depth cap exceeded on axis=%s", axis),

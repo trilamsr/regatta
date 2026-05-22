@@ -414,7 +414,7 @@ func runMissionPlan(args []string) int {
 	keyEnv := fs.String("hmac-key-env", "", "Env var holding HMAC key (required)")
 	keyID := fs.String("hmac-key-id", "k1", "key_id to stamp into signature")
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "Usage: regatta program plan <work-item.json>")
+		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta program plan <work-item.json>")
 		fs.PrintDefaults()
 	}
 	_ = fs.Parse(args)
@@ -474,7 +474,7 @@ func runMissionVerifyHandoff(args []string) int {
 	keyEnv := fs.String("hmac-key-env", "", "Env var holding the HMAC key (if set, verify signature)")
 	keyID := fs.String("hmac-key-id", "k1", "key_id to expect in the signature")
 	fs.Usage = func() {
-		fmt.Fprintln(fs.Output(), "Usage: regatta program verify-handoff <handoff.json>")
+		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta program verify-handoff <handoff.json>")
 		fs.PrintDefaults()
 	}
 	_ = fs.Parse(args)
