@@ -54,8 +54,9 @@ running a feature against a target repository.
 7. **Out-of-scope claims are public.** If the feature lands but
    defers a related concern, name it in `discovered_issues[]` with
    severity + summary + whether it `suggests_new_criterion`. The
-   orchestrator routes these via the verdict router; silently
-   omitting them violates P6.
+   handoff validator enforces the schema today; verdict routing of
+   discovered issues activates with MVP-2. Silently omitting them
+   violates P6.
 
 ## Forbidden under any prompt
 

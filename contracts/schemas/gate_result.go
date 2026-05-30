@@ -24,16 +24,12 @@ type GateResult struct {
 	Telemetry         Telemetry      `json:"telemetry"`
 	PrevRecordHash    string         `json:"prev_record_hash,omitempty"` // sha256:HEX of writer's previous record; empty for first
 	Signature         SignatureBlock `json:"signature"`
-
-	// Heartbeat carries audit-reconciler anchors. json:"-" keeps it
-	// out of the canonical signed payload; the reconciler reads it
-	// from the in-process GateResult before transport.
-	Heartbeat TelemetryHeartbeat `json:"-"`
+	Heartbeat         TelemetryHeartbeat `json:"-"`
 }
 
 // TelemetryHeartbeat is the in-process anchor pair the audit
-// reconciler uses for silent-bypass detection. Deliberately NOT
-// part of the signed schema; the reconciler logs it out of band.
+// reconciler uses for silent-bypass detection. Out of band: never
+// part of the signed payload (json:"-" on the carrier field).
 type TelemetryHeartbeat struct {
 	StartedAt  time.Time
 	FinishedAt time.Time
@@ -113,8 +109,7 @@ type FindingEvidence struct {
 }
 
 // Telemetry matches schemas/gate_result.schema.json telemetry.
-// This is the SIGNED shape; heartbeat anchors are kept out of band
-// in TelemetryHeartbeat so they never enter the canonical payload.
+// Heartbeat anchors live on TelemetryHeartbeat, not here.
 type Telemetry struct {
 	DurationMs   int64   `json:"duration_ms"`
 	TokensInput  int64   `json:"tokens_input,omitempty"`

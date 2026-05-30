@@ -41,16 +41,12 @@ const (
 	MinKeyLen = 32
 )
 
-// ErrWeakKey is returned by Sign/Verify when a key is shorter than
-// MinKeyLen. Keep it a distinct sentinel so callers can fail-closed
-// at startup rather than at first use.
+// ErrWeakKey distinguishes "short key" from "wrong key" so callers
+// can fail-closed at startup rather than at first verify.
 var ErrWeakKey = errors.New("schemas: hmac key shorter than MinKeyLen")
 
-// ErrUnknownKeyID is returned by Verify when the signature's KeyID
-// is not in the keyring (or, when an allowlist is passed, not in
-// the allowlist). Wraps ErrUnverifiable so existing errors.Is
-// callers keep working; new code can match ErrUnknownKeyID for a
-// typed log event.
+// ErrUnknownKeyID wraps ErrUnverifiable so existing errors.Is callers
+// keep working; new code can match this sentinel for typed log events.
 var ErrUnknownKeyID = fmt.Errorf("%w: unknown signing key_id", ErrUnverifiable)
 
 // SignatureBlock is the structured signature subdocument carried by
@@ -131,13 +127,8 @@ func canonicalize(v any) ([]byte, error) {
 
 // Sign returns a SignatureBlock for payload using key under keyID.
 // The signature is computed over CanonicalJSON(payload) with the
-// "signature" field STRIPPED at the top level -- so the signature
-// describes the payload-sans-signature, which is the only shape a
-// verifier can reconstruct.
-//
-// Returns ErrWeakKey when len(key) < MinKeyLen. Operators that
-// deliberately use shorter keys (testing only) should pad to the
-// minimum.
+// top-level "signature" field STRIPPED -- the only shape a verifier
+// can reconstruct. Returns ErrWeakKey when len(key) < MinKeyLen.
 func Sign(payload map[string]any, key []byte, keyID string) (SignatureBlock, error) {
 	if len(key) < MinKeyLen {
 		return SignatureBlock{}, fmt.Errorf("%w: got %d bytes, want >= %d", ErrWeakKey, len(key), MinKeyLen)
