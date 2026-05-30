@@ -24,13 +24,23 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: verify tag is signed
+      - name: verify tag signature via GitHub API
+        # git tag --verify cannot validate SSH-signed tags on a fresh
+        # runner (no gpg.ssh.allowedSignersFile). GitHub already
+        # verifies signatures against the tagger's registered signing
+        # key and exposes the result via the API.
         run: |
           tag="${GITHUB_REF_NAME}"
-          if ! git tag --verify "$tag" 2>/dev/null; then
-            echo "release: tag $tag is not signed - aborting"
+          sha=$(gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag}" --jq '.object.sha')
+          verified=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${sha}" --jq '.verification.verified')
+          reason=$(gh api "repos/${GITHUB_REPOSITORY}/git/tags/${sha}" --jq '.verification.reason')
+          if [ "$verified" != "true" ]; then
+            echo "release: tag $tag signature not verified by GitHub (reason: $reason) - aborting"
             exit 1
           fi
+          echo "release: tag $tag signature verified (reason: $reason)"
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
         with:
