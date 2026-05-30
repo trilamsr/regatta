@@ -18,6 +18,13 @@ import (
 //go:embed init_assets/regatta.yaml init_assets/sample.diff
 var initAssets embed.FS
 
+const (
+	actionWrite     = "write"
+	actionSkip      = "skip"
+	actionOverwrite = "overwrite"
+	actionDiverge   = "diverge"
+)
+
 // runInit is the CLI entry point. It dispatches to runInitWithIO so
 // tests can capture output without touching real stdout/stderr.
 func runInit(args []string) int {
@@ -25,7 +32,7 @@ func runInit(args []string) int {
 }
 
 func runInitWithIO(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("init", flag.ContinueOnError)
+	fs := flag.NewFlagSet(subcmdInit, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	force := fs.Bool("force", false, "overwrite existing regatta.yaml / .regatta/sample.diff")
 	jsonOut := fs.Bool("json", false, "emit JSON envelope instead of friendly prose")
@@ -38,12 +45,12 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 
 	yamlBytes, err := initAssets.ReadFile("init_assets/regatta.yaml")
 	if err != nil {
-		fmt.Fprintf(stderr, "regatta init: internal: read embedded yaml: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "regatta init: internal: read embedded yaml: %v\n", err)
 		return 1
 	}
 	diffBytes, err := initAssets.ReadFile("init_assets/sample.diff")
 	if err != nil {
-		fmt.Fprintf(stderr, "regatta init: internal: read embedded sample.diff: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "regatta init: internal: read embedded sample.diff: %v\n", err)
 		return 1
 	}
 
@@ -53,7 +60,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		path   string
 		blurb  string
 		bytes  []byte
-		action string // "write", "skip", "overwrite", "diverge"
+		action string // actionWrite, actionSkip, actionOverwrite, actionDiverge
 	}
 	files := []decision{
 		{path: "regatta.yaml", blurb: "(your config; L0 gate enabled)", bytes: yamlBytes},
@@ -63,37 +70,37 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		existing, err := os.ReadFile(files[i].path)
 		switch {
 		case os.IsNotExist(err):
-			files[i].action = "write"
+			files[i].action = actionWrite
 		case err != nil:
-			fmt.Fprintf(stderr, "regatta init: stat %s: %v\n", files[i].path, err)
+			_, _ = fmt.Fprintf(stderr, "regatta init: stat %s: %v\n", files[i].path, err)
 			return 1
 		case bytes.Equal(existing, files[i].bytes):
-			files[i].action = "skip"
+			files[i].action = actionSkip
 		case *force:
-			files[i].action = "overwrite"
+			files[i].action = actionOverwrite
 		default:
-			files[i].action = "diverge"
+			files[i].action = actionDiverge
 		}
 	}
 	// Short-circuit on any divergence — print one friendly error per
 	// diverged file and refuse before any write happens.
 	for _, d := range files {
-		if d.action == "diverge" {
-			fmt.Fprintf(stderr, "regatta init: %s already exists and differs from the bundled template.\n", d.path)
-			fmt.Fprintf(stderr, "  To re-init: rm regatta.yaml .regatta/sample.diff\n")
-			fmt.Fprintf(stderr, "  To overwrite: regatta init --force\n")
+		if d.action == actionDiverge {
+			_, _ = fmt.Fprintf(stderr, "regatta init: %s already exists and differs from the bundled template.\n", d.path)
+			_, _ = fmt.Fprintf(stderr, "  To re-init: rm regatta.yaml .regatta/sample.diff\n")
+			_, _ = fmt.Fprintf(stderr, "  To overwrite: regatta init --force\n")
 			return 2
 		}
 	}
 
 	// Ensure .regatta/ exists if any file inside it needs writing.
 	for _, d := range files {
-		if d.action == "skip" {
+		if d.action == actionSkip {
 			continue
 		}
 		if dir := filepath.Dir(d.path); dir != "." {
 			if err := safeMkdir(dir); err != nil {
-				fmt.Fprintf(stderr, "regatta init: %v\n", err)
+				_, _ = fmt.Fprintf(stderr, "regatta init: %v\n", err)
 				return 2
 			}
 		}
@@ -103,27 +110,27 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 	var written, skipped, overwritten []string
 	for _, d := range files {
 		switch d.action {
-		case "write":
-			if err := os.WriteFile(d.path, d.bytes, 0o644); err != nil {
-				fmt.Fprintf(stderr, "regatta init: write %s: %v\n", d.path, err)
+		case actionWrite:
+			if err := os.WriteFile(d.path, d.bytes, 0o600); err != nil {
+				_, _ = fmt.Fprintf(stderr, "regatta init: write %s: %v\n", d.path, err)
 				return 1
 			}
 			if !*jsonOut {
-				fmt.Fprintf(stdout, "+ wrote %s %s\n", padPath(d.path), d.blurb)
+				_, _ = fmt.Fprintf(stdout, "+ wrote %s %s\n", padPath(d.path), d.blurb)
 			}
 			written = append(written, d.path)
-		case "skip":
+		case actionSkip:
 			if !*jsonOut {
-				fmt.Fprintf(stdout, "= %s unchanged\n", d.path)
+				_, _ = fmt.Fprintf(stdout, "= %s unchanged\n", d.path)
 			}
 			skipped = append(skipped, d.path)
-		case "overwrite":
-			if err := os.WriteFile(d.path, d.bytes, 0o644); err != nil {
-				fmt.Fprintf(stderr, "regatta init: write %s: %v\n", d.path, err)
+		case actionOverwrite:
+			if err := os.WriteFile(d.path, d.bytes, 0o600); err != nil {
+				_, _ = fmt.Fprintf(stderr, "regatta init: write %s: %v\n", d.path, err)
 				return 1
 			}
 			if !*jsonOut {
-				fmt.Fprintf(stdout, "! overwrote %s %s\n", padPath(d.path), d.blurb)
+				_, _ = fmt.Fprintf(stdout, "! overwrote %s %s\n", padPath(d.path), d.blurb)
 			}
 			overwritten = append(overwritten, d.path)
 		}
@@ -132,16 +139,16 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 	// Re-read sample.diff so the demo verdict reflects what's on
 	// disk (operator might inspect or edit it).
 	diffPath := files[1].path
-	onDisk, err := os.ReadFile(diffPath)
+	onDisk, err := os.ReadFile(diffPath) //nolint:gosec // G304: diffPath is files[1].path, a literal we just wrote inside cwd
 	if err != nil {
-		fmt.Fprintf(stderr, "regatta init: re-read %s: %v\n", diffPath, err)
+		_, _ = fmt.Fprintf(stderr, "regatta init: re-read %s: %v\n", diffPath, err)
 		return 1
 	}
 	res := l0.Check(l0.Default(), l0.ParseUnifiedDiff(string(onDisk)))
 
 	if *jsonOut {
 		if err := emitInitJSON(stdout, written, skipped, overwritten, res); err != nil {
-			fmt.Fprintf(stderr, "regatta init: encode JSON: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "regatta init: encode JSON: %v\n", err)
 			return 1
 		}
 		return 0
@@ -156,7 +163,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 func safeMkdir(path string) error {
 	info, err := os.Lstat(path)
 	if os.IsNotExist(err) {
-		return os.MkdirAll(path, 0o755)
+		return os.MkdirAll(path, 0o700)
 	}
 	if err != nil {
 		return fmt.Errorf("lstat %s: %w", path, err)
@@ -188,14 +195,14 @@ func spaces(n int) string {
 // Generated from the GateResult, not hardcoded, so future fixture
 // or L0 changes ripple correctly.
 func emitInitProse(w io.Writer, res schemas.GateResult) {
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Running L0 gate against the demo to show you what regatta catches:")
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Running L0 gate against the demo to show you what regatta catches:")
+	_, _ = fmt.Fprintln(w)
 	if res.Verdict != schemas.VerdictFail || len(res.Findings) == 0 {
-		fmt.Fprintf(w, "  Verdict: %s (no findings)\n", res.Verdict)
-		fmt.Fprintln(w)
-		fmt.Fprintln(w, "Next steps:")
-		fmt.Fprintln(w, "  - Run `regatta l0 <your-diff>` on a real PR diff")
+		_, _ = fmt.Fprintf(w, "  Verdict: %s (no findings)\n", res.Verdict)
+		_, _ = fmt.Fprintln(w)
+		_, _ = fmt.Fprintln(w, "Next steps:")
+		_, _ = fmt.Fprintln(w, "  - Run `regatta l0 <your-diff>` on a real PR diff")
 		return
 	}
 	f := res.Findings[0]
@@ -203,27 +210,27 @@ func emitInitProse(w io.Writer, res schemas.GateResult) {
 	if f.Evidence != nil {
 		location = f.Evidence.Path
 	}
-	fmt.Fprintf(w, "  FAIL: spec criterion text changed without citation (%s)\n", f.ID)
-	fmt.Fprintln(w)
-	fmt.Fprintf(w, "  In %s, the criterion was rewritten. L0 blocks this because\n", location)
-	fmt.Fprintln(w, "  criteria are the contract between you and the agent: silent")
-	fmt.Fprintln(w, "  edits move the goalposts.")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "  The catch is sneakier than it looks: the diff replaces Latin")
-	fmt.Fprintln(w, "  \"A\" with Cyrillic \"А\" (U+0410). They render identically. A")
-	fmt.Fprintln(w, "  human reviewer scanning the diff sees \"Auth -> Auth\" and")
-	fmt.Fprintln(w, "  approves; L0 compares NFC-normalized code points and rejects.")
-	fmt.Fprintln(w)
+	_, _ = fmt.Fprintf(w, "  FAIL: spec criterion text changed without citation (%s)\n", f.ID)
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintf(w, "  In %s, the criterion was rewritten. L0 blocks this because\n", location)
+	_, _ = fmt.Fprintln(w, "  criteria are the contract between you and the agent: silent")
+	_, _ = fmt.Fprintln(w, "  edits move the goalposts.")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "  The catch is sneakier than it looks: the diff replaces Latin")
+	_, _ = fmt.Fprintln(w, "  \"A\" with Cyrillic \"А\" (U+0410). They render identically. A")
+	_, _ = fmt.Fprintln(w, "  human reviewer scanning the diff sees \"Auth -> Auth\" and")
+	_, _ = fmt.Fprintln(w, "  approves; L0 compares NFC-normalized code points and rejects.")
+	_, _ = fmt.Fprintln(w)
 	blurb := patternBlurb(f.TrapPattern)
-	fmt.Fprintf(w, "  Trap Pattern %s %s\n", f.TrapPattern, blurb)
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Next steps:")
-	fmt.Fprintln(w, "  - Run `regatta l0 <your-diff>` on a real PR diff")
-	fmt.Fprintln(w, "  - Run `regatta verify-repo-config` to audit your repo's branch")
-	fmt.Fprintln(w, "    protection and CODEOWNERS")
-	fmt.Fprintln(w, "  - Edit regatta.yaml to enable more gates as they ship")
-	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Done.")
+	_, _ = fmt.Fprintf(w, "  Trap Pattern %s %s\n", f.TrapPattern, blurb)
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Next steps:")
+	_, _ = fmt.Fprintln(w, "  - Run `regatta l0 <your-diff>` on a real PR diff")
+	_, _ = fmt.Fprintln(w, "  - Run `regatta verify-repo-config` to audit your repo's branch")
+	_, _ = fmt.Fprintln(w, "    protection and CODEOWNERS")
+	_, _ = fmt.Fprintln(w, "  - Edit regatta.yaml to enable more gates as they ship")
+	_, _ = fmt.Fprintln(w)
+	_, _ = fmt.Fprintln(w, "Done.")
 }
 
 // patternBlurb returns a one-line summary of a Trap Catalog pattern.

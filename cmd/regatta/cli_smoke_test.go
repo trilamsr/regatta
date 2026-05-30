@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,7 +22,6 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic("smoke: mkdtemp: " + err.Error())
 	}
-	defer os.RemoveAll(tmp)
 
 	bin := filepath.Join(tmp, "regatta")
 	if runtime.GOOS == "windows" {
@@ -30,6 +30,7 @@ func TestMain(m *testing.M) {
 
 	root := smokeModuleRoot()
 	if root == "" {
+		_ = os.RemoveAll(tmp)
 		os.Exit(m.Run())
 	}
 
@@ -41,12 +42,15 @@ func TestMain(m *testing.M) {
 		// Build failure: print + skip suite (do not fail; this
 		// keeps `go test ./...` green when contributors run on
 		// machines without a buildable toolchain).
-		os.Stderr.WriteString("smoke: go build failed; skipping suite:\n")
-		os.Stderr.Write(out)
+		_, _ = os.Stderr.WriteString("smoke: go build failed; skipping suite:\n")
+		_, _ = os.Stderr.Write(out)
+		_ = os.RemoveAll(tmp)
 		os.Exit(m.Run())
 	}
 	smokeBinary = bin
-	os.Exit(m.Run())
+	code := m.Run()
+	_ = os.RemoveAll(tmp)
+	os.Exit(code)
 }
 
 // smokeModuleRoot is a smoke-test-local copy of moduleRoot from
@@ -88,7 +92,8 @@ func runSmoke(t *testing.T, workDir string, args []string, env []string) (code i
 	if err == nil {
 		return 0, stdout, stderr
 	}
-	if exitErr, ok := err.(*exec.ExitError); ok {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
 		return exitErr.ExitCode(), stdout, stderr
 	}
 	t.Fatalf("exec error: %v", err)
@@ -229,7 +234,7 @@ func TestCLI_ValidateConfig_Happy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read example: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), src, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), src, 0o600); err != nil { //nolint:gosec // G306: t.TempDir + literal filename, no taint
 		t.Fatalf("seed: %v", err)
 	}
 	code, stdout, stderr := runSmoke(t, dir, []string{"validate-config"}, nil)
@@ -247,7 +252,7 @@ func TestCLI_ValidateConfig_Malformed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read malformed: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), src, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), src, 0o600); err != nil { //nolint:gosec // G306: t.TempDir + literal filename, no taint
 		t.Fatalf("seed: %v", err)
 	}
 	code, stdout, stderr := runSmoke(t, dir, []string{"validate-config"}, nil)

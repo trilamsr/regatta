@@ -43,6 +43,13 @@ import (
 
 const version = "0.0.1-dev"
 
+const (
+	subcmdProgram        = "program"
+	subcmdServe          = "serve"
+	subcmdValidateConfig = "validate-config"
+	subcmdInit           = "init"
+)
+
 func main() {
 	if len(os.Args) < 2 {
 		usage(os.Stderr)
@@ -57,13 +64,13 @@ func main() {
 		os.Exit(runL0Merge(os.Args[2:]))
 	case "verify-repo-config":
 		os.Exit(runVerifyRepoConfig(os.Args[2:]))
-	case "program":
+	case subcmdProgram:
 		os.Exit(runProgram(os.Args[2:]))
-	case "serve":
+	case subcmdServe:
 		os.Exit(runServe(os.Args[2:]))
-	case "validate-config":
+	case subcmdValidateConfig:
 		os.Exit(runValidateConfig(os.Args[2:]))
-	case "init":
+	case subcmdInit:
 		os.Exit(runInit(os.Args[2:]))
 	case "version", "-v", "--version":
 		fmt.Println("regatta", version)
@@ -221,7 +228,7 @@ func (l laneCapsFlag) Set(s string) error {
 }
 
 func runServe(args []string) int {
-	fs := flag.NewFlagSet("serve", flag.ExitOnError)
+	fs := flag.NewFlagSet(subcmdServe, flag.ExitOnError)
 	dbPath := fs.String("db", "regatta.db", "Path to sqlite state DB")
 	itemsRoot := fs.String("items-root", ".", "Repo root containing .regatta/items/*.md")
 	tickOnce := fs.Bool("tick-once", false, "Run one poll+schedule cycle and exit")
@@ -537,7 +544,7 @@ func runProgramVerifyHandoff(args []string) int {
 }
 
 func runValidateConfig(args []string) int {
-	fs := flag.NewFlagSet("validate-config", flag.ExitOnError)
+	fs := flag.NewFlagSet(subcmdValidateConfig, flag.ExitOnError)
 	cfgPath := fs.String("config", "regatta.yaml", "Path to regatta.yaml")
 	_ = fs.Parse(args)
 
