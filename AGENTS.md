@@ -32,11 +32,11 @@ belong in a topic note instead.
 
 - **`make check` is the single source of truth for what is verified
   locally and in CI.** Run it before declaring a change complete or
-  opening a PR. Constituents: `doc-check`, `ci-shape`, `prose-dup`,
-  `empty-dirs`, `vet`, `tidy-check`, `mod-verify`, `go-check`. Stays
-  under 60 seconds locally; `make ci-check` extends it with
-  `stale-todo`. New gates land here, not in ad-hoc scripts. Anchor:
-  `Makefile` target `check`.
+  opening a PR. Constituents: `doc-check`, `prose-dup`, `vet`,
+  `tidy-check`, `mod-verify`, `go-check`. Stays under 60 seconds
+  locally; `make ci-check` extends it with `stale-todo`. New gates
+  land here, not in ad-hoc scripts. Anchor: `Makefile` target
+  `check`.
 
 - **Forward-only compliance resolves rule-tightening collisions.**
   When a repo-resident rule tightens mid-flight, history rewrites

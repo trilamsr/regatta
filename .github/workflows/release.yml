@@ -1,7 +1,8 @@
 name: release
 
-# Tag-triggered release. Contract in docs/engineer/release-runbook.md;
-# shape enforced by scripts/check-ci-shape.sh.
+# Tag-triggered release. Contract in docs/engineer/release-runbook.md.
+# Maintainer flips CHANGELOG Unreleased -> dated section manually
+# before tagging; this workflow only builds + attests + publishes.
 
 on:
   push:
@@ -24,25 +25,12 @@ jobs:
           fetch-tags: true
 
       - name: verify tag is signed
-        # An unsigned tag breaks the provenance chain. Fail fast
-        # rather than build artifacts whose origin cannot be proven.
         run: |
           tag="${GITHUB_REF_NAME}"
           if ! git tag --verify "$tag" 2>/dev/null; then
-            # Fallback: GitHub-verified signature surfaces via the
-            # API rather than the local keyring. Accept if API reports
-            # verified=true.
-            verified=$(gh api "repos/${GITHUB_REPOSITORY}/git/refs/tags/${tag}" \
-              --jq '.object.sha' \
-              | xargs -I{} gh api "repos/${GITHUB_REPOSITORY}/git/tags/{}" \
-                --jq '.verification.verified' 2>/dev/null || echo "false")
-            if [ "$verified" != "true" ]; then
-              echo "release: tag $tag is not signed - aborting"
-              exit 1
-            fi
+            echo "release: tag $tag is not signed - aborting"
+            exit 1
           fi
-        env:
-          GH_TOKEN: ${{ github.token }}
 
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c  # v6.4.0
         with:
@@ -63,81 +51,11 @@ jobs:
         with:
           subject-path: dist/regatta
 
-      - name: flip CHANGELOG Unreleased section to versioned heading
-        # On release we date the section and stamp it with the tag,
-        # so CHANGELOG.md and the published release agree. The next
-        # commit on main re-opens an empty `## Unreleased` slot.
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          today=$(date -u +%Y-%m-%d)
-          if ! grep -q '^## Unreleased' CHANGELOG.md; then
-            echo "release: CHANGELOG.md has no ## Unreleased section to flip"
-            exit 1
-          fi
-          sed -i "s/^## Unreleased$/## ${tag} - ${today}/" CHANGELOG.md
-
-      - name: derive customer release notes from PR bodies
-        # Walk merged PRs since the previous tag, extract their fenced
-        # `release-notes` blocks (pr-lint guarantees one per PR), and
-        # emit a markdown body to RELEASE_NOTES.md for the release.
-        run: |
-          prev=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
-          if [ -n "$prev" ]; then
-            range="${prev}..${GITHUB_REF_NAME}"
-          else
-            range="${GITHUB_REF_NAME}"
-          fi
-          {
-            echo "# ${GITHUB_REF_NAME}"
-            echo
-            git log "$range" --merges --pretty=format:'%H %s' \
-              | grep -oE '#[0-9]+' \
-              | sed 's/#//' \
-              | sort -u \
-              | while read -r pr; do
-                  gh pr view "$pr" --json body --jq '.body' 2>/dev/null \
-                    | awk '/^```release-notes/{flag=1; next} /^```/{flag=0} flag' \
-                    | sed "s/^/- /"
-                done
-          } > RELEASE_NOTES.md
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: create GitHub Release with notes + artifact
+      - name: create GitHub Release with artifact
         run: |
           gh release create "${GITHUB_REF_NAME}" \
             --title "${GITHUB_REF_NAME}" \
-            --notes-file RELEASE_NOTES.md \
+            --generate-notes \
             dist/regatta
-        env:
-          GH_TOKEN: ${{ github.token }}
-
-      - name: commit dated CHANGELOG back to main
-        # Forward-only: a fresh PR (via API) lands the flipped
-        # CHANGELOG plus a new empty `## Unreleased`. Tag is
-        # immutable; main absorbs the dated header.
-        run: |
-          tag="${GITHUB_REF_NAME#v}"
-          branch="release/${tag}-changelog"
-          git config user.email "release-bot@regatta.local"
-          git config user.name "release-bot"
-          git checkout -b "$branch"
-          awk -v tag="$tag" '
-            /^## '"$tag"' / && !done {
-              print "## Unreleased"
-              print ""
-              done=1
-            }
-            { print }
-          ' CHANGELOG.md > CHANGELOG.md.tmp
-          mv CHANGELOG.md.tmp CHANGELOG.md
-          git add CHANGELOG.md
-          git commit -s -m "chore(release): open Unreleased after ${tag}"
-          git push origin "$branch"
-          gh pr create \
-            --title "chore(release): open Unreleased after ${tag}" \
-            --body $'```release-notes\n[CHORE] post-release CHANGELOG roll\n```' \
-            --base main \
-            --head "$branch"
         env:
           GH_TOKEN: ${{ github.token }}
