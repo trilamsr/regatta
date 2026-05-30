@@ -69,7 +69,10 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 	res := l0.Check(l0.Default(), l0.ParseUnifiedDiff(string(onDisk)))
 
 	if *jsonOut {
-		emitInitJSON(stdout, []string{"regatta.yaml", diffPath}, nil, nil, res)
+		if err := emitInitJSON(stdout, []string{"regatta.yaml", diffPath}, nil, nil, res); err != nil {
+			fmt.Fprintf(stderr, "regatta init: encode JSON: %v\n", err)
+			return 1
+		}
 		return 0
 	}
 
@@ -157,7 +160,7 @@ func patternBlurb(p string) string {
 }
 
 // emitInitJSON writes the structured envelope for --json mode.
-func emitInitJSON(w io.Writer, written, skipped, overwritten []string, res schemas.GateResult) {
+func emitInitJSON(w io.Writer, written, skipped, overwritten []string, res schemas.GateResult) error {
 	type envelope struct {
 		Written     []string           `json:"written"`
 		Skipped     []string           `json:"skipped"`
@@ -172,7 +175,7 @@ func emitInitJSON(w io.Writer, written, skipped, overwritten []string, res schem
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	_ = enc.Encode(env)
+	return enc.Encode(env)
 }
 
 func nilToEmpty(s []string) []string {
