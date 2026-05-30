@@ -47,7 +47,7 @@ jobs:
             -o dist/regatta ./cmd/regatta
 
       - name: generate SLSA build provenance attestation
-        uses: actions/attest-build-provenance@619dbb2e03d9834d0e0c4f4d9fb2ce30cfb6d4c4  # v3.0.0
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be  # v2.4.0
         with:
           subject-path: dist/regatta
 
