@@ -15,7 +15,7 @@
     "kind": {
       "enum": ["feature", "program"],
       "default": "feature",
-      "description": "feature: leaf work item, spawns one agent. program: routes through the planner first; the planner decomposes into a DAG of child features. See docs/design.md §Programs."
+      "description": "feature: leaf, spawns one agent. program: routes through the planner first. See docs/design.md §Programs."
     },
     "title": { "type": "string", "minLength": 1 },
     "body": { "type": "string" },

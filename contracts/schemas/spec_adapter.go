@@ -67,12 +67,11 @@ type WorkItem struct {
 	Source             SourceRef    `json:"source"`                    // points to the immutable source-of-truth for L0 to verify
 }
 
-// WorkItemKind discriminates feature-vs-program work. Programs route
-// through the planner (internal/program) which decomposes them into
-// a DAG of child features before spawning. See docs/design.md §Programs.
+// WorkItemKind discriminates leaf features from programs. Programs
+// route through the planner before spawning. See docs/design.md
+// §Programs.
 type WorkItemKind string
 
-// WorkItemKind values; the only legal payload of WorkItem.Kind.
 const (
 	KindFeature WorkItemKind = "feature"
 	KindProgram WorkItemKind = "program"

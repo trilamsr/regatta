@@ -216,6 +216,80 @@ func TestMarkdownCatalogRejectsMissingFrontmatter(t *testing.T) {
 	}
 }
 
+func TestMarkdownCatalogParsesKindProgram(t *testing.T) {
+	dir := t.TempDir()
+	writeItem(t, dir, "p.md", `---
+id: PROG-1
+kind: program
+title: program item
+lane: server
+status: planned
+---
+
+## Acceptance criteria
+
+- [planned] c1: do the thing
+`)
+	a, _ := NewMarkdownCatalog(MarkdownCatalogConfig{Root: dir})
+	items, err := a.List(context.Background())
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].Kind != schemas.KindProgram {
+		t.Fatalf("expected kind=program, got %q", items[0].Kind)
+	}
+}
+
+func TestMarkdownCatalogRejectsInvalidKind(t *testing.T) {
+	dir := t.TempDir()
+	writeItem(t, dir, "bad.md", `---
+id: BAD
+kind: bogus
+title: bad kind
+lane: x
+status: planned
+---
+
+## Acceptance criteria
+
+- [planned] c1: x
+`)
+	a, _ := NewMarkdownCatalog(MarkdownCatalogConfig{Root: dir})
+	_, err := a.List(context.Background())
+	if err == nil {
+		t.Fatal("expected error for invalid kind, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid kind") {
+		t.Fatalf("error %v does not mention invalid kind", err)
+	}
+}
+
+func TestMarkdownCatalogKindDefaultEmpty(t *testing.T) {
+	dir := t.TempDir()
+	writeItem(t, dir, "f.md", `---
+id: F-1
+title: no kind specified
+lane: x
+status: planned
+---
+
+## Acceptance criteria
+
+- [planned] c1: x
+`)
+	a, _ := NewMarkdownCatalog(MarkdownCatalogConfig{Root: dir})
+	items, err := a.List(context.Background())
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if items[0].Kind != "" {
+		t.Fatalf("expected empty kind (default), got %q", items[0].Kind)
+	}
+}
+
 func TestMarkdownCatalogCapabilities(t *testing.T) {
 	dir := t.TempDir()
 	a, _ := NewMarkdownCatalog(MarkdownCatalogConfig{Root: dir})
