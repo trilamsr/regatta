@@ -63,6 +63,8 @@ func main() {
 		os.Exit(runServe(os.Args[2:]))
 	case "validate-config":
 		os.Exit(runValidateConfig(os.Args[2:]))
+	case "init":
+		os.Exit(runInit(os.Args[2:]))
 	case "version", "-v", "--version":
 		fmt.Println("regatta", version)
 	case "help", "-h", "--help":
@@ -84,6 +86,7 @@ func usage(w io.Writer) {
   regatta serve                                       Run the orchestrator daemon (skeleton)
   regatta program plan <work-item.json>               One-shot decompose into signed ProgramBrief
   regatta program verify-handoff <path>               Validate a handoff.json (schema + optional HMAC)
+  regatta init                                        Scaffold regatta.yaml + run L0 demo
   regatta version                                     Print build info
   regatta help                                        This message
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -64,5 +65,48 @@ func TestEmbeddedSampleMatchesFixture(t *testing.T) {
 	}
 	if string(canonical) != string(embedded) {
 		t.Fatalf("drift: cmd/regatta/init_assets/sample.diff diverges from testdata/gates/l0/fail/17_homoglyph_cyrillic_a.diff. Re-sync with: cp testdata/gates/l0/fail/17_homoglyph_cyrillic_a.diff cmd/regatta/init_assets/sample.diff")
+	}
+}
+
+// runInitInDir cd's into dir, runs runInit with args, returns exit
+// code + captured stdout + stderr. Restores cwd on return.
+func runInitInDir(t *testing.T, dir string, args []string) (code int, stdout, stderr string) {
+	t.Helper()
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+
+	var out, errOut bytes.Buffer
+	code = runInitWithIO(args, &out, &errOut)
+	return code, out.String(), errOut.String()
+}
+
+func TestInit_WritesBothFiles(t *testing.T) {
+	dir := t.TempDir()
+	code, stdout, stderr := runInitInDir(t, dir, nil)
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr on success; got %q", stderr)
+	}
+	yaml, err := os.ReadFile(filepath.Join(dir, "regatta.yaml"))
+	if err != nil {
+		t.Fatalf("regatta.yaml not written: %v", err)
+	}
+	diff, err := os.ReadFile(filepath.Join(dir, ".regatta", "sample.diff"))
+	if err != nil {
+		t.Fatalf(".regatta/sample.diff not written: %v", err)
+	}
+	if len(yaml) == 0 || len(diff) == 0 {
+		t.Fatalf("empty file written: yaml=%d diff=%d", len(yaml), len(diff))
+	}
+	if !bytes.Contains([]byte(stdout), []byte("wrote regatta.yaml")) {
+		t.Fatalf("expected stdout to mention 'wrote regatta.yaml'; got %q", stdout)
 	}
 }
