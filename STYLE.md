@@ -109,7 +109,7 @@ for what is verified locally and in CI. Constituent gates:
   comment-noise diff.
 - `prose-dup` - regression-seed list; fails if a previously
   collapsed prose duplicate reappears in 2+ markdown files.
-- `vet`, `tidy-check`, `mod-verify`, `go-check` - Go correctness.
+- `vet`, `lint`, `tidy-check`, `mod-verify`, `go-check` - Go correctness.
 
 `make ci-check` extends `check` with the weekly `stale-todo` scan
 (also runs on its own cron).
