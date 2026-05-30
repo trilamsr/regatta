@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -29,6 +30,9 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 	force := fs.Bool("force", false, "overwrite existing regatta.yaml / .regatta/sample.diff")
 	jsonOut := fs.Bool("json", false, "emit JSON envelope instead of friendly prose")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
 		return 2
 	}
 

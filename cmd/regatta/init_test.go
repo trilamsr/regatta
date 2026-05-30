@@ -291,3 +291,65 @@ func TestInit_ForceOverwrites(t *testing.T) {
 		t.Errorf("expected '! overwrote' marker; got %q", stdout)
 	}
 }
+
+func TestInit_RefusesSymlinkRegatta(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink semantics differ on Windows; defense still active in code")
+	}
+	dir := t.TempDir()
+	target := t.TempDir()
+	if err := os.Symlink(target, filepath.Join(dir, ".regatta")); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+	code, _, stderr := runInitInDir(t, dir, nil)
+	if code != 2 {
+		t.Fatalf("expected exit 2; got %d stderr=%q", code, stderr)
+	}
+	if !bytes.Contains([]byte(stderr), []byte("not a regular directory")) {
+		t.Errorf("stderr should explain the refusal; got %q", stderr)
+	}
+}
+
+func TestInit_LeavesPopulatedRegattaDirAlone(t *testing.T) {
+	dir := t.TempDir()
+	itemsDir := filepath.Join(dir, ".regatta", "items")
+	if err := os.MkdirAll(itemsDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	keep := filepath.Join(itemsDir, "foo.md")
+	if err := os.WriteFile(keep, []byte("# foo\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	code, _, stderr := runInitInDir(t, dir, nil)
+	if code != 0 {
+		t.Fatalf("expected exit 0; got %d stderr=%q", code, stderr)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Fatalf("init should not have touched .regatta/items/foo.md: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".regatta", "sample.diff")); err != nil {
+		t.Fatalf("sample.diff should have been written: %v", err)
+	}
+}
+
+func TestInit_NonGitDir(t *testing.T) {
+	dir := t.TempDir()
+	code, _, stderr := runInitInDir(t, dir, nil)
+	if code != 0 {
+		t.Fatalf("init must not require git; got code=%d stderr=%q", code, stderr)
+	}
+}
+
+func TestInit_HelpFlag(t *testing.T) {
+	for _, arg := range []string{"-h", "--help"} {
+		var out, errOut bytes.Buffer
+		code := runInitWithIO([]string{arg}, &out, &errOut)
+		if code != 0 {
+			t.Errorf("%s exit=%d stderr=%q", arg, code, errOut.String())
+		}
+		combined := out.String() + errOut.String()
+		if !bytes.Contains([]byte(combined), []byte("force")) {
+			t.Errorf("%s should describe --force flag; got %q", arg, combined)
+		}
+	}
+}
