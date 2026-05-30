@@ -45,8 +45,8 @@ uninstall-hooks:  ## Detach repo-managed hooks (resets core.hooksPath).
 	@git config --unset core.hooksPath || true
 	@echo "Hooks detached. Git falls back to .git/hooks/."
 
-check: doc-check prose-dup vet tidy-check mod-verify go-check  ## Local gate; <60s. Single source of truth for what is verified locally.
+check: doc-check prose-dup vet lint tidy-check mod-verify go-check  ## Local gate; <60s. Single source of truth for what is verified locally.
 
 ci-check: check stale-todo  ## CI gate; supersedes `check` with longer-running scans (stale-todo).
 
-ci: ci-check  ## CI entrypoint. Runs lint as a separate job via golangci-lint-action; `make lint` remains available locally.
+ci: ci-check  ## CI entrypoint. CI also runs lint as a separate job via golangci-lint-action for redundancy; `make check` runs the same linter locally so PR-time lint failures show up before push.
