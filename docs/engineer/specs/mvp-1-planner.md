@@ -54,7 +54,8 @@ agents spawn -> >=3 PRs open against the target repo. All gates
 - `program_id` injection in the spawner prompt. Today the spawner
   prompt template is one line (`spawner/claude.go:defaultPromptBuilder`);
   extending it lives with the rest of the prompt-as-code work in MVP-2.
-- Per-criterion citation round-trip (`adapter/parse.go` TODO).
+- Per-criterion citation round-trip in `adapter/parse.go` (deferred
+  marker lives in that file's comment block).
 
 ## Binding surface decision
 
