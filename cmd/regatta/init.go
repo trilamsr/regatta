@@ -60,7 +60,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		path   string
 		blurb  string
 		bytes  []byte
-		action string // actionWrite, actionSkip, actionOverwrite, actionDiverge
+		action string
 	}
 	files := []decision{
 		{path: "regatta.yaml", blurb: "(your config; L0 gate enabled)", bytes: yamlBytes},
@@ -106,7 +106,6 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	// Apply.
 	var written, skipped, overwritten []string
 	for _, d := range files {
 		switch d.action {
