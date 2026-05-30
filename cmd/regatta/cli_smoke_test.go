@@ -139,3 +139,29 @@ func TestCLI_Version(t *testing.T) {
 	expectExit(t, 0, code, stdout, stderr)
 	expectContains(t, stdout, "regatta", "stdout")
 }
+
+func TestCLI_Init_HappyPath(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	code, stdout, stderr := runSmoke(t, dir, []string{"init"}, nil)
+	expectExit(t, 0, code, stdout, stderr)
+	expectContains(t, stdout, "wrote regatta.yaml", "stdout")
+	expectContains(t, stdout, "FAIL", "stdout")
+	if _, err := os.Stat(filepath.Join(dir, "regatta.yaml")); err != nil {
+		t.Fatalf("regatta.yaml not written: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".regatta", "sample.diff")); err != nil {
+		t.Fatalf(".regatta/sample.diff not written: %v", err)
+	}
+}
+
+func TestCLI_Init_RefusesDiverged(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), []byte("# operator\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	code, stdout, stderr := runSmoke(t, dir, []string{"init"}, nil)
+	expectExit(t, 2, code, stdout, stderr)
+	expectContains(t, stderr, "--force", "stderr")
+}
