@@ -2,14 +2,15 @@
 
 Reader: internal engineer cutting a Regatta release.
 Read time: 5 minutes.
-Expires when: Wave 3 release.yml workflow lands (the workflow
-supersedes manual steps).
 
 ## Status
 
-Pre-Wave-3: releases are manual; Wave 3 lands a tag-triggered
-release workflow that automates the tag-sign + provenance +
-CHANGELOG-flip + customer-notes derivation.
+`release.yml` runs on tag push: verifies the tag signature,
+re-runs `make ci-check` at the tagged commit, builds the
+artifact, generates SLSA build provenance, and publishes a
+GitHub Release with `--generate-notes`. The maintainer flips
+CHANGELOG `## Unreleased` to a dated section by hand on `main`
+before tagging.
 
 ## Pre-release checklist
 
@@ -58,13 +59,6 @@ git push origin "$VERSION"
 - [ ] `regatta.yaml` schema version bump (if any) documented in
       [`docs/operator/upgrade.md`](../operator/upgrade.md) and the
       `regatta migrate-config` path exercised end-to-end.
-
-## When Wave 3 release.yml lands
-
-The manual sed-flip + git-tag + provenance generation collapse
-into a single `gh workflow run release.yml --field tag=$VERSION`.
-This runbook gains a "Triggering the workflow" section and the
-manual steps move to a "Fallback" section.
 
 ## Rollback
 

@@ -1,10 +1,9 @@
 name: stale-todo
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
   schedule:
     - cron: '17 7 * * 1'
+  workflow_dispatch:
 
 permissions:
   contents: read

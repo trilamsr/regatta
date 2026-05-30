@@ -107,18 +107,12 @@ for what is verified locally and in CI. Constituent gates:
 
 - `doc-check` - markdown link integrity, banned-phrase lint,
   em-dash diff, comment-noise diff.
-- `ci-shape` - asserts `.github/workflows/gates.yml` aggregator
-  has `if: always()` + `needs.*.result` checks (closes the
-  silent-required-check-bypass class), and `release.yml` is
-  tag-triggered with provenance + CHANGELOG flip.
 - `prose-dup` - regression-seed list; fails if a previously
   collapsed prose duplicate reappears in 2+ markdown files.
-- `empty-dirs` - earn-or-delete; every README-only or
-  `.gitkeep`-only directory must declare an Activation trigger.
 - `vet`, `tidy-check`, `mod-verify`, `go-check` - Go correctness.
 
-`make ci-check` extends `check` with the longer-running
-`stale-todo` scan.
+`make ci-check` extends `check` with the weekly `stale-todo` scan
+(also runs on its own cron).
 
 ## Branch protection
 

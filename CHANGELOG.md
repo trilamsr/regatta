@@ -24,12 +24,15 @@ contracts follow the deprecation cycle described in `PRINCIPLES.md`
 - Repo restructure Wave 2 (Customer surface). Operator + auditor +
   engineer docs land under `docs/`; runnable examples land under
   `examples/`; ADR template lands under `docs/rfcs/`.
-- Repo restructure Wave 3 (Governance + closeout). Aggregator
-  workflow, tag-triggered release workflow with provenance, three
-  new fail-closed gates, dedupe pass against the design spec.
-- Branch protection required-contexts expanded to cover every
-  PR-time workflow (verify, lint, pr-lint, govulncheck, validate,
-  scan, aggregate) instead of just `verify` + `pr-lint`.
+- Repo restructure Wave 3 (Governance + closeout). Tag-triggered
+  release workflow with provenance, prose-dup regression gate,
+  dedupe pass against the design spec.
+- Branch protection required-contexts updated to the live PR-time
+  set (verify, lint, pr-lint, govulncheck, validate); aggregate
+  and scan dropped after the aggregator + PR-time stale-todo were
+  removed as ceremony-without-consumer.
+- `required_conversation_resolution` flipped to false; solo
+  maintainer has no separate reviewer threads to forget.
 - `docs/design.md` §Day 1 → Day 30 Runbook collapsed to a thin
   pointer table into `docs/operator/`; operator docs are now
   canonical for runbook content (spec D3).
@@ -49,21 +52,30 @@ contracts follow the deprecation cycle described in `PRINCIPLES.md`
 - `docs/engineer/{how-to-add-a-gate,how-to-add-an-adapter,release-runbook,string-review}.md`
   + `post-mortems/.gitkeep`.
 - `docs/rfcs/0000-template.md` (Michael-Nygard ADR template).
-- `.github/workflows/gates.yml` cross-workflow aggregator job with
-  `if: always()` + `needs.*.result` checks (closes the GitHub
-  silent-required-check-bypass class).
 - `.github/workflows/release.yml` tag-triggered release: signed-tag
-  verify, SLSA build provenance attestation, CHANGELOG Unreleased
-  flip, customer release-notes derivation from PR bodies.
-- `scripts/check-ci-shape.sh` + `_test.sh` - gate that asserts the
-  aggregator + release workflow shape.
+  verify, SLSA build provenance attestation, gh release artifact
+  upload. Maintainer flips CHANGELOG manually before tagging.
 - `scripts/check-prose-dup.sh` + `_test.sh` - regression-seed
   detector preventing previously-collapsed prose duplicates from
   drifting back into 2+ markdown files.
-- `scripts/check-empty-dirs.sh` + `_test.sh` - earn-or-delete gate
-  for README-only / .gitkeep-only directories.
 - `docs/engineer/post-mortems/README.md` replaces the bare
   `.gitkeep` and declares the activation trigger.
+
+### Removed
+
+- `.github/workflows/gates.yml` aggregator (no falsifying consumer
+  while branch protection lists each workflow individually).
+- `scripts/check-ci-shape.sh` + `_test.sh` (aggregator gone).
+- `scripts/check-empty-dirs.sh` + `_test.sh` (eight dirs total;
+  speculation caught faster in review).
+- `pr-lint` root-cause block requirement + PR template `root-cause`
+  block (no downstream consumer; mandate lives in PR-author
+  discipline + reviewer eye, not gate text).
+- `stale-todo` PR-time trigger (kept as weekly cron + manual
+  dispatch); old TODOs no longer block unrelated PRs.
+- `release.yml` CHANGELOG auto-flip + auto-PR-back + PR-body
+  release-notes derivation (~85 lines); solo maintainer hand-flips
+  CHANGELOG and uses `gh release create --generate-notes`.
 
 ### Internal
 
@@ -72,7 +84,8 @@ contracts follow the deprecation cycle described in `PRINCIPLES.md`
 - `.golangci.yml` exclusion paths updated to match Wave 1 tree
   (internal/gates/*, internal/config/*).
 - `contracts/schemas/sign.go` extracts SigAlg + SigKey constants.
-- `make check` now folds in `ci-shape`, `prose-dup`, `empty-dirs`;
-  total local runtime stays under 60 seconds.
-- `scripts/apply-branch-protection.sh` required-context list
-  expanded from `verify` + `pr-lint` to the full PR-time set.
+- `make check` constituents: `doc-check`, `prose-dup`, `vet`,
+  `tidy-check`, `mod-verify`, `go-check`; total local runtime stays
+  under 60 seconds.
+- `scripts/apply-branch-protection.sh` required-context list set to
+  the live PR-time workflow names.

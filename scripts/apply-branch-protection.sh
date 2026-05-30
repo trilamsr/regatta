@@ -37,9 +37,7 @@ gh api \
       "lint",
       "pr-lint",
       "govulncheck",
-      "validate",
-      "scan",
-      "aggregate"
+      "validate"
     ]
   },
   "enforce_admins": true,
@@ -52,7 +50,7 @@ gh api \
   "required_linear_history": true,
   "allow_force_pushes": false,
   "allow_deletions": false,
-  "required_conversation_resolution": true,
+  "required_conversation_resolution": false,
   "required_signatures": false
 }
 JSON

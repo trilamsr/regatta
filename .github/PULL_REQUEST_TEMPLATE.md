@@ -31,21 +31,6 @@ Categories: FEATURE, ENHANCEMENT, BUGFIX, PERF, SECURITY, CHANGE
 [CATEGORY] Short description of the user-visible change.
 ```
 
-## Root cause
-
-<!--
-What is the actual root cause this PR addresses, named explicitly?
-Do not stop at the first symptom. If this PR is a workaround because
-the root cause is impossible to fix on our end, replace the block
-content with `WORKAROUND: <named blocker, link to tracking entry>`.
-Falsifiable form only - "this is a workaround" alone is not a valid
-out from investigation.
--->
-
-```root-cause
-Describe the named root cause this PR addresses.
-```
-
 ## Checklist
 
 - [ ] Tests added or updated (when applicable)

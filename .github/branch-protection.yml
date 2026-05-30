@@ -11,7 +11,7 @@ require_pull_request_before_merge: true
 require_linear_history: true
 allow_force_push: false
 allow_deletions: false
-require_conversation_resolution: true
+require_conversation_resolution: false
 
 # Solo maintainer. GitHub does not allow authors to approve their own
 # PRs, so `1` review required with a single maintainer produces
@@ -29,4 +29,7 @@ enforce_admins: true
 required_status_checks_strict: false
 required_status_checks:
   - verify
+  - lint
   - pr-lint
+  - govulncheck
+  - validate

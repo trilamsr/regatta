@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify hooks install-hooks uninstall-hooks stale-todo ci ci-shape prose-dup empty-dirs
+.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify hooks install-hooks uninstall-hooks stale-todo ci prose-dup
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -30,14 +30,8 @@ mod-verify:  ## Verify go.mod / go.sum hashes match upstream.
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh
 
-ci-shape:  ## Assert .github/workflows/gates.yml + release.yml shape (fail-closed aggregator, signed/provenance release).
-	bash scripts/check-ci-shape.sh
-
 prose-dup:  ## Fail if a previously-deduped prose phrase reappears in 2+ markdown files.
 	bash scripts/check-prose-dup.sh
-
-empty-dirs:  ## Earn-or-delete gate: every README-only / .gitkeep-only directory must declare an Activation trigger.
-	bash scripts/check-empty-dirs.sh
 
 hooks: install-hooks  ## Alias for install-hooks (kept for backwards compatibility).
 
@@ -53,7 +47,7 @@ uninstall-hooks:  ## Detach repo-managed hooks (resets core.hooksPath).
 	@git config --unset core.hooksPath || true
 	@echo "Hooks detached. Git falls back to .git/hooks/."
 
-check: doc-check ci-shape prose-dup empty-dirs vet tidy-check mod-verify go-check  ## Local gate; <60s. Single source of truth for what is verified locally.
+check: doc-check prose-dup vet tidy-check mod-verify go-check  ## Local gate; <60s. Single source of truth for what is verified locally.
 
 ci-check: check stale-todo  ## CI gate; supersedes `check` with longer-running scans (stale-todo).
 
