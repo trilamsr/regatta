@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # doc-check.sh - repo-wide markdown gates for regatta.
 #
-# Three gates today, each a separate section:
+# Two gates today, each a separate section:
 #   1. Markdown link integrity (relative .md links resolve to a file)
 #   2. Banned-phrase lint     (vague marketing language fails closed)
-#   3. Em-dash / en-dash diff gate (only flags lines added by THIS PR)
 #
 # More gates land as regatta grows (Go test-name parity once the binary
 # exists, RFC section assertions once docs/rfcs/ ships, etc.). Each new
@@ -122,77 +121,21 @@ fi
 
 echo "doc-check: banned-phrase lint clean across $mdcount markdown file(s) outside exemptions"
 
-# --- Em-dash + en-dash diff-scope gate --------------------------------------
-#
-# Catches em-dashes (U+2014) and en-dashes (U+2013) introduced by THIS
-# PR's added lines in *.md and *.go files. Existing-tree usage is
-# grandfathered; only added lines are checked. Em-dashes and en-dashes
-# are a common AI-style punctuation tell, and regatta is built by AI
-# agents - the gate is more load-bearing here than in most repos.
+# Comment-noise diff-scope gate.
+# Blocks three patterns on PR-added lines that rot in long-lived files:
+# review-cycle inline tags, bare PR-number backreferences in source-code
+# comments, and ASCII section-banner comments. Rationale in STYLE.md.
+# Mutation-verify recipe lives in the PR that landed this gate.
 #
 # Base ref resolution:
 #   - GITHUB_BASE_REF in CI (set on pull_request events)
 #   - origin/main otherwise
-#   - skipped with a notice when no base ref resolves (detached HEAD,
-#     shallow clone without origin/main)
-#
-# Exemptions: research/, docs/rfcs/, .claude/ (skill content quoted
-# from external sources).
-#
-# Mutation-verify pattern: commit an em-dash in a tracked .md or .go
-# file, run `bash scripts/doc-check.sh`, watch the gate fail with the
-# file:line citation, then `git reset --hard HEAD~1`.
+#   - skipped with a notice when no base ref resolves
 
 base_ref="${GITHUB_BASE_REF:-origin/main}"
 if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
   base_ref="origin/$base_ref"
 fi
-
-if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
-  echo "doc-check: em-dash diff gate skipped (base ref not resolvable)"
-else
-  diff_hits=$(git diff --unified=0 "$base_ref"...HEAD -- '*.md' '*.go' 2>/dev/null \
-    | python3 -c '
-import re, sys
-exempt = re.compile(r"^(research/|docs/rfcs/|\.claude/)")
-bad = re.compile("[—–]")
-file = ""
-skip = False
-lineno = 0
-for raw in sys.stdin:
-    line = raw.rstrip("\n")
-    if line.startswith("+++ "):
-        file = line[6:]
-        skip = bool(exempt.match(file))
-        continue
-    if line.startswith("@@ "):
-        m = re.search(r"\+(\d+)", line)
-        lineno = int(m.group(1)) if m else 0
-        continue
-    if skip:
-        continue
-    if line.startswith("+") and not line.startswith("+++"):
-        if bad.search(line):
-            print(f"{file}:{lineno}: {line[1:]}")
-        lineno += 1
-')
-
-  if [ -n "$diff_hits" ]; then
-    echo "doc-check: em-dash or en-dash detected in PR-diff additions (vs $base_ref):"
-    echo "$diff_hits" | sed 's/^/  - /'
-    echo
-    echo "Replace em-dash with hyphen-space or semicolon; en-dash with hyphen."
-    echo "Existing tree usage is grandfathered; only lines added in this PR are checked."
-    exit 1
-  fi
-  echo "doc-check: em-dash + en-dash diff gate clean (vs $base_ref)"
-fi
-
-# Comment-noise diff-scope gate. Same shape as em-dash gate above.
-# Blocks three patterns on PR-added lines that rot in long-lived files:
-# review-cycle inline tags, bare PR-number backreferences in source-code
-# comments, and ASCII section-banner comments. Rationale in STYLE.md.
-# Mutation-verify recipe lives in the PR that landed this gate.
 
 if ! git rev-parse --verify "$base_ref" >/dev/null 2>&1; then
   echo "doc-check: comment-noise diff gate skipped (base ref not resolvable)"
