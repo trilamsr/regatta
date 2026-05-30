@@ -197,6 +197,11 @@
       "format": "date-time",
       "description": "RFC 3339 timestamp at handoff write."
     },
+    "prev_record_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "SHA-256 of the previous audit record this writer emitted, canonicalized via JCS (RFC 8785). Chains every record per writer so dropped records become detectable downstream. Empty for the writer's first record. Documented in docs/auditor/audit-log.md."
+    },
     "signature": {
       "type": "object",
       "required": ["alg", "key_id", "mac"],

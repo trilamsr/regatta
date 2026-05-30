@@ -1,0 +1,4 @@
+# Solo maintainer today. Every path defaults to @trilamsr.
+# When a second maintainer joins, replace this line with per-path
+# rules and update RFC-0001 §Compliance + verify-repo-config.
+*       @trilamsr

@@ -1,4 +1,4 @@
-package programs
+package program
 
 import (
 	"context"

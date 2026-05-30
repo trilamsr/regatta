@@ -7,7 +7,7 @@
 // sibling sandbox and compare (exit_code, stdout_sha256) before
 // trusting any claim of success. See ReRunMismatch.
 
-package programs
+package program
 
 import (
 	"bytes"
@@ -43,6 +43,7 @@ type Handoff struct {
 	UnfinishedWork      []string           `json:"unfinished_work,omitempty"`
 	ReturnToOrchestrator bool              `json:"return_to_orchestrator,omitempty"`
 	ProducedAt          time.Time          `json:"produced_at"`
+	PrevRecordHash      string             `json:"prev_record_hash,omitempty"` // sha256:HEX of worker's previous handoff; empty for first
 	Signature           schemas.SignatureBlock `json:"signature"`
 }
 

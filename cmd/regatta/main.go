@@ -450,13 +450,13 @@ func runProgramPlan(args []string) int {
 		return 2
 	}
 
-	client, err := programs.NewAnthropicPlanner(*model)
+	client, err := program.NewAnthropicPlanner(*model)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "regatta program plan:", err)
 		return 2
 	}
 
-	plan, err := programs.Run(context.Background(), programs.PlannerOptions{
+	plan, err := program.Run(context.Background(), program.PlannerOptions{
 		Client:    client,
 		HMACKey:   []byte(key),
 		HMACKeyID: *keyID,
@@ -486,7 +486,7 @@ func runProgramVerifyHandoff(args []string) int {
 		return 2
 	}
 
-	h, err := programs.LoadAndValidate(fs.Arg(0))
+	h, err := program.LoadAndValidate(fs.Arg(0))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "regatta program verify-handoff:", err)
 		return 1

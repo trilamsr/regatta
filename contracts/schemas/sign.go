@@ -35,14 +35,22 @@ const (
 	// signed payloads. Stripping this key recovers the bytes that
 	// were signed.
 	SigKey = "signature"
+	// MinKeyLen is the lower bound for HMAC-SHA256 keys. 32 bytes
+	// matches the SHA-256 block size; below this, security degrades
+	// from "computationally infeasible" to "depends on key randomness."
+	MinKeyLen = 32
 )
+
+// ErrWeakKey distinguishes "short key" from "wrong key" so callers
+// can fail-closed at startup rather than at first verify.
+var ErrWeakKey = errors.New("schemas: hmac key shorter than MinKeyLen")
+
+// ErrUnknownKeyID wraps ErrUnverifiable so existing errors.Is callers
+// keep working; new code can match this sentinel for typed log events.
+var ErrUnknownKeyID = fmt.Errorf("%w: unknown signing key_id", ErrUnverifiable)
 
 // SignatureBlock is the structured signature subdocument carried by
 // signed artifacts (handoff.schema.json, gate_result.schema.json).
-//
-// The string form `gate_result.go:GateResult.Signature` is kept for
-// backward compat with v0 GateResults; new signed types use this
-// struct directly.
 type SignatureBlock struct {
 	Alg   string `json:"alg"`    // SigAlg
 	KeyID string `json:"key_id"` // operator-controlled label, e.g. "k1"
@@ -119,10 +127,12 @@ func canonicalize(v any) ([]byte, error) {
 
 // Sign returns a SignatureBlock for payload using key under keyID.
 // The signature is computed over CanonicalJSON(payload) with the
-// "signature" field STRIPPED at the top level -- so the signature
-// describes the payload-sans-signature, which is the only shape a
-// verifier can reconstruct.
+// top-level "signature" field STRIPPED -- the only shape a verifier
+// can reconstruct. Returns ErrWeakKey when len(key) < MinKeyLen.
 func Sign(payload map[string]any, key []byte, keyID string) (SignatureBlock, error) {
+	if len(key) < MinKeyLen {
+		return SignatureBlock{}, fmt.Errorf("%w: got %d bytes, want >= %d", ErrWeakKey, len(key), MinKeyLen)
+	}
 	stripped := stripSignature(payload)
 	canon, err := CanonicalJSON(stripped)
 	if err != nil {
@@ -140,8 +150,19 @@ func Sign(payload map[string]any, key []byte, keyID string) (SignatureBlock, err
 // Verify checks that payload['signature'] is valid HMAC of
 // payload-sans-signature under the key associated with the
 // signature's key_id in keyring. Returns ErrUnverifiable on
-// mismatch.
+// mismatch, ErrUnknownKeyID if the key_id is not in keyring,
+// ErrWeakKey if the resolved key fails the MinKeyLen check.
 func Verify(payload map[string]any, keyring map[string][]byte) error {
+	return VerifyWithAllowlist(payload, keyring, nil)
+}
+
+// VerifyWithAllowlist is Verify plus a key_id allowlist. When
+// allowed is non-nil, the signature's key_id must appear in it OR
+// verification fails with ErrUnknownKeyID before HMAC is even
+// computed. Use when one process verifies signatures from multiple
+// writers and you want to restrict which writers may sign which
+// payload class.
+func VerifyWithAllowlist(payload map[string]any, keyring map[string][]byte, allowed map[string]bool) error {
 	sigRaw, ok := payload[SigKey]
 	if !ok {
 		return fmt.Errorf("%w: no signature field", ErrUnverifiable)
@@ -156,9 +177,15 @@ func Verify(payload map[string]any, keyring map[string][]byte) error {
 	}
 	keyID, _ := sigMap["key_id"].(string)
 	want, _ := sigMap["mac"].(string)
+	if allowed != nil && !allowed[keyID] {
+		return fmt.Errorf("%w: key_id %q not in allowlist", ErrUnknownKeyID, keyID)
+	}
 	key, ok := keyring[keyID]
 	if !ok {
-		return fmt.Errorf("%w: unknown key_id %q", ErrUnverifiable, keyID)
+		return fmt.Errorf("%w: %q", ErrUnknownKeyID, keyID)
+	}
+	if len(key) < MinKeyLen {
+		return fmt.Errorf("%w: keyring entry %q has %d bytes", ErrWeakKey, keyID, len(key))
 	}
 	stripped := stripSignature(payload)
 	canon, err := CanonicalJSON(stripped)

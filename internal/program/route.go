@@ -6,51 +6,29 @@
 // There is no LLM agent here. P1 (deterministic gate before AI gate
 // on destructive ops) is applied one layer up: advancing a milestone
 // IS the destructive op.
-package programs
+package program
 
 import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-// Verdict is one gate's signed result over a child WorkItem.
-// Subset of schemas/gate_result.schema.json sufficient for routing.
+// Verdict is the routing-time alias for schemas.GateResult plus the
+// orchestrator-owned scope-coverage hints. Keeping these two fields
+// here (OutOfScope, Responsibility) until they earn a schema spot
+// in MVP-2's handoff verification path.
 type Verdict struct {
-	GateID           string
-	PRSHA            string
-	Result           string // "pass" | "fail" | "advisory"
-	Blocking         bool
-	Severity         string
-	Findings         []Finding
-	OutOfScope       []string // claims this gate explicitly deferred to another
-	Responsibility   []string // scope this gate explicitly owned
-	StartedAt        *time.Time
-	FinishedAt       *time.Time
-	Signature        Signature
-}
-
-// Finding mirrors schemas.Finding for the in-package route logic.
-// Reused fields only; the canonical shape is schemas.Finding.
-type Finding struct {
-	ID          string
-	Severity    string
-	Claim       string
-	TrapPattern string
-}
-
-// Signature mirrors schemas.SignatureBlock for the in-package route
-// logic.
-type Signature struct {
-	Alg   string
-	KeyID string
-	MAC   string
+	schemas.GateResult
+	OutOfScope     []string // claims this gate explicitly deferred to another
+	Responsibility []string // scope this gate explicitly owned
 }
 
 // VerifyFunc verifies one Verdict's HMAC against the keyring.
-// Implementation lives in schemas/gate_result.go (or wherever the
-// canonical HMAC verifier lives). Pass it in to avoid an import
-// cycle and to make this package trivially testable with a stub.
+// Implementation lives in schemas/sign.go. Pass it in to avoid an
+// import cycle in tests with a stub.
 type VerifyFunc func(v Verdict) error
 
 // DepthCap is the typed iteration bound, enforced in the Go spawner.
@@ -168,13 +146,13 @@ func RouteVerdicts(child Child, verify VerifyFunc, capCfg DepthCap) Decision {
 				Reason: fmt.Sprintf("unverifiable verdict %s: %v", v.GateID, err),
 			}
 		}
-		if v.StartedAt == nil || v.FinishedAt == nil {
+		if v.Heartbeat.StartedAt.IsZero() || v.Heartbeat.FinishedAt.IsZero() {
 			return Decision{
 				Action: HaltHuman,
 				Reason: fmt.Sprintf("missing heartbeat anchor on %s", v.GateID),
 			}
 		}
-		if now.Sub(*v.StartedAt) > HeartbeatStale && v.FinishedAt == nil {
+		if now.Sub(v.Heartbeat.StartedAt) > HeartbeatStale {
 			return Decision{
 				Action: HaltHuman,
 				Reason: fmt.Sprintf("stale heartbeat on %s", v.GateID),
@@ -217,7 +195,7 @@ func RouteVerdicts(child Child, verify VerifyFunc, capCfg DepthCap) Decision {
 // anyBlockingFail reports whether any verdict is blocking + fail.
 func anyBlockingFail(child Child) bool {
 	for _, v := range child.Verdicts {
-		if v.Blocking && v.Result == "fail" {
+		if v.Blocking && v.Verdict == schemas.VerdictFail {
 			return true
 		}
 	}
@@ -232,7 +210,7 @@ func anyBlockingFail(child Child) bool {
 func collectFixFeatures(child Child) []FixFeature {
 	var out []FixFeature
 	for _, v := range child.Verdicts {
-		if !v.Blocking || v.Result != "fail" {
+		if !v.Blocking || v.Verdict != schemas.VerdictFail {
 			continue
 		}
 		for _, f := range v.Findings {

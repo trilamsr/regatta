@@ -45,8 +45,11 @@ func Check(cfg Config, changes []FileChange) schemas.GateResult {
 		out.Severity = schemas.SeverityCritical
 	}
 	out.Telemetry = schemas.Telemetry{
-		StartedAt:  start,
 		DurationMs: time.Since(start).Milliseconds(),
+	}
+	out.Heartbeat = schemas.TelemetryHeartbeat{
+		StartedAt:  start,
+		FinishedAt: time.Now(),
 	}
 	return out
 }
