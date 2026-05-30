@@ -106,7 +106,7 @@ for the AI-attribution forward-only-compliance rule.
 for what is verified locally and in CI. Constituent gates:
 
 - `doc-check` - markdown link integrity, banned-phrase lint,
-  em-dash diff, comment-noise diff.
+  comment-noise diff.
 - `prose-dup` - regression-seed list; fails if a previously
   collapsed prose duplicate reappears in 2+ markdown files.
 - `vet`, `tidy-check`, `mod-verify`, `go-check` - Go correctness.
