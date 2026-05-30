@@ -165,3 +165,55 @@ func TestCLI_Init_RefusesDiverged(t *testing.T) {
 	expectExit(t, 2, code, stdout, stderr)
 	expectContains(t, stderr, "--force", "stderr")
 }
+
+func TestCLI_L0_Pass(t *testing.T) {
+	t.Parallel()
+	root := smokeModuleRoot()
+	if root == "" {
+		t.Skip("module root not resolvable")
+	}
+	// Find any pass fixture deterministically.
+	passDir := filepath.Join(root, "testdata/gates/l0/pass")
+	entries, err := os.ReadDir(passDir)
+	if err != nil {
+		t.Fatalf("read pass fixtures: %v", err)
+	}
+	var fixture string
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".diff") {
+			fixture = filepath.Join(passDir, e.Name())
+			break
+		}
+	}
+	if fixture == "" {
+		t.Skip("no pass fixture found")
+	}
+	code, stdout, stderr := runSmoke(t, t.TempDir(), []string{"l0", fixture}, nil)
+	expectExit(t, 0, code, stdout, stderr)
+	expectContains(t, stdout, "\"verdict\"", "stdout")
+	expectContains(t, stdout, "pass", "stdout")
+}
+
+func TestCLI_L0_Fail(t *testing.T) {
+	t.Parallel()
+	root := smokeModuleRoot()
+	if root == "" {
+		t.Skip("module root not resolvable")
+	}
+	fixture := filepath.Join(root, "testdata/gates/l0/fail/00_criterion_text_edit.diff")
+	code, stdout, stderr := runSmoke(t, t.TempDir(), []string{"l0", fixture}, nil)
+	expectExit(t, 1, code, stdout, stderr)
+	expectContains(t, stdout, "fail", "stdout")
+}
+
+func TestCLI_L0_Help(t *testing.T) {
+	t.Parallel()
+	code, stdout, stderr := runSmoke(t, t.TempDir(), []string{"l0", "-h"}, nil)
+	if code != 0 && code != 2 {
+		t.Fatalf("l0 -h: unexpected exit=%d", code)
+	}
+	combined := strings.ToLower(stdout + stderr)
+	if !strings.Contains(combined, "usage") {
+		t.Fatalf("expected usage; got stdout=%q stderr=%q", stdout, stderr)
+	}
+}
