@@ -33,30 +33,35 @@ $ regatta init
 
 Setting up regatta in current directory...
 
-  ✓ wrote regatta.yaml         (your config — L0 gate enabled)
-  ✓ wrote .regatta/sample.diff (a demo attack — Cyrillic letter that
-                                looks identical to Latin A)
+  + wrote regatta.yaml         (your config; L0 gate enabled)
+  + wrote .regatta/sample.diff (a demo attack against MILESTONES.md)
 
 Running L0 gate against the demo to show you what regatta catches:
 
-  FAIL — homoglyph attack
+  FAIL: spec criterion text changed without citation (L0-TEXT-0)
 
-  In sample.diff line 3, the Latin letter "A" was replaced with the
-  Cyrillic letter "А". The two are visually identical but represent
-  different characters. An attacker could use this to silently rewrite
-  spec criteria, API names, or domain names in a PR that looks clean
-  to human reviewers.
+  In MILESTONES.md line 2, the criterion "Auth tokens are scoped..."
+  was rewritten. L0 blocks this because criteria are the contract
+  between you and the agent: silent edits move the goalposts.
 
-  This is pattern P10 from the Regatta Trap Catalog. Real-world
-  example: see docs/incidents.md#p10.
+  The catch is sneakier than it looks: the diff replaces Latin "A"
+  with Cyrillic "А" (U+0410). They render identically. A human
+  reviewer scanning the diff sees "Auth -> Auth" and approves; L0
+  compares NFC-normalized code points and rejects.
+
+  Trap Pattern P3 (fetch trusted instructions from main, treat all
+  other text as data). See docs/incidents.md#pattern-3.
 
 Next steps:
-  • Edit regatta.yaml to enable more gates
-  • Run `regatta l0 <your-diff>` on real PRs
-  • Try `regatta verify-repo-config` to audit your repo's settings
+  - Run `regatta l0 <your-diff>` on a real PR diff
+  - Run `regatta verify-repo-config` to audit your repo's branch
+    protection and CODEOWNERS
+  - Edit regatta.yaml to enable more gates as they ship
 
-Done in 0.8s.
+Done.
 ```
+
+Output stream discipline: every line above is on **stdout**. Stderr is empty on success. The "Done." sentinel is plain ASCII (no Unicode markers, no timing claim, no color).
 
 **Files written:**
 
@@ -83,36 +88,41 @@ Or force overwrite:
 
 **In-process L0:**
 
-The demo runs by calling `internal/gates/l0.Run()` directly, not by exec'ing the binary. Simpler, faster, no PATH issues, no double error stream.
+The demo runs by calling `l0.Check(l0.Default(), l0.ParseUnifiedDiff(data))` directly (see `internal/gates/l0/gate.go:27`), not by exec'ing the binary. Simpler, faster, no PATH issues, no double error stream.
+
+`init` formats the returned `schemas.GateResult` (which contains `Findings[].TrapPattern`, `Findings[].Location`, `Findings[].ID`) into the friendly prose. The pattern blurb is generated, not hardcoded: a `patternBlurb(string) string` lookup table covers P1-P13 from the Trap Catalog (`docs/incidents.md`), with a generic fallback if a new pattern is added without a blurb.
 
 ### Smoke tests — cmd/regatta/cli_smoke_test.go
 
 **Pattern:**
 
-- `TestMain` resolves module root via `runtime.Caller`, runs `go build -buildvcs=false -o <tmp>/regatta ./cmd/regatta` once. Skip suite (not fail) if `go` not on PATH.
-- Per-subcommand struct: `{name, helpArgs, okArgs, failArgs (optional)}`.
+- `TestMain` resolves module root via `runtime.Caller` walk-up, runs `go build -buildvcs=false -o <tmp>/regatta ./cmd/regatta` once. Skip suite (not fail) if `go` not on PATH or if not invoked from a tree (out-of-module install).
+- Per-subcommand struct: `{name, helpArgs, okArgs, failArgs (optional, nil = skip), helpStream (stdout|stderr), expectUsageRegexp}`.
 - Asserts:
-  - help → exit 0, stderr contains "Usage:"
+  - help → exit 0; matched stream contains regex `(?i)usage`. The "help" semantic differs across subcommands: `regatta help` writes top-level usage to **stdout** (see `main.go usage(os.Stdout)`); subcommand `-h` runs through `flag.ExitOnError` which writes to **stderr** with text `"Usage of <subcommand>:"` (default `flag` format) for subs that do NOT set a custom `fs.Usage` (`l0-refs`, `l0-merge`, `validate-config`, `verify-repo-config`, `serve`), and `"Usage: regatta <sub> ..."` (custom) for those that do (`l0`, `program plan`, `program verify-handoff`). The struct's `helpStream` + `expectUsageRegexp` per row makes this explicit.
   - ok → exit 0
   - fail → exit != 0 && stderr != "" (do NOT assert exit == 1; the binary uses 2 for usage errors, 1 for runtime fails — mix is intentional)
 - All subtests `t.Parallel()`-safe: own `t.TempDir()`; env via `cmd.Env`, not `t.Setenv`.
+- Failing assertions include actionable hints, e.g. `t.Fatalf("expected stdout to contain 'wrote regatta.yaml'; got %q. If init.go output format changed intentionally, update this test", gotStdout)`.
 
 **Coverage matrix:**
 
-| Subcommand | Help | Happy path | Fail path |
+| Subcommand | Help (stream) | Happy path | Fail path |
 |------------|------|------------|-----------|
-| `version` | ✓ | — (no fail) | — |
-| `l0` | ✓ | `testdata/gates/l0/pass/*.diff` | `testdata/gates/l0/fail/*.diff` |
-| `l0-refs` | ✓ | live git repo | bogus ref |
-| `l0-merge` | ✓ | merge-commit fixture | bogus SHA |
-| `validate-config` | ✓ | `examples/minimal/regatta.yaml` | malformed inline |
-| `verify-repo-config` | ✓ | — (needs GITHUB_TOKEN; skip) | missing-flag |
-| `serve --tick-once --spawner=stub` | ✓ | empty items dir | `--spawner=bogus` |
-| `program` (bare) | ✓ | — | — |
-| `program verify-handoff` | ✓ | fixture | bad-signature fixture |
-| `init` | ✓ | empty tmpdir | re-run without --force |
-| (bare `regatta`) | — | — | exit 2 + Usage |
-| (unknown sub) | — | — | exit 2 + "unknown subcommand" |
+| `regatta help` (bare top-level) | stdout | — | — |
+| `regatta` (no args) | — | — | exit 2 + stderr usage |
+| `regatta unknownsub` | — | — | exit 2 + "unknown subcommand" |
+| `version` | stdout | (no-op) | — (no fail path) |
+| `l0` | stderr (custom Usage) | `testdata/gates/l0/pass/00_*.diff` | `testdata/gates/l0/fail/00_*.diff` |
+| `l0` stdin path | — | `-` flag reads stdin | — |
+| `l0-refs` | stderr (default) | git repo with two refs | bogus ref |
+| `l0-merge` | stderr (default) | merge-commit fixture | bogus SHA |
+| `validate-config` | stderr (default) | `examples/minimal/regatta.yaml` | malformed inline |
+| `verify-repo-config` | stderr (default) | — (needs GITHUB_TOKEN; skip with t.Skip + hint) | missing `-owner` |
+| `serve --tick-once --spawner=stub` | stderr (default) | empty items dir + tmpdir db | `--spawner=bogus` |
+| `program` (bare) | stderr | — | exit 2 (no sub) |
+| `program verify-handoff` | stderr (custom Usage) | signed-handoff fixture | bad-signature fixture |
+| `init` | stderr (default) | empty tmpdir | re-run without --force on diverged file |
 
 **Out of scope** (covered by existing tests):
 
@@ -122,8 +132,29 @@ The demo runs by calling `internal/gates/l0.Run()` directly, not by exec'ing the
 
 ### Docs updated same PR
 
-- `docs/operator/quickstart.md` — rewrite around new init UX (current text predates init; lies about behavior)
-- `docs/operator/day1.md` — same
+Both files currently describe `regatta init` as writing a skeleton that the operator then hand-edits. New design writes a complete starter config + demos L0 in one shot. Both docs need updating to match reality.
+
+**`docs/operator/quickstart.md` §2 "Scaffold + validate" (lines 24-32):** replace the three-command block (init / $EDITOR / validate-config) with:
+
+```sh
+cd ~/code/myproject
+regatta init
+```
+
+Delete the `$EDITOR regatta.yaml` step (init writes a complete config, not a skeleton). Delete the `regatta validate-config` step (init's demo run is the validation moment for L0; `validate-config` remains available for advanced editing but is not first-touch). Keep the §"Required fields" paragraph and the `examples/full/regatta.yaml` link as the next-step pointer for operators who want to extend beyond L0.
+
+**`docs/operator/day1.md` §"Steps" (lines 14-24):** replace with:
+
+```sh
+brew install trilamsr/regatta/regatta   # or `go install ...`
+cd ~/code/myproject
+regatta init                            # writes config + runs demo
+regatta verify-repo-config              # audits branch protection + CODEOWNERS
+```
+
+Delete the `$EDITOR`, `validate-config`, and `validate-spec --dry-run` lines. (The `validate-spec` command is tracked under issue #37 and does not exist; the doc currently lies. This PR fixes the lie by removing the line.)
+
+Update §Goal to reflect that init's demo IS the parsed-items + NFC + invisible-glyph cleanliness report (just shown via a canned fixture rather than the operator's real items).
 
 ## Components
 
@@ -147,46 +178,88 @@ docs/operator/
 ## Data flow
 
 ```
-operator: regatta init
+operator: regatta init [--force] [--json]
   ↓
 runInit:
-  1. Lstat .regatta/ — symlink/non-dir → exit 2 with friendly error
-  2. OpenFile(O_CREATE|O_EXCL) on regatta.yaml + .regatta/sample.diff
-     - exists + bytes match embedded + !force → silent idempotent skip
-     - exists + bytes diverge + !force → exit 2 with friendly error
-     - --force → unconditional overwrite
-  3. Write both files from embed.FS
-  4. Call internal/gates/l0.Run() against the just-written sample.diff
-  5. Format result:
-     - default: friendly prose (file: line: explanation: incident-link)
-     - --json: GateResult JSON to stdout
-  6. Exit 0 (init succeeded; demo verdict is informational, not exit-coded)
+  1. Resolve .regatta/ state:
+     - os.Lstat(".regatta"): if exists and not a regular directory
+       (symlink, file, device), exit 2 with friendly error.
+     - if absent: os.MkdirAll(".regatta", 0o755).
+     - if exists as regular dir (e.g. populated by `serve`): leave
+       its contents alone; only write sample.diff inside.
+  2. Per-file write decision (applied identically to regatta.yaml
+     and .regatta/sample.diff):
+     a. If file absent: write via OpenFile(O_CREATE|O_EXCL|O_WRONLY,
+        0o644) from embed.FS. Print "+ wrote <path> (<blurb>)".
+     b. If file present and bytes match embedded blob (idempotent
+        re-run): print "= <path> unchanged". No write.
+     c. If file present and bytes diverge and !force: exit 2 with
+        friendly error naming the file and the --force escape hatch.
+        No partial write of the other file (fail before any write).
+     d. If --force: unconditional truncate+write. Print "! overwrote
+        <path>".
+     The rule is symmetric across both files. Step 2c short-circuits
+     before any write so partial-state is impossible on the
+     divergence path. (Step 2a + disk-full mid-write can still
+     leave one file present and one absent; see Failure modes.)
+  3. Run demo: l0.Check(l0.Default(), l0.ParseUnifiedDiff(<bytes
+     just written or already on disk>)). Sample.diff is always
+     re-read from disk so the verdict reflects what the operator
+     sees, not what was embedded.
+  4. Format output:
+     - default (TTY or no --json): friendly prose generated from
+       the GateResult (header, finding ID, location, plain-English
+       explanation, pattern blurb via patternBlurb lookup, link to
+       docs/incidents.md#pattern-N). Always on stdout.
+     - --json: single JSON object on stdout:
+         {"written":   ["regatta.yaml",".regatta/sample.diff"],
+          "skipped":   [],
+          "overwritten":[],
+          "gate_result": <full schemas.GateResult>}
+       No prose on stderr unless an error occurred.
+  5. Exit 0. The demo verdict (FAIL) is informational; `init`'s job
+     is scaffolding + showing-not-telling, not gating. Operator can
+     re-run `regatta l0 .regatta/sample.diff` and get exit 1 if
+     they want the gate exit code.
 ```
 
 ## Error handling
 
 | Condition | Stream | Exit | Message |
 |-----------|--------|------|---------|
-| regatta.yaml exists (no --force) | stderr | 2 | "regatta.yaml already exists... rm regatta.yaml...or regatta init --force" |
-| sample.diff exists, bytes diverge | stderr | 2 | similar with --force hint |
-| .regatta/ is a symlink or non-dir | stderr | 2 | "refusing: .regatta/ is not a regular directory" |
-| Write fails (disk full, perm) | stderr | 1 | wrapped fs error |
-| Demo L0 run errors (corpus broken) | stderr | 1 | "internal: embedded demo failed: <err>; please file a bug" |
+| regatta.yaml exists, bytes diverge, no --force | stderr | 2 | `regatta.yaml already exists and differs from the bundled template. To re-init: rm regatta.yaml .regatta/sample.diff. To overwrite: regatta init --force.` |
+| .regatta/sample.diff exists, bytes diverge, no --force | stderr | 2 | same shape, naming sample.diff |
+| .regatta/ is a symlink, regular file, device, or other non-dir | stderr | 2 | `refusing to write: .regatta/ exists but is not a regular directory (got: <mode>). Remove or rename it, then re-run.` |
+| .regatta/ exists as dir but EACCES on MkdirAll/write (SELinux, read-only mount) | stderr | 1 | wrapped fs error with cwd context: `regatta init: write .regatta/sample.diff: <wrapped err>. Check filesystem permissions and SELinux context for <cwd>.` |
+| Disk full mid-write (regatta.yaml written, sample.diff fails) | stderr | 1 | wrapped fs error. Init does NOT roll back the already-written file; operator gets a clear error naming what was written and what failed. Second invocation with --force completes the job. |
+| Demo L0 run errors (parse fail, corpus broken — should be unreachable post-drift-test) | stderr | 1 | `internal: embedded demo failed: <err>; please file a bug at github.com/trilamsr/regatta/issues` |
+| init in a sub-directory of a repo that already has regatta.yaml at root | stdout warning, no error | 0 | `note: parent directory <abs-path> already has regatta.yaml. This init writes a separate config in <cwd>. To configure the parent repo, re-run there.` (Init still proceeds in cwd.) |
+| init in a non-git directory | (no error) | 0 | Init does not require a git repo; the demo fixture is self-contained. |
+| --force + --json combined | (no special handling) | 0 | --force flag is honored; --json envelope reports `"overwritten"` array populated. |
+| Bare `regatta init --help` / `regatta init -h` | stdout | 0 | Prints flag usage |
 
 ## Testing
 
 ### `init` unit tests (init_test.go)
 
-- `TestInit_WritesBothFiles` — empty tmpdir, run, assert both files exist with embedded content
-- `TestInit_FriendlyOutput` — assert stdout contains "wrote regatta.yaml", "homoglyph", "P10", "Next steps"
-- `TestInit_JSONOutput` — --json suppresses prose, emits parseable GateResult
-- `TestInit_RefusesExistingYaml` — pre-write regatta.yaml, re-run → exit 2, stderr has --force hint
-- `TestInit_IdempotentSampleDiff` — pre-write byte-matching sample.diff, run → silent skip (exit 0)
-- `TestInit_DivergedSampleDiff` — pre-write differing sample.diff, run → exit 2
-- `TestInit_ForceOverwrites` — pre-write both, --force → both overwritten
-- `TestInit_RefusesSymlinkRegatta` — pre-create .regatta as symlink, run → exit 2
-- `TestEmbeddedYamlMatchesExample` — bytes equal `examples/minimal/regatta.yaml` (drift gate)
-- `TestEmbeddedSampleMatchesFixture` — bytes equal `testdata/gates/l0/fail/17_homoglyph_cyrillic_a.diff` (drift gate)
+- `TestInit_WritesBothFiles` — empty tmpdir, run, assert both files exist with bytes equal to embedded blobs.
+- `TestInit_FriendlyOutput` — assert stdout matches each of: `"wrote regatta.yaml"`, `"L0-TEXT-0"` (finding ID), `"Trap Pattern P3"`, `"docs/incidents.md#pattern-3"`, `"Next steps"`. (Match by substring on key phrases, not full text — friendly prose may evolve.)
+- `TestInit_JSONOutput` — `--json` emits a single parseable JSON object on stdout matching: `{written: [_,_], skipped: [], overwritten: [], gate_result: {verdict: "fail", gate_id: "l0_spec_immutability", findings: [{trap_pattern: "P3", ...}]}}`. No prose on stderr.
+- `TestInit_PatternBlurbFallback` — call `patternBlurb("P99")` directly; asserts generic fallback string is returned (not panic, not empty).
+- `TestInit_ExitsZeroOnDemoFail` — even though the demo verdict is FAIL, `init` itself exits 0 (scaffolding succeeded). Asserts the `init`-is-not-a-gate invariant.
+- `TestInit_RefusesDivergedYaml` — pre-write regatta.yaml with non-matching bytes, re-run without --force → exit 2, stderr contains `regatta.yaml`, `--force`.
+- `TestInit_IdempotentReRun` — pre-write both files with byte-matching content, re-run → exit 0; stdout contains `"= regatta.yaml unchanged"` and `"= .regatta/sample.diff unchanged"`. No prompt, no error, no silent.
+- `TestInit_DivergedSampleDiff` — pre-write differing sample.diff, run → exit 2, stderr names `.regatta/sample.diff` + `--force`.
+- `TestInit_FailsAtomicallyOnDivergence` — pre-write a diverged regatta.yaml, run without --force in a tmpdir where sample.diff does NOT exist → exit 2 AND sample.diff still absent (no partial write).
+- `TestInit_ForceOverwrites` — pre-write both with differing bytes, --force → both overwritten with embedded bytes; stdout uses `"! overwrote"` markers.
+- `TestInit_RefusesSymlinkRegatta` — pre-create `.regatta` as a symlink to a tmpdir, run → exit 2, stderr says `not a regular directory`. Skip on Windows (symlink semantics differ).
+- `TestInit_LeavesPopulatedRegattaDirAlone` — pre-create `.regatta/items/foo.md` (simulating `serve` already ran), run init in same dir → init proceeds, writes sample.diff next to existing items, leaves items/foo.md untouched. Asserts coexistence with `serve`.
+- `TestInit_SubdirOfRegattadRepo` — parent dir has regatta.yaml; cwd is a sub-dir without one. Run → exit 0, stdout contains the warning note from the error table, both files written in cwd.
+- `TestInit_NonGitDir` — run in a tmpdir with no `.git` → exit 0, both files written. (init has no git dependency.)
+- `TestInit_HelpFlag` — `regatta init -h` and `regatta init --help` → exit 0, stderr matches `(?i)usage`.
+- `TestEmbeddedYamlMatchesExample` — bytes equal `examples/minimal/regatta.yaml`. Drift gate. Resolves module root via `runtime.Caller` walk-up; skips with hint if not found (out-of-tree run).
+- `TestEmbeddedSampleMatchesFixture` — bytes equal `testdata/gates/l0/fail/17_homoglyph_cyrillic_a.diff`. Same walk-up + skip pattern.
+- `TestInitUsesEmbeddedBytes` — temporarily move `examples/minimal/regatta.yaml` to a side path (or use a test helper that patches `runtime.Caller`), run init, assert the bytes written match the embed.FS blob (not the disk file). Catches the "reads from disk and silently passes drift gate" failure mode.
 
 ### CLI smoke tests (cli_smoke_test.go)
 
@@ -198,14 +271,19 @@ runInit:
 
 ## Open questions
 
-(none — design v3 incorporated 3 parallel reviews)
+1. **Windows glyph fallback.** Output uses ASCII markers `+`/`=`/`!` (no Unicode `✓`). Should also honor `NO_COLOR` / `TERM=dumb` for any future color additions. Confirmed safe for legacy `cmd.exe` cp437.
+2. **`docs/operator/quickstart.md` rewrite scope.** Current quickstart §2 (lines 27-32 per reviewer) walks through `regatta init` writing only `regatta.yaml`, then `$EDITOR regatta.yaml`, then `regatta validate-config`. New design: replace §2 with two lines — `cd your-repo` + `regatta init`. Delete the `$EDITOR` + `validate-config` steps (init is self-demonstrating). `day1.md` similar: drop `validate-spec --dry-run` reference (unimplemented).
+3. **`patternBlurb` source of truth.** Hardcoded in init.go vs. extracted to a shared `docs/incidents.md` parser. Pick: hardcoded for now (13 patterns, low churn); extract later if a second consumer appears.
 
 ## Risks
 
-1. **Embedded fixture drift** — mitigated by byte-equality tests; failure is loud + fix is local.
-2. **Smoke test compile cost** — ~2-4s cold, <1s cached. 27 exec invocations × ~50ms = ~1.5s. Negligible vs current CI runtime.
-3. **`--force` foot-gun** — could overwrite operator's edited regatta.yaml. Mitigation: error message names the file; operator who runs --force is taking explicit responsibility.
-4. **Friendly prose lock-in** — every word change in the demo output ripples to a test. Mitigation: assertion helpers match on key phrases only (`"homoglyph"`, `"P10"`), not full text.
+1. **Embedded fixture drift** — mitigated by `TestEmbeddedYamlMatchesExample` + `TestEmbeddedSampleMatchesFixture` byte-equality tests + `TestInitUsesEmbeddedBytes` consumption test. Failure is loud + fix is local.
+2. **L0 trap-pattern drift** — if `internal/gates/l0/gate.go` changes which `TrapPattern` the homoglyph fixture emits, `TestInit_FriendlyOutput` will fail naming the expected vs actual pattern. The fix in that case is updating `patternBlurb` + the friendly prose generator, not the test.
+3. **Smoke test compile cost** — ~2-4s cold, <1s cached. ~25 exec invocations × ~50ms ≈ 1.5s. Negligible vs current CI runtime.
+4. **`--force` foot-gun** — could overwrite operator's edited regatta.yaml. Mitigation: error message names the file + escape hatch; operator who runs --force is taking explicit responsibility.
+5. **Friendly prose lock-in** — every word change in the demo output ripples to a test. Mitigation: assertions match key phrases (`"L0-TEXT-0"`, `"Trap Pattern P3"`, `"Next steps"`), not full text.
+6. **File mode portability** — files `0o644`, dirs `0o755`. umask interaction inherited from process — operators with non-default umask get filtered modes; this is conventional Unix behavior and not worth special-casing.
+7. **Symlink test on Windows** — `TestInit_RefusesSymlinkRegatta` skips on Windows because symlink creation requires admin / dev-mode. The defense itself still runs on Windows; only the test exercising it is skipped.
 
 ## Rollback
 
