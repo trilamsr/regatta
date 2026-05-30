@@ -56,8 +56,8 @@ Every other choice traces to these.
   shutdown over AI slop -- shares a root cause: a defense that lived
   in the agent's prompt or self-report instead of in the platform.
   Regatta's gates are deterministic, out-of-band, and signed wherever
-  possible. The [Trap Catalog](#trap-catalog) maps 19 incidents to
-  10 enforcement points.
+  possible. The [Trap Catalog](#trap-catalog) maps 32 incidents to
+  13 enforcement points.
 
 The default gate stack is six layers; the [§Gate stack](#gate-stack-normative)
 section is the normative source. Repos add custom gates, reorder,
@@ -80,7 +80,7 @@ abandoned and the doc reverts to base Regatta.
 
 ### Companion artifacts
 
-`docs/incidents.md` (19 incidents + full P1-P10 prose);
+`docs/incidents.md` (32 incidents + full P1-P13 prose);
 `contracts/schemas/spec_adapter.go` (Go interface, normative);
 `contracts/schemas/{gate_result,work_item}.schema.json` (JSON Schemas);
 `contracts/schemas/regatta.v1.cue` (config schema); `testdata/gates/l0/` (L0
@@ -105,8 +105,8 @@ dependencies, or prompt-injection via repo content. Regatta inverts:
 **the gates are the product**; the agent runtime is interchangeable
 (see [§Alternatives](#alternatives) for the honest read).
 
-**The incident catalog is dense and growing.** 2023-2026 documents 19
-distinct incident classes. Closing the 10 known load-bearing failure
+**The incident catalog is dense and growing.** 2023-2026 documents 32
+distinct incident classes. Closing the 13 known load-bearing failure
 modes is feasible only because the platform sits between the agent
 and the destructive surface.
 
