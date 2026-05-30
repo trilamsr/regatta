@@ -26,9 +26,15 @@ See [install.md](install.md) for offline / pinned-version paths.
 ```sh
 cd ~/code/myproject
 regatta init                       # writes regatta.yaml skeleton
-$EDITOR regatta.yaml               # fill in adapter, ci.command, lanes
+$EDITOR regatta.yaml               # fill in version, repo, spec_adapter,
+                                   # ci.command, gates, safety
 regatta validate-config            # CUE-validates regatta.yaml
 ```
+
+Required fields per the v1 schema: `version`, `repo`, `spec_adapter`,
+`ci.command`, `gates`, `safety`. See
+[configure.md](configure.md#required-fields) for the full surface
+with defaults and semantics.
 
 Use [`examples/minimal/regatta.yaml`](../../examples/minimal/regatta.yaml)
 as a starting point. The full surface is in

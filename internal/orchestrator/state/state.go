@@ -68,10 +68,15 @@ type DB struct {
 	now func() time.Time
 }
 
+// DSN returns the standard modernc.org/sqlite DSN for a file-backed
+// regatta state DB: 5-second busy_timeout + foreign_keys on. Use this
+// instead of hand-rolling the URL so the pragmas stay in lockstep.
+func DSN(path string) string {
+	return fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", path)
+}
+
 // Open opens (or creates) the sqlite database at dsn and applies any
-// pending migrations. dsn follows the modernc.org/sqlite syntax;
-// "file:regatta.db?_pragma=busy_timeout(5000)" is a sensible default
-// for a file-backed DB.
+// pending migrations. Prefer DSN(path) for the standard pragma set.
 func Open(ctx context.Context, dsn string) (*DB, error) {
 	raw, err := sql.Open("sqlite", dsn)
 	if err != nil {

@@ -3,11 +3,20 @@
 # Regatta
 
 A repo-agnostic autonomous-agent fleet. Point it at any git-hosted
-repo with planned work and a deterministic test command — Regatta
+repo with planned work and a deterministic test command - Regatta
 picks up open work items, develops them in isolated worktrees, and
 opens PRs gated by a configurable six-layer review stack hardened
 against every publicly-documented AI-agent incident class as of
 mid-2026.
+
+## Start here
+
+- **Operators**: [`docs/operator/`](docs/operator/) (begin at
+  `quickstart.md`).
+- **Security auditors**: [`docs/auditor/`](docs/auditor/) (begin at
+  `threat-model.md`).
+- **Internal engineers and AI agents**: [`AGENTS.md`](AGENTS.md) +
+  [`docs/engineer/`](docs/engineer/).
 
 ## Who this is for
 

@@ -239,8 +239,7 @@ func runServe(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", *dbPath)
-	db, err := state.Open(ctx, dsn)
+	db, err := state.Open(ctx, state.DSN(*dbPath))
 	if err != nil {
 		logger.Printf("open db: %v", err)
 		return 2

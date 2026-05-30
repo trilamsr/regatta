@@ -7,6 +7,7 @@ import (
 )
 
 func TestCanonicalJSONStability(t *testing.T) {
+	t.Parallel()
 	v1 := map[string]any{
 		"b": 2,
 		"a": 1,
@@ -35,6 +36,7 @@ func TestCanonicalJSONStability(t *testing.T) {
 }
 
 func TestSignVerifyRoundTrip(t *testing.T) {
+	t.Parallel()
 	key := []byte("a-secret-key-for-testing-only-32")
 	keyID := "k1"
 	keyring := map[string][]byte{keyID: key}
@@ -71,6 +73,7 @@ func TestSignVerifyRoundTrip(t *testing.T) {
 }
 
 func TestVerifyDetectsTamper(t *testing.T) {
+	t.Parallel()
 	key := []byte("a-secret-key-for-testing-only-32")
 	keyID := "k1"
 	keyring := map[string][]byte{keyID: key}
@@ -96,6 +99,7 @@ func TestVerifyDetectsTamper(t *testing.T) {
 }
 
 func TestVerifyRejectsUnknownKey(t *testing.T) {
+	t.Parallel()
 	keyring := map[string][]byte{"k1": []byte("x")}
 	payload := map[string]any{
 		"signature": map[string]any{"alg": "HMAC-SHA256", "key_id": "k2", "mac": "aa"},
@@ -107,6 +111,7 @@ func TestVerifyRejectsUnknownKey(t *testing.T) {
 }
 
 func TestVerifyRejectsUnsupportedAlg(t *testing.T) {
+	t.Parallel()
 	keyring := map[string][]byte{"k1": []byte("x")}
 	payload := map[string]any{
 		"signature": map[string]any{"alg": "MD5", "key_id": "k1", "mac": "aa"},
@@ -118,6 +123,7 @@ func TestVerifyRejectsUnsupportedAlg(t *testing.T) {
 }
 
 func TestVerifyRejectsMissingSignature(t *testing.T) {
+	t.Parallel()
 	err := Verify(map[string]any{"x": 1}, nil)
 	if !errors.Is(err, ErrUnverifiable) {
 		t.Fatalf("expected ErrUnverifiable, got %v", err)
