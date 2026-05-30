@@ -3,12 +3,6 @@ name: examples-validate
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-    paths:
-      - 'examples/**'
-      - 'contracts/schemas/**'
-      - 'internal/config/**'
-      - 'cmd/regatta/**'
-      - '.github/workflows/examples-validate.yml'
   schedule:
     - cron: '23 8 * * 1'
 
