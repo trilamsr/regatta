@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -142,5 +143,61 @@ func TestInit_ExitsZeroOnDemoFail(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(stdout), []byte("FAIL")) {
 		t.Fatalf("expected demo verdict FAIL in stdout; got %q", stdout)
+	}
+}
+
+func TestInit_JSONOutput(t *testing.T) {
+	dir := t.TempDir()
+	code, stdout, stderr := runInitInDir(t, dir, []string{"--json"})
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr on success with --json; got %q", stderr)
+	}
+	// The JSON is preceded by friendly prose lines (+ wrote ...), so extract
+	// the JSON object from stdout by finding the opening brace.
+	jsonStart := bytes.Index([]byte(stdout), []byte("{"))
+	if jsonStart == -1 {
+		t.Fatalf("no JSON object found in stdout: %q", stdout)
+	}
+	var env struct {
+		Written     []string `json:"written"`
+		Skipped     []string `json:"skipped"`
+		Overwritten []string `json:"overwritten"`
+		GateResult  struct {
+			Verdict  string `json:"verdict"`
+			GateID   string `json:"gate_id"`
+			Findings []struct {
+				ID          string `json:"id"`
+				TrapPattern string `json:"trap_pattern"`
+			} `json:"findings"`
+		} `json:"gate_result"`
+	}
+	if err := json.Unmarshal([]byte(stdout[jsonStart:]), &env); err != nil {
+		t.Fatalf("stdout contains invalid JSON: %v\nstdout=%q", err, stdout)
+	}
+	if got, want := env.GateResult.Verdict, "fail"; got != want {
+		t.Errorf("gate_result.verdict=%q want %q", got, want)
+	}
+	if got, want := env.GateResult.GateID, "l0_spec_immutability"; got != want {
+		t.Errorf("gate_result.gate_id=%q want %q", got, want)
+	}
+	if len(env.GateResult.Findings) == 0 || env.GateResult.Findings[0].TrapPattern != "P3" {
+		t.Errorf("expected at least one finding with trap_pattern=P3; got %+v", env.GateResult.Findings)
+	}
+	if len(env.Written) != 2 {
+		t.Errorf("expected 2 written files; got %v", env.Written)
+	}
+}
+
+func TestInit_PatternBlurbFallback(t *testing.T) {
+	t.Parallel()
+	got := patternBlurb("P99")
+	if got == "" {
+		t.Fatal("patternBlurb returned empty string on unknown code")
+	}
+	if !bytes.Contains([]byte(got), []byte("docs/incidents.md")) {
+		t.Errorf("fallback should point at docs/incidents.md; got %q", got)
 	}
 }
