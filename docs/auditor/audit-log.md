@@ -3,15 +3,14 @@
 Reader: customer security team under NDA reviewing the
 tamper-evident audit trail.
 Read time: 3 minutes.
-Expires when: audit-sink writer impl lands AND wire format
-stabilizes (activation trigger: `internal/audit/` populated).
+Expires when: the audit-sink writer ships and the wire format
+stabilizes.
 
 ## Status
 
-Stub. The audit-sink writer is queued for MVP-3+ per `internal/audit/README.md`.
-This file is the auditor's bookmark; concrete wire format,
-retention semantics, and operator response runbook land when the
-impl ships.
+Stub. The audit-sink writer is queued for MVP-3+. This file is the
+auditor's bookmark; concrete wire format, retention semantics, and
+operator response runbook land when the impl ships.
 
 ## What is already documented
 

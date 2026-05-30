@@ -3,8 +3,8 @@
 Reader: customer security team under NDA verifying build
 reproducibility and gate-verdict determinism.
 Read time: 5 minutes.
-Expires when: release pipeline (Wave 3) lands signed-tag +
-provenance attestation.
+Expires when: the build determinism guarantees in this file
+(trimpath, SOURCE_DATE_EPOCH, prompt-SHA pinning) change shape.
 
 ## Property
 
@@ -51,11 +51,13 @@ log. Reproducibility breakage is a P0 bug.
   so a reproduction can be compared bit-for-bit against the
   original verdict trail.
 
-## What lands at Wave 3 release pipeline
+## Release attestation
 
-- Signed git tag for every release.
-- Provenance attestation file (SLSA-flavored) bundled with the
-  binary.
+- Every release tag is SSH-signed; GitHub's API verification gates
+  the release workflow (`.github/workflows/release.yml`).
+- The release binary ships with a SLSA build-provenance attestation
+  generated via `actions/attest-build-provenance` and verifiable
+  with `gh attestation verify`.
 - Customer-audit teams can request the attestation via the
   channel in [`SECURITY.md`](../../SECURITY.md).
 

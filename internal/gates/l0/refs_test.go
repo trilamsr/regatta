@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/testutil/gitenv"
 )
 
 // testRepo wraps a temp git repo for harness tests. All operations run with
@@ -37,35 +38,12 @@ func (r *testRepo) git(args ...string) string {
 	r.t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = r.dir
-	// GIT_DIR / GIT_WORK_TREE from a parent process override cmd.Dir.
-	cmd.Env = scrubGitEnv(os.Environ())
+	cmd.Env = gitenv.Scrub(os.Environ())
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		r.t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
 	}
 	return strings.TrimSpace(string(out))
-}
-
-func scrubGitEnv(env []string) []string {
-	scrub := map[string]bool{
-		"GIT_DIR":                         true,
-		"GIT_WORK_TREE":                   true,
-		"GIT_INDEX_FILE":                  true,
-		"GIT_OBJECT_DIRECTORY":            true,
-		"GIT_COMMON_DIR":                  true,
-		"GIT_ALTERNATE_OBJECT_DIRECTORIES": true,
-		"GIT_AUTHOR_DATE":                 true,
-		"GIT_COMMITTER_DATE":              true,
-	}
-	out := env[:0:0]
-	for _, kv := range env {
-		eq := strings.IndexByte(kv, '=')
-		if eq > 0 && scrub[kv[:eq]] {
-			continue
-		}
-		out = append(out, kv)
-	}
-	return out
 }
 
 func (r *testRepo) write(path, body string) {

@@ -20,7 +20,7 @@ require_conversation_resolution: false
 # canonical recipe over the finish line.
 required_approving_review_count: 0
 require_codeowners_review: false
-dismiss_stale_reviews_on_push: true
+dismiss_stale_reviews: true
 require_last_push_approval: false
 
 require_signed_commits: false

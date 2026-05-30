@@ -5,9 +5,10 @@ agent loop against a real-but-small workspace.
 
 ## Status
 
-Stub. Populated when Wave 2 quickstart e2e smoke lands. Until then,
-the operator quickstart's "spawn an agent against a target repo"
-step uses the operator's own pilot repository.
+Stub. Populated when the MVP-1 orchestrator loop ships a runnable
+end-to-end smoke test. Until then, the operator quickstart's "spawn
+an agent against a target repo" step uses the operator's own pilot
+repository.
 
 ## Activation trigger
 

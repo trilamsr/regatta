@@ -8,8 +8,6 @@ Pre-v1.0 anything may break; entries record the break. After v1.0
 contracts follow the deprecation cycle described in `PRINCIPLES.md`
 #11 (warn one minor, fail the next).
 
-## Unreleased
-
 ## v0.0.1 - 2026-05-30
 
 First canary tag. Mutation-verifies the release.yml workflow
@@ -21,7 +19,7 @@ pipeline smoke release.
 ### Changed
 
 - Repo restructure Wave 1 (Foundation). Tree shape now satisfies
-  the principles documented in PR #57 (design spec).
+  the principles in `docs/superpowers/specs/2026-05-21-org-repo-restructure-design.md`.
   - Fixture corpora consolidated under repo-root `testdata/`.
   - Schemas + signed-prompts + wire-protocol docs colocated under
     `contracts/`. Go import path `github.com/trilamsr/regatta/schemas`

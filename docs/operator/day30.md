@@ -43,5 +43,5 @@ If any of:
 - Any L0 fixture regresses in CI.
 
 Halt with `regatta serve --halt`; investigate via
-[`docs/engineer/post-mortems/`](../engineer/post-mortems/) (when the
-post-mortem template lands; activation trigger: first incident).
+[`docs/engineer/post-mortems/`](../engineer/post-mortems/) using the
+template documented in that directory's README.

@@ -2,3 +2,10 @@
 .claude/settings.local.json
 .claude/worktrees/
 .claude/scheduled_tasks.lock
+
+# Go build artifacts
+bin/
+dist/
+*.test
+*.out
+coverage.out

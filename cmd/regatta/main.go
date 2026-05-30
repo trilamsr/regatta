@@ -58,7 +58,7 @@ func main() {
 	case "verify-repo-config":
 		os.Exit(runVerifyRepoConfig(os.Args[2:]))
 	case "program":
-		os.Exit(runMission(os.Args[2:]))
+		os.Exit(runProgram(os.Args[2:]))
 	case "serve":
 		os.Exit(runServe(os.Args[2:]))
 	case "validate-config":
@@ -386,29 +386,29 @@ func runVerifyRepoConfig(args []string) int {
 	return 0
 }
 
-// runMission dispatches the `program ...` subcommand tree.
-func runMission(args []string) int {
+// runProgram dispatches the `program ...` subcommand tree.
+func runProgram(args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "regatta program: expected sub-subcommand (verify-handoff)")
 		return 2
 	}
 	switch args[0] {
 	case "plan":
-		return runMissionPlan(args[1:])
+		return runProgramPlan(args[1:])
 	case "verify-handoff":
-		return runMissionVerifyHandoff(args[1:])
+		return runProgramVerifyHandoff(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "regatta program: unknown subcommand %q\n", args[0])
 		return 2
 	}
 }
 
-// runMissionPlan: read a WorkItem from a JSON file on disk, call
+// runProgramPlan: read a WorkItem from a JSON file on disk, call
 // the Anthropic planner, validate + sign the resulting ProgramBrief,
 // emit to stdout. Source adapters are deferred -- for v1, operators
 // hand-author the parent WorkItem JSON file or extract it from
 // their adapter into one.
-func runMissionPlan(args []string) int {
+func runProgramPlan(args []string) int {
 	fs := flag.NewFlagSet("program plan", flag.ExitOnError)
 	model := fs.String("model", "claude-opus-4-7", "Claude model id")
 	keyEnv := fs.String("hmac-key-env", "", "Env var holding HMAC key (required)")
@@ -469,7 +469,7 @@ func runMissionPlan(args []string) int {
 	return 0
 }
 
-func runMissionVerifyHandoff(args []string) int {
+func runProgramVerifyHandoff(args []string) int {
 	fs := flag.NewFlagSet("program verify-handoff", flag.ExitOnError)
 	keyEnv := fs.String("hmac-key-env", "", "Env var holding the HMAC key (if set, verify signature)")
 	keyID := fs.String("hmac-key-id", "k1", "key_id to expect in the signature")
