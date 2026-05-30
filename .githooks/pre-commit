@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Pre-commit hook: run `make check` to keep the inner loop honest.
-# Installed by `make hooks`, which sets core.hooksPath to .githooks.
-# Bypass with `git commit --no-verify` if you must - CI will still catch you.
+# Pre-commit: run make check. Bypass with --no-verify (CI re-runs).
+# Scrub git env so subprocess tests in t.TempDir() do not retarget the
+# real repo via GIT_DIR / GIT_WORK_TREE leaks.
 set -euo pipefail
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+      GIT_COMMON_DIR GIT_ALTERNATE_OBJECT_DIRECTORIES \
+      GIT_AUTHOR_DATE GIT_COMMITTER_DATE GIT_EDITOR
 exec make check

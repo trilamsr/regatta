@@ -1,7 +1,7 @@
 # Doc index
 
-Machine-target only. Doc-check (Wave 3) will fail if any tracked
-`*.md` doc outside exemption paths is missing from this index.
+Machine-target only. Doc-check fails if any tracked `*.md` doc
+outside exemption paths is missing from this index.
 
 Humans should start at `README.md` (operators) or `AGENTS.md`
 (internal engineers and AI agents).
@@ -50,6 +50,7 @@ mirrored here until that PR merges to main.)
 - [docs/engineer/how-to-add-an-adapter.md](docs/engineer/how-to-add-an-adapter.md)
 - [docs/engineer/release-runbook.md](docs/engineer/release-runbook.md)
 - [docs/engineer/string-review.md](docs/engineer/string-review.md)
+- [docs/engineer/post-mortems/README.md](docs/engineer/post-mortems/README.md)
 
 ### docs/rfcs/
 

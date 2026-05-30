@@ -917,96 +917,20 @@ and removable without breaking the thesis.
 
 ## Day 1 → Day 30 Runbook
 
-**Pre-implementation banner.** Regatta is not shipped. Commands below
-describe the v1 release surface. The schemas + this runbook are the
-contract; the binary follows.
+**Pre-implementation banner.** Regatta is not shipped. Commands
+described in the operator runbook describe the v1 release surface.
+The schemas + the runbook are the contract; the binary follows.
 
-### Day 1 -- install and validate
+The operator-facing runbook is canonical in `docs/operator/`. Design
+spec links out to avoid drift:
 
-```sh
-$ brew install trilamsr/regatta/regatta             # or `go install …`
-$ cd ~/code/myproject
-$ regatta init                                       # writes regatta.yaml skeleton
-$ $EDITOR regatta.yaml                               # fill in adapter, ci.command, lanes
-$ regatta validate-config                            # CUE-validates regatta.yaml
-$ regatta validate-spec --dry-run                    # connects to adapter, lists items
-$ regatta verify-repo-config                         # audits branch protection + CODEOWNERS
-```
-
-Expected: a parsed-items count, NFC + invisible-glyph cleanliness
-report, DAG verification, and the list of ready-to-spawn item IDs.
-`verify-repo-config` is mandatory before the first `regatta serve` --
-several silent-bypass classes (admins-bypass-by-default,
-CODEOWNERS-pattern-matches-nothing, SKIPPED-required-check satisfies
-branch protection, `required_approving_review_count: 0` is a no-op,
-CODEOWNERS file >3 MB is silently ignored, missing
-`require_last_push_approval` enables Mercari-class PR hijacking) are
-not surfaced by GitHub itself and would otherwise defeat L6 in
-production. The audit checks the P2 canonical recipe
-(`required_approving_review_count: 2`, `require_code_owner_reviews`,
-`require_last_push_approval`, `dismiss_stale_reviews`,
-`enforce_admins: true`, with Regatta-critical paths routed to two
-disjoint CODEOWNERS teams) and refuses to start if any check fails
-unless `--accept-degraded` is passed and the gap is logged to the
-audit sink.
-
-### Day 2 -- calibrate the gates
-
-```sh
-$ regatta gate-calibrate --pr 95,87,79              # 3 already-merged PRs
-$ regatta gate-calibrate --canary-corpus            # all 8 archetypes
-```
-
-`gate-calibrate` runs L0-L5 against the chosen PRs and emits a
-per-gate confusion matrix. The 8 canary archetypes (see
-[`testdata/gates/canary/README.md`](../testdata/gates/canary/README.md))
-have known-expected verdicts. Tune `gates[*].severity_block` until
-calibration is clean (typical fixes: raise L4 threshold to `critical`
-only when over-cautious; add path filters when L5 false-drifts on
-auto-generated files).
-
-### Day 3 -- single pilot PR (human-spawned)
-
-```sh
-$ regatta pilot --work-item 101 --no-orchestrator --interactive
-```
-
-Spawns one agent in `.regatta/worktrees/work-101-<slug>/`; you watch
-it live. Once the PR opens:
-
-```sh
-$ regatta gate-run --pr 256                          # runs L0-L5; posts comments
-```
-
-If gates accept and a synthetic-bad variant rejects, you're ready for
-Day 7.
-
-### Day 7 -- orchestrator on, one lane
-
-```sh
-$ regatta serve --lane server --max-concurrency 1
-```
-
-Watches one lane only; spawns one agent at a time. Runs ~5-10 items
-in the first week. Monitor:
-
-```sh
-$ regatta status                                     # one-line per agent + last gate
-$ regatta digest --since 1w                          # markdown digest
-$ regatta canary-report                              # catch-rate + recent canary PRs
-```
-
-### Day 30 -- all lanes, concurrency 1 each
-
-```sh
-$ regatta serve                                      # all lanes from regatta.yaml
-```
-
-Promotion criteria for raising any lane to concurrency 2:
-
-- ≥20 PRs merged in the lane via fleet
-- Canary human-catch-rate ≥85% over rolling 20-canary window
-- Net-helpfulness ≥70% (see [§Test harness](#test-harness))
+- Day 1 install + `verify-repo-config`: [docs/operator/day1.md](operator/day1.md).
+- Day 2 gate calibration (mapped from `gate-calibrate --pr`,
+  `--canary-corpus`): [docs/operator/day7.md](operator/day7.md)
+  §Calibrate.
+- Day 7 orchestrator-on-one-lane: [docs/operator/day7.md](operator/day7.md).
+- Day 30 all-lanes, concurrency-1: [docs/operator/day30.md](operator/day30.md),
+  including the lane-promotion criteria.
 
 ## Worked Example (simulated)
 

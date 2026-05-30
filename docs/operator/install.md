@@ -62,11 +62,9 @@ make ci        # full CI gate
 go build -trimpath -o regatta ./cmd/regatta
 ```
 
-Reproducibility: `-trimpath` strips local paths from binaries;
-honored `SOURCE_DATE_EPOCH` falls back to git commit time, never to
-`time.Now()`. Customers auditing supply-chain posture should
-reproduce the release binary locally and diff against the published
-artifact.
+Reproducibility flags + diff-against-published-artifact recipe live
+in [docs/auditor/reproducibility.md](../auditor/reproducibility.md);
+that doc is canonical for supply-chain posture.
 
 ## Uninstall
 

@@ -24,6 +24,17 @@ contracts follow the deprecation cycle described in `PRINCIPLES.md`
 - Repo restructure Wave 2 (Customer surface). Operator + auditor +
   engineer docs land under `docs/`; runnable examples land under
   `examples/`; ADR template lands under `docs/rfcs/`.
+- Repo restructure Wave 3 (Governance + closeout). Aggregator
+  workflow, tag-triggered release workflow with provenance, three
+  new fail-closed gates, dedupe pass against the design spec.
+- Branch protection required-contexts expanded to cover every
+  PR-time workflow (verify, lint, pr-lint, govulncheck, validate,
+  scan, aggregate) instead of just `verify` + `pr-lint`.
+- `docs/design.md` §Day 1 → Day 30 Runbook collapsed to a thin
+  pointer table into `docs/operator/`; operator docs are now
+  canonical for runbook content (spec D3).
+- `docs/operator/install.md` reproducibility paragraph collapsed
+  to a one-line link to `docs/auditor/reproducibility.md`.
 
 ### Added
 
@@ -38,6 +49,21 @@ contracts follow the deprecation cycle described in `PRINCIPLES.md`
 - `docs/engineer/{how-to-add-a-gate,how-to-add-an-adapter,release-runbook,string-review}.md`
   + `post-mortems/.gitkeep`.
 - `docs/rfcs/0000-template.md` (Michael-Nygard ADR template).
+- `.github/workflows/gates.yml` cross-workflow aggregator job with
+  `if: always()` + `needs.*.result` checks (closes the GitHub
+  silent-required-check-bypass class).
+- `.github/workflows/release.yml` tag-triggered release: signed-tag
+  verify, SLSA build provenance attestation, CHANGELOG Unreleased
+  flip, customer release-notes derivation from PR bodies.
+- `scripts/check-ci-shape.sh` + `_test.sh` - gate that asserts the
+  aggregator + release workflow shape.
+- `scripts/check-prose-dup.sh` + `_test.sh` - regression-seed
+  detector preventing previously-collapsed prose duplicates from
+  drifting back into 2+ markdown files.
+- `scripts/check-empty-dirs.sh` + `_test.sh` - earn-or-delete gate
+  for README-only / .gitkeep-only directories.
+- `docs/engineer/post-mortems/README.md` replaces the bare
+  `.gitkeep` and declares the activation trigger.
 
 ### Internal
 
@@ -46,3 +72,7 @@ contracts follow the deprecation cycle described in `PRINCIPLES.md`
 - `.golangci.yml` exclusion paths updated to match Wave 1 tree
   (internal/gates/*, internal/config/*).
 - `contracts/schemas/sign.go` extracts SigAlg + SigKey constants.
+- `make check` now folds in `ci-shape`, `prose-dup`, `empty-dirs`;
+  total local runtime stays under 60 seconds.
+- `scripts/apply-branch-protection.sh` required-context list
+  expanded from `verify` + `pr-lint` to the full PR-time set.
