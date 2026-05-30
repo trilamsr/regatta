@@ -26,6 +26,7 @@ Humans should start at `README.md` (operators) or `AGENTS.md`
 
 ### docs/operator/
 
+- [docs/operator/README.md](docs/operator/README.md)
 - [docs/operator/quickstart.md](docs/operator/quickstart.md)
 - [docs/operator/install.md](docs/operator/install.md)
 - [docs/operator/configure.md](docs/operator/configure.md)
@@ -36,6 +37,7 @@ Humans should start at `README.md` (operators) or `AGENTS.md`
 
 ### docs/auditor/
 
+- [docs/auditor/README.md](docs/auditor/README.md)
 - [docs/auditor/threat-model.md](docs/auditor/threat-model.md)
 - [docs/auditor/audit-log.md](docs/auditor/audit-log.md)
 - [docs/auditor/reproducibility.md](docs/auditor/reproducibility.md)
@@ -43,20 +45,24 @@ Humans should start at `README.md` (operators) or `AGENTS.md`
 
 ### docs/engineer/
 
+- [docs/engineer/README.md](docs/engineer/README.md)
 - [docs/engineer/how-to-add-a-gate.md](docs/engineer/how-to-add-a-gate.md)
 - [docs/engineer/how-to-add-an-adapter.md](docs/engineer/how-to-add-an-adapter.md)
 - [docs/engineer/release-runbook.md](docs/engineer/release-runbook.md)
 - [docs/engineer/string-review.md](docs/engineer/string-review.md)
+- [docs/engineer/specs/mvp-1-planner.md](docs/engineer/specs/mvp-1-planner.md)
 - [docs/engineer/post-mortems/README.md](docs/engineer/post-mortems/README.md)
 
 ### docs/rfcs/
 
 - [docs/rfcs/0000-template.md](docs/rfcs/0000-template.md)
+- [docs/rfcs/0001-mvp-1-program-publish.md](docs/rfcs/0001-mvp-1-program-publish.md)
 
 ## contracts/
 
 - [contracts/README.md](contracts/README.md)
 - [contracts/prompts/README.md](contracts/prompts/README.md)
+- [contracts/prompts/planner.md](contracts/prompts/planner.md)
 
 ## examples/
 

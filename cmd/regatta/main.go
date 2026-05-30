@@ -445,6 +445,10 @@ func runProgramPlan(args []string) int {
 		fmt.Fprintln(os.Stderr, "regatta program plan: work-item must have id and acceptance_criteria")
 		return 2
 	}
+	if parent.Kind != schemas.KindProgram {
+		fmt.Fprintf(os.Stderr, "regatta program plan: work-item kind must be %q, got %q\n", schemas.KindProgram, parent.Kind)
+		return 2
+	}
 
 	client, err := programs.NewAnthropicPlanner(*model)
 	if err != nil {

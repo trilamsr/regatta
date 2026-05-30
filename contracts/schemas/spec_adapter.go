@@ -55,16 +55,28 @@ type SpecAdapter interface {
 // WorkItem is the canonical unit of work the fleet operates on.
 // See schemas/work_item.schema.json for the JSON form (snake_case).
 type WorkItem struct {
-	ID                 WorkItemID  `json:"id"`
-	Title              string      `json:"title"`
-	Body               string      `json:"body,omitempty"`
-	AcceptanceCriteria []Criterion `json:"acceptance_criteria"`
+	ID                 WorkItemID   `json:"id"`
+	Kind               WorkItemKind `json:"kind,omitempty"` // "feature" (default) | "program"; "program" routes through the planner before spawning
+	Title              string       `json:"title"`
+	Body               string       `json:"body,omitempty"`
+	AcceptanceCriteria []Criterion  `json:"acceptance_criteria"`
 	Dependencies       []WorkItemID `json:"dependencies,omitempty"` // topological order; cycles MUST be reported via ErrDependencyCycle on List
-	Lane               LaneID       `json:"lane,omitempty"`        // empty string means the default lane
+	Lane               LaneID       `json:"lane,omitempty"`         // empty string means the default lane
 	Status             Status       `json:"status"`
 	LinkedArtifact     string       `json:"linked_artifact,omitempty"` // URL or repo-relative path to deeper context (RFC, design doc, ADR)
 	Source             SourceRef    `json:"source"`                    // points to the immutable source-of-truth for L0 to verify
 }
+
+// WorkItemKind discriminates leaf features from programs. Programs
+// route through the planner before spawning. See docs/design.md
+// §Programs.
+type WorkItemKind string
+
+// WorkItemKind values; the only legal payload of WorkItem.Kind.
+const (
+	KindFeature WorkItemKind = "feature"
+	KindProgram WorkItemKind = "program"
+)
 
 // Criterion is one acceptance criterion under a WorkItem.
 type Criterion struct {

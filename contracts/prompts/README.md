@@ -4,10 +4,11 @@ Signed agent prompts loaded by the orchestrator + gate runners.
 
 ## Status
 
-Empty until MVP-1 lands. Activation trigger: first `prompts/*.md`
-referenced by code (`internal/program/planner.go` will load
-`planner.md`; `internal/gates/security` will load
-`security_gate.md`).
+- `planner.md` -- one-shot program planner. Embedded in
+  `internal/program/provider_anthropic.go` as the build-hermetic
+  fallback; MVP-1 wires loading-from-disk + SHA verification at
+  runtime.
+- `security_gate.md` -- not yet written; MVP-3 activation.
 
 ## Discipline
 

@@ -12,6 +12,11 @@
       "minLength": 1,
       "description": "Stable identifier within the spec source (e.g. issue number, RFC ID, milestone slug)."
     },
+    "kind": {
+      "enum": ["feature", "program"],
+      "default": "feature",
+      "description": "feature: leaf, spawns one agent. program: routes through the planner first. See docs/design.md §Programs."
+    },
     "title": { "type": "string", "minLength": 1 },
     "body": { "type": "string" },
     "acceptance_criteria": {

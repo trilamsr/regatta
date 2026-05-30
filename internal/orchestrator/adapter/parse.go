@@ -26,6 +26,9 @@ func parseMarkdownItem(data []byte) (schemas.WorkItem, error) {
 	if v, ok := fm["lane"]; ok {
 		item.Lane = schemas.LaneID(v)
 	}
+	if v, ok := fm["kind"]; ok {
+		item.Kind = schemas.WorkItemKind(v)
+	}
 	if v, ok := fm["status"]; ok {
 		item.Status = schemas.Status(v)
 	} else {
@@ -47,6 +50,9 @@ func parseMarkdownItem(data []byte) (schemas.WorkItem, error) {
 	}
 	if !validStatus(item.Status) {
 		return schemas.WorkItem{}, fmt.Errorf("markdown_catalog: invalid status %q", item.Status)
+	}
+	if item.Kind != "" && !validKind(item.Kind) {
+		return schemas.WorkItem{}, fmt.Errorf("markdown_catalog: invalid kind %q", item.Kind)
 	}
 
 	criteria, body, err := parseCriteria(body)
@@ -221,6 +227,14 @@ func splitList(v string) []string {
 func validStatus(s schemas.Status) bool {
 	switch s {
 	case schemas.StatusPlanned, schemas.StatusInProgress, schemas.StatusDone:
+		return true
+	}
+	return false
+}
+
+func validKind(k schemas.WorkItemKind) bool {
+	switch k {
+	case schemas.KindFeature, schemas.KindProgram:
 		return true
 	}
 	return false
