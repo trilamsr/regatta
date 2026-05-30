@@ -1,0 +1,27 @@
+# Minimal regatta.yaml.
+#
+# Smallest valid config that passes `regatta validate-config`. Use as
+# a starting point; copy and edit. Required fields only; defaults
+# apply to everything else (see contracts/schemas/regatta.v1.cue).
+
+version: 1
+
+repo:
+  host: github
+  owner: example
+  name: myproject
+
+spec_adapter:
+  type: github_issues
+  selector: 'label:planned'
+
+ci:
+  command: 'make test'
+
+gates:
+  - id: spec_conformance
+    type: ai
+    model: claude-opus-4-7
+    severity_block: ['fail']
+
+safety: {}
