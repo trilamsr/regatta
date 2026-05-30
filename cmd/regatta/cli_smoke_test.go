@@ -304,3 +304,24 @@ func TestCLI_Serve_BogusSpawner(t *testing.T) {
 		t.Fatalf("expected non-zero exit with bogus spawner; got 0\nstdout=%q stderr=%q", stdout, stderr)
 	}
 }
+
+func TestCLI_Program_BareNoSub(t *testing.T) {
+	t.Parallel()
+	code, stdout, stderr := runSmoke(t, t.TempDir(), []string{"program"}, nil)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit; got 0\nstdout=%q stderr=%q", stdout, stderr)
+	}
+}
+
+func TestCLI_ProgramVerifyHandoff_BadInput(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	bad := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(bad, []byte("{not json"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	code, stdout, stderr := runSmoke(t, dir, []string{"program", "verify-handoff", bad}, nil)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit on malformed handoff; got 0\nstdout=%q stderr=%q", stdout, stderr)
+	}
+}
