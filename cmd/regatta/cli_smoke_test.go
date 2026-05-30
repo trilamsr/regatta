@@ -108,3 +108,34 @@ func expectContains(t *testing.T, stream, want, name string) {
 		t.Fatalf("%s should contain %q; got %q", name, want, stream)
 	}
 }
+
+func TestCLI_BareNoArgs(t *testing.T) {
+	t.Parallel()
+	code, stdout, stderr := runSmoke(t, t.TempDir(), nil, nil)
+	expectExit(t, 2, code, stdout, stderr)
+	if !strings.Contains(strings.ToLower(stderr), "usage") {
+		t.Fatalf("expected usage in stderr; got %q", stderr)
+	}
+}
+
+func TestCLI_UnknownSubcommand(t *testing.T) {
+	t.Parallel()
+	code, stdout, stderr := runSmoke(t, t.TempDir(), []string{"nonexistent-sub"}, nil)
+	expectExit(t, 2, code, stdout, stderr)
+	expectContains(t, stderr, "unknown subcommand", "stderr")
+}
+
+func TestCLI_Help(t *testing.T) {
+	t.Parallel()
+	code, stdout, stderr := runSmoke(t, t.TempDir(), []string{"help"}, nil)
+	expectExit(t, 0, code, stdout, stderr)
+	expectContains(t, stdout, "Usage:", "stdout")
+	expectContains(t, stdout, "regatta init", "stdout")
+}
+
+func TestCLI_Version(t *testing.T) {
+	t.Parallel()
+	code, stdout, stderr := runSmoke(t, t.TempDir(), []string{"version"}, nil)
+	expectExit(t, 0, code, stdout, stderr)
+	expectContains(t, stdout, "regatta", "stdout")
+}
