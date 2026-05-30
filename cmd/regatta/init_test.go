@@ -110,3 +110,37 @@ func TestInit_WritesBothFiles(t *testing.T) {
 		t.Fatalf("expected stdout to mention 'wrote regatta.yaml'; got %q", stdout)
 	}
 }
+
+func TestInit_FriendlyOutput(t *testing.T) {
+	dir := t.TempDir()
+	code, stdout, stderr := runInitInDir(t, dir, nil)
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, stderr)
+	}
+	wantPhrases := []string{
+		"wrote regatta.yaml",
+		"wrote .regatta/sample.diff",
+		"Running L0 gate",
+		"FAIL",
+		"L0-TEXT-0",
+		"Trap Pattern P3",
+		"docs/incidents.md#pattern-3",
+		"Next steps",
+	}
+	for _, p := range wantPhrases {
+		if !bytes.Contains([]byte(stdout), []byte(p)) {
+			t.Errorf("expected stdout to contain %q; if init prose changed intentionally, update this test\nfull stdout:\n%s", p, stdout)
+		}
+	}
+}
+
+func TestInit_ExitsZeroOnDemoFail(t *testing.T) {
+	dir := t.TempDir()
+	code, stdout, _ := runInitInDir(t, dir, nil)
+	if code != 0 {
+		t.Fatalf("init must exit 0 even when demo verdict is FAIL; got code=%d", code)
+	}
+	if !bytes.Contains([]byte(stdout), []byte("FAIL")) {
+		t.Fatalf("expected demo verdict FAIL in stdout; got %q", stdout)
+	}
+}
