@@ -1,14 +1,7 @@
 #!/usr/bin/env bash
-# check-empty-dirs.sh - earn-or-delete gate for empty directories.
-#
-# Drift this gate closes: spec section 3 P10 + P14 ("earn the slot
-# OR delete; speculative scaffolding rots into noise"). A directory
-# whose only contents are a README and/or .gitkeep must declare an
-# explicit "Activation trigger:" line in its README. Otherwise the
-# directory is speculative and must either ship code or be deleted.
-#
-# Inputs:
-#   EMPTY_DIR_ROOT - root to scan. Defaults to repo root.
+# Earn-or-delete gate. A directory whose only contents are a README
+# and/or .gitkeep must declare an "Activation trigger:" line in its
+# README, otherwise it ships code or gets deleted.
 
 set -euo pipefail
 

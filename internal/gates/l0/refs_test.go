@@ -37,9 +37,7 @@ func (r *testRepo) git(args ...string) string {
 	r.t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = r.dir
-	// Scrub any git env inherited from a parent process (e.g. when these
-	// tests run inside a pre-commit hook). GIT_DIR / GIT_WORK_TREE override
-	// cmd.Dir and silently retarget the real repo.
+	// GIT_DIR / GIT_WORK_TREE from a parent process override cmd.Dir.
 	cmd.Env = scrubGitEnv(os.Environ())
 	out, err := cmd.CombinedOutput()
 	if err != nil {

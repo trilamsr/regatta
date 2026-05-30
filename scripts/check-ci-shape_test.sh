@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# check-ci-shape_test.sh - black-box tests for check-ci-shape.sh.
-#
-# Each case stages a fake .github/workflows tree, runs the validator
-# against it, asserts exit + stdout substring.
+# Each case stages a fake .github/workflows tree and asserts exit + stdout.
 
 set -euo pipefail
 

@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# check-prose-dup_test.sh - black-box tests for check-prose-dup.sh.
-
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

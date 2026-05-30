@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# check-empty-dirs_test.sh - black-box tests for check-empty-dirs.sh.
-
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -1,18 +1,8 @@
 #!/usr/bin/env bash
-# check-ci-shape.sh - workflow-shape gate.
-#
-# Drift this gate closes: a multi-job CI workflow whose required-check
-# aggregator silently passes when sub-jobs fail. GitHub treats SKIPPED
-# required checks as satisfied; an aggregator without `if: always()`
-# plus explicit `needs.*.result` checks bypasses branch protection.
-#
-# Also asserts the release workflow is tag-triggered, declares the
-# permissions required for SLSA provenance attestation, and flips the
-# CHANGELOG `Unreleased` section to a versioned section at tag time.
-#
-# Inputs:
-#   CI_WORKFLOWS_DIR  - directory holding workflow yaml. Defaults to
-#                       .github/workflows. Overridden by tests.
+# Workflow-shape gate. GitHub treats SKIPPED required checks as
+# satisfied, so an aggregator without if: always() + needs.*.result
+# checks bypasses branch protection silently. Also asserts release.yml
+# is tag-triggered with provenance + CHANGELOG flip.
 
 set -euo pipefail
 

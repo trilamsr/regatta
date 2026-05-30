@@ -1,19 +1,7 @@
 name: release
 
-# Tag-triggered release. Spec section 5 + docs/engineer/release-runbook.md.
-#
-# What this workflow guarantees:
-#   1. Tag is signed (Conventional Commits + GPG/SSH signature).
-#   2. All gates green at the tagged commit (gates aggregator, lint,
-#      govulncheck, examples-validate).
-#   3. SLSA build provenance attestation for any artifact built.
-#   4. CHANGELOG `## Unreleased` section is flipped to the versioned
-#      heading and dated; HEAD of main on next push includes a fresh
-#      empty `## Unreleased`.
-#   5. Customer release-notes are derived from PR bodies' fenced
-#      `release-notes` blocks merged since the previous tag.
-#
-# Shape enforced by scripts/check-ci-shape.sh.
+# Tag-triggered release. Contract in docs/engineer/release-runbook.md;
+# shape enforced by scripts/check-ci-shape.sh.
 
 on:
   push:
@@ -65,7 +53,6 @@ jobs:
         run: make ci-check
 
       - name: build artifact
-        # Customer-facing binary. Path is what attestation signs.
         run: |
           mkdir -p dist
           go build -trimpath -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
@@ -135,7 +122,6 @@ jobs:
           git config user.email "release-bot@regatta.local"
           git config user.name "release-bot"
           git checkout -b "$branch"
-          # Re-open Unreleased above the dated section.
           awk -v tag="$tag" '
             /^## '"$tag"' / && !done {
               print "## Unreleased"

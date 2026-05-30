@@ -1,21 +1,7 @@
 #!/usr/bin/env bash
-# check-prose-dup.sh - prose duplicate detector.
-#
-# Drift this gate closes: customer surface docs (docs/operator,
-# docs/auditor, docs/engineer) restate paragraphs from the design
-# spec or from each other rather than link to a single source. Spec
-# D3: source of truth, not parallel restatement.
-#
-# Method: seed-phrase regression list. Each entry is a 5-7 word
-# phrase that was duplicated at some point and has since been
-# single-sourced; the gate fails if the phrase appears in 2+ tracked
-# *.md files at once.
-#
-# Adding a seed: when you collapse a duplicate, add the phrase
-# below. The gate then prevents the duplicate from drifting back.
-#
-# Inputs:
-#   PROSE_DUP_ROOT - directory to scan. Defaults to repo root.
+# Prose-dup regression gate. Seeds below are phrases that were
+# collapsed to a single source; the gate fails if any appears in 2+
+# *.md files. Add a seed when collapsing a new duplicate.
 
 set -euo pipefail
 
