@@ -28,7 +28,7 @@ func TestMain(m *testing.M) {
 		bin += ".exe"
 	}
 
-	root := smokeModuleRoot()
+	root := moduleRoot()
 	if root == "" {
 		_ = os.RemoveAll(tmp)
 		os.Exit(m.Run())
@@ -51,26 +51,6 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	_ = os.RemoveAll(tmp)
 	os.Exit(code)
-}
-
-// smokeModuleRoot is a smoke-test-local copy of moduleRoot from
-// init_test.go so this file can be read alone.
-func smokeModuleRoot() string {
-	_, file, _, ok := runtime.Caller(0)
-	if !ok {
-		return ""
-	}
-	dir := filepath.Dir(file)
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			return ""
-		}
-		dir = parent
-	}
 }
 
 // runSmoke executes the compiled binary with args in workDir, returns
@@ -173,7 +153,7 @@ func TestCLI_Init_RefusesDiverged(t *testing.T) {
 
 func TestCLI_L0_Pass(t *testing.T) {
 	t.Parallel()
-	root := smokeModuleRoot()
+	root := moduleRoot()
 	if root == "" {
 		t.Skip("module root not resolvable")
 	}
@@ -201,7 +181,7 @@ func TestCLI_L0_Pass(t *testing.T) {
 
 func TestCLI_L0_Fail(t *testing.T) {
 	t.Parallel()
-	root := smokeModuleRoot()
+	root := moduleRoot()
 	if root == "" {
 		t.Skip("module root not resolvable")
 	}
@@ -225,7 +205,7 @@ func TestCLI_L0_Help(t *testing.T) {
 
 func TestCLI_ValidateConfig_Happy(t *testing.T) {
 	t.Parallel()
-	root := smokeModuleRoot()
+	root := moduleRoot()
 	if root == "" {
 		t.Skip("module root not resolvable")
 	}
@@ -243,7 +223,7 @@ func TestCLI_ValidateConfig_Happy(t *testing.T) {
 
 func TestCLI_ValidateConfig_Malformed(t *testing.T) {
 	t.Parallel()
-	root := smokeModuleRoot()
+	root := moduleRoot()
 	if root == "" {
 		t.Skip("module root not resolvable")
 	}

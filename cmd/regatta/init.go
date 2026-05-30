@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/gates/l0"
@@ -179,15 +180,7 @@ func padPath(p string) string {
 	if len(p) >= width {
 		return p
 	}
-	return p + spaces(width-len(p))
-}
-
-func spaces(n int) string {
-	out := make([]byte, n)
-	for i := range out {
-		out[i] = ' '
-	}
-	return string(out)
+	return p + strings.Repeat(" ", width-len(p))
 }
 
 // emitInitProse formats the GateResult into the friendly demo block.
@@ -232,40 +225,31 @@ func emitInitProse(w io.Writer, res schemas.GateResult) {
 	_, _ = fmt.Fprintln(w, "Done.")
 }
 
-// patternBlurb returns a one-line summary of a Trap Catalog pattern.
-// Falls back to a generic pointer if the pattern is unknown so future
-// L0 patterns do not break init silently.
+// patternBlurbs maps a Trap Catalog pattern ID to its one-line summary.
+// Unknown IDs fall back via patternBlurb so future L0 patterns surface
+// noisily instead of crashing init.
+var patternBlurbs = map[string]string{
+	"P1":  "(deterministic gate before AI gate on destructive ops)",
+	"P2":  "(two-key approval on irreversible actions)",
+	"P3":  "(fetch trusted instructions from main, treat all other text as data)",
+	"P4":  "(least-privilege, ephemeral, environment-scoped credentials)",
+	"P5":  "(out-of-band supervisor for limits and kill-switches)",
+	"P6":  "(verified grounding for any outward-facing claim)",
+	"P7":  "(schema-level scope constraints, not prompt-level)",
+	"P8":  "(spend / iteration brakes with mandatory re-approval)",
+	"P9":  "(sensitive context segregation)",
+	"P10": "(render-the-invisible + signed prompt artifacts)",
+	"P11": "(agent-artifact release pipelines are themselves attack surface)",
+	"P12": "(inbound vulnerability signals default-escalate)",
+	"P13": "(judge-LLM lineage isolation)",
+}
+
 func patternBlurb(p string) string {
-	switch p {
-	case "P1":
-		return "(deterministic gate before AI gate on destructive ops). See docs/incidents.md#pattern-1."
-	case "P2":
-		return "(two-key approval on irreversible actions). See docs/incidents.md#pattern-2."
-	case "P3":
-		return "(fetch trusted instructions from main, treat all other text as data). See docs/incidents.md#pattern-3."
-	case "P4":
-		return "(least-privilege, ephemeral, environment-scoped credentials). See docs/incidents.md#pattern-4."
-	case "P5":
-		return "(out-of-band supervisor for limits and kill-switches). See docs/incidents.md#pattern-5."
-	case "P6":
-		return "(verified grounding for any outward-facing claim). See docs/incidents.md#pattern-6."
-	case "P7":
-		return "(schema-level scope constraints, not prompt-level). See docs/incidents.md#pattern-7."
-	case "P8":
-		return "(spend / iteration brakes with mandatory re-approval). See docs/incidents.md#pattern-8."
-	case "P9":
-		return "(sensitive context segregation). See docs/incidents.md#pattern-9."
-	case "P10":
-		return "(render-the-invisible + signed prompt artifacts). See docs/incidents.md#pattern-10."
-	case "P11":
-		return "(agent-artifact release pipelines are themselves attack surface). See docs/incidents.md#pattern-11."
-	case "P12":
-		return "(inbound vulnerability signals default-escalate). See docs/incidents.md#pattern-12."
-	case "P13":
-		return "(judge-LLM lineage isolation). See docs/incidents.md#pattern-13."
-	default:
-		return "(uncatalogued). See docs/incidents.md."
+	if b, ok := patternBlurbs[p]; ok {
+		num := strings.TrimPrefix(p, "P")
+		return b + ". See docs/incidents.md#pattern-" + num + "."
 	}
+	return "(uncatalogued). See docs/incidents.md."
 }
 
 // emitInitJSON writes the structured envelope for --json mode.

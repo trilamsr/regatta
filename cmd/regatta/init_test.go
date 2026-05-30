@@ -10,11 +10,10 @@ import (
 	"testing"
 )
 
-// moduleRoot walks up from the current test file to the directory
-// containing go.mod. Returns "" if not found (e.g. out-of-tree run);
-// callers should t.Skip in that case.
-func moduleRoot(t *testing.T) string {
-	t.Helper()
+// moduleRoot walks up from this file to the directory containing
+// go.mod. Returns "" if not found (e.g. out-of-tree install); callers
+// should t.Skip in that case.
+func moduleRoot() string {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
 		return ""
@@ -34,7 +33,7 @@ func moduleRoot(t *testing.T) string {
 
 func TestEmbeddedYamlMatchesExample(t *testing.T) {
 	t.Parallel()
-	root := moduleRoot(t)
+	root := moduleRoot()
 	if root == "" {
 		t.Skip("module root not resolvable; skipping drift test")
 	}
@@ -53,7 +52,7 @@ func TestEmbeddedYamlMatchesExample(t *testing.T) {
 
 func TestEmbeddedSampleMatchesFixture(t *testing.T) {
 	t.Parallel()
-	root := moduleRoot(t)
+	root := moduleRoot()
 	if root == "" {
 		t.Skip("module root not resolvable; skipping drift test")
 	}
