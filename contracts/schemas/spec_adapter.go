@@ -72,6 +72,7 @@ type WorkItem struct {
 // §Programs.
 type WorkItemKind string
 
+// WorkItemKind values; the only legal payload of WorkItem.Kind.
 const (
 	KindFeature WorkItemKind = "feature"
 	KindProgram WorkItemKind = "program"
