@@ -2,5 +2,15 @@
 # Pre-commit hook: run `make check` to keep the inner loop honest.
 # Installed by `make hooks`, which sets core.hooksPath to .githooks.
 # Bypass with `git commit --no-verify` if you must - CI will still catch you.
+#
+# Why the env scrub: git exports GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE
+# into hook processes. Go tests under internal/gates/l0/ spin up isolated
+# git repos in t.TempDir() and call `git` via exec.Command without those
+# env vars unset, so they inherit them from this hook and operate on the
+# real regatta repo instead of TempDir. Unsetting them here keeps subprocesses
+# (go test, scripts) repo-agnostic.
 set -euo pipefail
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+      GIT_COMMON_DIR GIT_ALTERNATE_OBJECT_DIRECTORIES \
+      GIT_AUTHOR_DATE GIT_COMMITTER_DATE GIT_EDITOR
 exec make check

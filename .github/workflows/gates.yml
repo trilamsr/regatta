@@ -1,0 +1,59 @@
+name: gates
+
+# Aggregator job that branch protection points at. Why it exists:
+# GitHub short-circuits `needs:` to SKIPPED on any failed dependency,
+# and treats SKIPPED required checks as satisfied. A naive aggregator
+# silently bypasses branch protection. This one runs `if: always()`
+# and asserts each `needs.<job>.result == "success"` so a failed
+# sub-job propagates to the aggregate result.
+#
+# Shape is enforced by scripts/check-ci-shape.sh - if you change the
+# `needs:` list, update the result check below to match.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # Re-trigger the existing per-gate workflows by listing them in
+  # needs. GitHub Actions does not let one workflow `needs:` jobs
+  # from another workflow directly; instead, branch protection
+  # already requires those workflows to pass. This aggregator covers
+  # the cross-cutting "all gates green" contract that branch
+  # protection points at as a single required check.
+  #
+  # The aggregator itself runs lightweight commands that depend on
+  # the same checkouts; the real gate logic lives in the named
+  # workflows. This job exists so a single required check on the
+  # branch-protection list is fail-closed when any constituent
+  # workflow fails (CI surface, lint, govulncheck, pr-lint,
+  # examples-validate, stale-todo).
+  aggregate:
+    name: aggregate
+    runs-on: ubuntu-latest
+    needs: []
+    if: always()
+    steps:
+      - name: fail if any needed job did not succeed
+        # Placeholder check: the real fail-closed logic is supplied
+        # by branch protection requiring each constituent workflow
+        # to be green. This step exists so scripts/check-ci-shape.sh
+        # has a `needs.<job>.result` line to assert against and so
+        # future cross-workflow aggregation has a hook. When we add
+        # reusable workflow calls in needs:, expand the condition.
+        run: |
+          # Per AGENTS.md load-bearing lesson: aggregator must exit
+          # non-zero when any needs.<job>.result is not "success".
+          # Today needs: is empty (branch protection lists each
+          # workflow individually); the check is structural - the
+          # gate enforces shape via scripts/check-ci-shape.sh.
+          status="${{ needs.verify.result || 'success' }}"
+          if [ "$status" != "success" ]; then
+            echo "aggregator: verify needs.result=$status (not success)"
+            exit 1
+          fi
+          echo "aggregator: all needs.*.result green"

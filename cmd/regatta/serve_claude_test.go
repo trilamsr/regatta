@@ -37,7 +37,7 @@ func TestServeWithClaudeSpawnerEndToEnd(t *testing.T) {
 	dir := t.TempDir()
 
 	bin := filepath.Join(dir, "regatta")
-	build := exec.Command("go", "build", "-o", bin, "../../cmd/regatta")
+	build := exec.Command("go", "build", "-buildvcs=false", "-o", bin, "../../cmd/regatta")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build regatta: %v\n%s", err, out)
 	}

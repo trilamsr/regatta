@@ -34,7 +34,12 @@ gh api \
     "strict": false,
     "contexts": [
       "verify",
-      "pr-lint"
+      "lint",
+      "pr-lint",
+      "govulncheck",
+      "validate",
+      "scan",
+      "aggregate"
     ]
   },
   "enforce_admins": true,
