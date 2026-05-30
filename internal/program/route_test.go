@@ -1,52 +1,44 @@
-package programs
+package program
 
 import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-// stub verifier -- toggles per test case.
 func okVerify(_ Verdict) error  { return nil }
 func badVerify(_ Verdict) error { return ErrUnverifiable }
 
-func anchored(t time.Time) (*time.Time, *time.Time) {
-	start := t
-	end := t.Add(5 * time.Minute)
-	return &start, &end
+func mkVerdict(gateID, prSHA string, verdict schemas.Verdict, blocking bool, started time.Time, findings []schemas.Finding) Verdict {
+	return Verdict{
+		GateResult: schemas.GateResult{
+			GateID:    gateID,
+			PRSHA:     prSHA,
+			Verdict:   verdict,
+			Blocking:  blocking,
+			Findings:  findings,
+			Signature: schemas.SignatureBlock{Alg: "HMAC-SHA256", KeyID: "k1", MAC: "00"},
+			Heartbeat: schemas.TelemetryHeartbeat{
+				StartedAt:  started,
+				FinishedAt: started.Add(5 * time.Minute),
+			},
+		},
+	}
 }
 
 func TestRouteVerdicts(t *testing.T) {
 	now := time.Now()
-	started, finished := anchored(now.Add(-10 * time.Minute))
+	started := now.Add(-10 * time.Minute)
 
-	passVerdict := Verdict{
-		GateID:     "l1_ci",
-		PRSHA:      "abcdef0123456789abcdef0123456789abcdef01",
-		Result:     "pass",
-		Blocking:   true,
-		Severity:   "none",
-		StartedAt:  started,
-		FinishedAt: finished,
-		Signature:  Signature{Alg: "HMAC-SHA256", KeyID: "k1", MAC: "00"},
-	}
+	passVerdict := mkVerdict("l1_ci", "abcdef0123456789abcdef0123456789abcdef01", schemas.VerdictPass, true, started, nil)
 
-	failVerdict := Verdict{
-		GateID:     "l3_spec_conformance",
-		PRSHA:      "abcdef0123456789abcdef0123456789abcdef01",
-		Result:     "fail",
-		Blocking:   true,
-		Severity:   "high",
-		StartedAt:  started,
-		FinishedAt: finished,
-		Findings: []Finding{
-			{ID: "F-001", Severity: "high", Claim: "criterion A-AUTH-01 not addressed", TrapPattern: "P3"},
-		},
-		Signature: Signature{Alg: "HMAC-SHA256", KeyID: "k1", MAC: "ff"},
-	}
+	failVerdict := mkVerdict("l3_spec_conformance", "abcdef0123456789abcdef0123456789abcdef01", schemas.VerdictFail, true, started,
+		[]schemas.Finding{{ID: "F-001", Severity: schemas.FindingHigh, Claim: "criterion A-AUTH-01 not addressed", TrapPattern: "P3"}})
 
 	missingHeartbeat := passVerdict
-	missingHeartbeat.FinishedAt = nil
+	missingHeartbeat.Heartbeat.FinishedAt = time.Time{}
 
 	failNoFindings := failVerdict
 	failNoFindings.Findings = nil
@@ -185,8 +177,6 @@ func contains(haystack, needle string) bool {
 	return false
 }
 
-// Sanity: ErrUnverifiable comparison works with errors.Is for callers
-// that wrap.
 func TestErrUnverifiableMatchable(t *testing.T) {
 	wrapped := errors.Join(ErrUnverifiable, errors.New("downstream context"))
 	if !errors.Is(wrapped, ErrUnverifiable) {

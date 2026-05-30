@@ -8,7 +8,7 @@
 //
 // See docs/design.md §Programs §Planner contract.
 
-package programs
+package program
 
 import (
 	"context"

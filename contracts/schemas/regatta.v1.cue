@@ -27,6 +27,8 @@ import "list"
 	safety:        #Safety
 	context?:      #Context
 	telemetry?:    #Telemetry
+	prompts?:      #Prompts
+	programs?:     #Programs
 }
 
 #Repo: {
@@ -114,6 +116,23 @@ import "list"
 	digest_path:    *"docs/regatta-digest.md" | string
 	state_db_path:  *"./.regatta/regatta.db" | string
 	audit_sink?:    string   // S3 URL with object-lock or transparency-log endpoint
+	audit_chain?:   *true | bool   // hash-chain audit records (Merkle); when false, only per-record HMAC
+}
+
+// Prompts pins SHA-256 of each signed prompt artifact. Mismatch
+// at load time fails closed. Empty means use the embedded fallback
+// constant baked into the binary (build-hermetic).
+#Prompts: {
+	planner_sha?:        string & =~ "^[0-9a-f]{64}$"
+	security_gate_sha?:  string & =~ "^[0-9a-f]{64}$"
+	agent_brief_sha?:    string & =~ "^[0-9a-f]{64}$"
+}
+
+// Programs configures the multi-feature decomposition layer.
+// See docs/design.md §Programs.
+#Programs: {
+	dir:      *".regatta/programs" | string  // where brief loader polls for *.json
+	enabled:  *true | bool                   // when false, kind=program work items halt
 }
 
 // Toplevel: every regatta.yaml validates as #Config.

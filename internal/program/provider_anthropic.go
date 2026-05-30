@@ -11,7 +11,7 @@
 // used here is minimal (Messages API + tool_use + JSON Schema
 // input_schema) so the cost of staying SDK-free is low.
 
-package programs
+package program
 
 import (
 	"bytes"

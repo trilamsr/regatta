@@ -122,6 +122,37 @@ func TestVerifyRejectsUnsupportedAlg(t *testing.T) {
 	}
 }
 
+func TestSignRejectsWeakKey(t *testing.T) {
+	t.Parallel()
+	short := make([]byte, MinKeyLen-1)
+	_, err := Sign(map[string]any{"x": 1}, short, "k1")
+	if !errors.Is(err, ErrWeakKey) {
+		t.Fatalf("expected ErrWeakKey, got %v", err)
+	}
+}
+
+func TestVerifyWithAllowlistRejectsKeyOutsideList(t *testing.T) {
+	t.Parallel()
+	key := make([]byte, MinKeyLen)
+	for i := range key {
+		key[i] = 'a'
+	}
+	payload := map[string]any{"x": 1}
+	sig, err := Sign(payload, key, "k1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload["signature"] = map[string]any{"alg": sig.Alg, "key_id": sig.KeyID, "mac": sig.MAC}
+	keyring := map[string][]byte{"k1": key}
+	err = VerifyWithAllowlist(payload, keyring, map[string]bool{"k2": true})
+	if !errors.Is(err, ErrUnknownKeyID) {
+		t.Fatalf("expected ErrUnknownKeyID, got %v", err)
+	}
+	if !errors.Is(err, ErrUnverifiable) {
+		t.Fatalf("ErrUnknownKeyID should wrap ErrUnverifiable, got %v", err)
+	}
+}
+
 func TestVerifyRejectsMissingSignature(t *testing.T) {
 	t.Parallel()
 	err := Verify(map[string]any{"x": 1}, nil)

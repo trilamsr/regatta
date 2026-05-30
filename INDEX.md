@@ -17,7 +17,7 @@ Humans should start at `README.md` (operators) or `AGENTS.md`
 - [PRINCIPLES.md](PRINCIPLES.md)
 - [STYLE.md](STYLE.md)
 - [AGENTS.md](AGENTS.md)
-- [CODEOWNERS](CODEOWNERS)
+- [.github/CODEOWNERS](.github/CODEOWNERS)
 
 ## docs/
 

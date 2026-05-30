@@ -85,9 +85,8 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 		RunID:         in.RunID,
 		Verdict:       schemas.VerdictPass,
 		Findings:      []schemas.Finding{},
-		Telemetry: schemas.Telemetry{
-			StartedAt: started,
-		},
+		Telemetry: schemas.Telemetry{},
+		Heartbeat: schemas.TelemetryHeartbeat{StartedAt: started},
 	}
 
 	floorFindings, blocking, err := runFloor(ctx, cfg.DeterminismFloor, in)
@@ -134,7 +133,7 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 
 func finalize(gr *schemas.GateResult, started time.Time) {
 	gr.Telemetry.DurationMs = time.Since(started).Milliseconds()
-	gr.Telemetry.FinishedAt = time.Now()
+	gr.Heartbeat.FinishedAt = time.Now()
 }
 
 // runFloor invokes each enabled static tool. Returns findings, a

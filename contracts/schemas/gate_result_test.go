@@ -27,6 +27,8 @@ func TestGateResultSchemaLockstep(t *testing.T) {
 		Telemetry: Telemetry{
 			DurationMs: 123,
 			Model:      "claude-opus-4-7",
+		},
+		Heartbeat: TelemetryHeartbeat{
 			StartedAt:  time.Date(2026, 5, 21, 0, 0, 0, 0, time.UTC),
 			FinishedAt: time.Date(2026, 5, 21, 0, 0, 1, 0, time.UTC),
 		},
@@ -80,6 +82,32 @@ func TestGateResultSchemaLockstep(t *testing.T) {
 	for _, k := range []GateKind{GateKindDeterministic, GateKindAIJudicial, GateKindAIAdversarial, GateKindAIRuleCheck} {
 		if _, err := json.Marshal(k); err != nil {
 			t.Fatalf("gate_kind %q does not marshal: %v", k, err)
+		}
+	}
+}
+
+// TestHeartbeatNotInSignedPayload pins that StartedAt/FinishedAt
+// never leak into the canonical JSON used for signing. The
+// reconciler reads Heartbeat in-process; including it in the
+// signed payload would weaken tamper-evidence by including
+// non-deterministic timestamps that vary across re-runs.
+func TestHeartbeatNotInSignedPayload(t *testing.T) {
+	t.Parallel()
+	gr := GateResult{
+		SchemaVersion: 1,
+		GateID:        "l0",
+		Heartbeat: TelemetryHeartbeat{
+			StartedAt:  time.Date(2026, 5, 30, 0, 0, 0, 0, time.UTC),
+			FinishedAt: time.Date(2026, 5, 30, 0, 0, 1, 0, time.UTC),
+		},
+	}
+	raw, err := json.Marshal(gr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, banned := range []string{`"started_at"`, `"finished_at"`, `"heartbeat"`} {
+		if strings.Contains(string(raw), banned) {
+			t.Fatalf("heartbeat field %s leaked into signed payload: %s", banned, raw)
 		}
 	}
 }

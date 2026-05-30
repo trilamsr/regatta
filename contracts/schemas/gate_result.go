@@ -22,7 +22,21 @@ type GateResult struct {
 	Findings          []Finding      `json:"findings"`
 	InjectionSuspected bool          `json:"injection_suspected,omitempty"`
 	Telemetry         Telemetry      `json:"telemetry"`
+	PrevRecordHash    string         `json:"prev_record_hash,omitempty"` // sha256:HEX of writer's previous record; empty for first
 	Signature         SignatureBlock `json:"signature"`
+
+	// Heartbeat carries audit-reconciler anchors. json:"-" keeps it
+	// out of the canonical signed payload; the reconciler reads it
+	// from the in-process GateResult before transport.
+	Heartbeat TelemetryHeartbeat `json:"-"`
+}
+
+// TelemetryHeartbeat is the in-process anchor pair the audit
+// reconciler uses for silent-bypass detection. Deliberately NOT
+// part of the signed schema; the reconciler logs it out of band.
+type TelemetryHeartbeat struct {
+	StartedAt  time.Time
+	FinishedAt time.Time
 }
 
 // GateKind matches gate_result.schema.json enum.
@@ -99,22 +113,15 @@ type FindingEvidence struct {
 }
 
 // Telemetry matches schemas/gate_result.schema.json telemetry.
-// Field names previously drifted (started_at vs no started_at,
-// model_id vs model). This shape is now the schema shape.
+// This is the SIGNED shape; heartbeat anchors are kept out of band
+// in TelemetryHeartbeat so they never enter the canonical payload.
 type Telemetry struct {
-	DurationMs    int64   `json:"duration_ms"`
-	TokensInput   int64   `json:"tokens_input,omitempty"`
-	TokensOutput  int64   `json:"tokens_output,omitempty"`
-	TokensCached  int64   `json:"tokens_cached,omitempty"`
-	CostUSD       float64 `json:"cost_usd,omitempty"`
-	Model         string  `json:"model,omitempty"`
-	ModelVersion  string  `json:"model_version,omitempty"`
-	PromptSHA     string  `json:"prompt_sha,omitempty"`
-
-	// StartedAt and FinishedAt are heartbeat anchors -- not part of
-	// the published schema, but the audit reconciler needs them for
-	// silent-bypass detection. Carried in-process; stripped before
-	// signing.
-	StartedAt  time.Time `json:"started_at,omitempty"`
-	FinishedAt time.Time `json:"finished_at,omitempty"`
+	DurationMs   int64   `json:"duration_ms"`
+	TokensInput  int64   `json:"tokens_input,omitempty"`
+	TokensOutput int64   `json:"tokens_output,omitempty"`
+	TokensCached int64   `json:"tokens_cached,omitempty"`
+	CostUSD      float64 `json:"cost_usd,omitempty"`
+	Model        string  `json:"model,omitempty"`
+	ModelVersion string  `json:"model_version,omitempty"`
+	PromptSHA    string  `json:"prompt_sha,omitempty"`
 }

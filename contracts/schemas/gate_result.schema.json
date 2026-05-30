@@ -117,6 +117,11 @@
         "prompt_sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
       }
     },
+    "prev_record_hash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "SHA-256 of the previous audit record this writer emitted (JCS-canonicalized). Hash-chains the writer's stream so dropped records become detectable. Empty for the first record."
+    },
     "signature": {
       "type": "object",
       "required": ["alg", "key_id", "mac"],
