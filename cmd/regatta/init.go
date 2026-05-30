@@ -46,7 +46,9 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "regatta init: write regatta.yaml: %v\n", err)
 		return 1
 	}
-	fmt.Fprintln(stdout, "+ wrote regatta.yaml         (your config; L0 gate enabled)")
+	if !*jsonOut {
+		fmt.Fprintln(stdout, "+ wrote regatta.yaml         (your config; L0 gate enabled)")
+	}
 
 	if err := os.MkdirAll(".regatta", 0o755); err != nil {
 		fmt.Fprintf(stderr, "regatta init: mkdir .regatta: %v\n", err)
@@ -57,7 +59,9 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "regatta init: write %s: %v\n", diffPath, err)
 		return 1
 	}
-	fmt.Fprintln(stdout, "+ wrote .regatta/sample.diff (a demo attack against MILESTONES.md)")
+	if !*jsonOut {
+		fmt.Fprintln(stdout, "+ wrote .regatta/sample.diff (a demo attack against MILESTONES.md)")
+	}
 
 	// Re-read sample.diff so the verdict reflects what's on disk
 	// (operator might inspect it).

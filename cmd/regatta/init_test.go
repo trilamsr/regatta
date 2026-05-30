@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -155,11 +156,11 @@ func TestInit_JSONOutput(t *testing.T) {
 	if stderr != "" {
 		t.Fatalf("expected empty stderr on success with --json; got %q", stderr)
 	}
-	// The JSON is preceded by friendly prose lines (+ wrote ...), so extract
-	// the JSON object from stdout by finding the opening brace.
-	jsonStart := bytes.Index([]byte(stdout), []byte("{"))
-	if jsonStart == -1 {
-		t.Fatalf("no JSON object found in stdout: %q", stdout)
+	// stdout must be pure JSON — no prose prefix. A scripted caller
+	// like `regatta init --json | jq` must work.
+	trimmed := strings.TrimSpace(stdout)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		t.Fatalf("--json stdout must start with '{'; got %q", stdout)
 	}
 	var env struct {
 		Written     []string `json:"written"`
@@ -174,7 +175,7 @@ func TestInit_JSONOutput(t *testing.T) {
 			} `json:"findings"`
 		} `json:"gate_result"`
 	}
-	if err := json.Unmarshal([]byte(stdout[jsonStart:]), &env); err != nil {
+	if err := json.Unmarshal([]byte(trimmed), &env); err != nil {
 		t.Fatalf("stdout contains invalid JSON: %v\nstdout=%q", err, stdout)
 	}
 	if got, want := env.GateResult.Verdict, "fail"; got != want {
