@@ -38,6 +38,6 @@ added.
 ## Cross-references
 
 - Trust boundaries: [`docs/design.md` §Trust boundaries](../design.md#trust-boundaries).
-- Audit-log wire format: [audit-log.md](audit-log.md) (stub until
-  `internal/audit/` impl lands).
+- Audit-log wire format: [audit-log.md](audit-log.md) (stub today;
+  full shape lands with the audit-sink writer).
 - Procurement-level summary: [`SECURITY.md`](../../SECURITY.md).

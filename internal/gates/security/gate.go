@@ -227,12 +227,8 @@ type osvScanResult struct {
 				Ecosystem string `json:"ecosystem"`
 			} `json:"package"`
 			Vulnerabilities []struct {
-				ID       string   `json:"id"`
-				Summary  string   `json:"summary"`
-				Severity []struct {
-					Type  string `json:"type"`
-					Score string `json:"score"`
-				} `json:"severity"`
+				ID      string `json:"id"`
+				Summary string `json:"summary"`
 			} `json:"vulnerabilities"`
 		} `json:"packages"`
 	} `json:"results"`
@@ -261,9 +257,6 @@ func runOSVScanner(ctx context.Context, in Input) ([]schemas.Finding, bool, erro
 		for _, p := range r.Packages {
 			for _, v := range p.Vulnerabilities {
 				sev := schemas.FindingHigh
-				if vSev := highestSeverity(v.Severity); vSev != "" {
-					sev = mapCVSSToSeverity(vSev)
-				}
 				out = append(out, schemas.Finding{
 					ID:          fmt.Sprintf("OSV-%s", v.ID),
 					Severity:    sev,
@@ -277,32 +270,6 @@ func runOSVScanner(ctx context.Context, in Input) ([]schemas.Finding, bool, erro
 		}
 	}
 	return out, blocking, nil
-}
-
-func highestSeverity(scores []struct {
-	Type  string `json:"type"`
-	Score string `json:"score"`
-}) string {
-	for _, s := range scores {
-		if s.Type == "CVSS_V3" || s.Type == "CVSS_V4" {
-			return s.Score
-		}
-	}
-	return ""
-}
-
-// mapCVSSToSeverity converts a CVSS vector or numeric score to our
-// finding-severity enum. Conservative: anything we can't parse is
-// "high".
-func mapCVSSToSeverity(score string) schemas.FindingSeverity {
-	if len(score) == 0 {
-		return schemas.FindingHigh
-	}
-	// CVSS vector strings start with "CVSS:" -- we don't parse the
-	// vector at this layer. The osv-scanner output usually also
-	// carries a numeric score in a sibling field for newer schemas;
-	// when it does, callers should branch on that. For v1, conservative.
-	return schemas.FindingHigh
 }
 
 // runAI is the stub for the threat-modeler subagent. It returns

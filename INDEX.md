@@ -24,9 +24,6 @@ Humans should start at `README.md` (operators) or `AGENTS.md`
 - [docs/design.md](docs/design.md)
 - [docs/incidents.md](docs/incidents.md)
 
-(Design spec for the current restructure is hosted on PR #57; not
-mirrored here until that PR merges to main.)
-
 ### docs/operator/
 
 - [docs/operator/quickstart.md](docs/operator/quickstart.md)
@@ -69,12 +66,7 @@ mirrored here until that PR merges to main.)
 
 ## internal/
 
-- [internal/audit/README.md](internal/audit/README.md)
-- [internal/canary/README.md](internal/canary/README.md)
-- [internal/cli/README.md](internal/cli/README.md)
 - [internal/gates/security/README.md](internal/gates/security/README.md)
-- [internal/modelclient/README.md](internal/modelclient/README.md)
-- [internal/tenant/README.md](internal/tenant/README.md)
 
 ## testdata/
 

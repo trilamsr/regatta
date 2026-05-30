@@ -3,9 +3,8 @@
 Reader: internal engineer (first-week onboarding) or auditor under
 NDA scanning for tree shape.
 Read time: 2 minutes.
-Expires when: Wave 1 restructure principles in
-`docs/superpowers/specs/2026-05-21-org-repo-restructure-design.md`
-are revised.
+Expires when: the top-level layout (`cmd/`, `contracts/`,
+`internal/`, `testdata/`) changes shape.
 
 This file is the tree map + read order. The product architecture
 itself lives in `docs/design.md`; do not read both as parallel

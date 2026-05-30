@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/testutil/gitenv"
 	_ "modernc.org/sqlite"
 )
 
@@ -52,6 +53,7 @@ func TestServeWithClaudeSpawnerEndToEnd(t *testing.T) {
 	} {
 		cmd := exec.Command("git", c...)
 		cmd.Dir = repo
+		cmd.Env = gitenv.Scrub(os.Environ())
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", c, err, out)
 		}

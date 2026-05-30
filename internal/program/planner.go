@@ -285,7 +285,7 @@ func Run(ctx context.Context, opts PlannerOptions, parent schemas.WorkItem) (*Pr
 	// Planner-owned fields (the model proposes features; the
 	// orchestrator stamps identity + provenance).
 	plan.SchemaVersion = 1
-	plan.ProgramID = newMissionID()
+	plan.ProgramID = newProgramID()
 	plan.ParentWorkItemID = string(parent.ID)
 	plan.ParentCriteria = copyCriteria(parent.AcceptanceCriteria)
 	plan.PlannerModelID = opts.Client.ModelID()
@@ -306,10 +306,11 @@ func copyCriteria(crit []schemas.Criterion) []PlanCriterion {
 	return out
 }
 
-// newMissionID returns a 12-hex-char program ID. 48 bits of entropy
+// newProgramID returns a 12-hex-char program ID. 48 bits of entropy
 // is enough for human-scale uniqueness; program state lives in
 // sqlite with a UNIQUE constraint as the real durability anchor.
-func newMissionID() string {
+// The "m-" prefix is wire format -- handoff.schema.json pins it.
+func newProgramID() string {
 	var b [6]byte
 	_, _ = rand.Read(b[:])
 	return "m-" + hex.EncodeToString(b[:])

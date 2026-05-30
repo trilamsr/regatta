@@ -10,6 +10,7 @@
 package programs
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -125,7 +126,7 @@ func LoadAndValidate(path string) (*Handoff, error) {
 // ParseAndValidate is the in-memory form of LoadAndValidate.
 func ParseAndValidate(data []byte) (*Handoff, error) {
 	var h Handoff
-	dec := json.NewDecoder(bytesReader(data))
+	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&h); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrSchemaInvalid, err)
@@ -135,26 +136,6 @@ func ParseAndValidate(data []byte) (*Handoff, error) {
 	}
 	return &h, nil
 }
-
-func bytesReader(b []byte) *fixedReader { return &fixedReader{b: b} }
-
-// fixedReader is a trivial io.Reader over a byte slice without
-// pulling in bytes.NewReader (keeps the import surface tight).
-type fixedReader struct {
-	b []byte
-	i int
-}
-
-func (r *fixedReader) Read(p []byte) (int, error) {
-	if r.i >= len(r.b) {
-		return 0, errEOF
-	}
-	n := copy(p, r.b[r.i:])
-	r.i += n
-	return n, nil
-}
-
-var errEOF = errors.New("EOF")
 
 func (h *Handoff) validate() error {
 	if h.SchemaVersion != 1 {
