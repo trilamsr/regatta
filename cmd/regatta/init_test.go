@@ -353,3 +353,21 @@ func TestInit_HelpFlag(t *testing.T) {
 		}
 	}
 }
+
+func TestInitUsesEmbeddedBytes(t *testing.T) {
+	dir := t.TempDir()
+	if code, _, stderr := runInitInDir(t, dir, nil); code != 0 {
+		t.Fatalf("init: code=%d stderr=%q", code, stderr)
+	}
+	written, err := os.ReadFile(filepath.Join(dir, "regatta.yaml"))
+	if err != nil {
+		t.Fatalf("read written: %v", err)
+	}
+	embedded, err := initAssets.ReadFile("init_assets/regatta.yaml")
+	if err != nil {
+		t.Fatalf("read embed: %v", err)
+	}
+	if !bytes.Equal(written, embedded) {
+		t.Fatalf("init wrote bytes that diverge from the embed.FS blob; if init now sources from disk instead of embed, the drift gate is defeated")
+	}
+}
