@@ -21,15 +21,16 @@ brew install trilamsr/regatta/regatta
 
 See [install.md](install.md) for offline / pinned-version paths.
 
-## 2. Scaffold + validate
+## 2. Scaffold
 
 ```sh
 cd ~/code/myproject
-regatta init                       # writes regatta.yaml skeleton
-$EDITOR regatta.yaml               # fill in version, repo, spec_adapter,
-                                   # ci.command, gates, safety
-regatta validate-config            # CUE-validates regatta.yaml
+regatta init
 ```
+
+`regatta init` writes a starter `regatta.yaml`, drops a demo attack
+into `.regatta/sample.diff`, and runs the L0 gate against the demo so
+you see in one command what regatta catches.
 
 Required fields per the v1 schema: `version`, `repo`, `spec_adapter`,
 `ci.command`, `gates`, `safety`. See
