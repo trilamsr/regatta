@@ -3,6 +3,7 @@ package l0
 import "testing"
 
 func TestExtract(t *testing.T) {
+	t.Parallel()
 	in := `# Heading
 
 Some prose.

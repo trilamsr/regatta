@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/testutil/gitenv"
 	_ "modernc.org/sqlite"
 )
@@ -128,8 +128,7 @@ status: planned
 
 func readRunningAgentPID(t *testing.T, dbPath, workItemID string) int {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", dbPath)
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open("sqlite", state.DSN(dbPath))
 	if err != nil {
 		t.Fatalf("open db: %v", err)
 	}

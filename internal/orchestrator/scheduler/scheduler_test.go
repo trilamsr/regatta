@@ -13,9 +13,7 @@ import (
 
 func newDB(t *testing.T) *state.DB {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)",
-		filepath.Join(t.TempDir(), "state.db"))
-	db, err := state.Open(context.Background(), dsn)
+	db, err := state.Open(context.Background(), state.DSN(filepath.Join(t.TempDir(), "state.db")))
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}

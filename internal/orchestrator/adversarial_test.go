@@ -158,8 +158,7 @@ func TestHeartbeatKeepsActiveLockAlive(t *testing.T) {
 		t.Fatalf("adapter: %v", err)
 	}
 	dbPath := filepath.Join(t.TempDir(), "state.db")
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", dbPath)
-	db, err := state.Open(ctx, dsn)
+	db, err := state.Open(ctx, state.DSN(dbPath))
 	if err != nil {
 		t.Fatalf("state: %v", err)
 	}

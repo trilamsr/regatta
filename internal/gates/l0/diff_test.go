@@ -3,6 +3,7 @@ package l0
 import "testing"
 
 func TestParseUnifiedDiff_Minimal(t *testing.T) {
+	t.Parallel()
 	d := `diff --git a/MILESTONES.md b/MILESTONES.md
 --- a/MILESTONES.md
 +++ b/MILESTONES.md
@@ -31,6 +32,7 @@ func TestParseUnifiedDiff_Minimal(t *testing.T) {
 }
 
 func TestParseUnifiedDiff_NewFile(t *testing.T) {
+	t.Parallel()
 	d := `diff --git a/new.md b/new.md
 --- /dev/null
 +++ b/new.md
@@ -53,6 +55,7 @@ func TestParseUnifiedDiff_NewFile(t *testing.T) {
 // entirely; only `rename from`/`rename to` carry the paths. The
 // parser must pick them up so L0 sees the file as in-scope.
 func TestParseUnifiedDiff_PureRename(t *testing.T) {
+	t.Parallel()
 	d := `diff --git a/MILESTONES_OLD.md b/MILESTONES.md
 similarity index 100%
 rename from MILESTONES_OLD.md

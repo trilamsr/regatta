@@ -13,6 +13,7 @@ import (
 // gate_result.schema.json is the failure mode this test exists to
 // prevent.
 func TestGateResultSchemaLockstep(t *testing.T) {
+	t.Parallel()
 	gr := GateResult{
 		SchemaVersion: 1,
 		GateID:        "l0_spec_immutability",
@@ -84,6 +85,7 @@ func TestGateResultSchemaLockstep(t *testing.T) {
 }
 
 func TestVerdictEnumMatchesSchema(t *testing.T) {
+	t.Parallel()
 	// Schema enum is exactly {pass, fail, advisory}. Anything else
 	// is a drift bug.
 	allowed := map[Verdict]bool{VerdictPass: true, VerdictFail: true, VerdictAdvisory: true}

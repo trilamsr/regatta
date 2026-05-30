@@ -3,6 +3,7 @@ package l0
 import "testing"
 
 func TestNormalize_StripsInvisibles(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		in   string
@@ -35,6 +36,7 @@ func TestNormalize_StripsInvisibles(t *testing.T) {
 }
 
 func TestNormalize_StripBeforeNFC(t *testing.T) {
+	t.Parallel()
 	// "A" + CGJ (U+034F) + combining ring above (U+030A). CGJ blocks NFC
 	// composition. Stripping CGJ before NFC must produce U+00C5 (Å),
 	// matching the bare composed form.
@@ -47,6 +49,7 @@ func TestNormalize_StripBeforeNFC(t *testing.T) {
 }
 
 func TestNormalize_NFCEquivalence(t *testing.T) {
+	t.Parallel()
 	// é as U+00E9 (precomposed) vs U+0065 U+0301 (decomposed).
 	a := "café"
 	b := "café"

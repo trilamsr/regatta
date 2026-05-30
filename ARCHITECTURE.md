@@ -32,8 +32,8 @@ regatta/
     prompts/          # signed agent prompts (populated MVP-1+)
     wire/             # plugin wire-protocol docs (when first plugin lands)
   internal/           # private impl; default visibility
-    gates/            # gate runners (L0, security; L1-L5 land later)
-      l0/  security/
+    gates/            # gate runners (L0 shipped; L1-L5 deferred;
+      l0/  security/   # security/ is a custom gate, not in the numbered stack)
     config/           # regatta.yaml load + repo audit
       validate/  verify/
     orchestrator/     # daemon: watcher / scheduler / spawner / reaper / state / adapter
@@ -43,7 +43,7 @@ regatta/
   docs/
     design.md  incidents.md
     superpowers/specs/   # design specs for restructures + features
-    (rfcs/  operator/  auditor/  engineer/  arrive in later waves)
+    rfcs/  operator/  auditor/  engineer/  # persona-scoped surfaces
   scripts/            # repo tooling (doc-check, etc.)
   research/           # raw investigation; out of doc-check scope
   .githooks/  .github/  .claude/

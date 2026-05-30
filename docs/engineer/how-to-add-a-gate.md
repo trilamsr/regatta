@@ -9,7 +9,7 @@ changes.
 
 | Kind | Lives at | Wired via | When |
 |---|---|---|---|
-| Built-in | `internal/gates/<name>/` | Hard-coded in the orchestrator gate runner | Gate is universal across customers (L0, L1, L2 today; L3-L5 land later). |
+| Built-in | `internal/gates/<name>/` | Hard-coded in the orchestrator gate runner | Gate is universal across customers (L0 shipped; L1-L5 deferred; L6 is branch protection, configured not coded). |
 | Custom (deterministic) | Customer-supplied binary | `regatta.yaml gates:` row with `type: deterministic` + `command:` | Customer-specific policy (license audit, i18n completeness). |
 | Custom (AI) | `regatta.yaml gates:` row with `type: ai` + `model:` + prompt | `contracts/prompts/<gate-id>.md` (signed) | Customer-specific judicial check. |
 

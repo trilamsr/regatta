@@ -12,6 +12,7 @@ func runCheck(t *testing.T, diff string) schemas.GateResult {
 }
 
 func TestCheck_StateFlipWithCitation_Passes(t *testing.T) {
+	t.Parallel()
 	d := `diff --git a/M.md b/M.md
 --- a/M.md
 +++ b/M.md
@@ -27,6 +28,7 @@ func TestCheck_StateFlipWithCitation_Passes(t *testing.T) {
 }
 
 func TestCheck_StateFlipWithoutCitation_Fails(t *testing.T) {
+	t.Parallel()
 	d := `diff --git a/M.md b/M.md
 --- a/M.md
 +++ b/M.md
@@ -45,6 +47,7 @@ func TestCheck_StateFlipWithoutCitation_Fails(t *testing.T) {
 }
 
 func TestCheck_TextEdit_Fails(t *testing.T) {
+	t.Parallel()
 	d := `diff --git a/M.md b/M.md
 --- a/M.md
 +++ b/M.md
@@ -63,6 +66,7 @@ func TestCheck_TextEdit_Fails(t *testing.T) {
 }
 
 func TestCheck_InvisibleGlyphInjection_Fails(t *testing.T) {
+	t.Parallel()
 	// Inject a zero-width space mid-word. Stripping happens before NFC,
 	// so the strip-then-compare path treats them as equal *text* — meaning
 	// L0 must compare the raw (pre-normalize) text to catch the injection.
@@ -88,6 +92,7 @@ func TestCheck_InvisibleGlyphInjection_Fails(t *testing.T) {
 }
 
 func TestCheck_NFCEquivalence_Passes(t *testing.T) {
+	t.Parallel()
 	d := "diff --git a/M.md b/M.md\n" +
 		"--- a/M.md\n" +
 		"+++ b/M.md\n" +
@@ -102,6 +107,7 @@ func TestCheck_NFCEquivalence_Passes(t *testing.T) {
 }
 
 func TestCheck_CriterionAdded_Fails(t *testing.T) {
+	t.Parallel()
 	d := `diff --git a/M.md b/M.md
 --- a/M.md
 +++ b/M.md
@@ -117,6 +123,7 @@ func TestCheck_CriterionAdded_Fails(t *testing.T) {
 }
 
 func TestCheck_CriterionRemoved_Fails(t *testing.T) {
+	t.Parallel()
 	d := `diff --git a/M.md b/M.md
 --- a/M.md
 +++ b/M.md
@@ -132,6 +139,7 @@ func TestCheck_CriterionRemoved_Fails(t *testing.T) {
 }
 
 func TestCheck_StateRevert_Fails(t *testing.T) {
+	t.Parallel()
 	d := `diff --git a/M.md b/M.md
 --- a/M.md
 +++ b/M.md
@@ -155,6 +163,7 @@ func TestCheck_StateRevert_Fails(t *testing.T) {
 // compareCriteria returns no findings; verdict is pass-because-clean.
 // Behavior is the same; meaning differs. This test pins the meaning.
 func TestCheck_PureRename_Passes(t *testing.T) {
+	t.Parallel()
 	d := `diff --git a/MILESTONES_OLD.md b/MILESTONES.md
 similarity index 100%
 rename from MILESTONES_OLD.md
@@ -167,6 +176,7 @@ rename to MILESTONES.md
 }
 
 func TestCheck_NonSpecFile_Skipped(t *testing.T) {
+	t.Parallel()
 	d := `diff --git a/src/main.go b/src/main.go
 --- a/src/main.go
 +++ b/src/main.go
