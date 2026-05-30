@@ -10,6 +10,14 @@ contracts follow the deprecation cycle described in `PRINCIPLES.md`
 
 ## Unreleased
 
+## v0.0.1 - 2026-05-30
+
+First canary tag. Mutation-verifies the release.yml workflow
+end-to-end: signed-tag verify, make ci-check at tagged commit,
+artifact build, SLSA provenance attestation, gh release create.
+No customer-visible product code yet; v0.0.1 is the release-
+pipeline smoke release.
+
 ### Changed
 
 - Repo restructure Wave 1 (Foundation). Tree shape now satisfies
