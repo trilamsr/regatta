@@ -217,3 +217,90 @@ func TestCLI_L0_Help(t *testing.T) {
 		t.Fatalf("expected usage; got stdout=%q stderr=%q", stdout, stderr)
 	}
 }
+
+func TestCLI_ValidateConfig_Happy(t *testing.T) {
+	t.Parallel()
+	root := smokeModuleRoot()
+	if root == "" {
+		t.Skip("module root not resolvable")
+	}
+	dir := t.TempDir()
+	src, err := os.ReadFile(filepath.Join(root, "examples/minimal/regatta.yaml"))
+	if err != nil {
+		t.Fatalf("read example: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), src, 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	code, stdout, stderr := runSmoke(t, dir, []string{"validate-config"}, nil)
+	expectExit(t, 0, code, stdout, stderr)
+}
+
+func TestCLI_ValidateConfig_Malformed(t *testing.T) {
+	t.Parallel()
+	root := smokeModuleRoot()
+	if root == "" {
+		t.Skip("module root not resolvable")
+	}
+	dir := t.TempDir()
+	src, err := os.ReadFile(filepath.Join(root, "cmd/regatta/testdata/cli_smoke/malformed_config.yaml"))
+	if err != nil {
+		t.Fatalf("read malformed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), src, 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	code, stdout, stderr := runSmoke(t, dir, []string{"validate-config"}, nil)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit on malformed config; got 0\nstdout=%q stderr=%q", stdout, stderr)
+	}
+	if stderr == "" {
+		t.Fatalf("expected stderr explanation; got empty")
+	}
+}
+
+func TestCLI_VerifyRepoConfig_MissingFlag(t *testing.T) {
+	t.Parallel()
+	code, stdout, stderr := runSmoke(t, t.TempDir(), []string{"verify-repo-config"}, nil)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit when -owner/-repo missing; got 0\nstdout=%q stderr=%q", stdout, stderr)
+	}
+	if stderr == "" {
+		t.Fatalf("expected stderr explanation; got empty")
+	}
+}
+
+func TestCLI_Serve_TickOnceStub(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	itemsDir := filepath.Join(dir, ".regatta", "items")
+	if err := os.MkdirAll(itemsDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	args := []string{
+		"serve",
+		"-tick-once",
+		"-spawner=stub",
+		"-repo=" + dir,
+		"-items-root=" + dir,
+		"-db=" + filepath.Join(dir, "state.db"),
+	}
+	code, stdout, stderr := runSmoke(t, dir, args, nil)
+	expectExit(t, 0, code, stdout, stderr)
+}
+
+func TestCLI_Serve_BogusSpawner(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	args := []string{
+		"serve",
+		"-tick-once",
+		"-spawner=bogus",
+		"-repo=" + dir,
+		"-db=" + filepath.Join(dir, "state.db"),
+	}
+	code, stdout, stderr := runSmoke(t, dir, args, nil)
+	if code == 0 {
+		t.Fatalf("expected non-zero exit with bogus spawner; got 0\nstdout=%q stderr=%q", stdout, stderr)
+	}
+}
