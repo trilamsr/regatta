@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -42,29 +43,91 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
-	if err := os.WriteFile("regatta.yaml", yamlBytes, 0o644); err != nil {
-		fmt.Fprintf(stderr, "regatta init: write regatta.yaml: %v\n", err)
-		return 1
+	// Classify each file's action BEFORE any write so divergence
+	// causes an atomic refusal — never partial state.
+	type decision struct {
+		path   string
+		blurb  string
+		bytes  []byte
+		action string // "write", "skip", "overwrite", "diverge"
 	}
-	if !*jsonOut {
-		fmt.Fprintln(stdout, "+ wrote regatta.yaml         (your config; L0 gate enabled)")
+	files := []decision{
+		{path: "regatta.yaml", blurb: "(your config; L0 gate enabled)", bytes: yamlBytes},
+		{path: filepath.Join(".regatta", "sample.diff"), blurb: "(a demo attack against MILESTONES.md)", bytes: diffBytes},
+	}
+	for i := range files {
+		existing, err := os.ReadFile(files[i].path)
+		switch {
+		case os.IsNotExist(err):
+			files[i].action = "write"
+		case err != nil:
+			fmt.Fprintf(stderr, "regatta init: stat %s: %v\n", files[i].path, err)
+			return 1
+		case bytes.Equal(existing, files[i].bytes):
+			files[i].action = "skip"
+		case *force:
+			files[i].action = "overwrite"
+		default:
+			files[i].action = "diverge"
+		}
+	}
+	// Short-circuit on any divergence — print one friendly error per
+	// diverged file and refuse before any write happens.
+	for _, d := range files {
+		if d.action == "diverge" {
+			fmt.Fprintf(stderr, "regatta init: %s already exists and differs from the bundled template.\n", d.path)
+			fmt.Fprintf(stderr, "  To re-init: rm regatta.yaml .regatta/sample.diff\n")
+			fmt.Fprintf(stderr, "  To overwrite: regatta init --force\n")
+			return 2
+		}
 	}
 
-	if err := os.MkdirAll(".regatta", 0o755); err != nil {
-		fmt.Fprintf(stderr, "regatta init: mkdir .regatta: %v\n", err)
-		return 1
-	}
-	diffPath := filepath.Join(".regatta", "sample.diff")
-	if err := os.WriteFile(diffPath, diffBytes, 0o644); err != nil {
-		fmt.Fprintf(stderr, "regatta init: write %s: %v\n", diffPath, err)
-		return 1
-	}
-	if !*jsonOut {
-		fmt.Fprintln(stdout, "+ wrote .regatta/sample.diff (a demo attack against MILESTONES.md)")
+	// Ensure .regatta/ exists if any file inside it needs writing.
+	for _, d := range files {
+		if d.action == "skip" {
+			continue
+		}
+		if dir := filepath.Dir(d.path); dir != "." {
+			if err := safeMkdir(dir); err != nil {
+				fmt.Fprintf(stderr, "regatta init: %v\n", err)
+				return 2
+			}
+		}
 	}
 
-	// Re-read sample.diff so the verdict reflects what's on disk
-	// (operator might inspect it).
+	// Apply.
+	var written, skipped, overwritten []string
+	for _, d := range files {
+		switch d.action {
+		case "write":
+			if err := os.WriteFile(d.path, d.bytes, 0o644); err != nil {
+				fmt.Fprintf(stderr, "regatta init: write %s: %v\n", d.path, err)
+				return 1
+			}
+			if !*jsonOut {
+				fmt.Fprintf(stdout, "+ wrote %s %s\n", padPath(d.path), d.blurb)
+			}
+			written = append(written, d.path)
+		case "skip":
+			if !*jsonOut {
+				fmt.Fprintf(stdout, "= %s unchanged\n", d.path)
+			}
+			skipped = append(skipped, d.path)
+		case "overwrite":
+			if err := os.WriteFile(d.path, d.bytes, 0o644); err != nil {
+				fmt.Fprintf(stderr, "regatta init: write %s: %v\n", d.path, err)
+				return 1
+			}
+			if !*jsonOut {
+				fmt.Fprintf(stdout, "! overwrote %s %s\n", padPath(d.path), d.blurb)
+			}
+			overwritten = append(overwritten, d.path)
+		}
+	}
+
+	// Re-read sample.diff so the demo verdict reflects what's on
+	// disk (operator might inspect or edit it).
+	diffPath := files[1].path
 	onDisk, err := os.ReadFile(diffPath)
 	if err != nil {
 		fmt.Fprintf(stderr, "regatta init: re-read %s: %v\n", diffPath, err)
@@ -73,16 +136,48 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 	res := l0.Check(l0.Default(), l0.ParseUnifiedDiff(string(onDisk)))
 
 	if *jsonOut {
-		if err := emitInitJSON(stdout, []string{"regatta.yaml", diffPath}, nil, nil, res); err != nil {
+		if err := emitInitJSON(stdout, written, skipped, overwritten, res); err != nil {
 			fmt.Fprintf(stderr, "regatta init: encode JSON: %v\n", err)
 			return 1
 		}
 		return 0
 	}
-
 	emitInitProse(stdout, res)
-	_ = force
 	return 0
+}
+
+// safeMkdir ensures path exists as a regular directory. Refuses if
+// path exists as a symlink, regular file, device, or other non-dir.
+// Defends against an attacker pre-creating .regatta -> /etc.
+func safeMkdir(path string) error {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return os.MkdirAll(path, 0o755)
+	}
+	if err != nil {
+		return fmt.Errorf("lstat %s: %w", path, err)
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to write: %s exists but is not a regular directory (got mode %s). Remove or rename it, then re-run", path, info.Mode())
+	}
+	return nil
+}
+
+// padPath right-pads the path for column alignment in friendly output.
+func padPath(p string) string {
+	const width = 22
+	if len(p) >= width {
+		return p
+	}
+	return p + spaces(width-len(p))
+}
+
+func spaces(n int) string {
+	out := make([]byte, n)
+	for i := range out {
+		out[i] = ' '
+	}
+	return string(out)
 }
 
 // emitInitProse formats the GateResult into the friendly demo block.

@@ -202,3 +202,92 @@ func TestInit_PatternBlurbFallback(t *testing.T) {
 		t.Errorf("fallback should point at docs/incidents.md; got %q", got)
 	}
 }
+
+func TestInit_IdempotentReRun(t *testing.T) {
+	dir := t.TempDir()
+	if code, _, stderr := runInitInDir(t, dir, nil); code != 0 {
+		t.Fatalf("first run failed: code=%d stderr=%q", code, stderr)
+	}
+	code, stdout, stderr := runInitInDir(t, dir, nil)
+	if code != 0 {
+		t.Fatalf("second run failed: code=%d stderr=%q", code, stderr)
+	}
+	if !bytes.Contains([]byte(stdout), []byte("= regatta.yaml unchanged")) {
+		t.Errorf("expected '= regatta.yaml unchanged' marker; got %q", stdout)
+	}
+	if !bytes.Contains([]byte(stdout), []byte("= .regatta/sample.diff unchanged")) {
+		t.Errorf("expected '= .regatta/sample.diff unchanged' marker; got %q", stdout)
+	}
+}
+
+func TestInit_RefusesDivergedYaml(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), []byte("# operator hand-edit\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	code, _, stderr := runInitInDir(t, dir, nil)
+	if code != 2 {
+		t.Fatalf("expected exit 2 on diverged yaml; got %d stderr=%q", code, stderr)
+	}
+	for _, want := range []string{"regatta.yaml", "--force"} {
+		if !bytes.Contains([]byte(stderr), []byte(want)) {
+			t.Errorf("stderr should mention %q; got %q", want, stderr)
+		}
+	}
+}
+
+func TestInit_DivergedSampleDiff(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, ".regatta"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".regatta", "sample.diff"), []byte("not the embedded blob\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	code, _, stderr := runInitInDir(t, dir, nil)
+	if code != 2 {
+		t.Fatalf("expected exit 2 on diverged sample.diff; got %d stderr=%q", code, stderr)
+	}
+	if !bytes.Contains([]byte(stderr), []byte(".regatta/sample.diff")) || !bytes.Contains([]byte(stderr), []byte("--force")) {
+		t.Errorf("stderr should mention path + --force; got %q", stderr)
+	}
+}
+
+func TestInit_FailsAtomicallyOnDivergence(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), []byte("# operator hand-edit\n"), 0o644); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	code, _, _ := runInitInDir(t, dir, nil)
+	if code != 2 {
+		t.Fatalf("expected exit 2; got %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".regatta", "sample.diff")); !os.IsNotExist(err) {
+		t.Fatalf("sample.diff should not have been written when yaml diverged; err=%v", err)
+	}
+}
+
+func TestInit_ForceOverwrites(t *testing.T) {
+	dir := t.TempDir()
+	seed := []byte("operator content\n")
+	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), seed, 0o644); err != nil {
+		t.Fatalf("seed yaml: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".regatta"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".regatta", "sample.diff"), seed, 0o644); err != nil {
+		t.Fatalf("seed diff: %v", err)
+	}
+	code, stdout, stderr := runInitInDir(t, dir, []string{"--force"})
+	if code != 0 {
+		t.Fatalf("expected exit 0 with --force; got %d stderr=%q", code, stderr)
+	}
+	yaml, _ := os.ReadFile(filepath.Join(dir, "regatta.yaml"))
+	if bytes.Equal(yaml, seed) {
+		t.Errorf("--force should have overwritten regatta.yaml")
+	}
+	if !bytes.Contains([]byte(stdout), []byte("! overwrote regatta.yaml")) {
+		t.Errorf("expected '! overwrote' marker; got %q", stdout)
+	}
+}
