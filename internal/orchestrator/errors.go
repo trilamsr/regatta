@@ -30,4 +30,10 @@ var (
 	// another live regatta instance. Distinct from state.ErrLockHeld
 	// which guards hotspot-locks within a single process.
 	ErrFlockHeld = errors.New("orchestrator: process flock held by another instance")
+
+	// ErrCascadeNonConverging fires when BriefLoader's dependency-
+	// archive fixed-point loop exceeds its iteration cap. Indicates
+	// corrupt depends_on_features graph data (e.g. a cycle that
+	// bypassed CycleCheck) — operators page on this.
+	ErrCascadeNonConverging = errors.New("orchestrator: dependency-archive cascade did not converge")
 )

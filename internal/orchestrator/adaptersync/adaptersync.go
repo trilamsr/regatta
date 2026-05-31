@@ -70,7 +70,7 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 
 	if len(items) == 0 {
 		slog.Warn("adapter.empty_list", "cutoff", pollStartedAt, "skipping_tombstone", true)
-		return s.cascadeChildrenOfArchivedPrograms(ctx)
+		return s.cascadeChildrenOfArchivedPrograms(ctx, pollStartedAt)
 	}
 
 	seen := map[string]bool{}
@@ -120,7 +120,7 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	for _, id := range archived {
 		slog.Warn("adapter.tombstoned", "id", id, "cutoff", pollStartedAt)
 	}
-	return s.cascadeChildrenOfArchivedPrograms(ctx)
+	return s.cascadeChildrenOfArchivedPrograms(ctx, pollStartedAt)
 }
 
 // cascadeChildrenOfArchivedPrograms converges any archived program
@@ -128,7 +128,12 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 // the failure mode where a prior tick archived the parent (via the
 // tombstone RETURNING) but crashed before fanning out, leaving the
 // children stranded outside the RETURNING set of subsequent ticks.
-func (s *Syncer) cascadeChildrenOfArchivedPrograms(ctx context.Context) error {
+//
+// Emits one child.cascade_archived per newly-archived child (rubric §6:
+// operators grep by child id, not parent id). Threads at through to
+// CascadeArchiveChildrenAt so updated_at lines up with the poll-start
+// tick rather than wall-clock drift.
+func (s *Syncer) cascadeChildrenOfArchivedPrograms(ctx context.Context, at time.Time) error {
 	orphans, err := s.db.ListArchivedProgramsWithLiveChildren(ctx)
 	if err != nil {
 		return fmt.Errorf("adaptersync: list orphaned programs: %w", err)
@@ -137,10 +142,13 @@ func (s *Syncer) cascadeChildrenOfArchivedPrograms(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if err := s.db.CascadeArchiveChildren(ctx, parentID); err != nil {
+		archived, err := s.db.CascadeArchiveChildrenAt(ctx, parentID, at)
+		if err != nil {
 			return fmt.Errorf("adaptersync: cascade %s: %w", parentID, err)
 		}
-		slog.Warn("adapter.cascade_reconciled", "program_id", parentID)
+		for _, childID := range archived {
+			slog.Warn("child.cascade_archived", "child", childID, "parent", parentID, "cutoff", at)
+		}
 	}
 	return nil
 }

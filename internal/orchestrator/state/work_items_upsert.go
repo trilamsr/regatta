@@ -119,20 +119,43 @@ func (d *DB) TombstoneBySourceAt(ctx context.Context, source WorkItemSource, bef
 	return ids, rows.Err()
 }
 
-// CascadeArchiveChildren marks every work_items row whose
-// parent_program_id matches as archived. Cascade-SOFT (spec §2.4):
-// the agents table is not touched, so any in-flight agent continues
-// to its natural terminal state.
+// CascadeArchiveChildren is the legacy shim that stamps updated_at
+// from d.now() and discards the returned id slice. New production
+// callers should use CascadeArchiveChildrenAt with an explicit
+// poll-start tick so concurrent producers cannot race on the DB's
+// clock — same constraint as UpsertWorkItemAt + TombstoneBySourceAt.
 func (d *DB) CascadeArchiveChildren(ctx context.Context, parentID string) error {
-	now := d.now().UTC().Unix()
-	if _, err := d.sql.ExecContext(ctx, `
+	_, err := d.CascadeArchiveChildrenAt(ctx, parentID, d.now())
+	return err
+}
+
+// CascadeArchiveChildrenAt marks every live work_items row whose
+// parent_program_id matches as archived and returns the IDs that
+// were just flipped (rows already archived are skipped, both in
+// the UPDATE and the return slice). Cascade-SOFT (spec §2.4): the
+// agents table is not touched, so any in-flight agent continues to
+// its natural terminal state. The caller-supplied at stamps
+// updated_at so a sweep is idempotent under retry.
+func (d *DB) CascadeArchiveChildrenAt(ctx context.Context, parentID string, at time.Time) ([]string, error) {
+	stamp := at.UTC().Unix()
+	rows, err := d.sql.QueryContext(ctx, `
 		UPDATE work_items SET status = ?, updated_at = ?
-		WHERE parent_program_id = ? AND status != ?`,
-		string(WorkStatusArchived), now, parentID, string(WorkStatusArchived),
-	); err != nil {
-		return fmt.Errorf("state: cascade archive %s: %w", parentID, err)
+		WHERE parent_program_id = ? AND status != ?
+		RETURNING id`,
+		string(WorkStatusArchived), stamp, parentID, string(WorkStatusArchived))
+	if err != nil {
+		return nil, fmt.Errorf("state: cascade archive %s: %w", parentID, err)
 	}
-	return nil
+	defer func() { _ = rows.Close() }()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("state: scan cascade id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func encodeDeps(deps []string) (string, error) {

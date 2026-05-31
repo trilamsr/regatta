@@ -35,11 +35,6 @@ const maxBriefSize = 1 << 20
 // converges in O(max-chain-depth) iterations.
 const maxCascadeIterations = 1000
 
-// ErrCascadeNonConverging fires when reconcileDependencyArchive's
-// fixed-point loop exceeds maxCascadeIterations. Indicates corrupt
-// graph data (e.g. cycles that bypassed CycleCheck).
-var ErrCascadeNonConverging = errors.New("brief_loader: dependency-archive cascade did not converge")
-
 // LoadAndVerifyBrief reads path from fsys, unmarshals into
 // ProgramBrief, runs ProgramBrief.Validate, then VerifySignature
 // under keyring. Returns ErrHMACInvalid (wrapped) when the
@@ -231,7 +226,7 @@ func (b *BriefLoader) reconcileDependencyArchive(ctx context.Context, at time.Ti
 			return nil
 		}
 	}
-	return ErrCascadeNonConverging
+	return orchestrator.ErrCascadeNonConverging
 }
 
 // cascadeDependencyArchiveOnce executes one pass over live brief

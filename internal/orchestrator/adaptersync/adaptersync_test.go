@@ -326,6 +326,63 @@ func TestSync_CascadeReconcilerConverges(t *testing.T) {
 	}
 }
 
+// TestSync_CascadeReconciler_EmitsPerChildEvent pins the rubric §6
+// contract: operators grep one log entry per cascade-archived child
+// (not one entry per parent). Old behavior emitted
+// adapter.cascade_reconciled once per orphan parent and lost the
+// child IDs in the noise.
+func TestSync_CascadeReconciler_EmitsPerChildEvent(t *testing.T) {
+	logs := captureLogs(t)
+	db := newSyncTestDB(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+
+	seed := &stubAdapter{items: []schemas.WorkItem{
+		{ID: "PROG-Y", Kind: schemas.KindProgram, Title: "p", Lane: "server", Status: schemas.StatusPlanned},
+	}}
+	if err := adaptersync.New(seed, db).Sync(ctx, t0); err != nil {
+		t.Fatalf("seed Sync: %v", err)
+	}
+	for _, id := range []string{"CHILD-1", "CHILD-2", "CHILD-3"} {
+		child := state.WorkItem{
+			ID: id, Kind: state.KindFeature, Title: id, Lane: "server",
+			Status: state.WorkStatusRunning, ParentProgramID: "PROG-Y",
+		}
+		if err := db.UpsertWorkItemAt(ctx, child, state.SourceBrief, t0); err != nil {
+			t.Fatalf("seed child %s: %v", id, err)
+		}
+	}
+	if _, err := db.SQL().ExecContext(ctx,
+		`UPDATE work_items SET status='archived', updated_at=? WHERE id='PROG-Y'`, t0.Unix()); err != nil {
+		t.Fatalf("force-archive PROG-Y: %v", err)
+	}
+
+	next := &stubAdapter{items: []schemas.WorkItem{
+		{ID: "KEEP", Kind: schemas.KindFeature, Title: "k", Lane: "server", Status: schemas.StatusPlanned},
+	}}
+	if err := adaptersync.New(next, db).Sync(ctx, t0.Add(time.Minute)); err != nil {
+		t.Fatalf("next Sync: %v", err)
+	}
+
+	out := logs.String()
+	for _, id := range []string{"CHILD-1", "CHILD-2", "CHILD-3"} {
+		needle := "child.cascade_archived"
+		if !strings.Contains(out, needle) {
+			t.Fatalf("logs missing %s event:\n%s", needle, out)
+		}
+		if !strings.Contains(out, "child="+id) {
+			t.Fatalf("logs missing child=%s:\n%s", id, out)
+		}
+	}
+	if !strings.Contains(out, "parent=PROG-Y") {
+		t.Fatalf("logs missing parent=PROG-Y:\n%s", out)
+	}
+	count := strings.Count(out, "child.cascade_archived")
+	if count != 3 {
+		t.Fatalf("child.cascade_archived emitted %d times, want 3:\n%s", count, out)
+	}
+}
+
 // TestSync_LogFieldRenamedToCutoff pins the rename from "at" to
 // "cutoff" — operators grep tombstone logs by a stable key.
 func TestSync_LogFieldRenamedToCutoff(t *testing.T) {
