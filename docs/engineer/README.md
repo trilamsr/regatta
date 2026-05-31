@@ -20,6 +20,12 @@ Read time: 1 minute (this index).
 5. [`post-mortems/`](post-mortems/) - incident post-mortem
    template + archive.
 
+## Propose
+
+6. [`../wedges/`](../wedges/README.md) - research dossiers for
+   prospective Phase 2 / Phase 3 features. Land a dossier here
+   before promoting a feature into `design.md`'s milestone tables.
+
 ## Cross-references
 
 - Tree map + read order for the whole repo: [`../../ARCHITECTURE.md`](../../ARCHITECTURE.md).
