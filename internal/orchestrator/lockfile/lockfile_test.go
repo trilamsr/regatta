@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"github.com/trilamsr/regatta/internal/orchestrator"
 )
 
 func TestAcquire_Release_Roundtrip(t *testing.T) {
@@ -41,7 +39,7 @@ func TestAcquire_HeldByLivePID_ReturnsErrFlockHeld(t *testing.T) {
 	defer func() { _ = first.Release() }()
 
 	_, err = Acquire(path)
-	if !errors.Is(err, orchestrator.ErrFlockHeld) {
+	if !errors.Is(err, ErrFlockHeld) {
 		t.Fatalf("second Acquire err=%v want ErrFlockHeld", err)
 	}
 }
@@ -109,13 +107,13 @@ func TestAcquire_DualHolderImpossible_WithStalePID(t *testing.T) {
 		if errA == nil {
 			wins++
 			_ = lockA.Release()
-		} else if !errors.Is(errA, orchestrator.ErrFlockHeld) {
+		} else if !errors.Is(errA, ErrFlockHeld) {
 			t.Fatalf("iter %d errA=%v want nil or ErrFlockHeld", i, errA)
 		}
 		if errB == nil {
 			wins++
 			_ = lockB.Release()
-		} else if !errors.Is(errB, orchestrator.ErrFlockHeld) {
+		} else if !errors.Is(errB, ErrFlockHeld) {
 			t.Fatalf("iter %d errB=%v want nil or ErrFlockHeld", i, errB)
 		}
 		if wins != 1 {

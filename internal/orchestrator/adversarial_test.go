@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
+	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
+	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -94,9 +96,17 @@ func TestRunConcurrentWithRecoverIsRaceFree(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	o := New(db, ad, spawner.NewStub(), Config{
-		PollInterval: 5 * time.Millisecond, TickInterval: 5 * time.Millisecond,
-		HeartbeatInterval: 5 * time.Millisecond, LockTTL: time.Hour,
+	o := New(Config{
+		AdapterSync:       adaptersync.New(ad, db),
+		BriefLoader:       noopBriefLoader{},
+		DB:                db,
+		Scheduler:         scheduler.New(db, scheduler.Config{LockTTL: time.Hour}),
+		Spawner:           spawner.NewStub(),
+		DBPath:            dbPath,
+		PollInterval:      5 * time.Millisecond,
+		TickInterval:      5 * time.Millisecond,
+		HeartbeatInterval: 5 * time.Millisecond,
+		LockTTL:           time.Hour,
 	})
 	o.SetLogger(t.Logf)
 
@@ -167,11 +177,20 @@ func TestHeartbeatKeepsActiveLockAlive(t *testing.T) {
 	clock := time.Unix(1_700_000_000, 0).UTC()
 	db.SetClock(func() time.Time { return clock })
 
-	o := New(db, ad, spawner.NewStub(), Config{
-		PollInterval: time.Minute, TickInterval: time.Minute,
+	o := New(Config{
+		AdapterSync: adaptersync.New(ad, db),
+		BriefLoader: noopBriefLoader{},
+		DB:          db,
+		Scheduler: scheduler.New(db, scheduler.Config{
+			LockTTL:  time.Minute,
+			Hotspots: func(string) []string { return []string{"hotspot"} },
+		}),
+		Spawner:           spawner.NewStub(),
+		DBPath:            dbPath,
+		PollInterval:      time.Minute,
+		TickInterval:      time.Minute,
 		HeartbeatInterval: time.Minute,
 		LockTTL:           time.Minute,
-		Hotspots:          func(string) []string { return []string{"hotspot"} },
 	})
 	o.SetLogger(t.Logf)
 
@@ -212,6 +231,7 @@ func writeAdvItem(t *testing.T, path, name string) {
 	body := fmt.Sprintf(`---
 id: ITEM-%s
 title: adv %s
+kind: feature
 lane: server
 status: planned
 ---

@@ -10,14 +10,26 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
+	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
+	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
+// noopBriefLoader is a zero-side-effect BriefLoader stub used by the
+// internal orchestrator_test harness. Live tests against the real
+// program.BriefLoader sit in pollonce_test.go (package
+// orchestrator_test) to avoid the internal/program -> internal/
+// orchestrator import cycle.
+type noopBriefLoader struct{}
+
+func (noopBriefLoader) Sync(context.Context, time.Time) error { return nil }
+
 const tmplItem = `---
 id: ITEM-%s
 title: Item %s
+kind: feature
 lane: server
 status: planned
 ---
@@ -52,9 +64,17 @@ func newHarness(t *testing.T, count int) (*Orchestrator, *spawner.Stub, *state.D
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	stub := spawner.NewStub()
-	o := New(db, ad, stub, Config{
-		PollInterval: time.Second, TickInterval: time.Second,
-		HeartbeatInterval: time.Second, LockTTL: time.Minute,
+	o := New(Config{
+		AdapterSync:       adaptersync.New(ad, db),
+		BriefLoader:       noopBriefLoader{},
+		DB:                db,
+		Scheduler:         scheduler.New(db, scheduler.Config{LockTTL: time.Minute}),
+		Spawner:           stub,
+		DBPath:            dbPath,
+		PollInterval:      time.Second,
+		TickInterval:      time.Second,
+		HeartbeatInterval: time.Second,
+		LockTTL:           time.Minute,
 	})
 	o.SetLogger(t.Logf)
 	return o, stub, db, dir
@@ -71,9 +91,15 @@ func TestPollAndScheduleEndToEnd(t *testing.T) {
 	if err := o.PollOnce(ctx); err != nil {
 		t.Fatalf("poll: %v", err)
 	}
-	pending, _ := db.ListAgentsByState(ctx, state.AgentPending)
-	if len(pending) != 2 {
-		t.Fatalf("pending=%d, want 2", len(pending))
+	// New universal-queue semantics: PollOnce mirrors into work_items
+	// only. Agent materialization happens inside ScheduleOnce's
+	// scheduler.Tick (Wave 4 join-driven reservation).
+	spawnable, err := db.ListSpawnable(ctx)
+	if err != nil {
+		t.Fatalf("list spawnable: %v", err)
+	}
+	if len(spawnable) != 2 {
+		t.Fatalf("spawnable work_items=%d, want 2", len(spawnable))
 	}
 
 	if err := o.ScheduleOnce(ctx); err != nil {
@@ -103,9 +129,14 @@ func TestPollIsIdempotent(t *testing.T) {
 	if err := o.PollOnce(ctx); err != nil {
 		t.Fatalf("poll 2: %v", err)
 	}
-	pending, _ := db.ListAgentsByState(ctx, state.AgentPending)
-	if len(pending) != 1 {
-		t.Fatalf("pending=%d, want 1", len(pending))
+	// Idempotence now lives at the work_items level — repeated
+	// adapterSync.Sync calls must not duplicate rows.
+	spawnable, err := db.ListSpawnable(ctx)
+	if err != nil {
+		t.Fatalf("list spawnable: %v", err)
+	}
+	if len(spawnable) != 1 {
+		t.Fatalf("spawnable=%d, want 1", len(spawnable))
 	}
 }
 
@@ -164,9 +195,17 @@ func TestRunSurvivesFailingAdapter(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	ad := &failingAdapter{}
-	o := New(db, ad, spawner.NewStub(), Config{
-		PollInterval: 10 * time.Millisecond, TickInterval: 10 * time.Millisecond,
-		HeartbeatInterval: 10 * time.Millisecond, LockTTL: time.Minute,
+	o := New(Config{
+		AdapterSync:       adaptersync.New(ad, db),
+		BriefLoader:       noopBriefLoader{},
+		DB:                db,
+		Scheduler:         scheduler.New(db, scheduler.Config{LockTTL: time.Minute}),
+		Spawner:           spawner.NewStub(),
+		DBPath:            dbPath,
+		PollInterval:      10 * time.Millisecond,
+		TickInterval:      10 * time.Millisecond,
+		HeartbeatInterval: 10 * time.Millisecond,
+		LockTTL:           time.Minute,
 	})
 	o.SetLogger(t.Logf)
 
@@ -254,15 +293,23 @@ func TestPollPropagatesLaneChange(t *testing.T) {
 	if err := o.PollOnce(ctx); err != nil {
 		t.Fatalf("first poll: %v", err)
 	}
-	agents, _ := db.ListAgentsByState(ctx, state.AgentPending)
-	if len(agents) != 1 || agents[0].Lane != "server" {
-		t.Fatalf("initial state mismatch: %+v", agents)
+	// Lane propagation now lives on work_items (universal-queue). The
+	// agents row is materialized later by ScheduleOnce's
+	// scheduler.Tick, but adapter rewrites of `lane:` must hit
+	// work_items on the next PollOnce regardless.
+	wi, err := db.GetWorkItem(ctx, "ITEM-A")
+	if err != nil {
+		t.Fatalf("get work_item: %v", err)
+	}
+	if wi.Lane != "server" {
+		t.Fatalf("initial work_item lane=%q, want server", wi.Lane)
 	}
 
 	file := filepath.Join(dir, ".regatta", "items", "A.md")
 	updated := []byte(`---
 id: ITEM-A
 title: Item A
+kind: feature
 lane: client
 status: planned
 ---
@@ -278,9 +325,12 @@ status: planned
 	if err := o.PollOnce(ctx); err != nil {
 		t.Fatalf("second poll: %v", err)
 	}
-	agents, _ = db.ListAgentsByState(ctx, state.AgentPending)
-	if len(agents) != 1 || agents[0].Lane != "client" {
-		t.Fatalf("expected lane=client after re-poll; got %+v", agents)
+	wi, err = db.GetWorkItem(ctx, "ITEM-A")
+	if err != nil {
+		t.Fatalf("get work_item after re-poll: %v", err)
+	}
+	if wi.Lane != "client" {
+		t.Fatalf("expected work_item lane=client after re-poll; got %q", wi.Lane)
 	}
 }
 

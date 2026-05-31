@@ -62,6 +62,7 @@ func TestServeWithClaudeSpawnerEndToEnd(t *testing.T) {
 	item := `---
 id: DEMO-1
 title: end-to-end claude spawn
+kind: feature
 lane: server
 status: planned
 ---

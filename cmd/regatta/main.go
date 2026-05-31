@@ -24,6 +24,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -34,7 +35,9 @@ import (
 	"github.com/trilamsr/regatta/internal/gates/l0"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
+	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
+	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/program"
@@ -268,12 +271,29 @@ func runServe(args []string) int {
 		return 2
 	}
 
-	o := orchestrator.New(db, ad, set.Spawner, orchestrator.Config{
+	briefsDir := filepath.Join(*repoRoot, ".regatta", "programs")
+	if err := os.MkdirAll(briefsDir, 0o750); err != nil {
+		logger.Printf("mkdir briefs dir: %v", err)
+		return 2
+	}
+	syncer := adaptersync.New(ad, db)
+	loader := program.NewBriefLoader(os.DirFS(briefsDir), db, loadBriefKeyring())
+	sched := scheduler.New(db, scheduler.Config{
+		LaneCaps: map[string]int(laneCaps),
+		LockTTL:  *lockTTL,
+	})
+
+	o := orchestrator.New(orchestrator.Config{
+		AdapterSync:       syncer,
+		BriefLoader:       loader,
+		DB:                db,
+		Scheduler:         sched,
+		Spawner:           set.Spawner,
+		DBPath:            *dbPath,
 		PollInterval:      *pollDur,
 		TickInterval:      *tickDur,
 		HeartbeatInterval: *heartDur,
 		LockTTL:           *lockTTL,
-		LaneCaps:          map[string]int(laneCaps),
 	})
 	o.SetLogger(logger.Printf)
 	if set.Worktrees != nil {
@@ -339,6 +359,24 @@ func buildSpawner(name, repoRoot, claudeBin, baseRef string) (spawnerSet, error)
 	default:
 		return spawnerSet{}, fmt.Errorf("unknown spawner %q (want stub|claude)", name)
 	}
+}
+
+// loadBriefKeyring reads the HMAC key from REGATTA_HMAC_KEY (or the
+// env var named by REGATTA_HMAC_KEY_ENV when set) and returns it as a
+// one-entry keyring keyed "default". Empty keyring when unset —
+// BriefLoader skips brief verification only when no briefs exist on
+// disk; a brief landing without a configured key surfaces the misconfig
+// to the operator via brief.rejected logs.
+func loadBriefKeyring() map[string][]byte {
+	envName := os.Getenv("REGATTA_HMAC_KEY_ENV")
+	if envName == "" {
+		envName = "REGATTA_HMAC_KEY"
+	}
+	v := os.Getenv(envName)
+	if v == "" {
+		return map[string][]byte{}
+	}
+	return map[string][]byte{"default": []byte(v)}
 }
 
 func runVerifyRepoConfig(args []string) int {
