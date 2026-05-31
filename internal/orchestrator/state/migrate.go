@@ -2,8 +2,6 @@
 // versioned forward-only migrations from the embedded migrations/
 // directory. Open() calls Migrate(); callers should not invoke this
 // directly outside tests.
-//
-// per RFC-0001 §3: schema bumps require goose-managed migrations.
 package state
 
 import (

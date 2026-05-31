@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sort"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -28,9 +29,8 @@ func TestListSpawnable_PropertyTopologicalReady(t *testing.T) {
 		for i := range nodes {
 			nodes[i] = "F-" + string(rune('A'+i))
 		}
-		// Allow edges only from higher index to lower (guaranteed acyclic).
-		// Node 0 has no possible predecessors; SampledFrom panics on
-		// empty input so we explicitly leave it dep-less.
+		// Edges flow only from higher to lower index, so the graph is
+		// acyclic by construction. Node 0 has no predecessors.
 		deps := make(map[string][]string, n)
 		for i := 0; i < n; i++ {
 			possible := nodes[:i]
@@ -59,6 +59,7 @@ func TestListSpawnable_PropertyTopologicalReady(t *testing.T) {
 		defer func() { _ = db.Close() }()
 
 		now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+		db.SetClock(func() time.Time { return now })
 		for _, id := range nodes {
 			status := state.WorkStatusPlanned
 			if merged[id] {
@@ -66,7 +67,7 @@ func TestListSpawnable_PropertyTopologicalReady(t *testing.T) {
 			}
 			w := state.WorkItem{ID: id, Kind: state.KindFeature, Title: id,
 				Lane: "server", Status: status, DependsOnFeatures: deps[id]}
-			if err := db.UpsertWorkItem(context.Background(), w, state.SourceBrief, now); err != nil {
+			if err := db.UpsertWorkItem(context.Background(), w, state.SourceBrief); err != nil {
 				rt.Fatalf("upsert %s: %v", id, err)
 			}
 		}
@@ -132,17 +133,6 @@ func keysSorted(m map[string]bool) []string {
 	for k := range m {
 		out = append(out, k)
 	}
-	// Use a local insertion-sort to avoid colliding with sort.Strings
-	// already imported by work_items_query_test.go's idsOf helper —
-	// keeps this file standalone for future reorgs.
-	sortStrings(out)
+	sort.Strings(out)
 	return out
-}
-
-func sortStrings(s []string) {
-	for i := 1; i < len(s); i++ {
-		for j := i; j > 0 && s[j-1] > s[j]; j-- {
-			s[j-1], s[j] = s[j], s[j-1]
-		}
-	}
 }

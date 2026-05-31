@@ -10,20 +10,23 @@ import (
 )
 
 // ErrCycleDetected fires when a CycleCheck would introduce a cycle
-// in work_items.depends_on_features. Defined here (and re-exported
-// from internal/orchestrator/errors.go) so the state package can
-// reference its own sentinel without an import cycle — same pattern
-// as ErrSchemaTooNew.
+// in work_items.depends_on_features.
 var ErrCycleDetected = errors.New("orchestrator: dependency cycle detected in work_items")
+
+// selectWorkItemsCols is the canonical column list for unaliased
+// work_items SELECTs feeding scanWorkItems. Centralising the column
+// order keeps GetWorkItem and ListByParent in lockstep with the
+// scanner. ListSpawnable joins on agents and uses its own aliased
+// column list; the scan order must still match this constant.
+const selectWorkItemsCols = `SELECT id, kind, title, lane, status,
+	COALESCE(parent_program_id, ''), depends_on_features,
+	acceptance_json, source, last_seen_at, created_at, updated_at`
 
 // ListByParent returns every work_items row whose parent_program_id
 // equals parentID, in id order.
 func (d *DB) ListByParent(ctx context.Context, parentID string) ([]WorkItem, error) {
-	rows, err := d.sql.QueryContext(ctx, `
-		SELECT id, kind, title, lane, status,
-		       COALESCE(parent_program_id, ''), depends_on_features,
-		       acceptance_json, source, last_seen_at, created_at, updated_at
-		FROM work_items WHERE parent_program_id = ? ORDER BY id`, parentID)
+	rows, err := d.sql.QueryContext(ctx,
+		selectWorkItemsCols+` FROM work_items WHERE parent_program_id = ? ORDER BY id`, parentID)
 	if err != nil {
 		return nil, fmt.Errorf("state: list by parent: %w", err)
 	}

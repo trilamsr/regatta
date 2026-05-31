@@ -6,13 +6,15 @@ import (
 )
 
 func TestSentinelsDistinct(t *testing.T) {
+	// Only the orchestrator-package-native sentinels live here.
+	// state.ErrSchemaTooNew / state.ErrCycleDetected /
+	// state.ErrInvalidTransition / state.ErrLockHeld are owned by
+	// the state package and imported directly by callers.
 	all := []error{
 		ErrBriefSHAMismatch,
 		ErrHMACInvalid,
 		ErrTargetExists,
 		ErrFlockHeld,
-		ErrSchemaTooNew,
-		ErrCycleDetected,
 	}
 	seen := map[string]bool{}
 	for _, e := range all {
@@ -27,11 +29,8 @@ func TestSentinelsDistinct(t *testing.T) {
 	}
 	// Identity check: catches a future regression where someone
 	// re-declares a sentinel with the same string but distinct
-	// identity (which would break errors.Is callers that import via
-	// the re-export path in state). We explicitly compare with ==
-	// (not errors.Is) because we want pointer-identity inequality
-	// across distinct sentinels; errorlint's wrapped-error warning
-	// does not apply when the intent is identity, not semantics.
+	// identity. We compare with == (not errors.Is) because we want
+	// pointer-identity inequality across distinct sentinels.
 	for i := range all {
 		for j := i + 1; j < len(all); j++ {
 			if all[i] == all[j] { //nolint:errorlint // identity check, not semantic match

@@ -1,7 +1,6 @@
-// External _test package to avoid import cycle: this file needs
-// orchestrator.ErrCycleDetected (re-exporter), and orchestrator
-// imports state. By living in package state_test we sit outside the
-// internal package graph.
+// External _test package: keeps the state package import surface
+// honest by exercising state from the outside, matching how every
+// production caller will see it.
 package state_test
 
 import (
@@ -14,7 +13,6 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -28,6 +26,16 @@ func newQueryTestDB(t *testing.T) *state.DB {
 	return db
 }
 
+// queryTestDBAt opens a query-test DB with the clock pinned to t0 so
+// tests can assert UpsertWorkItem-written timestamps without
+// threading a time argument through every call.
+func queryTestDBAt(t *testing.T, t0 time.Time) *state.DB {
+	t.Helper()
+	db := newQueryTestDB(t)
+	db.SetClock(func() time.Time { return t0 })
+	return db
+}
+
 func idsOf(items []state.WorkItem) []string {
 	out := make([]string, len(items))
 	for i, it := range items {
@@ -38,12 +46,12 @@ func idsOf(items []state.WorkItem) []string {
 }
 
 func TestListSpawnable_NoDeps_ReturnsAllPlanned(t *testing.T) {
-	db := newQueryTestDB(t)
-	ctx := context.Background()
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	db := queryTestDBAt(t, now)
+	ctx := context.Background()
 	for _, id := range []string{"F-1", "F-2", "F-3"} {
 		w := state.WorkItem{ID: id, Kind: state.KindFeature, Title: id, Lane: "server", Status: state.WorkStatusPlanned}
-		if err := db.UpsertWorkItem(ctx, w, state.SourceBrief, now); err != nil {
+		if err := db.UpsertWorkItem(ctx, w, state.SourceBrief); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -60,13 +68,15 @@ func TestListSpawnable_DepBlockedUntilMerged(t *testing.T) {
 	db := newQueryTestDB(t)
 	ctx := context.Background()
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	clk := now
+	db.SetClock(func() time.Time { return clk })
 	c1 := state.WorkItem{ID: "F-1", Kind: state.KindFeature, Title: "c1", Lane: "server", Status: state.WorkStatusPlanned}
 	c2 := state.WorkItem{ID: "F-2", Kind: state.KindFeature, Title: "c2", Lane: "server", Status: state.WorkStatusPlanned,
 		DependsOnFeatures: []string{"F-1"}}
-	if err := db.UpsertWorkItem(ctx, c1, state.SourceBrief, now); err != nil {
+	if err := db.UpsertWorkItem(ctx, c1, state.SourceBrief); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.UpsertWorkItem(ctx, c2, state.SourceBrief, now); err != nil {
+	if err := db.UpsertWorkItem(ctx, c2, state.SourceBrief); err != nil {
 		t.Fatal(err)
 	}
 
@@ -76,7 +86,8 @@ func TestListSpawnable_DepBlockedUntilMerged(t *testing.T) {
 	}
 
 	c1.Status = state.WorkStatusMerged
-	if err := db.UpsertWorkItem(ctx, c1, state.SourceBrief, now.Add(time.Second)); err != nil {
+	clk = now.Add(time.Second)
+	if err := db.UpsertWorkItem(ctx, c1, state.SourceBrief); err != nil {
 		t.Fatal(err)
 	}
 
@@ -87,11 +98,11 @@ func TestListSpawnable_DepBlockedUntilMerged(t *testing.T) {
 }
 
 func TestListSpawnable_ExcludesAlreadyReserved(t *testing.T) {
-	db := newQueryTestDB(t)
-	ctx := context.Background()
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	db := queryTestDBAt(t, now)
+	ctx := context.Background()
 	w := state.WorkItem{ID: "F-1", Kind: state.KindFeature, Title: "x", Lane: "server", Status: state.WorkStatusPlanned}
-	if err := db.UpsertWorkItem(ctx, w, state.SourceBrief, now); err != nil {
+	if err := db.UpsertWorkItem(ctx, w, state.SourceBrief); err != nil {
 		t.Fatal(err)
 	}
 	// Simulate a reservation already in the agents table via the
@@ -106,11 +117,11 @@ func TestListSpawnable_ExcludesAlreadyReserved(t *testing.T) {
 }
 
 func TestListSpawnable_ExcludesArchived(t *testing.T) {
-	db := newQueryTestDB(t)
-	ctx := context.Background()
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	db := queryTestDBAt(t, now)
+	ctx := context.Background()
 	w := state.WorkItem{ID: "F-arch", Kind: state.KindFeature, Title: "x", Lane: "server", Status: state.WorkStatusArchived}
-	if err := db.UpsertWorkItem(ctx, w, state.SourceBrief, now); err != nil {
+	if err := db.UpsertWorkItem(ctx, w, state.SourceBrief); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := db.ListSpawnable(ctx)
@@ -120,11 +131,11 @@ func TestListSpawnable_ExcludesArchived(t *testing.T) {
 }
 
 func TestListSpawnable_ExcludesBlocked(t *testing.T) {
-	db := newQueryTestDB(t)
-	ctx := context.Background()
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	db := queryTestDBAt(t, now)
+	ctx := context.Background()
 	w := state.WorkItem{ID: "F-block", Kind: state.KindFeature, Title: "x", Lane: "server", Status: state.WorkStatusBlocked}
-	if err := db.UpsertWorkItem(ctx, w, state.SourceBrief, now); err != nil {
+	if err := db.UpsertWorkItem(ctx, w, state.SourceBrief); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := db.ListSpawnable(ctx)
@@ -134,32 +145,32 @@ func TestListSpawnable_ExcludesBlocked(t *testing.T) {
 }
 
 func TestCycleCheck_RejectsCycle(t *testing.T) {
-	db := newQueryTestDB(t)
-	ctx := context.Background()
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	db := queryTestDBAt(t, now)
+	ctx := context.Background()
 
 	a := state.WorkItem{ID: "F-A", Kind: state.KindFeature, Title: "a", Lane: "server",
 		Status: state.WorkStatusPlanned, DependsOnFeatures: []string{"F-B"}}
-	if err := db.UpsertWorkItem(ctx, a, state.SourceBrief, now); err != nil {
+	if err := db.UpsertWorkItem(ctx, a, state.SourceBrief); err != nil {
 		t.Fatal(err)
 	}
 
 	b := state.WorkItem{ID: "F-B", Kind: state.KindFeature, Title: "b", Lane: "server",
 		Status: state.WorkStatusPlanned, DependsOnFeatures: []string{"F-A"}}
 	err := db.CycleCheck(ctx, b)
-	if !errors.Is(err, orchestrator.ErrCycleDetected) {
+	if !errors.Is(err, state.ErrCycleDetected) {
 		t.Fatalf("err=%v want ErrCycleDetected", err)
 	}
 }
 
 func TestCycleCheck_AllowsAcyclicAddition(t *testing.T) {
-	db := newQueryTestDB(t)
-	ctx := context.Background()
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	db := queryTestDBAt(t, now)
+	ctx := context.Background()
 
 	a := state.WorkItem{ID: "F-A", Kind: state.KindFeature, Title: "a", Lane: "server",
 		Status: state.WorkStatusPlanned}
-	if err := db.UpsertWorkItem(ctx, a, state.SourceBrief, now); err != nil {
+	if err := db.UpsertWorkItem(ctx, a, state.SourceBrief); err != nil {
 		t.Fatal(err)
 	}
 
@@ -176,26 +187,26 @@ func TestCycleCheck_RejectsSelfLoop(t *testing.T) {
 	w := state.WorkItem{ID: "F-S", Kind: state.KindFeature, Title: "self", Lane: "server",
 		Status: state.WorkStatusPlanned, DependsOnFeatures: []string{"F-S"}}
 	err := db.CycleCheck(ctx, w)
-	if !errors.Is(err, orchestrator.ErrCycleDetected) {
+	if !errors.Is(err, state.ErrCycleDetected) {
 		t.Fatalf("err=%v want ErrCycleDetected", err)
 	}
 }
 
 func TestListByParent_ReturnsChildrenInIDOrder(t *testing.T) {
-	db := newQueryTestDB(t)
-	ctx := context.Background()
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	db := queryTestDBAt(t, now)
+	ctx := context.Background()
 	for _, id := range []string{"F-3", "F-1", "F-2"} {
 		w := state.WorkItem{ID: id, Kind: state.KindFeature, Title: id, Lane: "server",
 			Status: state.WorkStatusPlanned, ParentProgramID: "PROG-1"}
-		if err := db.UpsertWorkItem(ctx, w, state.SourceBrief, now); err != nil {
+		if err := db.UpsertWorkItem(ctx, w, state.SourceBrief); err != nil {
 			t.Fatal(err)
 		}
 	}
 	// Orphan with different parent — must NOT appear.
 	other := state.WorkItem{ID: "F-OTHER", Kind: state.KindFeature, Title: "o", Lane: "server",
 		Status: state.WorkStatusPlanned, ParentProgramID: "PROG-2"}
-	if err := db.UpsertWorkItem(ctx, other, state.SourceBrief, now); err != nil {
+	if err := db.UpsertWorkItem(ctx, other, state.SourceBrief); err != nil {
 		t.Fatal(err)
 	}
 

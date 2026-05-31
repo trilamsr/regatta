@@ -9,7 +9,6 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -74,7 +73,7 @@ func TestMigrate_DowngradeResistance(t *testing.T) {
 	}
 
 	err = state.Migrate(context.Background(), raw)
-	if !errors.Is(err, orchestrator.ErrSchemaTooNew) {
+	if !errors.Is(err, state.ErrSchemaTooNew) {
 		t.Fatalf("err=%v want ErrSchemaTooNew", err)
 	}
 }

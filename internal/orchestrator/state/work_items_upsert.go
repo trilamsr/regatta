@@ -10,13 +10,14 @@ import (
 )
 
 // UpsertWorkItem inserts a new work_items row or updates an existing
-// one (matched by id). last_seen_at and updated_at are set to seenAt;
-// created_at is preserved on update.
+// one (matched by id). last_seen_at and updated_at are set to d.now();
+// created_at is preserved on update. Tests override the clock via
+// SetClock for deterministic timestamps.
 //
 // per spec §2.2 — depends_on_features and acceptance_json are stored
 // as JSON text. Empty slice -> "[]". AcceptanceJSON must be valid
 // JSON; an empty string is normalized to "[]".
-func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemSource, seenAt time.Time) error {
+func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemSource) error {
 	depsJSON, err := encodeDeps(item.DependsOnFeatures)
 	if err != nil {
 		return fmt.Errorf("state: encode deps: %w", err)
@@ -28,7 +29,7 @@ func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemS
 	if !json.Valid([]byte(accept)) {
 		return fmt.Errorf("state: acceptance_json for %s is not valid JSON", item.ID)
 	}
-	now := seenAt.UTC().Unix()
+	now := d.now().UTC().Unix()
 
 	tx, err := d.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -75,56 +76,38 @@ func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemS
 // TombstoneBySource archives every row whose source matches and
 // last_seen_at < before AND status is not already archived. Returns
 // the list of archived IDs. Per-source so AdapterSync and BriefLoader
-// cannot tombstone each other's rows.
+// cannot tombstone each other's rows. The cutoff is a parameter: the
+// caller passes the poll-start timestamp so rows last-seen within the
+// current poll window survive.
 func (d *DB) TombstoneBySource(ctx context.Context, source WorkItemSource, before time.Time) ([]string, error) {
 	cutoff := before.UTC().Unix()
-	tx, err := d.sql.BeginTx(ctx, nil)
+	rows, err := d.sql.QueryContext(ctx, `
+		UPDATE work_items
+		SET status = ?, updated_at = ?
+		WHERE source = ? AND last_seen_at < ? AND status != ?
+		RETURNING id`,
+		string(WorkStatusArchived), cutoff, string(source), cutoff, string(WorkStatusArchived))
 	if err != nil {
-		return nil, fmt.Errorf("state: begin tombstone tx: %w", err)
+		return nil, fmt.Errorf("state: tombstone: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
-
-	rows, err := tx.QueryContext(ctx, `
-		SELECT id FROM work_items
-		WHERE source = ? AND last_seen_at < ? AND status != ?`,
-		string(source), cutoff, string(WorkStatusArchived))
-	if err != nil {
-		return nil, fmt.Errorf("state: select tombstone candidates: %w", err)
-	}
+	defer func() { _ = rows.Close() }()
 	var ids []string
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			_ = rows.Close()
 			return nil, fmt.Errorf("state: scan tombstone id: %w", err)
 		}
 		ids = append(ids, id)
 	}
-	if err := rows.Close(); err != nil {
-		return nil, fmt.Errorf("state: close tombstone rows: %w", err)
-	}
-
-	for _, id := range ids {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE work_items SET status = ?, updated_at = ?
-			WHERE id = ?`,
-			string(WorkStatusArchived), cutoff, id,
-		); err != nil {
-			return nil, fmt.Errorf("state: tombstone %s: %w", id, err)
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("state: commit tombstone: %w", err)
-	}
-	return ids, nil
+	return ids, rows.Err()
 }
 
 // CascadeArchiveChildren marks every work_items row whose
 // parent_program_id matches as archived. Cascade-SOFT (spec §2.4):
 // the agents table is not touched, so any in-flight agent continues
 // to its natural terminal state.
-func (d *DB) CascadeArchiveChildren(ctx context.Context, parentID string, archivedAt time.Time) error {
-	now := archivedAt.UTC().Unix()
+func (d *DB) CascadeArchiveChildren(ctx context.Context, parentID string) error {
+	now := d.now().UTC().Unix()
 	if _, err := d.sql.ExecContext(ctx, `
 		UPDATE work_items SET status = ?, updated_at = ?
 		WHERE parent_program_id = ? AND status != ?`,

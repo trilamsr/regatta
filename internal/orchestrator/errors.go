@@ -1,18 +1,10 @@
 // Package orchestrator hosts the typed error sentinels shared across
-// the MVP-1 universal-queue pipeline. Downstream packages
-// (adaptersync, brief loader, lockfile, scheduler, state migrations)
-// MUST import sentinels from here rather than calling errors.New
-// at boundary points — verified by `make ci-check` grep gate.
-//
-// per RFC-0001 §3: cascade-soft, fail-fast PollOnce, single-source-of-truth
-// work_items table.
+// the MVP-1 universal-queue pipeline. Downstream packages MUST import
+// sentinels from here rather than calling errors.New at boundary
+// points.
 package orchestrator
 
-import (
-	"errors"
-
-	"github.com/trilamsr/regatta/internal/orchestrator/state"
-)
+import "errors"
 
 var (
 	// ErrBriefSHAMismatch fires when the operator-pinned planner
@@ -32,17 +24,4 @@ var (
 	// another live regatta instance. Distinct from state.ErrLockHeld
 	// which guards hotspot-locks within a single process.
 	ErrFlockHeld = errors.New("orchestrator: process flock held by another instance")
-
-	// ErrSchemaTooNew fires when a v2 database is opened by a binary
-	// that only knows v1 migrations — downgrade-resistance.
-	// Re-exported from internal/orchestrator/state to avoid an import
-	// cycle; same value/identity.
-	ErrSchemaTooNew = state.ErrSchemaTooNew
-
-	// ErrCycleDetected fires when work_items.depends_on_features would
-	// introduce a cycle, blocking the upsert. Re-exported from
-	// internal/orchestrator/state so state.CycleCheck can return its
-	// own sentinel without importing this package (which would form an
-	// import cycle); same value/identity, mirroring ErrSchemaTooNew.
-	ErrCycleDetected = state.ErrCycleDetected
 )

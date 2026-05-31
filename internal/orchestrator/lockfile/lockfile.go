@@ -47,8 +47,7 @@ import (
 
 // Lock represents a held advisory lock. Call Release when done.
 type Lock struct {
-	path string
-	fl   *flock.Flock
+	fl *flock.Flock
 }
 
 // Acquire takes an exclusive flock on path. The lockfile persists
@@ -81,7 +80,7 @@ func Acquire(path string) (*Lock, error) {
 		_ = fl.Unlock()
 		return nil, fmt.Errorf("lockfile: write pid: %w", err)
 	}
-	return &Lock{path: path, fl: fl}, nil
+	return &Lock{fl: fl}, nil
 }
 
 // Release unlocks the flock. The lockfile is NOT removed: it
@@ -99,11 +98,7 @@ func (l *Lock) Release() error {
 	return nil
 }
 
-// readHolderPID returns the PID string from the lockfile, or "" if
-// the file is unreadable, missing, or does not contain a positive
-// integer. Purely diagnostic — never used for lock liveness, so
-// silently swallowing garbage is the right move (we don't want to
-// leak arbitrary bytes from a corrupted file into error chains).
+// readHolderPID returns the PID string from the lockfile, or "" on any failure. Purely diagnostic.
 func readHolderPID(path string) string {
 	f, err := os.Open(path) // #nosec G304 -- path is a caller-controlled lockfile path (`<dbPath>.lock`), not user-influenced input.
 	if err != nil {
