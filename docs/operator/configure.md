@@ -119,3 +119,26 @@ prompts:
 Rotation: bump the file, recompute the digest, update the config in
 the same commit. A mismatch on startup logs the expected vs. actual
 sha and exits non-zero before any work is scheduled.
+
+## Program briefs (MVP-2 conditional DAG)
+
+`regatta.yaml` configures the orchestrator; program briefs live
+separately under `.regatta/programs/<program_id>.json` and decompose
+parent work items into features.
+
+`schema_version: 2` briefs add:
+
+- `outputs_schema` on a feature declares the JSON shape that
+  feature's terminal output must produce. Used at brief-load time to
+  type-check predicates referencing `out.<field>`.
+- `edges` carries outgoing relations from a feature; each edge has a
+  `from`, `to`, optional CEL `predicate`, and `on_skip` mode
+  (`cascade` default, or `ignore` for diamond joins).
+- `default_next` names the fallback target when every predicated
+  outgoing edge resolves false at runtime. Required whenever a
+  feature has at least one predicated edge.
+
+Walkthrough + minimal example: [quickstart.md §5](quickstart.md#5-authoring-a-conditional-dag-mvp-2).
+Fixture pairing: [`testdata/v2_briefs_e2e/PROG-2.md`](../../testdata/v2_briefs_e2e/PROG-2.md)
+plus [`internal/program/end_to_end_v2_test.go`](../../internal/program/end_to_end_v2_test.go).
+Rejection sentinels are documented in the same section.

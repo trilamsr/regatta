@@ -132,7 +132,98 @@ run is a real signal; the adversarial scenarios in
 [`docs/engineer/mvp-1-dod-checklist.md`](../engineer/mvp-1-dod-checklist.md)
 enumerate when each is expected.
 
-## 5. Next
+## 5. Authoring a conditional DAG (MVP-2)
+
+`schema_version: 2` briefs add conditional routing: an upstream
+feature's journaled output drives which downstream features spawn.
+Predicates are CEL expressions over `out.<field>` paths declared in
+the upstream's `outputs_schema`.
+
+Concrete fixture: [`testdata/v2_briefs_e2e/PROG-2.md`](../../testdata/v2_briefs_e2e/PROG-2.md)
+is the parent work item; the e2e test
+[`internal/program/end_to_end_v2_test.go`](../../internal/program/end_to_end_v2_test.go)
+stamps the corresponding signed v2 brief and asserts on the wired
+behaviour. Use that pairing as the copy-paste starting point.
+
+The signed brief drops into `.regatta/programs/<program_id>.json`
+and decomposes the parent. Minimal shape:
+
+```json
+{
+  "schema_version": 2,
+  "program_id": "m-aaaaaaaaaaaa",
+  "parent_work_item_id": "PROG-2",
+  "parent_criteria": [
+    {"id": "c1", "text": "scan + tag severity"},
+    {"id": "c2", "text": "deep-remediate when severity=high"},
+    {"id": "c3", "text": "fast-path otherwise"}
+  ],
+  "planner_model_id": "stub:v2",
+  "features": [
+    {
+      "id": "F-SCAN",
+      "title": "scan",
+      "fulfills": ["c1"],
+      "outputs_schema": {
+        "type": "object",
+        "properties": {"severity": {"type": "string"}}
+      },
+      "edges": [
+        {"from": "F-SCAN", "to": "F-DEEP", "predicate": "out.severity == \"high\"", "on_skip": "cascade"}
+      ],
+      "default_next": "F-QUICK"
+    },
+    {
+      "id": "F-DEEP",
+      "title": "deep-remediate",
+      "fulfills": ["c2"],
+      "edges": [{"from": "F-DEEP", "to": "F-QUICK"}]
+    },
+    {"id": "F-QUICK", "title": "fast-path", "fulfills": ["c3"]}
+  ],
+  "produced_at": "2026-05-31T12:00:00Z"
+}
+```
+
+Routing semantics:
+
+- **Predicated edges** fire when the CEL expression evaluates `true`
+  against the upstream feature's journaled output. The supported CEL
+  surface is comparison ops, boolean logic, `has(out.x)` for optional
+  fields, and `out.x in ["a","b"]` for enum membership.
+- **`default_next`** is required whenever a feature emits at least
+  one predicated outgoing edge; it pins the fallback target so the
+  scheduler never strands flow. The default's target must be
+  reachable from the source via the forward closure of outgoing
+  edges (`CheckReachability` gate; rejection sentinel
+  `ErrEdgeUnreachable`).
+- **`on_skip: cascade`** (the default) propagates skips downstream;
+  `on_skip: ignore` is the diamond-join escape hatch — the target
+  spawns when at least one inbound edge fired, matching Airflow's
+  `none_failed_min_one_success`.
+
+Inspect routing decisions via the journal + edges tables:
+
+```sh
+sqlite3 .regatta/state.db "SELECT work_item_id, attempt_no, content_sha FROM work_item_outputs ORDER BY id"
+sqlite3 .regatta/state.db "SELECT from_id, to_id, fired, predicate_cel FROM work_item_edges"
+```
+
+`content_sha` pins the canonical sha256 of the upstream output that
+gated each edge decision — replay tooling lands in a follow-up wave.
+
+Rejection sentinels surfaced under `brief.rejected` slog events:
+
+| Sentinel | Operator action |
+|---|---|
+| `ErrPredicateCompile` | Fix CEL syntax in the failing edge predicate. |
+| `ErrPredicateUnknownField` | Add the referenced field to `outputs_schema`, or correct the predicate. |
+| `ErrPredicateTypeMismatch` | Align the literal type against `outputs_schema.<field>.type`. |
+| `ErrEdgeMissingDefault` | Add `default_next` on the feature whose outgoing edges are predicated. |
+| `ErrEdgeUnknownTarget` | The edge points at a feature ID absent from the brief; check spelling. |
+| `ErrEdgeUnreachable` | Make `default_next` reachable through outgoing edges (chain through a sibling). |
+
+## 6. Next
 
 - [day1.md](day1.md) walks through the full Day 1 install + validate
   loop.
