@@ -15,11 +15,49 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
+
+// EdgeEvaluator is the seam between Scheduler.Tick and the CEL-based
+// predicate evaluator that lives in package program. Defining it here
+// (rather than importing program directly) is load-bearing: package
+// program already imports package orchestrator for the predicate
+// sentinels, and orchestrator imports scheduler — a transitive
+// program import would close the cycle.
+//
+// Schema is opaque (any) at this seam because the runtime evaluator
+// does not consult the schema: type-checking against the upstream's
+// OutputsSchema happens at brief-load time (ValidateV2 in program).
+// Production wires program.EdgeEvaluator; tests inject fakes.
+type EdgeEvaluator interface {
+	Eval(ctx context.Context, edge state.EdgeRow, schema any, journal state.OutputJournalEntry) (bool, string, error)
+}
+
+// edge_fired_* string sentinels mirror the work_item_edges.fired
+// column's text-enum values. Kept package-local because the values
+// are also referenced verbatim by SQL filters in state.work_item_edges
+// (sqlite indexed equality on 'pending').
+const (
+	edgeFiredTrue  = "true"
+	edgeFiredFalse = "false"
+)
+
+// OutputsSchemaResolver maps an upstream feature ID to the live
+// OutputsSchema declared by the brief. Returns (nil, false) when the
+// feature is unknown or the brief has not yet been loaded — the
+// scheduler treats that as "evaluate with nil schema", matching the
+// runtime evaluator's contract.
+//
+// Production wiring (W5) backs this with the BriefLoader's in-memory
+// program → []PlannedFeatureV2 map, invalidated on each Sync. MVP-2
+// W4 ships only the seam: tests pass closures, the orchestrator
+// constructor passes nil (runtime evaluator ignores schema, so this
+// is harmless until W5 lights up).
+type OutputsSchemaResolver func(featureID string) (any, bool)
 
 // HotspotResolver maps a work-item ID to the hotspot lock names the
 // item touches. The orchestrator typically derives this from
@@ -43,6 +81,19 @@ type Config struct {
 	// Hotspots resolves an item to its hotspot lock names. If nil, the
 	// scheduler skips lock acquisition entirely.
 	Hotspots HotspotResolver
+
+	// Evaluator runs CEL predicates over journaled outputs. nil
+	// disables edge eval; the scheduler then behaves like its MVP-1
+	// self (depends_on_features only). Production wires
+	// program.NewEdgeEvaluator() — instance is shared across ticks
+	// so its compile cache survives.
+	Evaluator EdgeEvaluator
+
+	// OutputsSchemas resolves an upstream feature's OutputsSchema for
+	// runtime predicate eval. nil is legal: the runtime evaluator does
+	// not consult schema, so the field is reserved for forward-compat
+	// (W5 plumbs BriefLoader-backed lookup).
+	OutputsSchemas OutputsSchemaResolver
 }
 
 // Scheduler is single-caller: Tick must not be invoked concurrently.
@@ -99,7 +150,19 @@ var activeStates = []state.AgentState{
 //
 // Lock acquire is non-blocking; an agent whose hotspot is held by
 // another agent is left in pending and retried next tick.
+//
+// Step-0 (when cfg.Evaluator != nil) evaluates every still-pending
+// edge whose from_id is in status=merged. Per-edge errors slog.Warn
+// and continue so one bad predicate cannot stall the rest of the
+// tick (spec §3.9). The eval pass writes to work_item_edges only —
+// ListSpawnable observes the updated fired column on the next
+// materializePending call.
 func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
+	if s.cfg.Evaluator != nil {
+		if err := s.evalPendingEdges(ctx); err != nil {
+			return nil, fmt.Errorf("scheduler: eval edges: %w", err)
+		}
+	}
 	if _, err := s.db.ExpireStaleLocks(ctx, s.cfg.LockTTL); err != nil {
 		return nil, fmt.Errorf("scheduler: expire stale locks: %w", err)
 	}
@@ -193,6 +256,102 @@ func (s *Scheduler) laneHasCapacity(lane string, occupancy map[string]int) bool 
 		return true
 	}
 	return occupancy[lane] < limit
+}
+
+// evalPendingEdges runs Tick step-0: for each (program, from_id)
+// group of pending edges whose source is merged, fetch the latest
+// journal entry and evaluate every outgoing edge. The result writes
+// back via MarkEdgeFired with the journal's content_sha so a later
+// replay can reproduce the routing decision (spec §3.8 + §3.9).
+//
+// Per-edge eval errors slog.Warn and mark the edge fired='false'
+// rather than halting the tick: a single bad predicate is a config
+// bug operators see in logs, not a stop-the-world fault. Missing
+// journal (ErrJournalNotFound) is logged at info and leaves the
+// edge pending so the next tick retries once the spawner catches up.
+//
+// Default-next fallback (spec §3.3 rule 2c): when every non-default
+// outbound edge from a from_id resolves to fired='false', the
+// default_next edge is flipped to fired='true' with the same
+// journal sha. BriefLoader validation (W2-A CheckReachability) has
+// already pinned the default's target as a live feature, so the
+// fallback never strands flow.
+func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
+	edges, err := s.db.ListPendingEdgesFromMerged(ctx)
+	if err != nil {
+		return fmt.Errorf("list pending edges: %w", err)
+	}
+	byFrom := map[string][]state.EdgeRow{}
+	order := make([]string, 0)
+	for _, e := range edges {
+		if _, seen := byFrom[e.FromID]; !seen {
+			order = append(order, e.FromID)
+		}
+		byFrom[e.FromID] = append(byFrom[e.FromID], e)
+	}
+	for _, fromID := range order {
+		group := byFrom[fromID]
+		journal, err := s.db.GetLatestOutput(ctx, fromID)
+		if err != nil {
+			if errors.Is(err, state.ErrJournalNotFound) {
+				slog.Info("edge.eval_skipped_no_journal", "from_id", fromID)
+				continue
+			}
+			slog.Warn("edge.journal_load_failed", "from_id", fromID, "err", err)
+			continue
+		}
+		schema, _ := s.resolveSchema(fromID)
+		nonDefaultAllFalse := true
+		var defaultEdgeID int64
+		for _, e := range group {
+			if e.IsDefault {
+				defaultEdgeID = e.ID
+				continue
+			}
+			fired, reason, evalErr := s.cfg.Evaluator.Eval(ctx, e, schema, journal)
+			if evalErr != nil {
+				slog.Warn("edge.eval_error",
+					"edge_id", e.ID, "program_id", e.ProgramID,
+					"from", e.FromID, "to", e.ToID, "err", evalErr)
+				fired = false
+				reason = "eval-error"
+			}
+			firedStr := edgeFiredFalse
+			if fired {
+				firedStr = edgeFiredTrue
+				nonDefaultAllFalse = false
+			}
+			if err := s.db.MarkEdgeFired(ctx, e.ID, firedStr, journal.ContentSHA); err != nil {
+				slog.Warn("edge.mark_failed", "edge_id", e.ID, "err", err)
+				continue
+			}
+			evt := "edge.fired"
+			if !fired {
+				evt = "edge.skipped"
+			}
+			slog.Info(evt, "edge_id", e.ID, "program_id", e.ProgramID,
+				"from", e.FromID, "to", e.ToID,
+				"predicate", e.PredicateCEL, "reason", reason,
+				"journal_sha", journal.ContentSHA)
+		}
+		if defaultEdgeID != 0 && nonDefaultAllFalse {
+			if err := s.db.MarkEdgeFired(ctx, defaultEdgeID, edgeFiredTrue, journal.ContentSHA); err != nil {
+				slog.Warn("edge.default_mark_failed", "edge_id", defaultEdgeID, "err", err)
+				continue
+			}
+			slog.Info("edge.default_fallback",
+				"edge_id", defaultEdgeID, "from", fromID,
+				"journal_sha", journal.ContentSHA)
+		}
+	}
+	return nil
+}
+
+func (s *Scheduler) resolveSchema(featureID string) (any, bool) {
+	if s.cfg.OutputsSchemas == nil {
+		return nil, false
+	}
+	return s.cfg.OutputsSchemas(featureID)
 }
 
 func (s *Scheduler) resolveLocks(workItemID string) []string {

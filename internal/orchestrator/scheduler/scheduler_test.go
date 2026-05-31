@@ -2,6 +2,8 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -13,6 +15,38 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
+// fakeEvaluator is the in-test EdgeEvaluator. The production wiring
+// passes program.NewEdgeEvaluator() (wired from BriefLoader in W5);
+// tests stay package-local to avoid the scheduler -> program ->
+// orchestrator -> scheduler import cycle.
+type fakeEvaluator struct {
+	// rule keys edge.ID -> (fired, err)
+	rules map[int64]fakeRule
+	// fallback returns (true,"unconditional",nil) when an edge has
+	// empty predicate, matching program.EdgeEvaluator.
+	defaultUnconditional bool
+}
+
+type fakeRule struct {
+	fired  bool
+	reason string
+	err    error
+}
+
+func newFakeEvaluator() *fakeEvaluator {
+	return &fakeEvaluator{rules: map[int64]fakeRule{}, defaultUnconditional: true}
+}
+
+func (f *fakeEvaluator) Eval(_ context.Context, edge state.EdgeRow, _ any, _ state.OutputJournalEntry) (bool, string, error) {
+	if r, ok := f.rules[edge.ID]; ok {
+		return r.fired, r.reason, r.err
+	}
+	if edge.PredicateCEL == "" && f.defaultUnconditional {
+		return true, "unconditional", nil
+	}
+	return false, "no-rule", nil
+}
+
 func newSchedTestDB(t *testing.T) *state.DB {
 	t.Helper()
 	db, err := state.Open(context.Background(), state.DSN(filepath.Join(t.TempDir(), "s.db")))
@@ -21,6 +55,19 @@ func newSchedTestDB(t *testing.T) *state.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	return db
+}
+
+// seedMerged inserts a merged work_item so ListPendingEdgesFromMerged
+// sees the from_id as a valid edge source.
+func seedMerged(t *testing.T, db *state.DB, id string) {
+	t.Helper()
+	w := state.WorkItem{
+		ID: id, Kind: state.KindFeature, Title: id,
+		Lane: "server", Status: state.WorkStatusMerged,
+	}
+	if err := db.UpsertWorkItem(context.Background(), w, state.SourceBrief); err != nil {
+		t.Fatalf("seedMerged %s: %v", id, err)
+	}
 }
 
 // seedPlanned upserts a planned feature work_item with the given id +
@@ -381,5 +428,171 @@ func TestTickStaleLockReclaimed(t *testing.T) {
 	a2 := agentForWorkItem(t, db, "WORK-2")
 	if ids2[0] != a2.ID {
 		t.Fatalf("tick 2 reserved id=%d want WORK-2 agent id=%d", ids2[0], a2.ID)
+	}
+}
+
+func TestTick_EvaluatesPendingEdgesBeforeReserve(t *testing.T) {
+	ctx := context.Background()
+	db := newSchedTestDB(t)
+	seedMerged(t, db, "F-A")
+	seedPlanned(t, db, "F-B", "server")
+
+	if err := db.UpsertEdges(ctx, "m-1", []state.EdgeRow{{
+		ProgramID: "m-1", FromID: "F-A", ToID: "F-B",
+	}}); err != nil {
+		t.Fatalf("UpsertEdges: %v", err)
+	}
+	if _, err := db.AppendOutput(ctx, "F-A", json.RawMessage(`{}`)); err != nil {
+		t.Fatalf("AppendOutput: %v", err)
+	}
+
+	sch := New(db, Config{Evaluator: newFakeEvaluator()})
+	if _, err := sch.Tick(ctx); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	edges, err := db.ListEdgesFrom(ctx, "F-A")
+	if err != nil {
+		t.Fatalf("ListEdgesFrom: %v", err)
+	}
+	if len(edges) != 1 {
+		t.Fatalf("edges=%d want 1", len(edges))
+	}
+	if edges[0].Fired != "true" {
+		t.Fatalf("unconditional edge not fired after tick: %+v", edges[0])
+	}
+	if edges[0].FiredAgainst == "" {
+		t.Fatalf("FiredAgainst empty: %+v", edges[0])
+	}
+}
+
+func TestTick_FiresPredicateAgainstJournal(t *testing.T) {
+	ctx := context.Background()
+	db := newSchedTestDB(t)
+	seedMerged(t, db, "F-A")
+	seedPlanned(t, db, "F-B", "server")
+
+	if err := db.UpsertEdges(ctx, "m-1", []state.EdgeRow{{
+		ProgramID: "m-1", FromID: "F-A", ToID: "F-B",
+		PredicateCEL: `out.severity == "high"`, OnSkip: "cascade",
+	}}); err != nil {
+		t.Fatalf("UpsertEdges: %v", err)
+	}
+	if _, err := db.AppendOutput(ctx, "F-A", json.RawMessage(`{"severity":"high"}`)); err != nil {
+		t.Fatalf("AppendOutput: %v", err)
+	}
+
+	ev := newFakeEvaluator()
+	// Identify the edge by inspecting the inserted row's ID.
+	rows, _ := db.ListEdgesFrom(ctx, "F-A")
+	ev.rules[rows[0].ID] = fakeRule{fired: true, reason: "predicate=true"}
+
+	sch := New(db, Config{Evaluator: ev})
+	if _, err := sch.Tick(ctx); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	edges, _ := db.ListEdgesFrom(ctx, "F-A")
+	if edges[0].Fired != "true" {
+		t.Fatalf("predicate edge not fired: %+v", edges[0])
+	}
+	if edges[0].FiredAgainst == "" {
+		t.Fatalf("FiredAgainst empty: %+v", edges[0])
+	}
+}
+
+func TestTick_PredicateFalseSkipsEdge(t *testing.T) {
+	ctx := context.Background()
+	db := newSchedTestDB(t)
+	seedMerged(t, db, "F-A")
+	seedPlanned(t, db, "F-B", "server")
+
+	if err := db.UpsertEdges(ctx, "m-1", []state.EdgeRow{{
+		ProgramID: "m-1", FromID: "F-A", ToID: "F-B",
+		PredicateCEL: `out.severity == "high"`,
+	}}); err != nil {
+		t.Fatalf("UpsertEdges: %v", err)
+	}
+	if _, err := db.AppendOutput(ctx, "F-A", json.RawMessage(`{"severity":"low"}`)); err != nil {
+		t.Fatalf("AppendOutput: %v", err)
+	}
+
+	ev := newFakeEvaluator()
+	rows, _ := db.ListEdgesFrom(ctx, "F-A")
+	ev.rules[rows[0].ID] = fakeRule{fired: false, reason: "predicate=false"}
+
+	sch := New(db, Config{Evaluator: ev})
+	if _, err := sch.Tick(ctx); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	edges, _ := db.ListEdgesFrom(ctx, "F-A")
+	if edges[0].Fired != "false" {
+		t.Fatalf("predicate=false edge should fire=false: %+v", edges[0])
+	}
+}
+
+func TestTick_EdgeEvalFailureLogsAndContinues(t *testing.T) {
+	ctx := context.Background()
+	db := newSchedTestDB(t)
+	seedMerged(t, db, "F-A")
+	seedMerged(t, db, "F-C")
+	seedPlanned(t, db, "F-B", "server")
+	seedPlanned(t, db, "F-D", "server")
+
+	// F-A's edge throws an eval error; F-C's edge is unconditional.
+	// The bad edge must not halt evaluation of the good one.
+	if err := db.UpsertEdges(ctx, "m-1", []state.EdgeRow{
+		{ProgramID: "m-1", FromID: "F-A", ToID: "F-B", PredicateCEL: `???invalid`},
+		{ProgramID: "m-1", FromID: "F-C", ToID: "F-D"},
+	}); err != nil {
+		t.Fatalf("UpsertEdges: %v", err)
+	}
+	if _, err := db.AppendOutput(ctx, "F-A", json.RawMessage(`{}`)); err != nil {
+		t.Fatalf("AppendOutput A: %v", err)
+	}
+	if _, err := db.AppendOutput(ctx, "F-C", json.RawMessage(`{}`)); err != nil {
+		t.Fatalf("AppendOutput C: %v", err)
+	}
+
+	ev := newFakeEvaluator()
+	aRows, _ := db.ListEdgesFrom(ctx, "F-A")
+	ev.rules[aRows[0].ID] = fakeRule{err: errors.New("boom")}
+
+	sch := New(db, Config{Evaluator: ev})
+	if _, err := sch.Tick(ctx); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	// Good edge fired despite bad sibling.
+	cEdges, _ := db.ListEdgesFrom(ctx, "F-C")
+	if cEdges[0].Fired != "true" {
+		t.Fatalf("good edge not fired: %+v", cEdges[0])
+	}
+	// Bad edge must be marked false so the tick doesn't re-evaluate
+	// it forever; spec §3.9 records eval errors as fired=false.
+	aEdges, _ := db.ListEdgesFrom(ctx, "F-A")
+	if aEdges[0].Fired != "false" {
+		t.Fatalf("bad edge expected fired=false, got %+v", aEdges[0])
+	}
+}
+
+func TestTick_EdgeEvalSkippedNoJournal(t *testing.T) {
+	ctx := context.Background()
+	db := newSchedTestDB(t)
+	seedMerged(t, db, "F-A")
+	seedPlanned(t, db, "F-B", "server")
+
+	if err := db.UpsertEdges(ctx, "m-1", []state.EdgeRow{{
+		ProgramID: "m-1", FromID: "F-A", ToID: "F-B",
+	}}); err != nil {
+		t.Fatalf("UpsertEdges: %v", err)
+	}
+	// No AppendOutput — journal absent.
+
+	sch := New(db, Config{Evaluator: newFakeEvaluator()})
+	if _, err := sch.Tick(ctx); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	edges, _ := db.ListEdgesFrom(ctx, "F-A")
+	if edges[0].Fired != "pending" {
+		t.Fatalf("expected pending on missing journal, got %+v", edges[0])
 	}
 }
