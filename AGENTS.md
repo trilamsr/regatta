@@ -85,6 +85,13 @@ belong in a topic note instead.
   a sub-process whose output is privileged. The review stack treats
   agent and human commits identically.
 
+- **Recovering working specs/plans across sessions.** Plan + spec
+  files under `docs/superpowers/` are gitignored (large + per-iteration
+  drafts; the final state lives in `docs/engineer/specs/` and
+  `docs/rfcs/`). To recover them on a fresh session:
+  `git show <commit>:docs/superpowers/plans/<file>.md > docs/superpowers/plans/<file>.md`.
+  Find the originating commit via `git log --all --oneline -- docs/superpowers/`.
+
 ## Topic index - repo-wide
 
 Per-topic notes that apply to anyone working in this codebase.

@@ -31,7 +31,7 @@ gh api \
     --input - <<'JSON'
 {
   "required_status_checks": {
-    "strict": false,
+    "strict": true,
     "contexts": [
       "verify",
       "lint",

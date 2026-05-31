@@ -191,4 +191,39 @@ for raw in sys.stdin:
     exit 1
   fi
   echo "doc-check: comment-noise diff gate clean (vs $base_ref)"
+
+  # Test/Fuzz/Benchmark function godocs must be one line max — names
+  # already encode intent. Detects 2+ consecutive `//` comment lines
+  # in added hunks whose first line introduces a Test/Fuzz/Benchmark.
+  godoc_overflows=$(git diff --unified=0 "$base_ref"...HEAD -- '*.go' 2>/dev/null | python3 -c '
+import re, sys
+test_re = re.compile(r"^// (Test|Fuzz|Benchmark)[A-Z]")
+file, skip, lineno, streak, anchor, start = "", False, 0, 0, "", 0
+def flush():
+    if streak > 1 and test_re.match(anchor):
+        print(f"{file}:{start}: {anchor[:80]!r} godoc is {streak} lines; max 1")
+for ln in sys.stdin:
+    ln = ln.rstrip("\n")
+    if ln.startswith("+++ "):
+        flush(); file, skip, streak = ln[6:], not ln.endswith(".go"), 0
+    elif ln.startswith("@@ "):
+        flush(); streak = 0
+        m = re.search(r"\+(\d+)", ln); lineno = int(m.group(1)) if m else 0
+    elif not skip and ln.startswith("+") and not ln.startswith("+++"):
+        body = ln[1:].strip()
+        if body.startswith("//"):
+            if streak == 0: start, anchor = lineno, body
+            streak += 1
+        else:
+            flush(); streak = 0
+        lineno += 1
+flush()
+')
+  if [ -n "$godoc_overflows" ]; then
+    echo "doc-check: test/fuzz/benchmark godocs > 1 line (vs $base_ref):"
+    echo "$godoc_overflows" | sed 's/^/  - /'
+    echo "Rule: Test/Fuzz/Benchmark godocs = 1 line max. Test names encode intent."
+    exit 1
+  fi
+  echo "doc-check: test-godoc length gate clean (vs $base_ref)"
 fi
