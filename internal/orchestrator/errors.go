@@ -7,8 +7,17 @@ package orchestrator
 import (
 	"errors"
 
+	"github.com/google/cel-go/cel"
+
 	"github.com/trilamsr/regatta/internal/orchestrator/lockfile"
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
+
+// PredicateEnv aliases cel.Env so callers in the conditional-DAG
+// evaluator (Wave 3) and the planner_v2 type-checker (Wave 2)
+// share one symbol. Declared in W0-A so go.mod pins cel-go as a
+// direct dep before any evaluator code lands.
+type PredicateEnv = cel.Env
 
 var (
 	// ErrBriefSHAMismatch fires when the operator-pinned planner
@@ -42,4 +51,34 @@ var (
 	// corrupt depends_on_features graph data (e.g. a cycle that
 	// bypassed CycleCheck) — operators page on this.
 	ErrCascadeNonConverging = errors.New("orchestrator: dependency-archive cascade did not converge")
+
+	// ErrPredicateCompile fires when a CEL predicate fails to compile
+	// against the upstream feature's outputs_schema environment.
+	// Caught at LoadAndVerifyBrief time so operators never see a
+	// predicate failure mid-run.
+	ErrPredicateCompile = errors.New("orchestrator: CEL predicate failed to compile")
+
+	// ErrPredicateUnknownField fires when a CEL predicate references
+	// an `out.<field>` path absent from the upstream's outputs_schema.
+	ErrPredicateUnknownField = errors.New("orchestrator: CEL predicate references field absent from outputs_schema")
+
+	// ErrPredicateTypeMismatch fires when CEL's type checker rejects
+	// the predicate against the env derived from outputs_schema.
+	ErrPredicateTypeMismatch = errors.New("orchestrator: CEL predicate has type mismatch against outputs_schema")
+
+	// ErrEdgeMissingDefault fires when a feature has ≥1 outgoing
+	// predicated edge but no DefaultNext target.
+	ErrEdgeMissingDefault = errors.New("orchestrator: conditional fan-out missing default_next")
+
+	// ErrEdgeUnknownTarget fires when an edge references a feature ID
+	// not present in the brief.
+	ErrEdgeUnknownTarget = errors.New("orchestrator: edge references unknown feature id")
+
+	// ErrJournalNotFound is re-exported from package state so callers
+	// outside state (edge evaluator, scheduler) keep the
+	// orchestrator.ErrJournalNotFound import path while the canonical
+	// definition lives next to state.GetLatestOutput. Same one-way
+	// import pattern as ErrFlockHeld above — state cannot depend on
+	// orchestrator without an import cycle.
+	ErrJournalNotFound = state.ErrJournalNotFound
 )

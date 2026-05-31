@@ -1,0 +1,43 @@
+{
+  "schema_version": 2,
+  "program_id": "m-aaaaaaaaaaaa",
+  "parent_work_item_id": "PROG-TRIAGE",
+  "parent_criteria": [
+    {"id": "c1", "text": "scan every incoming alert"},
+    {"id": "c2", "text": "remediate high-severity findings"},
+    {"id": "c3", "text": "fast-path low-severity findings"}
+  ],
+  "planner_model_id": "test:v2-happy-triage",
+  "features": [
+    {
+      "id": "F-A",
+      "title": "scan",
+      "fulfills": ["c1"],
+      "outputs_schema": {
+        "type": "object",
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["high", "low"]
+          }
+        }
+      },
+      "edges": [
+        {"from": "F-A", "to": "F-B", "predicate": "out.severity == \"high\"", "on_skip": "cascade"},
+        {"from": "F-A", "to": "F-C", "predicate": "out.severity == \"low\"", "on_skip": "cascade"}
+      ],
+      "default_next": "F-C"
+    },
+    {
+      "id": "F-B",
+      "title": "remediate-high",
+      "fulfills": ["c2"]
+    },
+    {
+      "id": "F-C",
+      "title": "remediate-low",
+      "fulfills": ["c3"]
+    }
+  ],
+  "produced_at": "2026-05-31T12:00:00Z"
+}

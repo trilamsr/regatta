@@ -40,20 +40,26 @@ const maxCascadeIterations = 1000
 // under keyring. Returns ErrHMACInvalid (wrapped) when the
 // signature does not check out under any key. Rejects briefs whose
 // on-disk size exceeds maxBriefSize before any read into RAM.
+//
+// For v2 briefs the function routes through LoadAndVerifyBriefV2,
+// then projects the v2 features into the v1 ProgramBrief.Features
+// slice so downstream Sync (which only consults v1 fields) operates
+// unchanged. The Edge → DependsOnFeatures projection mirrors
+// LowerV1ToV2's inverse and preserves the dependency closure.
 func LoadAndVerifyBrief(fsys fs.FS, path string, keyring map[string][]byte) (*ProgramBrief, error) {
 	if len(keyring) == 0 {
 		return nil, fmt.Errorf("program: keyring required to verify briefs")
 	}
-	info, err := fs.Stat(fsys, path)
+	raw, err := readBriefBytes(fsys, path)
 	if err != nil {
-		return nil, fmt.Errorf("program: stat brief: %w", err)
+		return nil, err
 	}
-	if info.Size() > maxBriefSize {
-		return nil, fmt.Errorf("program: brief %s size %d exceeds cap %d", path, info.Size(), maxBriefSize)
-	}
-	raw, err := fs.ReadFile(fsys, path)
-	if err != nil {
-		return nil, fmt.Errorf("program: read brief: %w", err)
+	if IsV2Brief(raw) {
+		v2, err := loadAndVerifyV2FromBytes(raw, keyring)
+		if err != nil {
+			return nil, err
+		}
+		return projectV2ToV1(v2), nil
 	}
 	var brief ProgramBrief
 	if err := json.Unmarshal(raw, &brief); err != nil {
@@ -66,6 +72,110 @@ func LoadAndVerifyBrief(fsys fs.FS, path string, keyring map[string][]byte) (*Pr
 		return nil, fmt.Errorf("%w: %w", orchestrator.ErrHMACInvalid, err)
 	}
 	return &brief, nil
+}
+
+// LoadAndVerifyBriefV2 is the v2-typed sibling of LoadAndVerifyBrief.
+// v1 briefs are lowered via LowerV1ToV2 so callers see a single
+// representation; v2 briefs flow through ValidateV2 + signature
+// verification untouched.
+func LoadAndVerifyBriefV2(fsys fs.FS, path string, keyring map[string][]byte) (*ProgramBriefV2, error) {
+	if len(keyring) == 0 {
+		return nil, fmt.Errorf("program: keyring required to verify briefs")
+	}
+	raw, err := readBriefBytes(fsys, path)
+	if err != nil {
+		return nil, err
+	}
+	if IsV2Brief(raw) {
+		return loadAndVerifyV2FromBytes(raw, keyring)
+	}
+	var brief ProgramBrief
+	if err := json.Unmarshal(raw, &brief); err != nil {
+		return nil, fmt.Errorf("program: parse brief: %w", err)
+	}
+	if err := brief.Validate(); err != nil {
+		return nil, fmt.Errorf("program: validate brief: %w", err)
+	}
+	if err := brief.VerifySignature(keyring); err != nil {
+		return nil, fmt.Errorf("%w: %w", orchestrator.ErrHMACInvalid, err)
+	}
+	return LowerV1ToV2(&brief), nil
+}
+
+func readBriefBytes(fsys fs.FS, path string) ([]byte, error) {
+	info, err := fs.Stat(fsys, path)
+	if err != nil {
+		return nil, fmt.Errorf("program: stat brief: %w", err)
+	}
+	if info.Size() > maxBriefSize {
+		return nil, fmt.Errorf("program: brief %s size %d exceeds cap %d", path, info.Size(), maxBriefSize)
+	}
+	raw, err := fs.ReadFile(fsys, path)
+	if err != nil {
+		return nil, fmt.Errorf("program: read brief: %w", err)
+	}
+	return raw, nil
+}
+
+// loadAndVerifyV2FromBytes parses raw as v2, runs ValidateV2, then
+// verifies HMAC against the canonicalised payload. HMAC verification
+// reuses the v1 signature scheme: marshal to JSON, decode into a
+// generic map, run schemas.Verify on that map. Because the embedded
+// ProgramBrief carries the Signature field, schemas.Verify operates
+// on the same canonical body the v1 path uses.
+func loadAndVerifyV2FromBytes(raw []byte, keyring map[string][]byte) (*ProgramBriefV2, error) {
+	var v2 ProgramBriefV2
+	if err := json.Unmarshal(raw, &v2); err != nil {
+		return nil, fmt.Errorf("program: parse v2 brief: %w", err)
+	}
+	if err := v2.ValidateV2(); err != nil {
+		return nil, fmt.Errorf("program: validate v2 brief: %w", err)
+	}
+	if err := v2.VerifySignatureV2(keyring); err != nil {
+		return nil, fmt.Errorf("%w: %w", orchestrator.ErrHMACInvalid, err)
+	}
+	return &v2, nil
+}
+
+// projectV2ToV1 fills the embedded ProgramBrief.Features slice from
+// FeaturesV2, translating Edges into DependsOnFeatures entries so the
+// existing v1-shaped Sync pipeline accepts a v2 brief unchanged.
+// Outputs schema + predicate metadata is preserved on the returned
+// ProgramBriefV2 (callers needing v2 fields use LoadAndVerifyBriefV2).
+//
+// V2 edges use outgoing semantics (e.From == owning feature ID). To
+// reconstruct the v1 incoming-edge DependsOnFeatures view we reverse-
+// index: for each edge U -> D in U.Edges, append U to D's
+// DependsOnFeatures.
+func projectV2ToV1(v2 *ProgramBriefV2) *ProgramBrief {
+	out := v2.ProgramBrief
+	out.Features = make([]PlannedFeature, len(v2.FeaturesV2))
+	idxByID := make(map[string]int, len(v2.FeaturesV2))
+	for i, f := range v2.FeaturesV2 {
+		out.Features[i] = f.PlannedFeature
+		idxByID[f.ID] = i
+	}
+	seenDep := make([]map[string]bool, len(v2.FeaturesV2))
+	for i := range out.Features {
+		seenDep[i] = map[string]bool{}
+		for _, d := range out.Features[i].DependsOnFeatures {
+			seenDep[i][d] = true
+		}
+	}
+	for _, f := range v2.FeaturesV2 {
+		for _, e := range f.Edges {
+			j, ok := idxByID[e.To]
+			if !ok {
+				continue
+			}
+			if seenDep[j][e.From] {
+				continue
+			}
+			out.Features[j].DependsOnFeatures = append(out.Features[j].DependsOnFeatures, e.From)
+			seenDep[j][e.From] = true
+		}
+	}
+	return &out
 }
 
 // BriefLoader is the recurring sync. Construct once at orchestrator

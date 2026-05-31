@@ -1,0 +1,26 @@
+{
+  "schema_version": 2,
+  "program_id": "m-cccccccccccc",
+  "parent_work_item_id": "PROG-BACKCOMPAT",
+  "parent_criteria": [
+    {"id": "c1", "text": "stage one ships"},
+    {"id": "c2", "text": "stage two follows"}
+  ],
+  "planner_model_id": "test:v2-backcompat",
+  "features": [
+    {
+      "id": "F-A",
+      "title": "stage-one",
+      "fulfills": ["c1"],
+      "edges": [
+        {"from": "F-A", "to": "F-B", "on_skip": "cascade"}
+      ]
+    },
+    {
+      "id": "F-B",
+      "title": "stage-two",
+      "fulfills": ["c2"]
+    }
+  ],
+  "produced_at": "2026-05-31T12:00:00Z"
+}
