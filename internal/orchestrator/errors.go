@@ -40,6 +40,9 @@ var (
 	ErrSchemaTooNew = state.ErrSchemaTooNew
 
 	// ErrCycleDetected fires when work_items.depends_on_features would
-	// introduce a cycle, blocking the upsert.
-	ErrCycleDetected = errors.New("orchestrator: dependency cycle detected in work_items")
+	// introduce a cycle, blocking the upsert. Re-exported from
+	// internal/orchestrator/state so state.CycleCheck can return its
+	// own sentinel without importing this package (which would form an
+	// import cycle); same value/identity, mirroring ErrSchemaTooNew.
+	ErrCycleDetected = state.ErrCycleDetected
 )
