@@ -106,6 +106,28 @@ func (d *DB) CycleCheck(ctx context.Context, candidate WorkItem) error {
 	return nil
 }
 
+// MaxUpdatedAtForBriefChildren returns the largest updated_at across
+// all work_items whose parent_program_id == parentID and source ==
+// SourceBrief, or the zero time if no such row exists. Used by
+// BriefLoader to reject stale brief replays: if a freshly-loaded
+// brief's ProducedAt is <= this watermark, the brief was already
+// processed (or superseded by a newer one for the same program) and
+// re-applying it would silently revert later state. Read-only.
+func (d *DB) MaxUpdatedAtForBriefChildren(ctx context.Context, parentID string) (time.Time, error) {
+	row := d.sql.QueryRowContext(ctx, `
+		SELECT COALESCE(MAX(updated_at), 0) FROM work_items
+		WHERE parent_program_id = ? AND source = ?`,
+		parentID, string(SourceBrief))
+	var ts int64
+	if err := row.Scan(&ts); err != nil {
+		return time.Time{}, fmt.Errorf("state: max updated_at for brief children of %s: %w", parentID, err)
+	}
+	if ts == 0 {
+		return time.Time{}, nil
+	}
+	return time.Unix(ts, 0).UTC(), nil
+}
+
 // ListArchivedProgramsWithLiveChildren returns the IDs of every
 // program whose own row is archived but which still has at least one
 // non-archived child via parent_program_id. AdapterSync's reconciler

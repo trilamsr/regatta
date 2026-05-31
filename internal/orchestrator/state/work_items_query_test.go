@@ -279,3 +279,45 @@ func TestListByParent_ReturnsChildrenInIDOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestMaxUpdatedAtForBriefChildren_Empty(t *testing.T) {
+	db := newQueryTestDB(t)
+	got, err := db.MaxUpdatedAtForBriefChildren(context.Background(), "PROG-NONE")
+	if err != nil {
+		t.Fatalf("err=%v", err)
+	}
+	if !got.IsZero() {
+		t.Fatalf("got=%v want zero", got)
+	}
+}
+
+func TestMaxUpdatedAtForBriefChildren_ReturnsMax(t *testing.T) {
+	ctx := context.Background()
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	db := newQueryTestDB(t)
+	// Two brief children stamped at different times.
+	w1 := state.WorkItem{ID: "F-1", Kind: state.KindFeature, Title: "a", Lane: "server",
+		Status: state.WorkStatusPlanned, ParentProgramID: "PROG-1"}
+	w2 := state.WorkItem{ID: "F-2", Kind: state.KindFeature, Title: "b", Lane: "server",
+		Status: state.WorkStatusPlanned, ParentProgramID: "PROG-1"}
+	if err := db.UpsertWorkItemAt(ctx, w1, state.SourceBrief, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertWorkItemAt(ctx, w2, state.SourceBrief, t0.Add(2*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	// An adapter row at a later time — must be ignored (source filter).
+	wAdapter := state.WorkItem{ID: "P-1", Kind: state.KindProgram, Title: "p", Lane: "server",
+		Status: state.WorkStatusPlanned, ParentProgramID: "PROG-1"}
+	if err := db.UpsertWorkItemAt(ctx, wAdapter, state.SourceAdapter, t0.Add(10*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.MaxUpdatedAtForBriefChildren(ctx, "PROG-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := t0.Add(2 * time.Second).Truncate(time.Second)
+	if !got.Equal(want) {
+		t.Fatalf("got=%v want %v", got, want)
+	}
+}
