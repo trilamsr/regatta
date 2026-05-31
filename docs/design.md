@@ -879,6 +879,24 @@ Phases 2 and 3 do **not** form a critical-path Gantt; they are
 parallel demand streams. Pick by the trigger that fired, not by
 the order they appear here.
 
+#### Wedge research (prospective Phase 2 / Phase 3 candidates)
+
+Phase 2 and Phase 3 adopt features as their trigger metrics fire.
+Before promoting any new feature into the tables above, the
+proposer is expected to land a research dossier under
+[`docs/wedges/`](./wedges/README.md) and clear the validation
+checklist in that README. Each dossier surveys prior art, maps
+the feature to a load-bearing Trap Catalog pattern, sketches the
+minimal data model, and proposes a trigger metric. The dossier is
+the artifact a reviewer reads before a `regatta.yaml` schema
+change lands. Today's index:
+
+- [`wedges/cost-governor.md`](./wedges/cost-governor.md) — P8.
+- [`wedges/approval-gates.md`](./wedges/approval-gates.md) — P2, P3.
+- [`wedges/plan-as-code.md`](./wedges/plan-as-code.md) — P3, P10.
+- [`wedges/conditional-dag.md`](./wedges/conditional-dag.md) — P1.
+- [`wedges/blackboard.md`](./wedges/blackboard.md) — P6, P9.
+
 #### What ships before Phase 1 begins (already done at this PR)
 
 - §Programs design doc (this section) and §Alternatives (h)
