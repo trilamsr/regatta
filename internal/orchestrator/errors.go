@@ -1,7 +1,6 @@
 // Package orchestrator hosts the typed error sentinels shared across
 // the MVP-1 universal-queue pipeline. Downstream packages MUST import
-// sentinels from here rather than calling errors.New at boundary
-// points.
+// from here rather than errors.New at boundary points.
 package orchestrator
 
 import (
@@ -13,10 +12,8 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// PredicateEnv aliases cel.Env so callers in the conditional-DAG
-// evaluator (Wave 3) and the planner_v2 type-checker (Wave 2)
-// share one symbol. Declared in W0-A so go.mod pins cel-go as a
-// direct dep before any evaluator code lands.
+// PredicateEnv aliases cel.Env so the conditional-DAG evaluator and
+// planner_v2 type-checker share one symbol.
 type PredicateEnv = cel.Env
 
 var (
@@ -24,10 +21,9 @@ var (
 	// prompt SHA in regatta.yaml does not match the on-disk prompt.
 	ErrBriefSHAMismatch = errors.New("orchestrator: planner prompt SHA does not match pinned value")
 
-	// ErrPlannerPromptMissing fires when prompts.planner_path points
-	// at a file that does not exist AND prompts.planner_sha is pinned.
-	// A pinned hash with a missing file must fail closed -- silently
-	// swapping in the embedded default defeats the pin.
+	// ErrPlannerPromptMissing fires when prompts.planner_path is missing
+	// while prompts.planner_sha is pinned. Fail-closed: a missing file
+	// must not silently fall back to the embedded default.
 	ErrPlannerPromptMissing = errors.New("orchestrator: planner prompt path missing while SHA is pinned")
 
 	// ErrHMACInvalid fires when a program_brief.json fails HMAC
@@ -39,23 +35,19 @@ var (
 	// to override).
 	ErrTargetExists = errors.New("orchestrator: target file exists with different content")
 
-	// ErrFlockHeld is re-exported from package lockfile to preserve the
-	// orchestrator.ErrFlockHeld import path used across the codebase.
-	// Canonical definition lives next to lockfile.Acquire because
-	// PollOnce imports lockfile (one-way edge — flipping it produced
-	// an import cycle).
+	// ErrFlockHeld re-exports lockfile.ErrFlockHeld so callers keep the
+	// orchestrator.ErrFlockHeld path; canonical def lives in lockfile
+	// (one-way import edge to avoid a cycle).
 	ErrFlockHeld = lockfile.ErrFlockHeld
 
-	// ErrCascadeNonConverging fires when BriefLoader's dependency-
-	// archive fixed-point loop exceeds its iteration cap. Indicates
-	// corrupt depends_on_features graph data (e.g. a cycle that
-	// bypassed CycleCheck) — operators page on this.
+	// ErrCascadeNonConverging fires when the dependency-archive
+	// fixed-point exceeds its iteration cap. Indicates a corrupt
+	// depends_on_features graph; pageable.
 	ErrCascadeNonConverging = errors.New("orchestrator: dependency-archive cascade did not converge")
 
 	// ErrPredicateCompile fires when a CEL predicate fails to compile
-	// against the upstream feature's outputs_schema environment.
-	// Caught at LoadAndVerifyBrief time so operators never see a
-	// predicate failure mid-run.
+	// against the upstream feature's outputs_schema env. Caught at
+	// LoadAndVerifyBrief time, not mid-run.
 	ErrPredicateCompile = errors.New("orchestrator: CEL predicate failed to compile")
 
 	// ErrPredicateUnknownField fires when a CEL predicate references
@@ -66,11 +58,10 @@ var (
 	// the predicate against the env derived from outputs_schema.
 	ErrPredicateTypeMismatch = errors.New("orchestrator: CEL predicate has type mismatch against outputs_schema")
 
-	// ErrPredicateEval fires when a successfully-compiled CEL predicate
-	// fails at runtime against a journaled output — non-bool result,
-	// missing reference, or canonical-JSON parse failure. Distinct from
-	// ErrPredicateCompile so the scheduler can tell a config bug from a
-	// journal-shape mismatch and route operator alerts accordingly.
+	// ErrPredicateEval fires when a compiled CEL predicate fails at
+	// runtime against a journaled output. Distinct from
+	// ErrPredicateCompile so alerts separate config bugs from
+	// journal-shape mismatches.
 	ErrPredicateEval = errors.New("orchestrator: CEL predicate failed at evaluation")
 
 	// ErrEdgeMissingDefault fires when a feature has ≥1 outgoing
@@ -81,18 +72,13 @@ var (
 	// not present in the brief.
 	ErrEdgeUnknownTarget = errors.New("orchestrator: edge references unknown feature id")
 
-	// ErrEdgeUnreachable fires when a feature's DefaultNext target is
-	// not transitively reachable from the feature itself via the forward
-	// closure of outgoing edges + DefaultNext links (spec §3.3 rule 2c).
-	// Catches operator-authoring deadlocks where every predicated edge
-	// resolves false and the default routes to a node no edge targets.
+	// ErrEdgeUnreachable fires when DefaultNext is not reachable via
+	// the forward closure of outgoing edges (spec §3.3 rule 2c): an
+	// authoring deadlock where all predicates fail and the default
+	// routes to an orphan.
 	ErrEdgeUnreachable = errors.New("orchestrator: default_next target not reachable from source")
 
-	// ErrJournalNotFound is re-exported from package state so callers
-	// outside state (edge evaluator, scheduler) keep the
-	// orchestrator.ErrJournalNotFound import path while the canonical
-	// definition lives next to state.GetLatestOutput. Same one-way
-	// import pattern as ErrFlockHeld above — state cannot depend on
-	// orchestrator without an import cycle.
+	// ErrJournalNotFound re-exports state.ErrJournalNotFound; canonical
+	// def lives in state to avoid an orchestrator→state→orchestrator cycle.
 	ErrJournalNotFound = state.ErrJournalNotFound
 )

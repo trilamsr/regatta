@@ -11,37 +11,14 @@ import (
 	"sync"
 )
 
-// processKiller is the seam tests use to inject classified Kill errors
-// without spawning real processes. Production code uses the default
-// (*exec.Cmd).Process.Kill via defaultKiller.
+// processKiller is the seam tests use to inject classified Kill errors.
 type processKiller func(*exec.Cmd) error
 
 func defaultKiller(c *exec.Cmd) error { return c.Process.Kill() }
 
-// ClaudeSpawner launches an agent process inside a per-agent
-// worktree. It implements the Spawner interface.
-//
-// Restart-adoption gap (issue #45): on orchestrator restart the
-// children map is empty. Agents whose claude process is still alive
-// pass pidAlive and stay in `running`, but KillAgent returns
-// (false, nil) because the *exec.Cmd handle was lost when the
-// parent died. The Reaper still removes the worktree on a terminal
-// transition; the live child is reaped lazily by the kernel
-// parent-death cascade or an operator pkill until the adoption
-// routine ships under #45.
-//
-// The spawn sequence is:
-//
-//  1. WorktreeManager.Create(agentID, BaseRef) - deterministic path
-//  2. PromptBuilder(req) - assemble the templated prompt
-//  3. exec the configured Command with the prompt on stdin
-//  4. parse a session-id from stdout (or fall back to a synthetic
-//     "claude-<agent>" string when the binary does not emit one)
-//  5. return Result{PID, SessionID}; the child is left running
-//
-// On any step failure the worktree is reaped so the next tick can
-// retry from a clean state. The orchestrator's existing rollback
-// (spawning → crashed → pending) handles state recovery.
+// ClaudeSpawner launches an agent process inside a per-agent worktree.
+// On restart the children map is empty, so KillAgent returns (false, nil)
+// for surviving children until the adoption work in issue #45 ships.
 type ClaudeSpawner struct {
 	wm      *WorktreeManager
 	cfg     ClaudeSpawnerConfig
@@ -58,27 +35,23 @@ type ClaudeSpawnerConfig struct {
 	// Command is the claude binary path. Default: "claude".
 	Command string
 
-	// Args are extra arguments appended after Command. Default: none.
-	// The agent's prompt is always passed on stdin so callers do not
-	// need to template-encode it into argv.
+	// Args are extra arguments appended after Command. The prompt is
+	// always passed on stdin.
 	Args []string
 
-	// BaseRef is the git ref the worktree branches off. Default:
-	// "HEAD". Production setups pin to "main" or "origin/main".
+	// BaseRef is the git ref the worktree branches off. Default: "HEAD".
 	BaseRef string
 
-	// Prompt assembles the prompt sent to the child. nil falls back
-	// to a minimal default that names the work item.
+	// Prompt assembles the prompt sent to the child. Default: a minimal
+	// builder that names the work item.
 	Prompt PromptBuilder
 }
 
 // PromptBuilder produces the prompt text for one Spawn request.
 type PromptBuilder func(Request) string
 
-// ProcessStarter is the seam tests use to stub `exec.Command`. The
-// returned *exec.Cmd MUST have Process populated (via Start). The
-// caller does NOT Wait on the process; that is the agent runtime's
-// concern.
+// ProcessStarter stubs exec.Command for tests. The returned *exec.Cmd
+// MUST have Process populated (i.e. Start has already been called).
 type ProcessStarter func(ctx context.Context, name string, args []string, stdin io.Reader, dir string) (*exec.Cmd, error)
 
 // NewClaudeSpawner constructs a Spawner.
@@ -104,18 +77,16 @@ func NewClaudeSpawner(wm *WorktreeManager, cfg ClaudeSpawnerConfig) (*ClaudeSpaw
 	}, nil
 }
 
-// SetStarter overrides the process-start seam. Tests inject a fake
-// that starts a script binary; production code MUST NOT call this.
+// SetStarter overrides the process-start seam. Tests only.
 func (s *ClaudeSpawner) SetStarter(p ProcessStarter) {
 	if p != nil {
 		s.starter = p
 	}
 }
 
-// Spawn runs the create-prompt-exec sequence. The returned Result
-// records the child's PID + the session-id parsed from its stdout
-// (or a synthetic fallback). The child is detached from the
-// orchestrator's lifetime; the Reaper owns teardown.
+// Spawn creates the worktree, execs the configured command with the
+// templated prompt on stdin, and returns the child's PID + session-id.
+// Worktree teardown is owned by the Reaper.
 func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) {
 	path, err := s.wm.Create(ctx, req.AgentID, s.cfg.BaseRef)
 	if err != nil {
@@ -135,12 +106,8 @@ func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) 
 	}
 	pid := cmd.Process.Pid
 
-	// Session-id capture is a follow-up: the claude CLI emits its
-	// own session-id but the exact format varies by version, and
-	// reading cmd.Stdout immediately after Start races against the
-	// child's first write. For now we use a deterministic synthetic
-	// id so `claude --resume <id>` can be wired once the format is
-	// pinned. Tracked in issue #27 follow-up.
+	// Synthetic session id until the claude CLI's emitted format is
+	// pinned across versions; tracked in issue #27.
 	sessionID := fmt.Sprintf("claude-%d", req.AgentID)
 
 	s.mu.Lock()
@@ -150,8 +117,7 @@ func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) 
 	return Result{PID: pid, SessionID: sessionID}, nil
 }
 
-// Children returns the live exec.Cmd handles by agent ID. The Reaper
-// uses this to send SIGTERM during teardown.
+// Children returns a snapshot of live exec.Cmd handles by agent ID.
 func (s *ClaudeSpawner) Children() map[int64]*exec.Cmd {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -162,23 +128,16 @@ func (s *ClaudeSpawner) Children() map[int64]*exec.Cmd {
 	return out
 }
 
-// Forget removes the agent from the child map after the Reaper has
-// torn it down. Safe to call on an unknown ID.
+// Forget drops the agent from the child map. Safe on unknown IDs.
 func (s *ClaudeSpawner) Forget(agentID int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.children, agentID)
 }
 
-// KillAgent implements the reaper.ChildKiller contract. Returns
-// signaled=true when the agent was known and a kill signal was sent
-// to its process. The agent is forgotten from the child map either
-// way so a subsequent Spawn for the same ID does not double-track.
-//
-// Skeleton uses cmd.Process.Kill (SIGKILL on Unix, TerminateProcess
-// on Windows) for portability. The design.md §SupervisorLimits
-// contract calls for SIGTERM-then-SIGKILL escalation; that lands
-// alongside the SupervisorLimits work tracked in issue #28.
+// KillAgent implements reaper.ChildKiller. The agent is forgotten from
+// the child map either way so a re-Spawn does not double-track.
+// SIGTERM-then-SIGKILL escalation lands with SupervisorLimits (#28).
 func (s *ClaudeSpawner) KillAgent(agentID int64) (bool, error) {
 	s.mu.Lock()
 	cmd, ok := s.children[agentID]
@@ -196,8 +155,7 @@ func (s *ClaudeSpawner) KillAgent(agentID int64) (bool, error) {
 	return true, nil
 }
 
-// WorktreeManager exposes the underlying manager so the Reaper can
-// remove worktrees without re-discovering the path.
+// WorktreeManager exposes the underlying manager for the Reaper.
 func (s *ClaudeSpawner) WorktreeManager() *WorktreeManager { return s.wm }
 
 func defaultPromptBuilder(req Request) string {
@@ -205,9 +163,8 @@ func defaultPromptBuilder(req Request) string {
 		req.WorkItemID, req.Lane, req.AgentID)
 }
 
-// execStarter is the production ProcessStarter. It runs the binary
-// in dir, with stdin piped from prompt, and forwards stdout/stderr
-// to the orchestrator's own streams so operators can tail them.
+// execStarter is the production ProcessStarter. Stdout/stderr forward
+// to the orchestrator's streams so operators can tail them.
 func execStarter(ctx context.Context, name string, args []string, stdin io.Reader, dir string) (*exec.Cmd, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir

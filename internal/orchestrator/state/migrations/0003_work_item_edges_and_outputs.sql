@@ -1,20 +1,11 @@
 -- +goose Up
 -- +goose StatementBegin
--- Outcome-conditional DAG (MVP-2 W1): edges become first-class with
--- optional CEL predicates over upstream output JSON. The journal
--- (work_item_outputs) gives predicates a deterministic, content-
--- addressed input. See docs/superpowers/specs/2026-05-31-mvp-2-
--- conditional-dag-design.md §3.
---
--- Why two tables (not JSON cols on work_items): scheduler tick filters
--- on (from_id, fired) every iteration — indexable in SQL, O(1)-per-edge
--- versus O(rows) scanning a JSON column. Same reasoning as MVP-1
--- chose a relational depends_on_features representation.
---
--- UNIQUE(content_sha) is intentionally OMITTED on work_item_outputs:
--- spec §7 risk 11 — two work_items can legally produce byte-identical
--- payloads (especially under the stub spawner). Idempotency is anchored
--- by UNIQUE(work_item_id, attempt_no) instead.
+-- Outcome-conditional DAG (MVP-2 W1): first-class edges with optional
+-- CEL predicates over journaled upstream output JSON. Two tables (not
+-- JSON cols on work_items) so scheduler tick filters on (from_id,
+-- fired) hit an index. UNIQUE(content_sha) is intentionally absent —
+-- distinct work_items may legally produce identical payloads;
+-- idempotency anchors on UNIQUE(work_item_id, attempt_no).
 
 CREATE TABLE work_item_outputs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
