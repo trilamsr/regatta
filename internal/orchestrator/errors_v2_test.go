@@ -27,8 +27,24 @@ func TestSentinelsV2Distinct(t *testing.T) {
 }
 
 func TestSentinelsV2Wrappable(t *testing.T) {
-	wrapped := errors.Join(ErrPredicateCompile, errors.New("CEL syntax error at pos 3"))
-	if !errors.Is(wrapped, ErrPredicateCompile) {
-		t.Fatalf("errors.Is must match through Join")
+	cases := []struct {
+		name string
+		sent error
+	}{
+		{"ErrPredicateCompile", ErrPredicateCompile},
+		{"ErrPredicateUnknownField", ErrPredicateUnknownField},
+		{"ErrPredicateTypeMismatch", ErrPredicateTypeMismatch},
+		{"ErrEdgeMissingDefault", ErrEdgeMissingDefault},
+		{"ErrEdgeUnknownTarget", ErrEdgeUnknownTarget},
+		{"ErrJournalNotFound", ErrJournalNotFound},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			wrapped := errors.Join(tc.sent, errors.New("caller context"))
+			if !errors.Is(wrapped, tc.sent) {
+				t.Fatalf("errors.Is must match %s through Join", tc.name)
+			}
+		})
 	}
 }

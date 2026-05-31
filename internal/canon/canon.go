@@ -15,29 +15,110 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 )
 
 // CanonicaliseJSON returns the canonical encoding of payload: object
-// keys sorted lexicographically, no insignificant whitespace, numbers
-// in encoding/json's default form, strings as-emitted by the stdlib
-// encoder. Idempotent: CanonicaliseJSON(CanonicaliseJSON(x)) == CanonicaliseJSON(x).
+// keys sorted by byte-order of their UTF-8 encoded names (equivalent
+// to codepoint order for the ASCII-dominant key universe we target),
+// no insignificant whitespace, numbers in encoding/json's default
+// form, strings as-emitted by the stdlib encoder. Idempotent:
+// CanonicaliseJSON(CanonicaliseJSON(x)) == CanonicaliseJSON(x).
 //
-// Invalid JSON returns an error. The function never panics on
-// adversarial input; predicate fuzz tests in package program exercise
-// this.
+// Rejects (with error, never panic):
+//   - any decode error from the stdlib parser
+//   - trailing non-whitespace bytes after the first JSON value
+//   - any object body that declares the same key twice (silent
+//     last-wins would mask content-SHA drift across re-canonicalisation
+//     and is therefore fatal — producers must fix the source)
+//
+// Predicate fuzz tests in package program exercise adversarial input.
 func CanonicaliseJSON(payload []byte) ([]byte, error) {
-	var v any
 	dec := json.NewDecoder(bytes.NewReader(payload))
 	dec.UseNumber()
-	if err := dec.Decode(&v); err != nil {
+	v, err := decodeValue(dec)
+	if err != nil {
 		return nil, fmt.Errorf("canon: decode: %w", err)
+	}
+	if dec.More() {
+		return nil, fmt.Errorf("canon: trailing garbage after JSON value")
 	}
 	var buf bytes.Buffer
 	if err := writeCanonical(&buf, v); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// decodeValue walks the token stream to detect duplicate object keys.
+// We cannot use json.Unmarshal into map[string]any because the stdlib
+// silently keeps the last value when a key repeats — the very bug we
+// must surface. A token-level walk preserves duplicate visibility at
+// every nesting depth.
+func decodeValue(dec *json.Decoder) (any, error) {
+	tok, err := dec.Token()
+	if err != nil {
+		return nil, err
+	}
+	return decodeFromToken(dec, tok)
+}
+
+func decodeFromToken(dec *json.Decoder, tok json.Token) (any, error) {
+	switch t := tok.(type) {
+	case json.Delim:
+		switch t {
+		case '{':
+			return decodeObject(dec)
+		case '[':
+			return decodeArray(dec)
+		default:
+			return nil, fmt.Errorf("unexpected delim %q", t)
+		}
+	default:
+		return t, nil
+	}
+}
+
+func decodeObject(dec *json.Decoder) (map[string]any, error) {
+	out := map[string]any{}
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			return nil, fmt.Errorf("object key not a string: %v", keyTok)
+		}
+		if _, dup := out[key]; dup {
+			return nil, fmt.Errorf("duplicate object key %q", key)
+		}
+		val, err := decodeValue(dec)
+		if err != nil {
+			return nil, err
+		}
+		out[key] = val
+	}
+	if _, err := dec.Token(); err != nil && err != io.EOF {
+		return nil, err
+	}
+	return out, nil
+}
+
+func decodeArray(dec *json.Decoder) ([]any, error) {
+	var out []any
+	for dec.More() {
+		val, err := decodeValue(dec)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, val)
+	}
+	if _, err := dec.Token(); err != nil && err != io.EOF {
+		return nil, err
+	}
+	return out, nil
 }
 
 func writeCanonical(buf *bytes.Buffer, v any) error {

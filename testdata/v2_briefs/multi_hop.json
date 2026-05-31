@@ -42,7 +42,8 @@
       },
       "edges": [
         {"from": "F-B", "to": "F-C", "predicate": "out.ready == true", "on_skip": "cascade"}
-      ]
+      ],
+      "default_next": "F-D"
     },
     {
       "id": "F-C",

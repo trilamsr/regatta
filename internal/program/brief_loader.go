@@ -142,22 +142,38 @@ func loadAndVerifyV2FromBytes(raw []byte, keyring map[string][]byte) (*ProgramBr
 // existing v1-shaped Sync pipeline accepts a v2 brief unchanged.
 // Outputs schema + predicate metadata is preserved on the returned
 // ProgramBriefV2 (callers needing v2 fields use LoadAndVerifyBriefV2).
+//
+// V2 edges use outgoing semantics (e.From == owning feature ID). To
+// reconstruct the v1 incoming-edge DependsOnFeatures view we reverse-
+// index: for each edge U -> D in U.Edges, append U to D's
+// DependsOnFeatures.
 func projectV2ToV1(v2 *ProgramBriefV2) *ProgramBrief {
 	out := v2.ProgramBrief
 	out.Features = make([]PlannedFeature, len(v2.FeaturesV2))
+	idxByID := make(map[string]int, len(v2.FeaturesV2))
 	for i, f := range v2.FeaturesV2 {
-		copyf := f.PlannedFeature
-		seen := map[string]bool{}
-		for _, d := range copyf.DependsOnFeatures {
-			seen[d] = true
+		out.Features[i] = f.PlannedFeature
+		idxByID[f.ID] = i
+	}
+	seenDep := make([]map[string]bool, len(v2.FeaturesV2))
+	for i := range out.Features {
+		seenDep[i] = map[string]bool{}
+		for _, d := range out.Features[i].DependsOnFeatures {
+			seenDep[i][d] = true
 		}
+	}
+	for _, f := range v2.FeaturesV2 {
 		for _, e := range f.Edges {
-			if !seen[e.From] && e.From != copyf.ID {
-				copyf.DependsOnFeatures = append(copyf.DependsOnFeatures, e.From)
-				seen[e.From] = true
+			j, ok := idxByID[e.To]
+			if !ok {
+				continue
 			}
+			if seenDep[j][e.From] {
+				continue
+			}
+			out.Features[j].DependsOnFeatures = append(out.Features[j].DependsOnFeatures, e.From)
+			seenDep[j][e.From] = true
 		}
-		out.Features[i] = copyf
 	}
 	return &out
 }

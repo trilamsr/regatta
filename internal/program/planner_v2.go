@@ -107,19 +107,44 @@ func (p *ProgramBriefV2) ValidateV2() error {
 				return fmt.Errorf("%w: feature %s default_next=%s",
 					orchestrator.ErrEdgeUnknownTarget, f.ID, *f.DefaultNext)
 			}
+			// TODO(W3): reachability check — spec §3.3 rule 2c
+			// (deferred to runtime evaluator: a DefaultNext target
+			// must be reachable from its source via the union of
+			// unconditional + predicated edges given a journal-eval
+			// context, which is W3 territory).
 		}
 	}
 
-	// Cycle check: lower edges into a v1-shaped DependsOnFeatures view
-	// on a scratch ProgramBrief so we can reuse checkDAG.
+	// Cycle check: project edges into a v1-shaped DependsOnFeatures
+	// view on a scratch ProgramBrief so we can reuse checkDAG.
+	//
+	// We build the scratch DependsOnFeatures FRESH from edges alone
+	// (we do not preserve the embedded v1 DependsOnFeatures). V2 uses
+	// outgoing-edge semantics — e.From is the owning feature, e.To is
+	// the downstream — so the v1-shaped dep arrow for e is
+	// "e.To depends on e.From", i.e. append e.From to e.To's deps.
+	// Mixing in the embedded v1 DependsOnFeatures would double-count
+	// the same relationship under inverted direction and trip a false
+	// cycle on any lowered v1 brief. checkDAG is direction-agnostic
+	// for cycle detection, so feeding it a single consistent
+	// projection is what matters.
 	scratch := p.ProgramBrief
 	scratch.Features = make([]PlannedFeature, len(p.FeaturesV2))
+	idxByID := make(map[string]int, len(p.FeaturesV2))
 	for i, f := range p.FeaturesV2 {
 		copyf := f.PlannedFeature
-		for _, e := range f.Edges {
-			copyf.DependsOnFeatures = append(copyf.DependsOnFeatures, e.To)
-		}
+		copyf.DependsOnFeatures = nil
 		scratch.Features[i] = copyf
+		idxByID[f.ID] = i
+	}
+	for _, f := range p.FeaturesV2 {
+		for _, e := range f.Edges {
+			j, ok := idxByID[e.To]
+			if !ok {
+				continue
+			}
+			scratch.Features[j].DependsOnFeatures = append(scratch.Features[j].DependsOnFeatures, e.From)
+		}
 	}
 	return scratch.checkDAG()
 }
@@ -127,6 +152,13 @@ func (p *ProgramBriefV2) ValidateV2() error {
 // compilePredicate builds a CEL env from schema, compiles the
 // predicate, then walks the AST to surface field-existence and
 // literal-type errors as distinct sentinels.
+//
+// Classifier note: cel-go does not expose a stable enum on its issue
+// diagnostics, so we substring-match the canonical error wordings
+// emitted by cel-go's checker. TestPlannerV2_CelGoClassifierRegression
+// pins these strings — if cel-go bumps and changes wording, that test
+// fails loudly so we update the heuristics before downstream
+// errors.Is-callers regress.
 func compilePredicate(predicate string, schema *OutputsSchema) error {
 	env, err := cel.NewEnv(cel.Variable("out", cel.MapType(cel.StringType, cel.DynType)))
 	if err != nil {
@@ -159,11 +191,16 @@ func compilePredicate(predicate string, schema *OutputsSchema) error {
 }
 
 // checkPredicateAgainstSchema walks the parsed AST and rejects:
-//   - any out.<field> selector whose <field> is absent from
-//     schema.Properties (ErrPredicateUnknownField)
-//   - any equality/inequality comparison between out.<field> and a
+//   - any out.<field>[.<sub>...] selector whose path is absent from the
+//     nested schema.Properties chain (ErrPredicateUnknownField)
+//   - any equality/inequality comparison between out.<path> and a
 //     literal whose runtime type disagrees with the declared property
-//     type (ErrPredicateTypeMismatch)
+//     type at the terminal path step (ErrPredicateTypeMismatch)
+//
+// Nested paths walk OutputsSchema.Properties recursively: each segment
+// resolves against the child schema produced by the previous segment.
+// A missing segment at any depth is fatal; the leaf schema is what
+// gates the literal-comparison type check.
 func checkPredicateAgainstSchema(ast *cel.Ast, schema *OutputsSchema) error {
 	if schema == nil || schema.Type != "object" || len(schema.Properties) == 0 {
 		return nil
@@ -171,14 +208,18 @@ func checkPredicateAgainstSchema(ast *cel.Ast, schema *OutputsSchema) error {
 	native := ast.NativeRep()
 	nav := celast.NavigateAST(native)
 
-	for _, sel := range celast.MatchDescendants(nav, celast.KindMatcher(celast.SelectKind)) {
-		field, ok := outFieldName(sel)
+	// MatchDescendants visits the full chain, including the inner
+	// Select nodes; we filter to terminal Selects (those whose parent
+	// is not another out-rooted Select) so each `out.a.b` path is
+	// validated exactly once at its longest form.
+	terminalSelects := terminalOutSelects(nav)
+	for _, sel := range terminalSelects {
+		path, ok := outFieldPath(sel)
 		if !ok {
 			continue
 		}
-		if _, declared := schema.Properties[field]; !declared {
-			return fmt.Errorf("%w: predicate references out.%s not declared in outputs_schema",
-				orchestrator.ErrPredicateUnknownField, field)
+		if _, err := resolveSchemaPath(schema, path); err != nil {
+			return err
 		}
 	}
 
@@ -193,47 +234,113 @@ func checkPredicateAgainstSchema(ast *cel.Ast, schema *OutputsSchema) error {
 			continue
 		}
 		var (
-			field   string
+			path    []string
 			lit     ref.Val
 			matched bool
 		)
 		switch {
 		case args[0].Kind() == celast.SelectKind && args[1].Kind() == celast.LiteralKind:
-			if f, ok := outFieldName(args[0]); ok {
-				field, lit, matched = f, args[1].AsLiteral(), true
+			if p, ok := outFieldPath(args[0]); ok {
+				path, lit, matched = p, args[1].AsLiteral(), true
 			}
 		case args[1].Kind() == celast.SelectKind && args[0].Kind() == celast.LiteralKind:
-			if f, ok := outFieldName(args[1]); ok {
-				field, lit, matched = f, args[0].AsLiteral(), true
+			if p, ok := outFieldPath(args[1]); ok {
+				path, lit, matched = p, args[0].AsLiteral(), true
 			}
 		}
 		if !matched {
 			continue
 		}
-		prop, ok := schema.Properties[field]
-		if !ok {
+		prop, err := resolveSchemaPath(schema, path)
+		if err != nil {
+			return err
+		}
+		if prop == nil {
 			continue
 		}
 		want := celTypeNameFor(prop.Type)
 		got := lit.Type().TypeName()
 		if want != "" && got != "" && want != got {
 			return fmt.Errorf("%w: out.%s declared %s, predicate compares against %s",
-				orchestrator.ErrPredicateTypeMismatch, field, prop.Type, got)
+				orchestrator.ErrPredicateTypeMismatch, strings.Join(path, "."), prop.Type, got)
 		}
 	}
 	return nil
 }
 
-func outFieldName(e celast.Expr) (string, bool) {
+// terminalOutSelects returns the Select nodes whose chain begins with
+// the `out` ident and which are not themselves the operand of a parent
+// Select. This avoids double-validating inner segments of a path like
+// out.a.b — we only walk the longest chain.
+func terminalOutSelects(nav celast.NavigableExpr) []celast.NavigableExpr {
+	all := celast.MatchDescendants(nav, celast.KindMatcher(celast.SelectKind))
+	inner := map[int64]bool{}
+	for _, sel := range all {
+		if sel.Kind() != celast.SelectKind {
+			continue
+		}
+		op := sel.AsSelect().Operand()
+		if op.Kind() == celast.SelectKind {
+			inner[op.ID()] = true
+		}
+	}
+	var out []celast.NavigableExpr
+	for _, sel := range all {
+		if inner[sel.ID()] {
+			continue
+		}
+		if _, ok := outFieldPath(sel); ok {
+			out = append(out, sel)
+		}
+	}
+	return out
+}
+
+// outFieldPath unwraps a Select chain rooted at `out` and returns the
+// dotted path of field names. Returns false if the chain does not
+// start at the `out` ident.
+func outFieldPath(e celast.Expr) ([]string, bool) {
 	if e.Kind() != celast.SelectKind {
-		return "", false
+		return nil, false
 	}
-	s := e.AsSelect()
-	op := s.Operand()
-	if op.Kind() != celast.IdentKind || op.AsIdent() != "out" {
-		return "", false
+	var rev []string
+	cur := e
+	for cur.Kind() == celast.SelectKind {
+		s := cur.AsSelect()
+		rev = append(rev, s.FieldName())
+		cur = s.Operand()
 	}
-	return s.FieldName(), true
+	if cur.Kind() != celast.IdentKind || cur.AsIdent() != "out" {
+		return nil, false
+	}
+	for i, j := 0, len(rev)-1; i < j; i, j = i+1, j-1 {
+		rev[i], rev[j] = rev[j], rev[i]
+	}
+	return rev, true
+}
+
+// resolveSchemaPath walks an OutputsSchema along a dotted path. Each
+// segment must exist in Properties of the current object schema. Any
+// missing segment rejects with ErrPredicateUnknownField. Returns the
+// terminal schema (possibly nil for free-form leaves).
+func resolveSchemaPath(root *OutputsSchema, path []string) (*OutputsSchema, error) {
+	if len(path) == 0 {
+		return root, nil
+	}
+	cur := root
+	for i, seg := range path {
+		if cur == nil || cur.Type != "object" || len(cur.Properties) == 0 {
+			return nil, fmt.Errorf("%w: predicate references out.%s not declared in outputs_schema",
+				orchestrator.ErrPredicateUnknownField, strings.Join(path[:i+1], "."))
+		}
+		next, ok := cur.Properties[seg]
+		if !ok {
+			return nil, fmt.Errorf("%w: predicate references out.%s not declared in outputs_schema",
+				orchestrator.ErrPredicateUnknownField, strings.Join(path[:i+1], "."))
+		}
+		cur = next
+	}
+	return cur, nil
 }
 
 // celTypeNameFor maps OutputsSchema property type strings onto cel-go

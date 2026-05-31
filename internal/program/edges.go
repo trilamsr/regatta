@@ -145,10 +145,13 @@ func (p *ProgramBriefV2) VerifySignatureV2(keyring map[string][]byte) error {
 }
 
 // LowerV1ToV2 lifts a v1 ProgramBrief into the equivalent v2 view by
-// emitting one unconditional Edge per depends_on_features entry. The
-// transform is lossless for behaviour: same feature set, same
-// dependency closure (every v1 dep becomes exactly one v2 edge with
-// the dependent as To and the dependency as From).
+// emitting one unconditional outgoing Edge per depends_on_features
+// entry. The transform is lossless for behaviour: same feature set,
+// same dependency closure (every v1 dep `F-B depends_on F-A` becomes
+// an outgoing edge `F-A -> F-B` on F-A's Edges slice).
+//
+// Edges live on the upstream (source) feature because ValidateV2
+// requires edge.From == owning feature ID — outgoing semantics.
 //
 // The returned brief has SchemaVersion=2; the embedded v1 Features
 // slice is cleared so JSON output carries the v2 "features" array
@@ -162,12 +165,20 @@ func LowerV1ToV2(brief *ProgramBrief) *ProgramBriefV2 {
 	out.Features = nil
 
 	out.FeaturesV2 = make([]PlannedFeatureV2, 0, len(brief.Features))
+	byID := make(map[string]int, len(brief.Features))
+	for i, f := range brief.Features {
+		out.FeaturesV2 = append(out.FeaturesV2, PlannedFeatureV2{PlannedFeature: f})
+		byID[f.ID] = i
+	}
 	for _, f := range brief.Features {
-		fv2 := PlannedFeatureV2{PlannedFeature: f}
 		for _, dep := range f.DependsOnFeatures {
-			fv2.Edges = append(fv2.Edges, Edge{From: dep, To: f.ID})
+			idx, ok := byID[dep]
+			if !ok {
+				continue
+			}
+			out.FeaturesV2[idx].Edges = append(out.FeaturesV2[idx].Edges,
+				Edge{From: dep, To: f.ID})
 		}
-		out.FeaturesV2 = append(out.FeaturesV2, fv2)
 	}
 	return out
 }

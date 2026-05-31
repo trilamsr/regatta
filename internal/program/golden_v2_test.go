@@ -96,6 +96,9 @@ func TestGolden_HappyTriage_LoadAndValidate(t *testing.T) {
 	if b.SchemaVersion != 2 {
 		t.Fatalf("schema_version=%d want 2", b.SchemaVersion)
 	}
+	if err := b.ValidateV2(); err != nil {
+		t.Fatalf("happy_triage.json must ValidateV2: %v", err)
+	}
 	if len(b.FeaturesV2) != 3 {
 		t.Fatalf("FeaturesV2 len=%d want 3 (F-A scan, F-B remediate-high, F-C remediate-low)", len(b.FeaturesV2))
 	}
@@ -163,6 +166,9 @@ func TestGolden_V1LoweredEquivalent_LoadAndValidate(t *testing.T) {
 	if lowered.SchemaVersion != 2 {
 		t.Fatalf("lowered SchemaVersion=%d want 2", lowered.SchemaVersion)
 	}
+	if err := lowered.ValidateV2(); err != nil {
+		t.Fatalf("v1-lowered brief must ValidateV2: %v", err)
+	}
 	if len(lowered.FeaturesV2) != len(v1.Features) {
 		t.Fatalf("lowered features=%d want %d", len(lowered.FeaturesV2), len(v1.Features))
 	}
@@ -196,6 +202,9 @@ func TestGolden_AllDefaultNoPredicates_BackwardCompat(t *testing.T) {
 	b := loadV2Fixture(t, "all_default_no_predicates.json")
 	if b.SchemaVersion != 2 {
 		t.Fatalf("schema_version=%d want 2", b.SchemaVersion)
+	}
+	if err := b.ValidateV2(); err != nil {
+		t.Fatalf("all_default_no_predicates.json must ValidateV2: %v", err)
 	}
 	if len(b.FeaturesV2) == 0 {
 		t.Fatalf("no features in fixture")
@@ -236,6 +245,9 @@ func TestGolden_MultiHop_PredicatedChain(t *testing.T) {
 		t.Fatalf("multi_hop.json: IsV2Brief returned false; expected v2")
 	}
 	b := loadV2Fixture(t, "multi_hop.json")
+	if err := b.ValidateV2(); err != nil {
+		t.Fatalf("multi_hop.json must ValidateV2: %v", err)
+	}
 	if len(b.FeaturesV2) < 4 {
 		t.Fatalf("multi_hop expected ≥4 features for A->B->C->D chain, got %d", len(b.FeaturesV2))
 	}

@@ -64,3 +64,39 @@ func TestCanonicalise_InvalidJSON(t *testing.T) {
 		t.Fatalf("expected error for invalid JSON")
 	}
 }
+
+// TestCanonicalise_RejectsTrailingGarbage pins the streaming-decoder
+// contract: a payload that parses to a valid JSON value but carries
+// extra non-whitespace bytes after the terminator MUST reject. Without
+// this guard the canonical form silently drops the trailing data and
+// downstream content-SHA hashes diverge from operator expectation.
+func TestCanonicalise_RejectsTrailingGarbage(t *testing.T) {
+	in := []byte(`{"a":1} extra`)
+	_, err := canonicaliseJSON(in)
+	if err == nil {
+		t.Fatalf("expected error for trailing garbage after JSON value")
+	}
+}
+
+// TestCanonicalise_RejectsDuplicateKeys pins the duplicate-key
+// contract: stdlib json.Decoder silently picks "last wins" when an
+// object body declares the same key twice, masking content-SHA drift
+// across re-canonicalisation. The canonical form must reject so
+// producers see the bug at ingest time, not after replay diverges.
+func TestCanonicalise_RejectsDuplicateKeys(t *testing.T) {
+	in := []byte(`{"a":1,"a":2}`)
+	_, err := canonicaliseJSON(in)
+	if err == nil {
+		t.Fatalf("expected error for duplicate object key")
+	}
+}
+
+// TestCanonicalise_RejectsNestedDuplicateKeys covers duplicates that
+// appear inside an inner object, exercising the recursive walk.
+func TestCanonicalise_RejectsNestedDuplicateKeys(t *testing.T) {
+	in := []byte(`{"outer":{"k":1,"k":2}}`)
+	_, err := canonicaliseJSON(in)
+	if err == nil {
+		t.Fatalf("expected error for nested duplicate object key")
+	}
+}
