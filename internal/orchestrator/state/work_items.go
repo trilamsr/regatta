@@ -13,15 +13,20 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-// WorkItemKind enumerates work_items.kind values.
-type WorkItemKind string
+// WorkItemKind is the canonical schemas.WorkItemKind re-exported under
+// the state package so callers that already depend on state need not
+// also import schemas just to spell the kind enum.
+type WorkItemKind = schemas.WorkItemKind
 
-// Work item kinds per spec §2.2.
+// Work item kinds per spec §2.2 — re-exported from contracts/schemas so
+// state and schemas share one source of truth for the enum values.
 const (
-	KindFeature WorkItemKind = "feature"
-	KindProgram WorkItemKind = "program"
+	KindFeature = schemas.KindFeature
+	KindProgram = schemas.KindProgram
 )
 
 // WorkItemStatus enumerates work_items.status values.
