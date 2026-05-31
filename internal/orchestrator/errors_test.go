@@ -15,6 +15,8 @@ func TestSentinelsDistinct(t *testing.T) {
 		ErrHMACInvalid,
 		ErrTargetExists,
 		ErrFlockHeld,
+		ErrPlannerPromptMissing,
+		ErrCascadeNonConverging,
 	}
 	seen := map[string]bool{}
 	for _, e := range all {

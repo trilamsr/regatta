@@ -1,0 +1,509 @@
+package program
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"path/filepath"
+	"strings"
+	"testing"
+	"testing/fstest"
+	"time"
+
+	_ "modernc.org/sqlite"
+
+	"github.com/trilamsr/regatta/internal/orchestrator"
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
+)
+
+func newBriefTestDB(t *testing.T) *state.DB {
+	t.Helper()
+	db, err := state.Open(context.Background(), state.DSN(filepath.Join(t.TempDir(), "bl.db")))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+// captureLogs swaps slog's default to a text handler writing into a
+// buffer for the duration of the test so log-asserting tests can grep
+// without globally leaking handler state.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return buf
+}
+
+func mustSignedBrief(t *testing.T, key []byte) (*ProgramBrief, []byte) {
+	t.Helper()
+	return mustSignedBriefWithOpts(t, key, "PROG-1", "m-1234567890ab",
+		time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC),
+		[]PlannedFeature{
+			{ID: "F-1", Title: "foo", Fulfills: []string{"c1"}},
+			{ID: "F-2", Title: "bar", Fulfills: []string{"c2"}},
+			{ID: "F-3", Title: "baz", Fulfills: []string{"c3"}},
+		},
+		[]PlanCriterion{
+			{ID: "c1", Text: "add foo"},
+			{ID: "c2", Text: "add bar"},
+			{ID: "c3", Text: "add baz"},
+		})
+}
+
+func mustSignedBriefWithOpts(t *testing.T, key []byte, parentID, programID string, producedAt time.Time, features []PlannedFeature, criteria []PlanCriterion) (*ProgramBrief, []byte) {
+	t.Helper()
+	b := &ProgramBrief{
+		SchemaVersion:    1,
+		ProgramID:        programID,
+		ParentWorkItemID: parentID,
+		ParentCriteria:   criteria,
+		PlannerModelID:   "claude-test",
+		Features:         features,
+		ProducedAt:       producedAt,
+	}
+	signed, err := b.Sign(key, "key-1")
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	raw, err := json.Marshal(signed)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	return signed, raw
+}
+
+// seedParent inserts a parent program row so the BriefLoader's
+// parent-FK preflight finds it.
+func seedParent(t *testing.T, db *state.DB, id string, at time.Time) {
+	t.Helper()
+	parent := state.WorkItem{ID: id, Kind: state.KindProgram, Title: "p",
+		Lane: "server", Status: state.WorkStatusPlanned}
+	if err := db.UpsertWorkItemAt(context.Background(), parent, state.SourceAdapter, at); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadAndVerifyBrief_Valid(t *testing.T) {
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	_, raw := mustSignedBrief(t, key)
+	fsys := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+
+	got, err := LoadAndVerifyBrief(fsys, "PROG-1.json", map[string][]byte{"key-1": key})
+	if err != nil {
+		t.Fatalf("LoadAndVerifyBrief: %v", err)
+	}
+	if got.ParentWorkItemID != "PROG-1" {
+		t.Fatalf("ParentWorkItemID=%q want PROG-1", got.ParentWorkItemID)
+	}
+}
+
+func TestLoadAndVerifyBrief_TamperedHMAC(t *testing.T) {
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	_, raw := mustSignedBrief(t, key)
+	tampered := append([]byte{}, raw...)
+	for i, b := range tampered {
+		if b == 'f' { // first 'f' in "foo" feature title — guaranteed present.
+			tampered[i] = 'x'
+			break
+		}
+	}
+	fsys := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: tampered}}
+
+	_, err := LoadAndVerifyBrief(fsys, "PROG-1.json", map[string][]byte{"key-1": key})
+	if !errors.Is(err, orchestrator.ErrHMACInvalid) {
+		t.Fatalf("err=%v want ErrHMACInvalid", err)
+	}
+}
+
+func TestLoadAndVerifyBrief_KIDMismatchFails(t *testing.T) {
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	signed, _ := mustSignedBrief(t, key)
+	signed.Signature.KeyID = "key-2"
+	raw, err := json.Marshal(signed)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	fsys := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+
+	_, err = LoadAndVerifyBrief(fsys, "PROG-1.json", map[string][]byte{"key-1": key, "key-2": key})
+	if !errors.Is(err, orchestrator.ErrHMACInvalid) {
+		t.Fatalf("err=%v want ErrHMACInvalid (kid bound into MAC; relabel must fail)", err)
+	}
+}
+
+func TestLoadAndVerifyBrief_OversizedRejected(t *testing.T) {
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	pad := strings.Repeat("A", maxBriefSize+1)
+	_, raw := mustSignedBriefWithOpts(t, key, "PROG-1", "m-1234567890ab",
+		time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC),
+		[]PlannedFeature{
+			{ID: "F-1", Title: pad, Fulfills: []string{"c1"}},
+		},
+		[]PlanCriterion{{ID: "c1", Text: "add"}})
+	fsys := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+
+	_, err := LoadAndVerifyBrief(fsys, "PROG-1.json", map[string][]byte{"key-1": key})
+	if err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("err=%v want size-cap rejection", err)
+	}
+}
+
+func TestBriefLoaderSync_UpsertsThreeChildren(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	_, raw := mustSignedBrief(t, key)
+	fsys := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", now)
+
+	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key})
+
+	if err := loader.Sync(context.Background(), now); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	children, err := db.ListByParent(context.Background(), "PROG-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(children) != 3 {
+		t.Fatalf("children=%d want 3", len(children))
+	}
+	for _, c := range children {
+		if c.Source != state.SourceBrief {
+			t.Fatalf("child %s source=%s want brief", c.ID, c.Source)
+		}
+	}
+}
+
+func TestBriefLoaderSync_SkipsTmpFiles(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	_, raw := mustSignedBrief(t, key)
+	fsys := fstest.MapFS{"PROG-1.json.tmp": &fstest.MapFile{Data: raw}}
+
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key})
+	if err := loader.Sync(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	children, _ := db.ListByParent(context.Background(), "PROG-1")
+	if len(children) != 0 {
+		t.Fatalf("children=%d want 0 (.tmp must be skipped)", len(children))
+	}
+}
+
+func TestBriefLoaderSync_TombstonesMissingBrief(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	_, raw := mustSignedBrief(t, key)
+	files := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", t0)
+
+	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key})
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatal(err)
+	}
+
+	// Next tick — brief gone.
+	t1 := t0.Add(1 * time.Second)
+	delete(files, "PROG-1.json")
+	if err := loader.Sync(context.Background(), t1); err != nil {
+		t.Fatal(err)
+	}
+
+	children, _ := db.ListByParent(context.Background(), "PROG-1")
+	if len(children) != 3 {
+		t.Fatalf("children=%d want 3 rows (tombstoned but preserved)", len(children))
+	}
+	for _, c := range children {
+		if c.Status != state.WorkStatusArchived {
+			t.Fatalf("child %s status=%s want archived", c.ID, c.Status)
+		}
+	}
+}
+
+func TestBriefLoaderSync_TombstoneLogsCutoff(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	_, raw := mustSignedBrief(t, key)
+	files := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", t0)
+	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key})
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatal(err)
+	}
+
+	logs := captureLogs(t)
+	t1 := t0.Add(time.Second)
+	delete(files, "PROG-1.json")
+	if err := loader.Sync(context.Background(), t1); err != nil {
+		t.Fatal(err)
+	}
+	out := logs.String()
+	if !strings.Contains(out, "brief.tombstoned") {
+		t.Fatalf("missing brief.tombstoned in logs: %s", out)
+	}
+	if !strings.Contains(out, "cutoff=") {
+		t.Fatalf("log field should be 'cutoff' (mirrors A5): %s", out)
+	}
+}
+
+func TestBriefLoaderSync_CrossBriefFeatureIDCollision(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+
+	// Two briefs, both define feature F-1 (different parents).
+	_, rawA := mustSignedBriefWithOpts(t, key, "PROG-A", "m-aaaaaaaaaaaa", t0,
+		[]PlannedFeature{{ID: "F-1", Title: "from-A", Fulfills: []string{"c1"}}},
+		[]PlanCriterion{{ID: "c1", Text: "a"}})
+	_, rawB := mustSignedBriefWithOpts(t, key, "PROG-B", "m-bbbbbbbbbbbb", t0,
+		[]PlannedFeature{{ID: "F-1", Title: "from-B", Fulfills: []string{"c1"}}},
+		[]PlanCriterion{{ID: "c1", Text: "b"}})
+
+	seedParent(t, db, "PROG-A", t0)
+	seedParent(t, db, "PROG-B", t0)
+
+	// Filenames chosen so sort.Strings places A first.
+	fsys := fstest.MapFS{
+		"a.json": &fstest.MapFile{Data: rawA},
+		"b.json": &fstest.MapFile{Data: rawB},
+	}
+
+	logs := captureLogs(t)
+	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key})
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := db.GetWorkItem(context.Background(), "F-1")
+	if err != nil {
+		t.Fatalf("GetWorkItem F-1: %v", err)
+	}
+	if got.ParentProgramID != "PROG-A" {
+		t.Fatalf("F-1.parent=%q want PROG-A (first-wins)", got.ParentProgramID)
+	}
+	if got.Title != "from-A" {
+		t.Fatalf("F-1.title=%q want from-A (first-wins)", got.Title)
+	}
+	out := logs.String()
+	if !strings.Contains(out, "feature_id_collision") {
+		t.Fatalf("missing feature_id_collision warn: %s", out)
+	}
+	if !strings.Contains(out, "first_seen_in=a.json") {
+		t.Fatalf("missing first_seen_in=a.json: %s", out)
+	}
+}
+
+func TestBriefLoaderSync_RejectsUnknownParent(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	_, raw := mustSignedBrief(t, key)
+	fsys := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+
+	logs := captureLogs(t)
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key})
+	if err := loader.Sync(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+
+	children, _ := db.ListByParent(context.Background(), "PROG-1")
+	if len(children) != 0 {
+		t.Fatalf("children=%d want 0 (unknown parent must reject brief)", len(children))
+	}
+	out := logs.String()
+	if !strings.Contains(out, "unknown_parent_program") {
+		t.Fatalf("missing unknown_parent_program warn: %s", out)
+	}
+}
+
+func TestBriefLoaderSync_StaleBriefRejected(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", t0)
+
+	_, raw := mustSignedBrief(t, key) // ProducedAt = t0
+	files := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+
+	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key})
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatal(err)
+	}
+
+	// Replay same brief 5 min later — same ProducedAt → must be rejected.
+	logs := captureLogs(t)
+	t1 := t0.Add(5 * time.Minute)
+	if err := loader.Sync(context.Background(), t1); err != nil {
+		t.Fatal(err)
+	}
+	out := logs.String()
+	if !strings.Contains(out, "stale_produced_at") {
+		t.Fatalf("expected stale_produced_at rejection: %s", out)
+	}
+	// Children should NOT have been re-stamped on the replay — so the
+	// later sweep (no actual upsert during the replay) must not tombstone them.
+	children, _ := db.ListByParent(context.Background(), "PROG-1")
+	if len(children) != 3 {
+		t.Fatalf("children=%d want 3 (no churn from stale replay)", len(children))
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Cascade-dep tests
+// ─────────────────────────────────────────────────────────────────
+
+// seedFeature inserts a feature child via UpsertWorkItemAt with the
+// given status, depends_on, and at-timestamp. Caller seeds the parent
+// first.
+func seedFeature(t *testing.T, db *state.DB, id, parent string, deps []string, status state.WorkItemStatus, at time.Time) {
+	t.Helper()
+	wi := state.WorkItem{
+		ID:                id,
+		Kind:              state.KindFeature,
+		Title:             id,
+		Lane:              "server",
+		Status:            status,
+		ParentProgramID:   parent,
+		DependsOnFeatures: deps,
+	}
+	if err := db.UpsertWorkItemAt(context.Background(), wi, state.SourceBrief, at); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// freshBriefLoader returns a loader with no fsys content (Sync just
+// runs the reconciler). The reconciler is independent of any brief.
+func freshBriefLoader(db *state.DB) *BriefLoader {
+	return NewBriefLoader(fstest.MapFS{}, db, map[string][]byte{"key-1": []byte("k")})
+}
+
+// Note for cascade-dep tests: seed timestamps must equal pollStartedAt
+// so the tombstone sweep (last_seen_at < pollStartedAt) is a no-op and
+// only the dependency-cascade reconciler effects show through. Sync
+// runs both passes per tick; isolating the reconciler in a unit means
+// keeping the sweep at no-op.
+func TestCascadeDep_ArchivedDepFlagsChild(t *testing.T) {
+	db := newBriefTestDB(t)
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", t0)
+	seedFeature(t, db, "F-DEP", "PROG-1", nil, state.WorkStatusArchived, t0)
+	seedFeature(t, db, "F-CHILD", "PROG-1", []string{"F-DEP"}, state.WorkStatusPlanned, t0)
+
+	loader := freshBriefLoader(db)
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := db.GetWorkItem(context.Background(), "F-CHILD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != state.WorkStatusArchived {
+		t.Fatalf("F-CHILD.status=%s want archived", got.Status)
+	}
+}
+
+func TestCascadeDep_LiveDepLeavesChildAlone(t *testing.T) {
+	db := newBriefTestDB(t)
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", t0)
+	seedFeature(t, db, "F-DEP", "PROG-1", nil, state.WorkStatusPlanned, t0)
+	seedFeature(t, db, "F-CHILD", "PROG-1", []string{"F-DEP"}, state.WorkStatusPlanned, t0)
+
+	loader := freshBriefLoader(db)
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _ := db.GetWorkItem(context.Background(), "F-CHILD")
+	if got.Status != state.WorkStatusPlanned {
+		t.Fatalf("F-CHILD.status=%s want planned (dep alive)", got.Status)
+	}
+}
+
+func TestCascadeDep_DepNotFound(t *testing.T) {
+	db := newBriefTestDB(t)
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", t0)
+	seedFeature(t, db, "F-CHILD", "PROG-1", []string{"F-PHANTOM"}, state.WorkStatusPlanned, t0)
+
+	loader := freshBriefLoader(db)
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	got, _ := db.GetWorkItem(context.Background(), "F-CHILD")
+	if got.Status != state.WorkStatusPlanned {
+		t.Fatalf("F-CHILD.status=%s want planned (phantom dep is no-op)", got.Status)
+	}
+}
+
+// TestCascadeDep_MultiHopWithinOneSync inserts the chain in REVERSE
+// dependency order (C first, then B, then A-archived) on purpose: in
+// SQLite, an unordered SELECT typically returns rows in insertion
+// order. A naive single-pass cascade visiting C before B would miss
+// the C→B→A archive chain because at C's visit B is still planned.
+// Only a fixed-point loop converges in one Sync; the test pins that
+// contract.
+func TestCascadeDep_MultiHopWithinOneSync(t *testing.T) {
+	db := newBriefTestDB(t)
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", t0)
+	seedFeature(t, db, "F-C", "PROG-1", []string{"F-B"}, state.WorkStatusPlanned, t0)
+	seedFeature(t, db, "F-B", "PROG-1", []string{"F-A"}, state.WorkStatusPlanned, t0)
+	seedFeature(t, db, "F-A", "PROG-1", nil, state.WorkStatusArchived, t0)
+
+	loader := freshBriefLoader(db)
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatal(err)
+	}
+
+	gotB, _ := db.GetWorkItem(context.Background(), "F-B")
+	if gotB.Status != state.WorkStatusArchived {
+		t.Fatalf("F-B.status=%s want archived (depends on archived F-A)", gotB.Status)
+	}
+	gotC, _ := db.GetWorkItem(context.Background(), "F-C")
+	if gotC.Status != state.WorkStatusArchived {
+		t.Fatalf("F-C.status=%s want archived (multi-hop convergence)", gotC.Status)
+	}
+}
+
+func TestCascadeDep_UpdatedAtAdvances(t *testing.T) {
+	db := newBriefTestDB(t)
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", t0)
+	seedFeature(t, db, "F-DEP", "PROG-1", nil, state.WorkStatusArchived, t0)
+	seedFeature(t, db, "F-CHILD", "PROG-1", []string{"F-DEP"}, state.WorkStatusPlanned, t0)
+
+	before, _ := db.GetWorkItem(context.Background(), "F-CHILD")
+	loader := freshBriefLoader(db)
+	t1 := t0.Add(10 * time.Second)
+	// Sweep no-op (last_seen_at==t0, cutoff==t1 — but the sweep WILL
+	// archive things here). Reset seed timestamps to t1 so the sweep
+	// is still no-op AND the cascade stamp matches t1.
+	seedFeature(t, db, "F-DEP", "PROG-1", nil, state.WorkStatusArchived, t1)
+	seedFeature(t, db, "F-CHILD", "PROG-1", []string{"F-DEP"}, state.WorkStatusPlanned, t1)
+	if err := loader.Sync(context.Background(), t1); err != nil {
+		t.Fatal(err)
+	}
+	after, _ := db.GetWorkItem(context.Background(), "F-CHILD")
+	if !after.UpdatedAt.After(before.UpdatedAt) {
+		t.Fatalf("updated_at did not advance: before=%v after=%v", before.UpdatedAt, after.UpdatedAt)
+	}
+	if !after.UpdatedAt.Equal(t1.UTC().Truncate(time.Second)) {
+		t.Fatalf("updated_at=%v want %v (pollStartedAt)", after.UpdatedAt, t1)
+	}
+}

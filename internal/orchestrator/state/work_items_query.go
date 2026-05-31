@@ -106,6 +106,57 @@ func (d *DB) CycleCheck(ctx context.Context, candidate WorkItem) error {
 	return nil
 }
 
+// MaxUpdatedAtForBriefChildren returns the largest updated_at across
+// all work_items whose parent_program_id == parentID and source ==
+// SourceBrief, or the zero time if no such row exists. Used by
+// BriefLoader to reject stale brief replays: if a freshly-loaded
+// brief's ProducedAt is <= this watermark, the brief was already
+// processed (or superseded by a newer one for the same program) and
+// re-applying it would silently revert later state. Read-only.
+func (d *DB) MaxUpdatedAtForBriefChildren(ctx context.Context, parentID string) (time.Time, error) {
+	row := d.sql.QueryRowContext(ctx, `
+		SELECT COALESCE(MAX(updated_at), 0) FROM work_items
+		WHERE parent_program_id = ? AND source = ?`,
+		parentID, string(SourceBrief))
+	var ts int64
+	if err := row.Scan(&ts); err != nil {
+		return time.Time{}, fmt.Errorf("state: max updated_at for brief children of %s: %w", parentID, err)
+	}
+	if ts == 0 {
+		return time.Time{}, nil
+	}
+	return time.Unix(ts, 0).UTC(), nil
+}
+
+// ListArchivedProgramsWithLiveChildren returns the IDs of every
+// program whose own row is archived but which still has at least one
+// non-archived child via parent_program_id. AdapterSync's reconciler
+// calls this every tick to converge stranded children when a prior
+// tick crashed between the program-archive write and the child
+// cascade. Idempotent — once no live children remain, returns empty.
+func (d *DB) ListArchivedProgramsWithLiveChildren(ctx context.Context) ([]string, error) {
+	rows, err := d.sql.QueryContext(ctx, `
+		SELECT DISTINCT p.id
+		FROM work_items p
+		JOIN work_items c ON c.parent_program_id = p.id
+		WHERE p.kind = ? AND p.status = ? AND c.status != ?
+		ORDER BY p.id`,
+		string(KindProgram), string(WorkStatusArchived), string(WorkStatusArchived))
+	if err != nil {
+		return nil, fmt.Errorf("state: list archived programs w/ live children: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("state: scan archived program id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // reachable returns true if target is reachable from start via adj,
 // excluding the zero-depth self-arrival case. A self-loop
 // (start depends on start) is reachable at depth 1, returning true.

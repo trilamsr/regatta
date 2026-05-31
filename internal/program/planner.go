@@ -13,25 +13,30 @@ package program
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/orchestrator"
 )
 
 // ProgramBrief is the Go form of schemas/features.schema.json.
 type ProgramBrief struct {
-	SchemaVersion    int                  `json:"schema_version"`
-	ProgramID        string               `json:"program_id"`
-	ParentWorkItemID string               `json:"parent_work_item_id"`
-	ParentCriteria   []PlanCriterion      `json:"parent_criteria"`
-	PlannerModelID   string               `json:"planner_model_id"`
-	Features         []PlannedFeature     `json:"features"`
-	ProducedAt       time.Time            `json:"produced_at"`
+	SchemaVersion    int                    `json:"schema_version"`
+	ProgramID        string                 `json:"program_id"`
+	ParentWorkItemID string                 `json:"parent_work_item_id"`
+	ParentCriteria   []PlanCriterion        `json:"parent_criteria"`
+	PlannerModelID   string                 `json:"planner_model_id"`
+	Features         []PlannedFeature       `json:"features"`
+	ProducedAt       time.Time              `json:"produced_at"`
 	Signature        schemas.SignatureBlock `json:"signature"`
 }
 
@@ -59,12 +64,12 @@ var (
 		"": true, "trivial": true, "small": true, "medium": true, "large": true,
 	}
 
-	ErrCoverageIncomplete    = errors.New("planner: parent criteria not fully covered by features.fulfills")
-	ErrCoverageOverlap       = errors.New("planner: features.fulfills overlap; criterion claimed by multiple features")
-	ErrCoveragePhantom       = errors.New("planner: features.fulfills contains criterion not in parent")
-	ErrFeatureCycle          = errors.New("planner: feature depends_on_features contains a cycle")
-	ErrFeatureUnknownDep     = errors.New("planner: feature depends_on_features references unknown feature")
-	ErrPlanSchemaInvalid     = errors.New("planner: feature plan schema invalid")
+	ErrCoverageIncomplete = errors.New("planner: parent criteria not fully covered by features.fulfills")
+	ErrCoverageOverlap    = errors.New("planner: features.fulfills overlap; criterion claimed by multiple features")
+	ErrCoveragePhantom    = errors.New("planner: features.fulfills contains criterion not in parent")
+	ErrFeatureCycle       = errors.New("planner: feature depends_on_features contains a cycle")
+	ErrFeatureUnknownDep  = errors.New("planner: feature depends_on_features references unknown feature")
+	ErrPlanSchemaInvalid  = errors.New("planner: feature plan schema invalid")
 )
 
 // Validate runs every invariant on a freshly-produced ProgramBrief
@@ -252,9 +257,9 @@ type ModelClient interface {
 
 // PlannerOptions configures one planner invocation.
 type PlannerOptions struct {
-	Client       ModelClient
-	HMACKey      []byte
-	HMACKeyID    string
+	Client    ModelClient
+	HMACKey   []byte
+	HMACKeyID string
 }
 
 // Run executes the one-shot planner pipeline:
@@ -314,4 +319,77 @@ func newProgramID() string {
 	var b [6]byte
 	_, _ = rand.Read(b[:])
 	return "m-" + hex.EncodeToString(b[:])
+}
+
+// maxPlannerPromptSize caps the on-disk planner prompt. Real
+// prompts are KB; 1 MiB is 1000x headroom and prevents an operator
+// typo (e.g. pointing planner_path at /var/log/system.log) from
+// loading gigabytes into RAM.
+const maxPlannerPromptSize int64 = 1 << 20
+
+// LoadPlannerPrompt returns the planner system prompt to use.
+//
+// Behaviour matrix:
+//
+//	path missing,  expectedSHA empty -> defaultPlannerPrompt + slog breadcrumb
+//	path missing,  expectedSHA set   -> ErrPlannerPromptMissing (fail closed)
+//	path present                     -> contents, after pre-checks below
+//
+// Pre-checks (in order): regular-file, size <= 1 MiB, non-empty.
+// SHA pin is normalized to lowercase before compare so operators
+// can paste uppercase hex from CertUtil / OpenSSL without a silent
+// mismatch. Malformed pins (non-hex or wrong length) are rejected
+// up-front as a config error instead of being treated as a content
+// mismatch.
+func LoadPlannerPrompt(path string, expectedSHA string) (string, error) {
+	expectedSHA = strings.ToLower(strings.TrimSpace(expectedSHA))
+	if expectedSHA != "" {
+		if len(expectedSHA) != sha256.Size*2 || !isHex(expectedSHA) {
+			return "", fmt.Errorf("program: planner SHA pin malformed: len=%d (want 64 lowercase hex chars)", len(expectedSHA))
+		}
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if expectedSHA != "" {
+				return "", fmt.Errorf("%w: path=%s", orchestrator.ErrPlannerPromptMissing, path)
+			}
+			slog.Info("planner.prompt.fallback", "path", path, "reason", "missing_file")
+			return defaultPlannerPrompt, nil
+		}
+		return "", fmt.Errorf("program: stat planner prompt: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return "", fmt.Errorf("program: planner prompt path is not a regular file: %s (mode=%s)", path, info.Mode())
+	}
+	if info.Size() > maxPlannerPromptSize {
+		return "", fmt.Errorf("program: planner prompt too large: %d bytes (max %d)", info.Size(), maxPlannerPromptSize)
+	}
+	if info.Size() == 0 {
+		return "", fmt.Errorf("program: planner prompt empty: %s", path)
+	}
+
+	data, err := os.ReadFile(path) // #nosec G304 — path is operator-pinned config from regatta.yaml; Stat above already confirmed regular file + size cap.
+	if err != nil {
+		return "", fmt.Errorf("program: read planner prompt: %w", err)
+	}
+	if expectedSHA != "" {
+		h := sha256.Sum256(data)
+		got := hex.EncodeToString(h[:])
+		if got != expectedSHA {
+			return "", fmt.Errorf("%w: path=%s got=%s want=%s",
+				orchestrator.ErrBriefSHAMismatch, path, got, expectedSHA)
+		}
+	}
+	return string(data), nil
+}
+
+func isHex(s string) bool {
+	for _, c := range s {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
 }

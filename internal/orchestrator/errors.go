@@ -11,6 +11,12 @@ var (
 	// prompt SHA in regatta.yaml does not match the on-disk prompt.
 	ErrBriefSHAMismatch = errors.New("orchestrator: planner prompt SHA does not match pinned value")
 
+	// ErrPlannerPromptMissing fires when prompts.planner_path points
+	// at a file that does not exist AND prompts.planner_sha is pinned.
+	// A pinned hash with a missing file must fail closed -- silently
+	// swapping in the embedded default defeats the pin.
+	ErrPlannerPromptMissing = errors.New("orchestrator: planner prompt path missing while SHA is pinned")
+
 	// ErrHMACInvalid fires when a program_brief.json fails HMAC
 	// verification against the configured keyring.
 	ErrHMACInvalid = errors.New("orchestrator: brief HMAC signature invalid")
@@ -24,4 +30,10 @@ var (
 	// another live regatta instance. Distinct from state.ErrLockHeld
 	// which guards hotspot-locks within a single process.
 	ErrFlockHeld = errors.New("orchestrator: process flock held by another instance")
+
+	// ErrCascadeNonConverging fires when BriefLoader's dependency-
+	// archive fixed-point loop exceeds its iteration cap. Indicates
+	// corrupt depends_on_features graph data (e.g. a cycle that
+	// bypassed CycleCheck) — operators page on this.
+	ErrCascadeNonConverging = errors.New("orchestrator: dependency-archive cascade did not converge")
 )
