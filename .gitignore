@@ -3,6 +3,11 @@
 .claude/worktrees/
 .claude/scheduled_tasks.lock
 
+# Local planning artifacts (specs, plans, design notes). Each
+# implementer keeps their own; the final state lives in
+# docs/engineer/specs/ and docs/rfcs/.
+docs/superpowers/
+
 # Go build artifacts
 bin/
 dist/
