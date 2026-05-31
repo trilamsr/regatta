@@ -2,11 +2,16 @@ package program
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/orchestrator"
 )
 
 // stubClient is a deterministic ModelClient for tests. It returns
@@ -187,5 +192,60 @@ func TestSignedPlanVerifies(t *testing.T) {
 	keyring := map[string][]byte{"k1": []byte("planner-test-key-32-bytes-padding")}
 	if err := plan.VerifySignature(keyring); err != nil {
 		t.Fatalf("verify failed: %v", err)
+	}
+}
+
+func TestLoadPlannerPrompt_FromDiskNoSHA(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.md")
+	want := "custom prompt"
+	if err := os.WriteFile(path, []byte(want), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadPlannerPrompt(path, "")
+	if err != nil {
+		t.Fatalf("LoadPlannerPrompt: %v", err)
+	}
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestLoadPlannerPrompt_FromDiskCorrectSHA(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.md")
+	content := "pinned prompt"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := sha256.Sum256([]byte(content))
+	got, err := LoadPlannerPrompt(path, hex.EncodeToString(h[:]))
+	if err != nil {
+		t.Fatalf("LoadPlannerPrompt: %v", err)
+	}
+	if got != content {
+		t.Fatalf("got %q want %q", got, content)
+	}
+}
+
+func TestLoadPlannerPrompt_SHAMismatch(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.md")
+	if err := os.WriteFile(path, []byte("actual"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadPlannerPrompt(path, "0000000000000000000000000000000000000000000000000000000000000000")
+	if !errors.Is(err, orchestrator.ErrBriefSHAMismatch) {
+		t.Fatalf("err=%v want ErrBriefSHAMismatch", err)
+	}
+}
+
+func TestLoadPlannerPrompt_FallbackOnMissingPath(t *testing.T) {
+	got, err := LoadPlannerPrompt(filepath.Join(t.TempDir(), "nope.md"), "")
+	if err != nil {
+		t.Fatalf("LoadPlannerPrompt: %v", err)
+	}
+	if got != defaultPlannerPrompt {
+		t.Fatalf("did not fall back to defaultPlannerPrompt")
 	}
 }

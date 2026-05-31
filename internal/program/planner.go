@@ -13,14 +13,17 @@ package program
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/orchestrator"
 )
 
 // ProgramBrief is the Go form of schemas/features.schema.json.
@@ -314,4 +317,34 @@ func newProgramID() string {
 	var b [6]byte
 	_, _ = rand.Read(b[:])
 	return "m-" + hex.EncodeToString(b[:])
+}
+
+// LoadPlannerPrompt returns the planner system prompt to use. If
+// path exists, its contents are returned (after a SHA check when
+// expectedSHA is non-empty). If path is missing, the embedded
+// defaultPlannerPrompt fallback is returned.
+//
+// expectedSHA is hex-encoded sha256 of the prompt bytes. Pinned in
+// regatta.yaml at prompts.planner_sha; surfaced by A10's config
+// loader accessor. Empty string disables the check.
+//
+// per spec §2.5 — UX wins by failing closed when the operator
+// pinned a hash and disk drifted.
+func LoadPlannerPrompt(path string, expectedSHA string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return defaultPlannerPrompt, nil
+		}
+		return "", fmt.Errorf("program: read planner prompt: %w", err)
+	}
+	if expectedSHA != "" {
+		h := sha256.Sum256(data)
+		got := hex.EncodeToString(h[:])
+		if got != expectedSHA {
+			return "", fmt.Errorf("%w: path=%s got=%s want=%s",
+				orchestrator.ErrBriefSHAMismatch, path, got, expectedSHA)
+		}
+	}
+	return string(data), nil
 }
