@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -569,6 +570,183 @@ func TestTick_EdgeEvalFailureLogsAndContinues(t *testing.T) {
 	}
 }
 
+// Regatta#98 regression: partial-tick crash must not refire the default on replay.
+func TestTick_DefaultFallbackDoesNotRefireAfterPartialTick(t *testing.T) {
+	ctx := context.Background()
+	realDB := statetest.OpenDB(t)
+	wdb := newWrappingDB(realDB)
+
+	seedMerged(t, realDB, "F-1")
+	seedPlanned(t, realDB, "T-A", "server")
+	seedPlanned(t, realDB, "T-B", "server")
+	seedPlanned(t, realDB, "T-D", "server")
+
+	if err := realDB.UpsertEdges(ctx, "m-1", []state.EdgeRow{
+		{ProgramID: "m-1", FromID: "F-1", ToID: "T-A", PredicateCEL: `x > 0`},
+		{ProgramID: "m-1", FromID: "F-1", ToID: "T-B", PredicateCEL: `y > 0`},
+		{ProgramID: "m-1", FromID: "F-1", ToID: "T-D", IsDefault: true},
+	}); err != nil {
+		t.Fatalf("UpsertEdges: %v", err)
+	}
+	if _, err := realDB.AppendOutput(ctx, "F-1", json.RawMessage(`{"x":5,"y":0}`)); err != nil {
+		t.Fatalf("AppendOutput: %v", err)
+	}
+
+	edges, err := realDB.ListEdgesFrom(ctx, "F-1")
+	if err != nil {
+		t.Fatalf("ListEdgesFrom seed: %v", err)
+	}
+	var idE1, idE2, idD int64
+	for _, e := range edges {
+		switch e.ToID {
+		case "T-A":
+			idE1 = e.ID
+		case "T-B":
+			idE2 = e.ID
+		case "T-D":
+			idD = e.ID
+			wdb.defaultIDs[e.ID] = true
+		}
+	}
+
+	ev := newFakeEvaluator()
+	ev.rules[idE1] = fakeRule{fired: true, reason: "x>0"}
+	ev.rules[idE2] = fakeRule{fired: false, reason: "y==0"}
+
+	sch := newWithDB(wdb, Config{Evaluator: ev})
+
+	wdb.markEdgeFiredHook = failAfterNMarkHook(1)
+	_, _ = sch.Tick(ctx)
+
+	edges, _ = realDB.ListEdgesFrom(ctx, "F-1")
+	state1 := map[int64]string{}
+	for _, e := range edges {
+		state1[e.ID] = e.Fired
+	}
+	if state1[idE1] != "true" {
+		t.Fatalf("tick1: E1 fired=%q want true", state1[idE1])
+	}
+	if state1[idE2] != "pending" {
+		t.Fatalf("tick1: E2 fired=%q want pending (crash before write)", state1[idE2])
+	}
+	if state1[idD] != "pending" {
+		t.Fatalf("tick1: D fired=%q want pending", state1[idD])
+	}
+
+	wdb.markEdgeFiredHook = passThroughHook()
+	if _, err := sch.Tick(ctx); err != nil {
+		t.Fatalf("tick2: %v", err)
+	}
+
+	edges, _ = realDB.ListEdgesFrom(ctx, "F-1")
+	state2 := map[int64]string{}
+	for _, e := range edges {
+		state2[e.ID] = e.Fired
+	}
+	if state2[idE1] != "true" {
+		t.Fatalf("tick2: E1 fired=%q want true (unchanged)", state2[idE1])
+	}
+	if state2[idE2] != "false" {
+		t.Fatalf("tick2: E2 fired=%q want false", state2[idE2])
+	}
+	if state2[idD] != "pending" {
+		t.Fatalf("tick2: D fired=%q want pending — default must not refire after partial-tick crash", state2[idD])
+	}
+	if c := wdb.defaultFireCount(); c != 0 {
+		t.Fatalf("default fired %d times across recovery; want 0", c)
+	}
+}
+
+// Randomised crash-injection invariant: default fires iff canonical trace would; spec §5.3 A-tier.
+func TestTick_DefaultFallbackInvariantUnderRandomCrashInjection(t *testing.T) {
+	const trials = 200
+	rng := rand.New(rand.NewPCG(0xDEFEA7, 0xDEFEA7)) //nolint:gosec // G404: deterministic seed for reproducible crash-injection trials, not crypto
+
+	for trial := range trials {
+		t.Run(fmt.Sprintf("trial=%d", trial), func(t *testing.T) {
+			ctx := context.Background()
+			realDB := statetest.OpenDB(t)
+			wdb := newWrappingDB(realDB)
+
+			seedMerged(t, realDB, "F-1")
+			seedPlanned(t, realDB, "T-A", "server")
+			seedPlanned(t, realDB, "T-B", "server")
+			seedPlanned(t, realDB, "T-D", "server")
+
+			if err := realDB.UpsertEdges(ctx, "m-1", []state.EdgeRow{
+				{ProgramID: "m-1", FromID: "F-1", ToID: "T-A", PredicateCEL: `a`},
+				{ProgramID: "m-1", FromID: "F-1", ToID: "T-B", PredicateCEL: `b`},
+				{ProgramID: "m-1", FromID: "F-1", ToID: "T-D", IsDefault: true},
+			}); err != nil {
+				t.Fatalf("UpsertEdges: %v", err)
+			}
+			if _, err := realDB.AppendOutput(ctx, "F-1", json.RawMessage(`{}`)); err != nil {
+				t.Fatalf("AppendOutput: %v", err)
+			}
+
+			eA := rng.IntN(2) == 1
+			eB := rng.IntN(2) == 1
+			expectDefault := !eA && !eB
+
+			edges, _ := realDB.ListEdgesFrom(ctx, "F-1")
+			var idA, idB int64
+			for _, e := range edges {
+				switch e.ToID {
+				case "T-A":
+					idA = e.ID
+				case "T-B":
+					idB = e.ID
+				case "T-D":
+					wdb.defaultIDs[e.ID] = true
+				}
+			}
+
+			ev := newFakeEvaluator()
+			ev.rules[idA] = fakeRule{fired: eA}
+			ev.rules[idB] = fakeRule{fired: eB}
+
+			sch := newWithDB(wdb, Config{Evaluator: ev})
+
+			// Crash at a random successful-write count in [0, 3).
+			crashAt := rng.IntN(3)
+			wdb.markEdgeFiredHook = failAfterNMarkHook(crashAt)
+			_, _ = sch.Tick(ctx)
+
+			// Replay-to-fixpoint with pass-through.
+			wdb.markEdgeFiredHook = passThroughHook()
+			for i := range 5 {
+				if _, err := sch.Tick(ctx); err != nil {
+					t.Fatalf("replay tick %d: %v", i, err)
+				}
+			}
+
+			got := wdb.defaultFireCount()
+			want := 0
+			if expectDefault {
+				want = 1
+			}
+			if got != want {
+				t.Fatalf("trial eA=%v eB=%v crashAt=%d: defaultFireCount=%d want %d",
+					eA, eB, crashAt, got, want)
+			}
+
+			edges, _ = realDB.ListEdgesFrom(ctx, "F-1")
+			var dFired string
+			for _, e := range edges {
+				if e.IsDefault {
+					dFired = e.Fired
+				}
+			}
+			if expectDefault && dFired != "true" {
+				t.Fatalf("expected default fired=true after replay, got %q", dFired)
+			}
+			if !expectDefault && dFired == "true" {
+				t.Fatalf("default fired=true but at least one non-default was true (eA=%v eB=%v)", eA, eB)
+			}
+		})
+	}
+}
+
 func TestTick_EdgeEvalSkippedNoJournal(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -589,5 +767,35 @@ func TestTick_EdgeEvalSkippedNoJournal(t *testing.T) {
 	edges, _ := db.ListEdgesFrom(ctx, "F-A")
 	if edges[0].Fired != "pending" {
 		t.Fatalf("expected pending on missing journal, got %+v", edges[0])
+	}
+}
+
+// Lone default (no predicated siblings) must stay pending — spec §3.3 rule 2c, line 83.
+func TestTick_DefaultDoesNotFireWithoutNonDefaultSiblings(t *testing.T) {
+	ctx := context.Background()
+	db := statetest.OpenDB(t)
+	seedMerged(t, db, "F-1")
+	seedPlanned(t, db, "T-D", "server")
+
+	if err := db.UpsertEdges(ctx, "m-1", []state.EdgeRow{
+		{ProgramID: "m-1", FromID: "F-1", ToID: "T-D", IsDefault: true},
+	}); err != nil {
+		t.Fatalf("UpsertEdges: %v", err)
+	}
+	if _, err := db.AppendOutput(ctx, "F-1", json.RawMessage(`{}`)); err != nil {
+		t.Fatalf("AppendOutput: %v", err)
+	}
+
+	sch := New(db, Config{Evaluator: newFakeEvaluator()})
+	if _, err := sch.Tick(ctx); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	edges, _ := db.ListEdgesFrom(ctx, "F-1")
+	if len(edges) != 1 {
+		t.Fatalf("want 1 edge, got %d", len(edges))
+	}
+	if edges[0].Fired != "pending" {
+		t.Fatalf("lone default fired=%q want pending — spec disallows lone defaults", edges[0].Fired)
 	}
 }
