@@ -16,7 +16,10 @@
       "outputs_schema": {
         "type": "object",
         "properties": {
-          "severity": "string"
+          "severity": {
+            "type": "string",
+            "enum": ["high", "low"]
+          }
         }
       },
       "edges": [
