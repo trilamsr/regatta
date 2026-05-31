@@ -1,13 +1,11 @@
+-- +goose Up
+-- +goose StatementBegin
 -- Regatta orchestrator state schema, version 1.
 --
 -- Tables follow the agent state machine in docs/design.md §State,
--- persistence, recovery. Migrations are forward-only: bump
--- schema_version, append a new section, never edit a shipped
--- block.
-
-CREATE TABLE IF NOT EXISTS schema_version (
-    version INTEGER NOT NULL PRIMARY KEY
-);
+-- persistence, recovery. Migrations are forward-only: append a new
+-- section, never edit a shipped block. goose_db_version (managed by
+-- pressly/goose) is the authoritative version table.
 
 CREATE TABLE IF NOT EXISTS agents (
     id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -44,3 +42,11 @@ CREATE TABLE IF NOT EXISTS events (
 
 CREATE INDEX IF NOT EXISTS idx_events_agent ON events(agent_id);
 CREATE INDEX IF NOT EXISTS idx_events_kind  ON events(kind);
+-- +goose StatementEnd
+
+-- +goose Down
+-- +goose StatementBegin
+-- Forward-only; down migrations are intentionally empty. Operators
+-- recover by restoring from snapshot.
+SELECT 1;
+-- +goose StatementEnd

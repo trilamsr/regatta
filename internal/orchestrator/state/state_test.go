@@ -46,11 +46,11 @@ func TestOpenCapsConnectionPoolAtOne(t *testing.T) {
 func TestOpenAppliesSchema(t *testing.T) {
 	db := newTestDB(t)
 	var v int
-	if err := db.SQL().QueryRow("SELECT MAX(version) FROM schema_version").Scan(&v); err != nil {
-		t.Fatalf("read schema_version: %v", err)
+	if err := db.SQL().QueryRow("SELECT MAX(version_id) FROM goose_db_version").Scan(&v); err != nil {
+		t.Fatalf("read goose_db_version: %v", err)
 	}
 	if v != CurrentSchemaVersion {
-		t.Fatalf("schema_version=%d want %d", v, CurrentSchemaVersion)
+		t.Fatalf("schema version=%d want %d", v, CurrentSchemaVersion)
 	}
 }
 
@@ -66,11 +66,11 @@ func TestOpenIsIdempotentAcrossRestarts(t *testing.T) {
 
 	db2 := openTestDB(t, path)
 	var v int
-	if err := db2.SQL().QueryRow("SELECT MAX(version) FROM schema_version").Scan(&v); err != nil {
-		t.Fatalf("reopen schema_version: %v", err)
+	if err := db2.SQL().QueryRow("SELECT MAX(version_id) FROM goose_db_version").Scan(&v); err != nil {
+		t.Fatalf("reopen goose_db_version: %v", err)
 	}
 	if v != CurrentSchemaVersion {
-		t.Fatalf("schema_version=%d want %d", v, CurrentSchemaVersion)
+		t.Fatalf("schema version=%d want %d", v, CurrentSchemaVersion)
 	}
 	agents, err := db2.ListAgentsByState(context.Background(), AgentPending)
 	if err != nil {

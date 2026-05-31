@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup
+.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -9,6 +9,9 @@ doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash 
 go-check:  ## Build and test every Go package.
 	go build -buildvcs=false ./...
 	go test ./...
+
+property-test:  ## Run rapid property tests with spec-mandated check count (200).
+	go test -race -run TestListSpawnable_PropertyTopologicalReady ./internal/orchestrator/state/... -rapid.checks=200
 
 cover:  ## Print cross-package coverage; useful before declaring "done".
 	go test -coverpkg=./... -coverprofile=/tmp/regatta.cover ./...
@@ -45,7 +48,7 @@ uninstall-hooks:  ## Detach repo-managed hooks (resets core.hooksPath).
 	@git config --unset core.hooksPath || true
 	@echo "Hooks detached. Git falls back to .git/hooks/."
 
-check: doc-check prose-dup vet lint tidy-check mod-verify go-check  ## Local gate; <60s. Single source of truth for what is verified locally.
+check: doc-check prose-dup vet lint tidy-check mod-verify go-check property-test  ## Local gate; <60s. Single source of truth for what is verified locally.
 
 ci-check: check stale-todo  ## CI gate; supersedes `check` with longer-running scans (stale-todo).
 

@@ -1,10 +1,11 @@
 // Package state holds the orchestrator's sqlite-backed durable state.
 //
-// The schema is defined in schema.sql and embedded at build time. All
-// mutations go through small typed helpers in this package so the
-// state-machine transitions in docs/design.md §State, persistence,
-// recovery stay invariant. Callers MUST NOT issue ad-hoc UPDATEs on
-// the agents table; use TransitionAgent.
+// The schema lives in versioned files under migrations/, applied via
+// pressly/goose by Migrate() (called from Open()). All mutations go
+// through small typed helpers in this package so the state-machine
+// transitions in docs/design.md §State, persistence, recovery stay
+// invariant. Callers MUST NOT issue ad-hoc UPDATEs on the agents
+// table; use TransitionAgent.
 //
 // Concurrency: a *DB is safe for concurrent use. Open() caps the
 // underlying *sql.DB pool at one connection so writers serialize at
@@ -20,7 +21,6 @@ package state
 import (
 	"context"
 	"database/sql"
-	_ "embed"
 	"errors"
 	"fmt"
 	"time"
@@ -28,12 +28,9 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-//go:embed schema.sql
-var schemaSQL string
-
 // CurrentSchemaVersion is the version this binary knows how to apply.
-// Migrations are forward-only; see schema.sql.
-const CurrentSchemaVersion = 1
+// Migrations are forward-only; see migrations/.
+const CurrentSchemaVersion = 2
 
 // AgentState mirrors the state-machine in docs/design.md §378.
 type AgentState string
@@ -60,6 +57,11 @@ var ErrInvalidTransition = errors.New("state: invalid agent transition")
 // ErrLockHeld is returned by TryAcquireLock when the lock is already
 // held by a different agent.
 var ErrLockHeld = errors.New("state: lock held by another agent")
+
+// ErrSchemaTooNew is returned by Migrate when the database has been
+// touched by a newer binary's migrations than this binary knows
+// about. Operators must upgrade rather than downgrade.
+var ErrSchemaTooNew = errors.New("state: database schema is newer than this binary supports")
 
 // DB wraps a *sql.DB with regatta-specific helpers. Open the DB via
 // Open(); never construct a DB literal directly.
@@ -91,11 +93,11 @@ func Open(ctx context.Context, dsn string) (*DB, error) {
 		_ = raw.Close()
 		return nil, fmt.Errorf("state: enable foreign_keys: %w", err)
 	}
-	db := &DB{sql: raw, now: time.Now}
-	if err := db.migrate(ctx); err != nil {
+	if err := Migrate(ctx, raw); err != nil {
 		_ = raw.Close()
 		return nil, err
 	}
+	db := &DB{sql: raw, now: time.Now}
 	return db, nil
 }
 
@@ -110,28 +112,3 @@ func (d *DB) SQL() *sql.DB { return d.sql }
 // timestamps; production code MUST NOT call this.
 func (d *DB) SetClock(now func() time.Time) { d.now = now }
 
-func (d *DB) migrate(ctx context.Context) error {
-	tx, err := d.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("state: begin migrate tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, schemaSQL); err != nil {
-		return fmt.Errorf("state: apply schema: %w", err)
-	}
-	var current int
-	row := tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(version), 0) FROM schema_version")
-	if err := row.Scan(&current); err != nil {
-		return fmt.Errorf("state: read schema_version: %w", err)
-	}
-	if current > CurrentSchemaVersion {
-		return fmt.Errorf("state: db schema_version=%d is newer than binary=%d", current, CurrentSchemaVersion)
-	}
-	if current < CurrentSchemaVersion {
-		if _, err := tx.ExecContext(ctx,
-			"INSERT INTO schema_version(version) VALUES (?)", CurrentSchemaVersion); err != nil {
-			return fmt.Errorf("state: write schema_version: %w", err)
-		}
-	}
-	return tx.Commit()
-}
