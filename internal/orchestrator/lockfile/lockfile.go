@@ -17,7 +17,7 @@
 // new inode at the same path while the original holder still owns
 // the flock on the old inode.
 //
-// Sentinel is orchestrator.ErrFlockHeld — distinct from
+// Sentinel is ErrFlockHeld — distinct from
 // state.ErrLockHeld which is for in-process hotspot locks. Same
 // word "lock", two semantic surfaces.
 //
@@ -41,9 +41,17 @@ import (
 	"strings"
 
 	"github.com/gofrs/flock"
-
-	"github.com/trilamsr/regatta/internal/orchestrator"
 )
+
+// ErrFlockHeld fires when the process-level lockfile is already held
+// by another live regatta instance. Re-exported from package
+// orchestrator as ErrFlockHeld for backwards
+// compatibility — the canonical definition lives here because
+// PollOnce-via-orchestrator imports lockfile, not vice versa.
+//
+// Distinct from state.ErrLockHeld which guards in-process hotspot
+// locks. Same word "lock", two semantic surfaces.
+var ErrFlockHeld = errors.New("orchestrator: process flock held by another instance")
 
 // Lock represents a held advisory lock. Call Release when done.
 type Lock struct {
@@ -67,10 +75,10 @@ func Acquire(path string) (*Lock, error) {
 	if !locked {
 		holder := readHolderPID(path)
 		if holder == "" {
-			return nil, fmt.Errorf("%w: %s", orchestrator.ErrFlockHeld, path)
+			return nil, fmt.Errorf("%w: %s", ErrFlockHeld, path)
 		}
 		return nil, fmt.Errorf("%w: %s (last-known holder pid=%s; verify with `lsof %s` before killing)",
-			orchestrator.ErrFlockHeld, path, holder, path)
+			ErrFlockHeld, path, holder, path)
 	}
 
 	// We hold the flock. Overwrite the PID under it so the next

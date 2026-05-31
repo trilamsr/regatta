@@ -4,7 +4,11 @@
 // points.
 package orchestrator
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/trilamsr/regatta/internal/orchestrator/lockfile"
+)
 
 var (
 	// ErrBriefSHAMismatch fires when the operator-pinned planner
@@ -26,10 +30,12 @@ var (
 	// to override).
 	ErrTargetExists = errors.New("orchestrator: target file exists with different content")
 
-	// ErrFlockHeld fires when the process-level lockfile is held by
-	// another live regatta instance. Distinct from state.ErrLockHeld
-	// which guards hotspot-locks within a single process.
-	ErrFlockHeld = errors.New("orchestrator: process flock held by another instance")
+	// ErrFlockHeld is re-exported from package lockfile to preserve the
+	// orchestrator.ErrFlockHeld import path used across the codebase.
+	// Canonical definition lives next to lockfile.Acquire because
+	// PollOnce imports lockfile (one-way edge — flipping it produced
+	// an import cycle).
+	ErrFlockHeld = lockfile.ErrFlockHeld
 
 	// ErrCascadeNonConverging fires when BriefLoader's dependency-
 	// archive fixed-point loop exceeds its iteration cap. Indicates

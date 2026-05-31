@@ -65,3 +65,34 @@ func LoadBytes(data []byte) error {
 func cueDetails(err error) string {
 	return strings.TrimRight(cueerrors.Details(err, nil), "\n")
 }
+
+// Prompts mirrors the `prompts` block in regatta.yaml. Only the SHA
+// pins land in Go for now; planner_path stays implicit (the
+// orchestrator resolves it from cmd-line flags or the embedded
+// default). Schema authority is contracts/schemas/regatta.v1.cue
+// §Prompts.
+type Prompts struct {
+	PlannerSHA      string `yaml:"planner_sha,omitempty" json:"planner_sha,omitempty"`
+	SecurityGateSHA string `yaml:"security_gate_sha,omitempty" json:"security_gate_sha,omitempty"`
+	AgentBriefSHA   string `yaml:"agent_brief_sha,omitempty" json:"agent_brief_sha,omitempty"`
+}
+
+// Config is the Go form of a validated regatta.yaml. Only the fields
+// callers reach into are surfaced; the rest lives in the YAML and is
+// validated by LoadBytes against the CUE schema. New fields go in
+// alongside their CUE peer in contracts/schemas/regatta.v1.cue.
+type Config struct {
+	Prompts *Prompts `yaml:"prompts,omitempty" json:"prompts,omitempty"`
+}
+
+// PlannerPromptSHA returns the operator-pinned hex-encoded sha256 of
+// the planner system prompt. Empty when unpinned. Nil-safe at every
+// level so callers don't have to chain nil guards: a fresh Config{}
+// or a nil receiver both yield "" without panicking. Used by
+// cmd/regatta to feed program.LoadPlannerPrompt.
+func (c *Config) PlannerPromptSHA() string {
+	if c == nil || c.Prompts == nil {
+		return ""
+	}
+	return c.Prompts.PlannerSHA
+}

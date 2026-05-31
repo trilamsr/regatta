@@ -19,19 +19,55 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
+	"github.com/trilamsr/regatta/internal/orchestrator/lockfile"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
-	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-// Config holds tunables for an Orchestrator. Zero values fall back to
-// the defaults documented on each field.
+// BriefLoader narrows program.BriefLoader to the seam PollOnce
+// uses. Defined here as an interface to break the import cycle:
+// program imports orchestrator (for ErrHMACInvalid / sentinels),
+// so orchestrator cannot import program in turn.
+type BriefLoader interface {
+	Sync(ctx context.Context, pollStartedAt time.Time) error
+}
+
+// Config holds tunables and dependencies for an Orchestrator.
+// Construction-time DI: callers wire AdapterSync, BriefLoader, and
+// Scheduler externally so tests can swap any seam without touching the
+// orchestrator's internal helpers.
 type Config struct {
-	// PollInterval is how often the SpecWatcher calls
-	// SpecAdapter.List. Default: 30s. Must be ≥ adapter's
-	// Capabilities().MinPollInterval; New enforces this.
+	// AdapterSync mirrors the spec adapter into work_items per
+	// spec §2.9 step 3. Required.
+	AdapterSync *adaptersync.Syncer
+
+	// BriefLoader verifies + upserts brief children into work_items
+	// per spec §2.4. Required. Interface-typed (not concrete
+	// program.BriefLoader) so this package does not transitively
+	// import internal/program, which already imports us for
+	// ErrHMACInvalid / ErrCascadeNonConverging.
+	BriefLoader BriefLoader
+
+	// DB is the universal state store. Required.
+	DB *state.DB
+
+	// Scheduler reserves spawnable work_items into agents. Required.
+	// Lane caps, lock TTL, and hotspot resolver come from the
+	// scheduler's own Config — Orchestrator no longer owns those.
+	Scheduler *scheduler.Scheduler
+
+	// Spawner launches the reserved agents. Required.
+	Spawner spawner.Spawner
+
+	// DBPath is the on-disk sqlite path. Used to derive the
+	// process-level lockfile (<dbPath>.lock).
+	DBPath string
+
+	// PollInterval is how often PollOnce runs in the Run loop.
+	// Default: 30s.
 	PollInterval time.Duration
 
 	// TickInterval is how often the Scheduler ticks. Default: 5s.
@@ -42,34 +78,31 @@ type Config struct {
 	// §Concurrency & soft-lock policy.
 	HeartbeatInterval time.Duration
 
-	// LockTTL is the heartbeat lease passed to the scheduler.
+	// LockTTL is the heartbeat lease used by ExpireStaleLocks.
 	// Default: 15 minutes.
 	LockTTL time.Duration
-
-	// LaneCaps is a per-lane concurrency map; missing lanes are
-	// unlimited.
-	LaneCaps map[string]int
-
-	// Hotspots resolves work-item ID to hotspot lock names. nil
-	// disables hotspot locking.
-	Hotspots scheduler.HotspotResolver
 }
 
 // Orchestrator coordinates the spec adapter, scheduler, and spawner.
+// Per spec §2.9, PollOnce is the universal-queue tick: flock ->
+// AdapterSync -> BriefLoader. Agent reservation + spawn live in
+// ScheduleOnce so a flock-protected PollOnce stays bounded to "update
+// the queue" while ScheduleOnce stays bounded to "drain the queue".
 type Orchestrator struct {
-	db      *state.DB
-	adapter schemas.SpecAdapter
-	sched   *scheduler.Scheduler
-	spawner spawner.Spawner
-	reaper  *reaper.Reaper
-	cfg     Config
-	logf    func(format string, args ...any)
+	adapterSync *adaptersync.Syncer
+	briefLoader BriefLoader
+	db          *state.DB
+	sched       *scheduler.Scheduler
+	spawner     spawner.Spawner
+	reaper      *reaper.Reaper
+	dbPath      string
+	cfg         Config
+	logf        func(format string, args ...any)
 }
 
-// New constructs an Orchestrator with the given dependencies. The
-// adapter's MinPollInterval is enforced as a floor on cfg.PollInterval
-// so a misconfiguration cannot hammer the upstream source.
-func New(db *state.DB, adapter schemas.SpecAdapter, sp spawner.Spawner, cfg Config) *Orchestrator {
+// New constructs an Orchestrator from a Config. All deps are wired
+// externally so tests can stub any seam.
+func New(cfg Config) *Orchestrator {
 	if cfg.PollInterval <= 0 {
 		cfg.PollInterval = 30 * time.Second
 	}
@@ -82,22 +115,16 @@ func New(db *state.DB, adapter schemas.SpecAdapter, sp spawner.Spawner, cfg Conf
 	if cfg.LockTTL <= 0 {
 		cfg.LockTTL = 15 * time.Minute
 	}
-	if floor := adapter.Capabilities().MinPollInterval; floor > 0 && cfg.PollInterval < floor {
-		cfg.PollInterval = floor
+	return &Orchestrator{
+		adapterSync: cfg.AdapterSync,
+		briefLoader: cfg.BriefLoader,
+		db:          cfg.DB,
+		sched:       cfg.Scheduler,
+		spawner:     cfg.Spawner,
+		dbPath:      cfg.DBPath,
+		cfg:         cfg,
+		logf:        func(string, ...any) {},
 	}
-	o := &Orchestrator{
-		db:      db,
-		adapter: adapter,
-		spawner: sp,
-		cfg:     cfg,
-		logf:    func(string, ...any) {},
-	}
-	o.sched = scheduler.New(db, scheduler.Config{
-		LaneCaps: cfg.LaneCaps,
-		LockTTL:  cfg.LockTTL,
-		Hotspots: cfg.Hotspots,
-	})
-	return o
 }
 
 // SetLogger installs a printf-style logger. The Orchestrator is silent
@@ -105,7 +132,9 @@ func New(db *state.DB, adapter schemas.SpecAdapter, sp spawner.Spawner, cfg Conf
 func (o *Orchestrator) SetLogger(f func(format string, args ...any)) {
 	if f != nil {
 		o.logf = f
-		o.sched.SetLogger(f)
+		if o.sched != nil {
+			o.sched.SetLogger(f)
+		}
 		if o.reaper != nil {
 			o.reaper.SetLogger(f)
 		}
@@ -168,25 +197,29 @@ func (o *Orchestrator) Recover(ctx context.Context) error {
 	return nil
 }
 
-// PollOnce calls SpecAdapter.List and upserts a pending agent for
-// every planned item. Already-known items are left in place. The
-// loop checks ctx between items so a cancelled daemon shutdown does
-// not block on a large catalog.
+// PollOnce acquires the process flock, mirrors the adapter into
+// work_items, then loads + verifies briefs into work_items. Per spec
+// §2.9 the tick sequence is flock -> AdapterSync -> BriefLoader.
+// Fail-fast: any error returns immediately so the next tick retries
+// from a clean slate.
+//
+// Reservation lives in ScheduleOnce.Tick — splitting "update the queue"
+// from "drain the queue" keeps the flock-window short and lets the Run
+// loop independently throttle producer vs consumer.
 func (o *Orchestrator) PollOnce(ctx context.Context) error {
-	items, err := o.adapter.List(ctx)
+	lock, err := lockfile.Acquire(o.dbPath + ".lock")
 	if err != nil {
-		return fmt.Errorf("orchestrator: adapter list: %w", err)
+		return err
 	}
-	for _, it := range items {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if it.Status != schemas.StatusPlanned {
-			continue
-		}
-		if _, err := o.db.UpsertPending(ctx, string(it.ID), string(it.Lane)); err != nil {
-			return fmt.Errorf("orchestrator: upsert %s: %w", it.ID, err)
-		}
+	defer func() { _ = lock.Release() }()
+
+	pollStartedAt := time.Now().UTC()
+
+	if err := o.adapterSync.Sync(ctx, pollStartedAt); err != nil {
+		return fmt.Errorf("orchestrator: adapter sync: %w", err)
+	}
+	if err := o.briefLoader.Sync(ctx, pollStartedAt); err != nil {
+		return fmt.Errorf("orchestrator: brief sync: %w", err)
 	}
 	return nil
 }
