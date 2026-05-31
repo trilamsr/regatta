@@ -52,14 +52,13 @@ func TestListSpawnable_PropertyTopologicalReady(t *testing.T) {
 		// give each check its own filename so parallel shrinking
 		// passes can't collide on a single sqlite file.
 		dbPath := filepath.Join(tmp, fmt.Sprintf("p-%d.db", checkID.Add(1)))
-		db, err := state.Open(context.Background(), state.DSN(dbPath))
+		now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+		db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), func() time.Time { return now })
 		if err != nil {
-			rt.Fatalf("Open: %v", err)
+			rt.Fatalf("OpenWithClock: %v", err)
 		}
 		defer func() { _ = db.Close() }()
 
-		now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-		db.SetClock(func() time.Time { return now })
 		for _, id := range nodes {
 			status := state.WorkStatusPlanned
 			if merged[id] {
@@ -67,7 +66,7 @@ func TestListSpawnable_PropertyTopologicalReady(t *testing.T) {
 			}
 			w := state.WorkItem{ID: id, Kind: state.KindFeature, Title: id,
 				Lane: "server", Status: status, DependsOnFeatures: deps[id]}
-			if err := db.UpsertWorkItem(context.Background(), w, state.SourceBrief); err != nil {
+			if err := db.UpsertWorkItem(context.Background(), w, state.SourceBrief, now); err != nil {
 				rt.Fatalf("upsert %s: %v", id, err)
 			}
 		}

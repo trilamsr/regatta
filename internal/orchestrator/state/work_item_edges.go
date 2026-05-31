@@ -37,7 +37,7 @@ type EdgeRow struct {
 
 // UpsertEdges is the legacy shim that stamps timestamps from d.now().
 // New production writers (BriefLoader) should call UpsertEdgesAt with
-// the poll-start tick — same constraint as UpsertWorkItemAt.
+// the poll-start tick — same constraint as UpsertWorkItem.
 func (d *DB) UpsertEdges(ctx context.Context, programID string, edges []EdgeRow) error {
 	return d.UpsertEdgesAt(ctx, programID, edges, d.now())
 }

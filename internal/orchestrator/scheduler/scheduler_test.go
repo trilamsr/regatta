@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -56,13 +57,13 @@ func seedMerged(t *testing.T, db *state.DB, id string) {
 		ID: id, Kind: state.KindFeature, Title: id,
 		Lane: "server", Status: state.WorkStatusMerged,
 	}
-	if err := db.UpsertWorkItem(context.Background(), w, state.SourceBrief); err != nil {
+	if err := db.UpsertWorkItem(context.Background(), w, state.SourceBrief, time.Now()); err != nil {
 		t.Fatalf("seedMerged %s: %v", id, err)
 	}
 }
 
 // seedPlanned upserts a planned feature work_item with the given id +
-// lane via the production UpsertWorkItemAt path so ListSpawnable picks
+// lane via the production UpsertWorkItem path so ListSpawnable picks
 // it up. Tests must exercise the work_items → materializePending →
 // reserve path rather than calling UpsertPending directly.
 func seedPlanned(t *testing.T, db *state.DB, id, lane string) {
@@ -74,7 +75,7 @@ func seedPlanned(t *testing.T, db *state.DB, id, lane string) {
 		Lane:   lane,
 		Status: state.WorkStatusPlanned,
 	}
-	if err := db.UpsertWorkItemAt(context.Background(), w, state.SourceBrief, time.Now()); err != nil {
+	if err := db.UpsertWorkItem(context.Background(), w, state.SourceBrief, time.Now()); err != nil {
 		t.Fatalf("seed %s: %v", id, err)
 	}
 }
@@ -144,7 +145,7 @@ func TestTick_DepBlocksUntilMerged(t *testing.T) {
 		Lane: "server", Status: state.WorkStatusPlanned,
 		DependsOnFeatures: []string{"F-1"}}
 	for _, w := range []state.WorkItem{c1, c2} {
-		if err := db.UpsertWorkItemAt(ctx, w, state.SourceBrief, now); err != nil {
+		if err := db.UpsertWorkItem(ctx, w, state.SourceBrief, now); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -380,10 +381,13 @@ func TestTickLogsSkipsOnLockHeld(t *testing.T) {
 }
 
 func TestTickStaleLockReclaimed(t *testing.T) {
-	db := statetest.OpenDB(t)
-	ctx := context.Background()
 	clock := time.Unix(1_700_000_000, 0).UTC()
-	db.SetClock(func() time.Time { return clock })
+	db, err := state.OpenWithClock(context.Background(), state.DSN(filepath.Join(t.TempDir(), "s.db")), func() time.Time { return clock })
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
 
 	// Seed first item, run Tick to drive it through
 	// materializePending → reserve → acquire("shared") → spawning.

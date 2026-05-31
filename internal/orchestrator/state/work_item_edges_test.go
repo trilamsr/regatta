@@ -9,7 +9,8 @@ import (
 func seedEdgeWorkItem(t *testing.T, db *DB, id string) {
 	t.Helper()
 	item := WorkItem{ID: id, Kind: KindFeature, Title: id, Lane: "server", Status: WorkStatusPlanned}
-	if err := db.UpsertWorkItem(context.Background(), item, SourceBrief); err != nil {
+	seedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := db.UpsertWorkItem(context.Background(), item, SourceBrief, seedAt); err != nil {
 		t.Fatalf("seedEdgeWorkItem(%s): %v", id, err)
 	}
 }
@@ -192,8 +193,9 @@ func TestListPendingEdgesFromMerged_OnlyMergedSources(t *testing.T) {
 	merged := WorkItem{ID: "F-MERGED", Kind: KindFeature, Title: "m", Lane: "server", Status: WorkStatusMerged}
 	running := WorkItem{ID: "F-RUNNING", Kind: KindFeature, Title: "r", Lane: "server", Status: WorkStatusRunning}
 	tgt := WorkItem{ID: "F-TGT", Kind: KindFeature, Title: "t", Lane: "server", Status: WorkStatusPlanned}
+	stamp := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	for _, w := range []WorkItem{merged, running, tgt} {
-		if err := db.UpsertWorkItem(ctx, w, SourceBrief); err != nil {
+		if err := db.UpsertWorkItem(ctx, w, SourceBrief, stamp); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -226,8 +228,7 @@ func TestUpsertEdges_UpdatedAtUsesClock(t *testing.T) {
 	t0 := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 	t1 := t0.Add(2 * time.Minute)
 	now := t0
-	db := newTestDB(t)
-	db.SetClock(func() time.Time { return now })
+	db := newClockedTestDB(t, &now)
 	ctx := context.Background()
 	seedEdgeWorkItem(t, db, "F-1")
 	seedEdgeWorkItem(t, db, "F-2")

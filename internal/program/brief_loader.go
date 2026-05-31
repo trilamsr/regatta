@@ -242,9 +242,9 @@ type BriefLoader struct {
 // os.DirFS(filepath.Join(repoRoot, ".regatta", "programs")) in
 // production and fstest.MapFS in tests. No clock argument: timestamps
 // are threaded through Sync's pollStartedAt and passed into the
-// explicit *At state APIs, mirroring the AdapterSync DI pattern from
-// commit 3741f0a — concurrent producers can no longer race on a
-// SetClock-installed clock.
+// state APIs explicitly, mirroring the AdapterSync DI pattern from
+// commit 3741f0a — concurrent producers can no longer race on the
+// DB's constructor-bound clock.
 //
 // evaluator may be nil — v1-only deployments and tests pass nil to
 // skip the v2 compile-cache warm pass. Production wiring shares the
@@ -378,7 +378,7 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 				slog.Warn("brief.rejected", "path", path, "reason", cycErr.Error())
 				continue
 			}
-			if upErr := b.db.UpsertWorkItemAt(ctx, child, state.SourceBrief, pollStartedAt); upErr != nil {
+			if upErr := b.db.UpsertWorkItem(ctx, child, state.SourceBrief, pollStartedAt); upErr != nil {
 				return fmt.Errorf("brief_loader: upsert %s: %w", feat.ID, upErr)
 			}
 		}
@@ -402,7 +402,7 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	b.programByFeature = freshProgramBy
 	b.mu.Unlock()
 
-	archived, err := b.db.TombstoneBySourceAt(ctx, state.SourceBrief, pollStartedAt)
+	archived, err := b.db.TombstoneBySource(ctx, state.SourceBrief, pollStartedAt)
 	if err != nil {
 		return fmt.Errorf("brief_loader: tombstone: %w", err)
 	}

@@ -168,14 +168,12 @@ func TestHeartbeatKeepsActiveLockAlive(t *testing.T) {
 		t.Fatalf("adapter: %v", err)
 	}
 	dbPath := filepath.Join(t.TempDir(), "state.db")
-	db, err := state.Open(ctx, state.DSN(dbPath))
+	clock := time.Unix(1_700_000_000, 0).UTC()
+	db, err := state.OpenWithClock(ctx, state.DSN(dbPath), func() time.Time { return clock })
 	if err != nil {
 		t.Fatalf("state: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-
-	clock := time.Unix(1_700_000_000, 0).UTC()
-	db.SetClock(func() time.Time { return clock })
 
 	o := New(Config{
 		AdapterSync: adaptersync.New(ad, db),
