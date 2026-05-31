@@ -3,6 +3,7 @@ package schemas
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -138,12 +139,10 @@ func Sign(payload map[string]any, key []byte, keyID string) (SignatureBlock, err
 	if err != nil {
 		return SignatureBlock{}, err
 	}
-	h := hmac.New(sha256.New, key)
-	h.Write(canon)
 	return SignatureBlock{
 		Alg:   SigAlg,
 		KeyID: keyID,
-		MAC:   hex.EncodeToString(h.Sum(nil)),
+		MAC:   hex.EncodeToString(macSum(key, keyID, canon)),
 	}, nil
 }
 
@@ -192,13 +191,26 @@ func VerifyWithAllowlist(payload map[string]any, keyring map[string][]byte, allo
 	if err != nil {
 		return err
 	}
-	h := hmac.New(sha256.New, key)
-	h.Write(canon)
-	got := hex.EncodeToString(h.Sum(nil))
+	got := hex.EncodeToString(macSum(key, keyID, canon))
 	if !hmac.Equal([]byte(got), []byte(want)) {
 		return ErrUnverifiable
 	}
 	return nil
+}
+
+// macSum binds (keyID, canonicalBody) into the HMAC input so that two
+// keyring entries sharing identical key bytes under different kids
+// cannot cross-verify. keyID is length-prefixed (uint32 BE) rather
+// than NUL-separated because keyID is an unrestricted Go string and
+// may legally contain a NUL byte.
+func macSum(key []byte, keyID string, canon []byte) []byte {
+	h := hmac.New(sha256.New, key)
+	var lp [4]byte
+	binary.BigEndian.PutUint32(lp[:], uint32(len(keyID)))
+	h.Write(lp[:])
+	h.Write([]byte(keyID))
+	h.Write(canon)
+	return h.Sum(nil)
 }
 
 // stripSignature returns a shallow copy of payload without the

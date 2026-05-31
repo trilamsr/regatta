@@ -160,3 +160,35 @@ func TestVerifyRejectsMissingSignature(t *testing.T) {
 		t.Fatalf("expected ErrUnverifiable, got %v", err)
 	}
 }
+
+// TestSign_KidInMAC_PreventsCrossKidForgery proves the MAC binds to
+// key_id. Without binding, two keyring entries sharing the same key
+// bytes under different kids cross-verify: a payload signed under
+// kid-a accepts a swapped envelope key_id=kid-b.
+func TestSign_KidInMAC_PreventsCrossKidForgery(t *testing.T) {
+	t.Parallel()
+	sharedKey := []byte("a-secret-key-for-testing-only-32")
+	keyring := map[string][]byte{
+		"kid-a": sharedKey,
+		"kid-b": sharedKey,
+	}
+
+	payload := map[string]any{
+		"program_id":    "m-000000000001",
+		"success_state": "success",
+	}
+	sig, err := Sign(payload, sharedKey, "kid-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Envelope says kid-b but MAC was computed under kid-a's domain.
+	payload["signature"] = map[string]any{
+		"alg":    sig.Alg,
+		"key_id": "kid-b",
+		"mac":    sig.MAC,
+	}
+
+	if err := Verify(payload, keyring); !errors.Is(err, ErrUnverifiable) {
+		t.Fatalf("cross-kid forgery accepted; want ErrUnverifiable, got %v", err)
+	}
+}
