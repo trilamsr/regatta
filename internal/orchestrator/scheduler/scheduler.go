@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -97,6 +98,11 @@ type Config struct {
 	// not consult schema, so the field is reserved for forward-compat
 	// (W5 plumbs BriefLoader-backed lookup).
 	OutputsSchemas OutputsSchemaResolver
+
+	// Logger is the structured-event sink for scheduler edge eval and
+	// reservation skips. Nil falls back to slog.Default() so embedded
+	// callers still get output without panicking (spec §4.1).
+	Logger *slog.Logger
 }
 
 // schedulerDB is the seam between Scheduler and state.DB. The
@@ -128,9 +134,9 @@ type schedulerDB interface {
 // state must use the read-only state.DB queries directly rather than
 // calling Tick.
 type Scheduler struct {
-	db   schedulerDB
-	cfg  Config
-	logf func(format string, args ...any)
+	db  schedulerDB
+	cfg Config
+	log *slog.Logger
 
 	// multiDefaultLogged dedupes the edge.multiple_defaults_per_from
 	// warn so a misconfigured brief logs once per (program_id, from_id)
@@ -141,35 +147,28 @@ type Scheduler struct {
 // New constructs a Scheduler. The Config is copied; later mutations to
 // cfg.LaneCaps do not affect the running scheduler.
 func New(db *state.DB, cfg Config) *Scheduler {
-	caps := make(map[string]int, len(cfg.LaneCaps))
-	maps.Copy(caps, cfg.LaneCaps)
-	cfg.LaneCaps = caps
-	if cfg.LockTTL <= 0 {
-		cfg.LockTTL = 15 * time.Minute
-	}
-	return &Scheduler{db: db, cfg: cfg, logf: func(string, ...any) {}}
+	return newScheduler(db, cfg)
 }
 
 // newWithDB is a test-only constructor that accepts the schedulerDB
 // interface so crash-injection tests can wrap *state.DB. The exported
 // New keeps its *state.DB signature; production callers are unchanged.
 func newWithDB(db schedulerDB, cfg Config) *Scheduler {
+	return newScheduler(db, cfg)
+}
+
+func newScheduler(db schedulerDB, cfg Config) *Scheduler {
 	caps := make(map[string]int, len(cfg.LaneCaps))
 	maps.Copy(caps, cfg.LaneCaps)
 	cfg.LaneCaps = caps
 	if cfg.LockTTL <= 0 {
 		cfg.LockTTL = 15 * time.Minute
 	}
-	return &Scheduler{db: db, cfg: cfg, logf: func(string, ...any) {}}
-}
-
-// SetLogger installs a printf-style logger used for skip diagnostics
-// (e.g. an agent skipped because its hotspot lock is held). Silent
-// by default.
-func (s *Scheduler) SetLogger(f func(format string, args ...any)) {
-	if f != nil {
-		s.logf = f
+	log := cfg.Logger
+	if log == nil {
+		log = slog.Default()
 	}
+	return &Scheduler{db: db, cfg: cfg, log: log}
 }
 
 // activeStates lists agent states that count against a lane's
@@ -193,11 +192,11 @@ var activeStates = []state.AgentState{
 // another agent is left in pending and retried next tick.
 //
 // Step-0 (when cfg.Evaluator != nil) evaluates every still-pending
-// edge whose from_id is in status=merged. Per-edge errors slog.Warn
-// and continue so one bad predicate cannot stall the rest of the
-// tick (spec §3.9). The eval pass writes to work_item_edges only —
-// ListSpawnable observes the updated fired column on the next
-// materializePending call.
+// edge whose from_id is in status=merged. Per-edge errors warn on
+// the injected logger and continue so one bad predicate cannot stall
+// the rest of the tick (spec §3.9). The eval pass writes to
+// work_item_edges only — ListSpawnable observes the updated fired
+// column on the next materializePending call.
 func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 	if s.cfg.Evaluator != nil {
 		if err := s.evalPendingEdges(ctx); err != nil {
@@ -235,7 +234,11 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 		locks := s.resolveLocks(a.WorkItemID)
 		if err := s.db.TryAcquireLocks(ctx, locks, a.ID, s.cfg.LockTTL); err != nil {
 			if errors.Is(err, state.ErrLockHeld) {
-				s.logf("scheduler: agent %d (%s) skipped: hotspot locked", a.ID, a.WorkItemID)
+				s.log.Info("scheduler.agent_skipped_hotspot_locked",
+					string(obs.KeyAgentID), a.ID,
+					string(obs.KeyWorkItemID), a.WorkItemID,
+					string(obs.KeyReason), "hotspot_locked",
+				)
 				continue
 			}
 			return reserved, fmt.Errorf("scheduler: acquire locks for agent %d: %w", a.ID, err)
@@ -244,7 +247,10 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 			// Release the locks we just took so we don't deadlock the
 			// next tick.
 			if _, releaseErr := s.db.ReleaseAgentLocks(ctx, a.ID); releaseErr != nil {
-				s.logf("scheduler: release locks for agent %d after transition failure: %v", a.ID, releaseErr)
+				s.log.Warn("scheduler.release_locks_after_transition_failure",
+					string(obs.KeyAgentID), a.ID,
+					string(obs.KeyErr), releaseErr.Error(),
+				)
 			}
 			return reserved, fmt.Errorf("scheduler: mark agent %d spawning: %w", a.ID, err)
 		}
@@ -277,12 +283,20 @@ func (s *Scheduler) materializePending(ctx context.Context) ([]state.Agent, erro
 		}
 		if _, err := s.db.UpsertPending(ctx, w.ID, w.Lane); err != nil {
 			failures++
-			s.logf("scheduler: materialize pending for %s failed: %v", w.ID, err)
+			s.log.Warn(string(obs.EventSchedulerMaterializeFailure),
+				string(obs.KeyWorkItemID), w.ID,
+				string(obs.KeyReason), "upsert_pending_failed",
+				string(obs.KeyErr), err.Error(),
+			)
 			continue
 		}
 	}
 	if failures > 0 {
-		s.logf("scheduler: materialize pass completed with %d/%d failures", failures, len(spawnable))
+		s.log.Warn(string(obs.EventSchedulerMaterializeFailure),
+			string(obs.KeyReason), "pass_completed_with_failures",
+			"failures", failures,
+			"total", len(spawnable),
+		)
 	}
 	pending, err := s.db.ListAgentsByState(ctx, state.AgentPending)
 	if err != nil {
@@ -305,11 +319,12 @@ func (s *Scheduler) laneHasCapacity(lane string, occupancy map[string]int) bool 
 // back via MarkEdgeFired with the journal's content_sha so a later
 // replay can reproduce the routing decision (spec §3.8 + §3.9).
 //
-// Per-edge eval errors slog.Warn and mark the edge fired='false'
-// rather than halting the tick: a single bad predicate is a config
-// bug operators see in logs, not a stop-the-world fault. Missing
-// journal (ErrJournalNotFound) is logged at info and leaves the
-// edge pending so the next tick retries once the spawner catches up.
+// Per-edge eval errors warn on the injected logger and mark the
+// edge fired='false' rather than halting the tick: a single bad
+// predicate is a config bug operators see in logs, not a
+// stop-the-world fault. Missing journal (ErrJournalNotFound) is
+// logged at info and leaves the edge pending so the next tick
+// retries once the spawner catches up.
 //
 // Default-next fallback (spec §3.3 rule 2c): when every non-default
 // outbound edge from a from_id resolves to fired='false', the
@@ -335,10 +350,15 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 		journal, err := s.db.GetLatestOutput(ctx, fromID)
 		if err != nil {
 			if errors.Is(err, state.ErrJournalNotFound) {
-				slog.Info("edge.eval_skipped_no_journal", "from_id", fromID)
+				s.log.Info(string(obs.EventEdgeEvalSkippedNoJournal),
+					string(obs.KeyFromID), fromID,
+				)
 				continue
 			}
-			slog.Warn("edge.journal_load_failed", "from_id", fromID, "err", err)
+			s.log.Warn(string(obs.EventEdgeJournalLoadFailed),
+				string(obs.KeyFromID), fromID,
+				string(obs.KeyErr), err.Error(),
+			)
 			continue
 		}
 		schema, _ := s.resolveSchema(fromID)
@@ -348,9 +368,13 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 			}
 			fired, reason, evalErr := s.cfg.Evaluator.Eval(ctx, e, schema, journal)
 			if evalErr != nil {
-				slog.Warn("edge.eval_error",
-					"edge_id", e.ID, "program_id", e.ProgramID,
-					"from", e.FromID, "to", e.ToID, "err", evalErr)
+				s.log.Warn(string(obs.EventEdgeEvalError),
+					string(obs.KeyEdgeID), e.ID,
+					string(obs.KeyProgramID), e.ProgramID,
+					string(obs.KeyFromID), e.FromID,
+					string(obs.KeyToID), e.ToID,
+					string(obs.KeyErr), evalErr.Error(),
+				)
 				fired = false
 				reason = "eval-error"
 			}
@@ -359,17 +383,25 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 				firedStr = edgeFiredTrue
 			}
 			if err := s.db.MarkEdgeFired(ctx, e.ID, firedStr, journal.ContentSHA); err != nil {
-				slog.Warn("edge.mark_failed", "edge_id", e.ID, "err", err)
+				s.log.Warn(string(obs.EventEdgeMarkFailed),
+					string(obs.KeyEdgeID), e.ID,
+					string(obs.KeyErr), err.Error(),
+				)
 				continue
 			}
-			evt := "edge.fired"
+			evt := obs.EventEdgeFired
 			if !fired {
-				evt = "edge.skipped"
+				evt = obs.EventEdgeSkipped
 			}
-			slog.Info(evt, "edge_id", e.ID, "program_id", e.ProgramID,
-				"from", e.FromID, "to", e.ToID,
-				"predicate", e.PredicateCEL, "reason", reason,
-				"journal_sha", journal.ContentSHA)
+			s.log.Info(string(evt),
+				string(obs.KeyEdgeID), e.ID,
+				string(obs.KeyProgramID), e.ProgramID,
+				string(obs.KeyFromID), e.FromID,
+				string(obs.KeyToID), e.ToID,
+				"predicate", e.PredicateCEL,
+				string(obs.KeyReason), reason,
+				string(obs.KeyJournalSHA), journal.ContentSHA,
+			)
 		}
 
 		// Read the post-write sibling set from the DB so we see every
@@ -380,7 +412,10 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 		// Safe under single-writer flock invariant (state.go:9, orchestrator PollOnce).
 		siblings, err := s.db.ListEdgesFrom(ctx, fromID)
 		if err != nil {
-			slog.Warn("edge.list_siblings_failed", "from_id", fromID, "err", err)
+			s.log.Warn("edge.list_siblings_failed",
+				string(obs.KeyFromID), fromID,
+				string(obs.KeyErr), err.Error(),
+			)
 			continue
 		}
 		var (
@@ -414,8 +449,11 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 			}
 			key := programID + "\x00" + fromID
 			if _, loaded := s.multiDefaultLogged.LoadOrStore(key, struct{}{}); !loaded {
-				slog.Warn("edge.multiple_defaults_per_from",
-					"program_id", programID, "from_id", fromID, "count", defaultCount)
+				s.log.Warn(string(obs.EventEdgeMultipleDefaultsPerFrom),
+					string(obs.KeyProgramID), programID,
+					string(obs.KeyFromID), fromID,
+					"count", defaultCount,
+				)
 			}
 		}
 		if defaultRow == nil || defaultRow.Fired != edgeFiredPending {
@@ -425,12 +463,17 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 			continue
 		}
 		if err := s.db.MarkEdgeFired(ctx, defaultRow.ID, edgeFiredTrue, journal.ContentSHA); err != nil {
-			slog.Warn("edge.default_mark_failed", "edge_id", defaultRow.ID, "err", err)
+			s.log.Warn("edge.default_mark_failed",
+				string(obs.KeyEdgeID), defaultRow.ID,
+				string(obs.KeyErr), err.Error(),
+			)
 			continue
 		}
-		slog.Info("edge.default_fallback",
-			"edge_id", defaultRow.ID, "from", fromID,
-			"journal_sha", journal.ContentSHA)
+		s.log.Info(string(obs.EventEdgeDefaultFallback),
+			string(obs.KeyEdgeID), defaultRow.ID,
+			string(obs.KeyFromID), fromID,
+			string(obs.KeyJournalSHA), journal.ContentSHA,
+		)
 	}
 	return nil
 }
