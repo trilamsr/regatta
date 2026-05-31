@@ -113,3 +113,7 @@ linters:
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0
+  # In-progress feature work lives in sibling worktrees under .claude/worktrees/.
+  # Lint scope is the canonical tree only; worktrees lint themselves at PR time.
+  exclude-dirs:
+    - \.claude/worktrees
