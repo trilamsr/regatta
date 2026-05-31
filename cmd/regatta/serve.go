@@ -131,7 +131,12 @@ func runServe(args []string) int {
 		Logger:            slogger,
 	})
 	if set.Worktrees != nil {
-		o.SetReaper(reaper.New(db, set.Worktrees, set.Killer))
+		o.SetReaper(reaper.New(reaper.Config{
+			DB:     db,
+			WM:     set.Worktrees,
+			Killer: set.Killer,
+			Logger: slogger,
+		}))
 	}
 
 	if err := o.Recover(ctx); err != nil {
