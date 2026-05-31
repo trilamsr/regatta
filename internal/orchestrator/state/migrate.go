@@ -20,7 +20,7 @@ var migrationsFS embed.FS
 // highestKnownVersion is the version this binary's embedded
 // migrations top out at. Migrate() rejects DBs whose
 // goose_db_version exceeds this — see ErrSchemaTooNew.
-const highestKnownVersion int64 = 2
+const highestKnownVersion int64 = 3
 
 // Migrate mutates goose package globals (SetBaseFS, SetLogger, SetDialect);
 // not safe to call concurrently from multiple goroutines with different settings.

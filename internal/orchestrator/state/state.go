@@ -30,7 +30,7 @@ import (
 
 // CurrentSchemaVersion is the version this binary knows how to apply.
 // Migrations are forward-only; see migrations/.
-const CurrentSchemaVersion = 2
+const CurrentSchemaVersion = 3
 
 // AgentState mirrors the state-machine in docs/design.md §378.
 type AgentState string

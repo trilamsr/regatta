@@ -12,7 +12,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-func TestMigrate_EmptyDBAppliesV1AndV2(t *testing.T) {
+func TestMigrate_EmptyDBAppliesAllVersions(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 	raw, err := sql.Open("sqlite", state.DSN(dbPath))
 	if err != nil {
@@ -29,8 +29,8 @@ func TestMigrate_EmptyDBAppliesV1AndV2(t *testing.T) {
 	if err := raw.QueryRow("SELECT MAX(version_id) FROM goose_db_version").Scan(&version); err != nil {
 		t.Fatalf("read goose version: %v", err)
 	}
-	if version != 2 {
-		t.Fatalf("version=%d want 2", version)
+	if version != state.CurrentSchemaVersion {
+		t.Fatalf("version=%d want %d", version, state.CurrentSchemaVersion)
 	}
 
 	var work int
