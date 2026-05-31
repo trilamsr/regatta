@@ -10,6 +10,7 @@ import (
 	"github.com/google/cel-go/cel"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/lockfile"
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
 // PredicateEnv aliases cel.Env so callers in the conditional-DAG
@@ -73,7 +74,11 @@ var (
 	// not present in the brief.
 	ErrEdgeUnknownTarget = errors.New("orchestrator: edge references unknown feature id")
 
-	// ErrJournalNotFound fires when edge evaluation cannot locate an
-	// outputs journal entry for the upstream work_item.
-	ErrJournalNotFound = errors.New("orchestrator: outputs journal entry not found for work_item")
+	// ErrJournalNotFound is re-exported from package state so callers
+	// outside state (edge evaluator, scheduler) keep the
+	// orchestrator.ErrJournalNotFound import path while the canonical
+	// definition lives next to state.GetLatestOutput. Same one-way
+	// import pattern as ErrFlockHeld above — state cannot depend on
+	// orchestrator without an import cycle.
+	ErrJournalNotFound = state.ErrJournalNotFound
 )
