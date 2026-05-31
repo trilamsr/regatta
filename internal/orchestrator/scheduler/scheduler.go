@@ -45,8 +45,12 @@ type Config struct {
 	Hotspots HotspotResolver
 }
 
-// Scheduler is goroutine-safe; the orchestrator may share a single
-// Scheduler across the Run loop and ad-hoc admin commands.
+// Scheduler is single-caller: Tick must not be invoked concurrently.
+// The orchestrator's Run loop owns the only call site and is itself
+// flock-guarded by PollOnce, so this contract holds in practice
+// without an explicit mutex. Admin commands that want to peek at
+// state must use the read-only state.DB queries directly rather than
+// calling Tick.
 type Scheduler struct {
 	db   *state.DB
 	cfg  Config
@@ -88,15 +92,21 @@ var activeStates = []state.AgentState{
 	state.AgentGatesFailed,
 }
 
-// Tick performs one scheduling pass. It returns the IDs of agents
-// transitioned from pending to spawning during this pass, in the order
-// they were reserved.
+// Tick performs one scheduling pass. Reads work_items via
+// ListSpawnable (universal-queue source of truth per spec §2.8),
+// materializes a pending agents row for any work_item missing one,
+// then reserves lanes + hotspot locks as before.
 //
-// Tick never blocks on locks: an agent whose hotspot is held by
-// another agent is left in pending and retried on the next tick.
+// Lock acquire is non-blocking; an agent whose hotspot is held by
+// another agent is left in pending and retried next tick.
 func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 	if _, err := s.db.ExpireStaleLocks(ctx, s.cfg.LockTTL); err != nil {
 		return nil, fmt.Errorf("scheduler: expire stale locks: %w", err)
+	}
+
+	pending, err := s.materializePending(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: materialize: %w", err)
 	}
 
 	occupancy, err := s.db.CountAgentsByLane(ctx, activeStates...)
@@ -104,11 +114,15 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 		return nil, err
 	}
 
-	pending, err := s.db.ListAgentsByState(ctx, state.AgentPending)
-	if err != nil {
-		return nil, err
-	}
-
+	// Each reservation below is 3 sequential txs — UpsertPending (in
+	// materializePending), TryAcquireLocks, TransitionAgent — not one.
+	// Orphan-row safety: an agent row that crashes between UpsertPending
+	// and TransitionAgent is still in `pending`, so the next Tick
+	// re-discovers it via ListAgentsByState(AgentPending) and retries
+	// the lock+transition without re-running ListSpawnable (the
+	// `a.id IS NULL` join filter would exclude it). MVP-2 may tighten
+	// this to a single tx; current split is intentional to keep the
+	// state-package surface small.
 	var reserved []int64
 	for _, a := range pending {
 		if !s.laneHasCapacity(a.Lane, occupancy) {
@@ -125,13 +139,52 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 		if _, err := s.db.TransitionAgent(ctx, a.ID, state.AgentSpawning, state.AgentMutation{}); err != nil {
 			// Release the locks we just took so we don't deadlock the
 			// next tick.
-			_, _ = s.db.ReleaseAgentLocks(ctx, a.ID)
+			if _, releaseErr := s.db.ReleaseAgentLocks(ctx, a.ID); releaseErr != nil {
+				s.logf("scheduler: release locks for agent %d after transition failure: %v", a.ID, releaseErr)
+			}
 			return reserved, fmt.Errorf("scheduler: mark agent %d spawning: %w", a.ID, err)
 		}
 		occupancy[a.Lane]++
 		reserved = append(reserved, a.ID)
 	}
 	return reserved, nil
+}
+
+// materializePending walks ListSpawnable (work_items LEFT JOIN
+// agents WHERE agents.id IS NULL ...) and UpsertPending-s one
+// agents row per missing work_item. Returns the union: every
+// existing pending agent + every newly-materialized one, in
+// db-natural order. Per spec §2.8 — Scheduler is the
+// materialization point so the orphan-row class is impossible by
+// construction.
+//
+// Per-item UpsertPending failures are logged and skipped rather than
+// aborting the batch: a single bad row should not stall every other
+// pending agent. Context cancellation still propagates.
+func (s *Scheduler) materializePending(ctx context.Context) ([]state.Agent, error) {
+	spawnable, err := s.db.ListSpawnable(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: list spawnable: %w", err)
+	}
+	var failures int
+	for _, w := range spawnable {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if _, err := s.db.UpsertPending(ctx, w.ID, w.Lane); err != nil {
+			failures++
+			s.logf("scheduler: materialize pending for %s failed: %v", w.ID, err)
+			continue
+		}
+	}
+	if failures > 0 {
+		s.logf("scheduler: materialize pass completed with %d/%d failures", failures, len(spawnable))
+	}
+	pending, err := s.db.ListAgentsByState(ctx, state.AgentPending)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: list pending: %w", err)
+	}
+	return pending, nil
 }
 
 func (s *Scheduler) laneHasCapacity(lane string, occupancy map[string]int) bool {
