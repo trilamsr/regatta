@@ -91,3 +91,31 @@ format (stub today; full shape lands with the audit-sink writer).
 the signed `main` SHA. Typical entries: `PRINCIPLES.md`, `STYLE.md`,
 `AGENTS.md`. Documents outside this list are treated as data, not
 instructions.
+
+## Prompts
+
+### `prompts.planner_sha` (optional)
+
+Hex-encoded sha256 of `contracts/prompts/planner.md`. When set, the
+binary refuses to start with a prompt file that doesn't match -
+fail-closed against on-disk drift between the operator-pinned
+contract and the file the planner actually loads. Unset means the
+binary falls back to its embedded copy of the prompt and does not
+read from disk.
+
+Compute the digest with:
+
+```sh
+sha256sum contracts/prompts/planner.md
+```
+
+Paste the hex string into `regatta.yaml`:
+
+```yaml
+prompts:
+  planner_sha: 8f4e...c0
+```
+
+Rotation: bump the file, recompute the digest, update the config in
+the same commit. A mismatch on startup logs the expected vs. actual
+sha and exits non-zero before any work is scheduled.
