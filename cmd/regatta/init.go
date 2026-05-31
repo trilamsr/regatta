@@ -35,6 +35,19 @@ func runInit(args []string) int {
 func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet(subcmdInit, flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	fs.Usage = func() {
+		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta init [--force] [--json]")
+		_, _ = fmt.Fprintln(fs.Output())
+		_, _ = fmt.Fprintln(fs.Output(), "Scaffolds regatta.yaml and a demo attack at .regatta/sample.diff in the")
+		_, _ = fmt.Fprintln(fs.Output(), "current directory, then runs the L0 gate against the demo so you see in")
+		_, _ = fmt.Fprintln(fs.Output(), "one command what regatta catches. Idempotent: re-running on matching")
+		_, _ = fmt.Fprintln(fs.Output(), "files is a no-op; diverged files cause exit 2 unless --force is passed.")
+		_, _ = fmt.Fprintln(fs.Output())
+		_, _ = fmt.Fprintln(fs.Output(), "Flags:")
+		fs.PrintDefaults()
+		_, _ = fmt.Fprintln(fs.Output())
+		_, _ = fmt.Fprintln(fs.Output(), "Exit codes: 0 success, 1 internal error, 2 usage/refusal.")
+	}
 	force := fs.Bool("force", false, "overwrite existing regatta.yaml / .regatta/sample.diff")
 	jsonOut := fs.Bool("json", false, "emit JSON envelope instead of friendly prose")
 	if err := fs.Parse(args); err != nil {
@@ -139,7 +152,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 	// Re-read sample.diff so the demo verdict reflects what's on
 	// disk (operator might inspect or edit it).
 	diffPath := files[1].path
-	onDisk, err := os.ReadFile(diffPath) //nolint:gosec // G304: diffPath is files[1].path, a literal we just wrote inside cwd
+	onDisk, err := os.ReadFile(diffPath) //nolint:gosec // G304: diffPath is filepath.Join(".regatta","sample.diff"), a fixed literal, never user input
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "regatta init: re-read %s: %v\n", diffPath, err)
 		return 1
