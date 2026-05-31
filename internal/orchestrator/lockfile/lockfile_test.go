@@ -83,13 +83,20 @@ func TestRelease_IdempotentOnDoubleCall(t *testing.T) {
 	}
 }
 
-func TestAcquire_DualHolderImpossible(t *testing.T) {
-	// Regression for the TOCTOU we fixed at root cause. Two parallel
-	// Acquire goroutines on the same path: exactly one wins, the
-	// other gets ErrFlockHeld. Repeated 50 times to surface any
-	// residual race.
+func TestAcquire_DualHolderImpossible_WithStalePID(t *testing.T) {
+	// Regression for the dual-holder TOCTOU. The bug required a
+	// stale (dead) PID present in the lockfile so the old
+	// maybeReclaimStale path would os.Remove it under a live
+	// flock holder, allowing a second inode at the same path.
+	// New design: no remove, so the bug class is gone.
+	// Two concurrent Acquires after planting a dead-PID file MUST
+	// produce exactly one winner; the loser MUST get ErrFlockHeld.
 	path := filepath.Join(t.TempDir(), "test.lock")
 	for i := 0; i < 50; i++ {
+		if err := os.WriteFile(path, []byte(strconv.Itoa(0x7FFFFFFE)), 0o600); err != nil {
+			t.Fatalf("iter %d plant: %v", i, err)
+		}
+
 		var wg sync.WaitGroup
 		wg.Add(2)
 		var lockA, lockB *Lock
@@ -103,16 +110,16 @@ func TestAcquire_DualHolderImpossible(t *testing.T) {
 			wins++
 			_ = lockA.Release()
 		} else if !errors.Is(errA, orchestrator.ErrFlockHeld) {
-			t.Fatalf("iter %d: errA=%v", i, errA)
+			t.Fatalf("iter %d errA=%v want nil or ErrFlockHeld", i, errA)
 		}
 		if errB == nil {
 			wins++
 			_ = lockB.Release()
 		} else if !errors.Is(errB, orchestrator.ErrFlockHeld) {
-			t.Fatalf("iter %d: errB=%v", i, errB)
+			t.Fatalf("iter %d errB=%v want nil or ErrFlockHeld", i, errB)
 		}
 		if wins != 1 {
-			t.Fatalf("iter %d: wins=%d want exactly 1", i, wins)
+			t.Fatalf("iter %d wins=%d want exactly 1", i, wins)
 		}
 	}
 }

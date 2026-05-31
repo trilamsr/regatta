@@ -24,11 +24,17 @@
 // Same-host assumption: flock() semantics are per-host. Operators
 // MUST NOT point two regatta processes on different hosts at a
 // shared state.db (e.g. NFS-mounted) — flock cannot serialize them.
+//
+// Cleanup: the .pid file persists across regatta restarts as a
+// diagnostic aid. Safe to delete when no regatta process is
+// running (operators can verify with `lsof <path>`). regatta
+// itself never removes it.
 package lockfile
 
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -49,6 +55,9 @@ type Lock struct {
 // diagnostic aid — it is NOT used for lock liveness. Liveness is
 // the flock itself.
 func Acquire(path string) (*Lock, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, fmt.Errorf("lockfile: mkdir parent: %w", err)
+	}
 	fl := flock.New(path)
 	locked, err := fl.TryLock()
 	if err != nil {
@@ -56,7 +65,11 @@ func Acquire(path string) (*Lock, error) {
 	}
 	if !locked {
 		holder := readHolderPID(path)
-		return nil, fmt.Errorf("%w: %s (holder pid=%s)", orchestrator.ErrFlockHeld, path, holder)
+		if holder == "" {
+			return nil, fmt.Errorf("%w: %s", orchestrator.ErrFlockHeld, path)
+		}
+		return nil, fmt.Errorf("%w: %s (last-known holder pid=%s; verify with `lsof %s` before killing)",
+			orchestrator.ErrFlockHeld, path, holder, path)
 	}
 
 	// We hold the flock. Overwrite the PID under it so the next
@@ -84,12 +97,19 @@ func (l *Lock) Release() error {
 	return nil
 }
 
-// readHolderPID returns the PID string from the lockfile (or "" on
-// any error). Purely diagnostic — never used for lock liveness.
+// readHolderPID returns the PID string from the lockfile, or "" if
+// the file is unreadable, missing, or does not contain a positive
+// integer. Purely diagnostic — never used for lock liveness, so
+// silently swallowing garbage is the right move (we don't want to
+// leak arbitrary bytes from a corrupted file into error chains).
 func readHolderPID(path string) string {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(data))
+	s := strings.TrimSpace(string(data))
+	if pid, err := strconv.Atoi(s); err != nil || pid <= 0 {
+		return ""
+	}
+	return s
 }
