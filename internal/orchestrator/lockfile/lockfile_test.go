@@ -29,7 +29,7 @@ func TestAcquire_Release_Roundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second Acquire after Release: %v", err)
 	}
-	defer lock2.Release()
+	defer func() { _ = lock2.Release() }()
 }
 
 func TestAcquire_HeldByLivePID_ReturnsErrFlockHeld(t *testing.T) {
@@ -38,7 +38,7 @@ func TestAcquire_HeldByLivePID_ReturnsErrFlockHeld(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first Acquire: %v", err)
 	}
-	defer first.Release()
+	defer func() { _ = first.Release() }()
 
 	_, err = Acquire(path)
 	if !errors.Is(err, orchestrator.ErrFlockHeld) {
@@ -57,7 +57,7 @@ func TestAcquire_OverwritesStalePIDContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire over stale pid file: %v", err)
 	}
-	defer lock.Release()
+	defer func() { _ = lock.Release() }()
 
 	got, err := os.ReadFile(path)
 	if err != nil {
@@ -133,7 +133,7 @@ func TestAcquire_CreatesMissingParentDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Acquire with missing parent dir: %v", err)
 	}
-	defer lock.Release()
+	defer func() { _ = lock.Release() }()
 	if _, err := os.Stat(filepath.Dir(path)); err != nil {
 		t.Fatalf("parent dir not created: %v", err)
 	}

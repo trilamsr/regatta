@@ -19,7 +19,7 @@ func TestMigrate_EmptyDBAppliesV1AndV2(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
-	defer raw.Close()
+	defer func() { _ = raw.Close() }()
 	raw.SetMaxOpenConns(1)
 
 	if err := state.Migrate(context.Background(), raw); err != nil {
@@ -46,7 +46,7 @@ func TestMigrate_IdempotentOnSecondCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer raw.Close()
+	defer func() { _ = raw.Close() }()
 	raw.SetMaxOpenConns(1)
 
 	if err := state.Migrate(context.Background(), raw); err != nil {
@@ -63,7 +63,7 @@ func TestMigrate_DowngradeResistance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer raw.Close()
+	defer func() { _ = raw.Close() }()
 	raw.SetMaxOpenConns(1)
 
 	if err := state.Migrate(context.Background(), raw); err != nil {

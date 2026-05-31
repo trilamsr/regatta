@@ -32,6 +32,7 @@
 package lockfile
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -104,14 +105,14 @@ func (l *Lock) Release() error {
 // silently swallowing garbage is the right move (we don't want to
 // leak arbitrary bytes from a corrupted file into error chains).
 func readHolderPID(path string) string {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- path is a caller-controlled lockfile path (`<dbPath>.lock`), not user-influenced input.
 	if err != nil {
 		return ""
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var buf [64]byte
 	n, err := io.ReadFull(io.LimitReader(f, int64(len(buf))), buf[:])
-	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return ""
 	}
 	s := strings.TrimSpace(string(buf[:n]))
