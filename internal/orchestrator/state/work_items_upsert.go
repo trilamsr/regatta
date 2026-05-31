@@ -25,6 +25,9 @@ func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemS
 	if accept == "" {
 		accept = "[]"
 	}
+	if !json.Valid([]byte(accept)) {
+		return fmt.Errorf("state: acceptance_json for %s is not valid JSON", item.ID)
+	}
 	now := seenAt.UTC().Unix()
 
 	tx, err := d.sql.BeginTx(ctx, nil)
@@ -73,7 +76,7 @@ func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemS
 // last_seen_at < before AND status is not already archived. Returns
 // the list of archived IDs. Per-source so AdapterSync and BriefLoader
 // cannot tombstone each other's rows.
-func (d *DB) TombstoneBySource(ctx context.Context, source string, before time.Time) ([]string, error) {
+func (d *DB) TombstoneBySource(ctx context.Context, source WorkItemSource, before time.Time) ([]string, error) {
 	cutoff := before.UTC().Unix()
 	tx, err := d.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -84,7 +87,7 @@ func (d *DB) TombstoneBySource(ctx context.Context, source string, before time.T
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id FROM work_items
 		WHERE source = ? AND last_seen_at < ? AND status != ?`,
-		source, cutoff, string(WorkStatusArchived))
+		string(source), cutoff, string(WorkStatusArchived))
 	if err != nil {
 		return nil, fmt.Errorf("state: select tombstone candidates: %w", err)
 	}
@@ -120,8 +123,8 @@ func (d *DB) TombstoneBySource(ctx context.Context, source string, before time.T
 // parent_program_id matches as archived. Cascade-SOFT (spec §2.4):
 // the agents table is not touched, so any in-flight agent continues
 // to its natural terminal state.
-func (d *DB) CascadeArchiveChildren(ctx context.Context, parentID string) error {
-	now := d.now().UTC().Unix()
+func (d *DB) CascadeArchiveChildren(ctx context.Context, parentID string, archivedAt time.Time) error {
+	now := archivedAt.UTC().Unix()
 	if _, err := d.sql.ExecContext(ctx, `
 		UPDATE work_items SET status = ?, updated_at = ?
 		WHERE parent_program_id = ? AND status != ?`,

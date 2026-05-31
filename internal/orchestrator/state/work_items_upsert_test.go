@@ -92,7 +92,7 @@ func TestTombstoneBySource_SourceScoped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	archived, err := db.TombstoneBySource(ctx, string(SourceBrief), t1)
+	archived, err := db.TombstoneBySource(ctx, SourceBrief, t1)
 	if err != nil {
 		t.Fatalf("TombstoneBySource: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestTombstoneBySource_SkipsAlreadyArchived(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	archived, err := db.TombstoneBySource(context.Background(), string(SourceBrief), t0.Add(time.Minute))
+	archived, err := db.TombstoneBySource(context.Background(), SourceBrief, t0.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestCascadeArchiveChildren_FlipsStatusOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := db.CascadeArchiveChildren(ctx, "PROG-1"); err != nil {
+	if err := db.CascadeArchiveChildren(ctx, "PROG-1", t0); err != nil {
 		t.Fatalf("CascadeArchiveChildren: %v", err)
 	}
 
@@ -164,7 +164,7 @@ func TestCascadeArchiveChildren_FlipsStatusOnly(t *testing.T) {
 func TestUpsertWorkItem_RoundTripsDependsOnFeatures(t *testing.T) {
 	db := newWorkItemsTestDB(t)
 	ctx := context.Background()
-	now := time.Now()
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	item := WorkItem{
 		ID: "F-2", Kind: KindFeature, Title: "depends", Lane: "server",
 		Status: WorkStatusPlanned, DependsOnFeatures: []string{"F-1", "F-A"},
@@ -175,5 +175,21 @@ func TestUpsertWorkItem_RoundTripsDependsOnFeatures(t *testing.T) {
 	got, _ := db.GetWorkItem(ctx, "F-2")
 	if len(got.DependsOnFeatures) != 2 || got.DependsOnFeatures[0] != "F-1" || got.DependsOnFeatures[1] != "F-A" {
 		t.Fatalf("DependsOnFeatures=%v want [F-1 F-A]", got.DependsOnFeatures)
+	}
+}
+
+func TestUpsertWorkItem_RejectsMalformedAcceptanceJSON(t *testing.T) {
+	db := newWorkItemsTestDB(t)
+	ctx := context.Background()
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+
+	item := WorkItem{
+		ID: "F-bad", Kind: KindFeature, Title: "garbage",
+		Lane: "server", Status: WorkStatusPlanned,
+		AcceptanceJSON: "{not valid json",
+	}
+	err := db.UpsertWorkItem(ctx, item, SourceBrief, now)
+	if err == nil {
+		t.Fatal("UpsertWorkItem accepted malformed AcceptanceJSON; must reject")
 	}
 }
