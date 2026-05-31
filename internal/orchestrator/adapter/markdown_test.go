@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,40 @@ Body text.
 - [planned] c1: First criterion
 - [planned] c2: Second criterion
 `
+
+// TestMarkdown_LogsSkippedItems proves that malformed items no longer
+// disappear silently when Get's underlying findFileFor pass walks the
+// directory. The operator MUST see a diagnostic line naming the path
+// and the parse error, otherwise the failure surfaces only as a
+// generic "work item not found" upstream.
+func TestMarkdown_LogsSkippedItems(t *testing.T) {
+	dir := t.TempDir()
+	writeItem(t, dir, "good.md", sampleItem)
+	writeItem(t, dir, "broken.md", "---\nthis is not valid frontmatter\n")
+
+	var logs []string
+	a, err := NewMarkdownCatalog(MarkdownCatalogConfig{
+		Root:   dir,
+		Logger: func(format string, args ...any) { logs = append(logs, fmt.Sprintf(format, args...)) },
+	})
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	err = a.UpdateStatus(context.Background(), "ITEM-DOES-NOT-EXIST", schemas.StatusPlanned, "test=t1")
+	if !errors.Is(err, schemas.ErrNotFound) {
+		t.Fatalf("UpdateStatus: want ErrNotFound, got %v", err)
+	}
+	var sawBroken bool
+	for _, line := range logs {
+		if strings.Contains(line, "broken.md") {
+			sawBroken = true
+			break
+		}
+	}
+	if !sawBroken {
+		t.Fatalf("expected log line referencing broken.md, got %v", logs)
+	}
+}
 
 func TestMarkdownCatalogList(t *testing.T) {
 	dir := t.TempDir()

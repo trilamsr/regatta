@@ -54,11 +54,18 @@ type MarkdownCatalogConfig struct {
 	// MinPoll is the minimum delay the orchestrator should wait
 	// between successive List calls. Defaults to 5s.
 	MinPoll time.Duration
+
+	// Logger receives printf-style diagnostics for malformed items
+	// skipped during findFileFor. Nil is treated as silent. Operators
+	// should wire this so "work item not found" upstream is never the
+	// only signal that an on-disk file failed to parse.
+	Logger func(format string, args ...any)
 }
 
 type markdownCatalog struct {
-	cfg MarkdownCatalogConfig
-	mu  sync.Mutex
+	cfg  MarkdownCatalogConfig
+	logf func(format string, args ...any)
+	mu   sync.Mutex
 }
 
 // NewMarkdownCatalog returns a schemas.SpecAdapter backed by
@@ -75,7 +82,11 @@ func NewMarkdownCatalog(cfg MarkdownCatalogConfig) (schemas.SpecAdapter, error) 
 	if cfg.MinPoll <= 0 {
 		cfg.MinPoll = 5 * time.Second
 	}
-	return &markdownCatalog{cfg: cfg}, nil
+	logf := cfg.Logger
+	if logf == nil {
+		logf = func(string, ...any) {}
+	}
+	return &markdownCatalog{cfg: cfg, logf: logf}, nil
 }
 
 func (m *markdownCatalog) itemsDir() string {
@@ -199,6 +210,7 @@ func (m *markdownCatalog) findFileFor(id schemas.WorkItemID) (string, error) {
 		path := filepath.Join(dir, entry.Name())
 		item, err := m.readItem(path)
 		if err != nil {
+			m.logf("adapter: skip %s: %v", path, err)
 			continue
 		}
 		if item.ID == id {
