@@ -36,6 +36,12 @@ func (d *DB) ListByParent(ctx context.Context, parentID string) ([]WorkItem, err
 // depends_on_features are either empty or all already 'merged'.
 // per spec §2.8 — the SELECT here is the materialization-eliminator:
 // scheduler.Tick consumes the rows directly into the reservation tx.
+//
+// Note: relies on the work_items.depends_on_features NOT NULL
+// schema invariant. If a future migration allows NULL, the
+// `NOT EXISTS(json_each(NULL))` clause silently treats the row
+// as spawnable. Migration authors must add an `IS NOT NULL`
+// guard here if they relax the column.
 func (d *DB) ListSpawnable(ctx context.Context) ([]WorkItem, error) {
 	rows, err := d.sql.QueryContext(ctx, `
 		SELECT w.id, w.kind, w.title, w.lane, w.status,

@@ -119,6 +119,20 @@ func TestListSpawnable_ExcludesArchived(t *testing.T) {
 	}
 }
 
+func TestListSpawnable_ExcludesBlocked(t *testing.T) {
+	db := newQueryTestDB(t)
+	ctx := context.Background()
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	w := state.WorkItem{ID: "F-block", Kind: state.KindFeature, Title: "x", Lane: "server", Status: state.WorkStatusBlocked}
+	if err := db.UpsertWorkItem(ctx, w, state.SourceBrief, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := db.ListSpawnable(ctx)
+	if len(got) != 0 {
+		t.Fatalf("got %d want 0 (blocked rows must not appear)", len(got))
+	}
+}
+
 func TestCycleCheck_RejectsCycle(t *testing.T) {
 	db := newQueryTestDB(t)
 	ctx := context.Background()
