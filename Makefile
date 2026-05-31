@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test
+.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test bench
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -12,6 +12,14 @@ go-check:  ## Build and test every Go package.
 
 property-test:  ## Run rapid property tests with spec-mandated check count (200).
 	go test -race -run TestListSpawnable_PropertyTopologicalReady ./internal/orchestrator/state/... -rapid.checks=200
+
+bench:  ## Run benchmark corpus (scheduler.Tick, CycleCheck, ListSpawnable, BriefLoader.Sync, schemas.Verify, canon). ~30s total at -benchtime=3x.
+	go test -run=^$$ -bench=. -benchmem -benchtime=3x \
+		./internal/orchestrator/scheduler/... \
+		./internal/orchestrator/state/... \
+		./internal/program/... \
+		./contracts/schemas/... \
+		./internal/canon/...
 
 cover:  ## Print cross-package coverage; useful before declaring "done".
 	go test -coverpkg=./... -coverprofile=/tmp/regatta.cover ./...
