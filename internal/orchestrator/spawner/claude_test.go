@@ -166,8 +166,7 @@ func TestClaudeSpawnKillRace(t *testing.T) {
 }
 
 // opaqueWrap hides the wrapped error's message but preserves the
-// errors.Is chain. The whole point of F2: stop trusting err.Error()
-// substring matches when the stdlib already gives us a sentinel.
+// errors.Is chain, so KillAgent must classify via the sentinel.
 type opaqueWrap struct{ err error }
 
 func (e *opaqueWrap) Error() string { return "kill failed: opaque" }

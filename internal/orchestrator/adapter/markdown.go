@@ -55,10 +55,8 @@ type MarkdownCatalogConfig struct {
 	// between successive List calls. Defaults to 5s.
 	MinPoll time.Duration
 
-	// Logger receives printf-style diagnostics for malformed items
-	// skipped during findFileFor. Nil is treated as silent. Operators
-	// should wire this so "work item not found" upstream is never the
-	// only signal that an on-disk file failed to parse.
+	// Logger receives printf-style diagnostics for items skipped due
+	// to parse errors. Nil is silent.
 	Logger func(format string, args ...any)
 }
 
@@ -115,9 +113,7 @@ func (m *markdownCatalog) List(ctx context.Context) ([]schemas.WorkItem, error) 
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
 			continue
 		}
-		// Files prefixed with "_" or "." are treated as templates /
-		// scratch and skipped. Operators can stash a partial draft
-		// without breaking List.
+		// "_" / "." prefixes are templates or drafts; skip.
 		if strings.HasPrefix(entry.Name(), "_") || strings.HasPrefix(entry.Name(), ".") {
 			continue
 		}
@@ -149,10 +145,8 @@ func (m *markdownCatalog) Get(ctx context.Context, id schemas.WorkItemID) (schem
 	return schemas.WorkItem{}, fmt.Errorf("%w: %s", schemas.ErrNotFound, id)
 }
 
-// UpdateStatus rewrites the file's frontmatter `status:` line. The
-// citation is appended as a `citation:` line; if a citation already
-// exists it is replaced. The operation is idempotent: a no-op call
-// returns nil without touching the file mtime.
+// UpdateStatus rewrites the frontmatter status (and citation) for id.
+// Idempotent: a no-op call leaves the file mtime untouched.
 func (m *markdownCatalog) UpdateStatus(ctx context.Context, id schemas.WorkItemID, status schemas.Status, citation string) error {
 	if status != schemas.StatusPlanned && status != schemas.StatusInProgress && status != schemas.StatusDone {
 		return fmt.Errorf("%w: %s", schemas.ErrInvalidStatus, status)

@@ -6,19 +6,16 @@ import (
 )
 
 // matchedCriterion is a single acceptance-criterion line extracted
-// from a markdown checkbox list. Internal-only — distinct from
-// schemas.Criterion (the wire-level adapter type); this name records
-// the structural difference instead of shadowing the schema name.
+// from a markdown checkbox list. Internal-only.
 type matchedCriterion struct {
 	State    CriterionState
-	Text     string // text after the checkbox glyph and before any citation trailer
+	Text     string // text after the checkbox, before any citation trailer
 	Citation string // empty if absent
 	Line     int    // 1-based line number in the source
 }
 
-// CriterionState is the two-state lifecycle of a markdown criterion:
-// planned ("- [ ]") or done ("- [x]"). L0 enforces that no PR may flip
-// done→planned and that done→done text is byte-identical post-normalize.
+// CriterionState is planned ("- [ ]") or done ("- [x]"). L0 forbids
+// done→planned flips and enforces byte-identical text on done→done.
 type CriterionState int
 
 // Criterion lifecycle states. iota ordering must match String().

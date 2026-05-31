@@ -1,11 +1,8 @@
 -- +goose Up
 -- +goose StatementBegin
--- Regatta orchestrator state schema, version 1.
---
--- Tables follow the agent state machine in docs/design.md §State,
--- persistence, recovery. Migrations are forward-only: append a new
--- section, never edit a shipped block. goose_db_version (managed by
--- pressly/goose) is the authoritative version table.
+-- Regatta orchestrator state schema, v1.
+-- See docs/design.md §State, persistence, recovery. Forward-only:
+-- append a new migration, never edit a shipped block.
 
 CREATE TABLE agents (
     id              INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +43,6 @@ CREATE INDEX idx_events_kind  ON events(kind);
 
 -- +goose Down
 -- +goose StatementBegin
--- Forward-only; down migrations are intentionally empty. Operators
--- recover by restoring from snapshot.
+-- Forward-only; recover by restoring from snapshot.
 SELECT 1;
 -- +goose StatementEnd

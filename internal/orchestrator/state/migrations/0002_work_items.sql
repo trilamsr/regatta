@@ -1,10 +1,8 @@
 -- +goose Up
 -- +goose StatementBegin
--- Universal queue: state.work_items is single source of truth for
--- spawnable work. AdapterSync (source=adapter) + BriefLoader
--- (source=brief) both upsert here. Scheduler.ListSpawnable joins
--- against agents to materialize pending rows on demand.
--- per RFC-0001 §3.
+-- Universal queue (RFC-0001 §3): single source of truth for spawnable
+-- work. AdapterSync (source=adapter) and BriefLoader (source=brief)
+-- both upsert here; Scheduler.ListSpawnable joins against agents.
 
 CREATE TABLE work_items (
     id                   TEXT    NOT NULL PRIMARY KEY,

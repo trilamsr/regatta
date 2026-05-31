@@ -45,7 +45,7 @@ func seedDenseDAG(b *testing.B, db *state.DB, depth, fanout int) state.WorkItem 
 				Lane: "server", Status: state.WorkStatusPlanned,
 				DependsOnFeatures: append([]string{}, prevLayer...),
 			}
-			if err := db.UpsertWorkItemAt(ctx, w, state.SourceBrief, at); err != nil {
+			if err := db.UpsertWorkItem(ctx, w, state.SourceBrief, at); err != nil {
 				b.Fatalf("seed %s: %v", id, err)
 			}
 			thisLayer = append(thisLayer, id)

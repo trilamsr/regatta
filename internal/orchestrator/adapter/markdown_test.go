@@ -40,11 +40,8 @@ Body text.
 - [planned] c2: Second criterion
 `
 
-// TestMarkdown_LogsSkippedItems proves that malformed items no longer
-// disappear silently when Get's underlying findFileFor pass walks the
-// directory. The operator MUST see a diagnostic line naming the path
-// and the parse error, otherwise the failure surfaces only as a
-// generic "work item not found" upstream.
+// TestMarkdown_LogsSkippedItems asserts malformed items are logged
+// instead of failing silently to a generic "not found" upstream.
 func TestMarkdown_LogsSkippedItems(t *testing.T) {
 	dir := t.TempDir()
 	writeItem(t, dir, "good.md", sampleItem)
@@ -200,8 +197,7 @@ dependencies: A
 func TestMarkdownCatalogSkipsTemplateFiles(t *testing.T) {
 	dir := t.TempDir()
 	writeItem(t, dir, "001.md", sampleItem)
-	// Templates: leading "_" and leading "." must be ignored even
-	// though they have a .md suffix.
+	// "_" / "." prefixes must be ignored despite the .md suffix.
 	writeItem(t, dir, "_template.md", "garbage that would fail to parse")
 	writeItem(t, dir, ".draft.md", "another garbage draft")
 

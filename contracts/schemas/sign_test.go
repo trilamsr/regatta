@@ -161,10 +161,8 @@ func TestVerifyRejectsMissingSignature(t *testing.T) {
 	}
 }
 
-// TestSign_KidInMAC_PreventsCrossKidForgery proves the MAC binds to
-// key_id. Without binding, two keyring entries sharing the same key
-// bytes under different kids cross-verify: a payload signed under
-// kid-a accepts a swapped envelope key_id=kid-b.
+// TestSign_KidInMAC_PreventsCrossKidForgery asserts the MAC binds to
+// key_id so a swapped envelope kid does not cross-verify under a shared key.
 func TestSign_KidInMAC_PreventsCrossKidForgery(t *testing.T) {
 	t.Parallel()
 	sharedKey := []byte("a-secret-key-for-testing-only-32")
@@ -193,10 +191,8 @@ func TestSign_KidInMAC_PreventsCrossKidForgery(t *testing.T) {
 	}
 }
 
-// TestVerify_RejectsNonStringSignatureFields proves Verify fails fast
-// when alg / key_id / mac arrive as non-string values. Pre-fix, the
-// silent .(string) type assertion coerced to "" and HMAC compared
-// against empty — a security-adjacent silent miss.
+// TestVerify_RejectsNonStringSignatureFields asserts Verify fails fast
+// when alg / key_id / mac arrive as non-string values.
 func TestVerify_RejectsNonStringSignatureFields(t *testing.T) {
 	t.Parallel()
 	key := []byte("a-secret-key-for-testing-only-32")
@@ -235,10 +231,7 @@ func strContains(s, sub string) bool {
 	return false
 }
 
-// FuzzVerify exercises the verify path with arbitrary bytes. Hardens
-// the security boundary against panics on malformed signed-envelope
-// shapes (number-where-string, deeply nested, truncated, etc.) that a
-// trusted-path-tester might never construct by hand.
+// FuzzVerify asserts Verify never panics on malformed envelope bytes.
 func FuzzVerify(f *testing.F) {
 	key := []byte("seed-key-32-bytes-aaaaaaaaaaaaaaa")
 	payload := map[string]any{"hello": "world"}

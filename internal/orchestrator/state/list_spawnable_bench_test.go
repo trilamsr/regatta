@@ -46,7 +46,7 @@ func seedSpawnableFixture(b *testing.B, db *state.DB, n, chainEvery int) {
 			Title: fmt.Sprintf("F-%05d", i), Lane: "server", Status: status,
 			DependsOnFeatures: deps,
 		}
-		if err := db.UpsertWorkItemAt(ctx, w, state.SourceBrief, at); err != nil {
+		if err := db.UpsertWorkItem(ctx, w, state.SourceBrief, at); err != nil {
 			b.Fatalf("seed %d: %v", i, err)
 		}
 	}
