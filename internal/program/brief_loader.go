@@ -63,7 +63,7 @@ func LoadAndVerifyBrief(fsys fs.FS, path string, keyring map[string][]byte) (*Pr
 		return nil, fmt.Errorf("program: validate brief: %w", err)
 	}
 	if err := brief.VerifySignature(keyring); err != nil {
-		return nil, fmt.Errorf("%w: %v", orchestrator.ErrHMACInvalid, err)
+		return nil, fmt.Errorf("%w: %w", orchestrator.ErrHMACInvalid, err)
 	}
 	return &brief, nil
 }
@@ -246,20 +246,24 @@ func (b *BriefLoader) cascadeDependencyArchiveOnce(ctx context.Context, at time.
 		deps []string
 	}
 	var rowsList []pending
-	for rows.Next() {
-		var id, depsJSON string
-		if err := rows.Scan(&id, &depsJSON); err != nil {
-			rows.Close()
-			return false, err
+	scanErr := func() error {
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var id, depsJSON string
+			if err := rows.Scan(&id, &depsJSON); err != nil {
+				return err
+			}
+			var deps []string
+			if err := json.Unmarshal([]byte(depsJSON), &deps); err != nil {
+				return err
+			}
+			rowsList = append(rowsList, pending{id, deps})
 		}
-		var deps []string
-		if err := json.Unmarshal([]byte(depsJSON), &deps); err != nil {
-			rows.Close()
-			return false, err
-		}
-		rowsList = append(rowsList, pending{id, deps})
+		return rows.Err()
+	}()
+	if scanErr != nil {
+		return false, scanErr
 	}
-	rows.Close()
 
 	stamp := at.UTC().Unix()
 	applied := false

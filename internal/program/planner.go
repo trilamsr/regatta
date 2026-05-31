@@ -370,7 +370,7 @@ func LoadPlannerPrompt(path string, expectedSHA string) (string, error) {
 		return "", fmt.Errorf("program: planner prompt empty: %s", path)
 	}
 
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 — path is operator-pinned config from regatta.yaml; Stat above already confirmed regular file + size cap.
 	if err != nil {
 		return "", fmt.Errorf("program: read planner prompt: %w", err)
 	}
@@ -387,7 +387,7 @@ func LoadPlannerPrompt(path string, expectedSHA string) (string, error) {
 
 func isHex(s string) bool {
 	for _, c := range s {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}
