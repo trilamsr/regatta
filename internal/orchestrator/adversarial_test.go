@@ -115,7 +115,6 @@ func TestRunConcurrentWithRecoverIsRaceFree(t *testing.T) {
 		HeartbeatInterval: 5 * time.Millisecond,
 		LockTTL:           time.Hour,
 	})
-	o.SetLogger(t.Logf)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
@@ -197,7 +196,6 @@ func TestHeartbeatKeepsActiveLockAlive(t *testing.T) {
 		HeartbeatInterval: time.Minute,
 		LockTTL:           time.Minute,
 	})
-	o.SetLogger(t.Logf)
 
 	if err := o.PollOnce(ctx); err != nil {
 		t.Fatalf("poll: %v", err)

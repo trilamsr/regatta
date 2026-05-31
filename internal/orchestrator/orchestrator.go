@@ -17,8 +17,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/lockfile"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
@@ -81,6 +83,11 @@ type Config struct {
 	// LockTTL is the heartbeat lease used by ExpireStaleLocks.
 	// Default: 15 minutes.
 	LockTTL time.Duration
+
+	// Logger is the structured-event sink for orchestrator lifecycle
+	// events. Nil falls back to slog.Default() so embedded callers
+	// still get output without panicking (spec §4.1).
+	Logger *slog.Logger
 }
 
 // Orchestrator coordinates the spec adapter, scheduler, and spawner.
@@ -97,7 +104,7 @@ type Orchestrator struct {
 	reaper      *reaper.Reaper
 	dbPath      string
 	cfg         Config
-	logf        func(format string, args ...any)
+	log         *slog.Logger
 }
 
 // New constructs an Orchestrator from a Config. All deps are wired
@@ -115,6 +122,17 @@ func New(cfg Config) *Orchestrator {
 	if cfg.LockTTL <= 0 {
 		cfg.LockTTL = 15 * time.Minute
 	}
+	log := cfg.Logger
+	if log == nil {
+		log = slog.Default()
+	}
+	// Spawner implementations exposing WithLogger get the orchestrator
+	// logger so spawn.* emissions land on the same sink as tick.*.
+	if la, ok := cfg.Spawner.(interface {
+		WithLogger(*slog.Logger) *spawner.Stub
+	}); ok {
+		la.WithLogger(log)
+	}
 	return &Orchestrator{
 		adapterSync: cfg.AdapterSync,
 		briefLoader: cfg.BriefLoader,
@@ -123,21 +141,7 @@ func New(cfg Config) *Orchestrator {
 		spawner:     cfg.Spawner,
 		dbPath:      cfg.DBPath,
 		cfg:         cfg,
-		logf:        func(string, ...any) {},
-	}
-}
-
-// SetLogger installs a printf-style logger. The Orchestrator is silent
-// by default; tests pass t.Logf, production callers pass log.Printf.
-func (o *Orchestrator) SetLogger(f func(format string, args ...any)) {
-	if f != nil {
-		o.logf = f
-		if o.sched != nil {
-			o.sched.SetLogger(f)
-		}
-		if o.reaper != nil {
-			o.reaper.SetLogger(f)
-		}
+		log:         log,
 	}
 }
 
@@ -146,9 +150,6 @@ func (o *Orchestrator) SetLogger(f func(format string, args ...any)) {
 // leaves worktrees on disk after terminal transitions.
 func (o *Orchestrator) SetReaper(r *reaper.Reaper) {
 	o.reaper = r
-	if r != nil {
-		r.SetLogger(o.logf)
-	}
 }
 
 // Recover implements the crash-recovery contract in docs/design.md
@@ -192,7 +193,13 @@ func (o *Orchestrator) Recover(ctx context.Context) error {
 			return fmt.Errorf("orchestrator: requeue agent %d: %w", a.ID, err)
 		}
 		_ = o.db.RecordEvent(ctx, a.ID, "recovered_crashed", "{}")
-		o.logf("orchestrator: requeued crashed agent %d (%s)", a.ID, a.WorkItemID)
+		// recovered_crashed is a state-layer audit row; the
+		// orchestrator-side slog line uses the lifecycle keys so
+		// dashboards can correlate without touching the events table.
+		o.log.Info("orchestrator.recovered_crashed",
+			string(obs.KeyAgentID), a.ID,
+			string(obs.KeyWorkItemID), a.WorkItemID,
+		)
 	}
 	return nil
 }
@@ -236,7 +243,20 @@ func (o *Orchestrator) PollOnce(ctx context.Context) error {
 // spawning state with their locks held until the recovery sweep on
 // the next restart.
 func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
+	// Spec §3.3: tick.started + tick.completed are unconditional on
+	// every tick exit; no early return may skip the completion event.
+	startedAt := time.Now()
+	o.log.Info(string(obs.EventTickStarted))
+
 	ids, tickErr := o.sched.Tick(ctx)
+	evaluated := len(ids)
+	defer func() {
+		o.log.Info(string(obs.EventTickCompleted),
+			string(obs.KeyDurationMs), time.Since(startedAt).Milliseconds(),
+			string(obs.KeyWorkItemsEvaluated), int64(evaluated),
+		)
+	}()
+
 	for _, id := range ids {
 		a, err := o.db.GetAgent(ctx, id)
 		if err != nil {
@@ -252,7 +272,11 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 			_, _ = o.db.ReleaseAgentLocks(ctx, a.ID)
 			_, _ = o.db.TransitionAgent(ctx, a.ID, state.AgentPending, state.AgentMutation{})
 			_ = o.db.RecordEvent(ctx, a.ID, "spawn_failed", fmt.Sprintf(`{"error":%q}`, err.Error()))
-			o.logf("orchestrator: spawn failed for agent %d: %v", a.ID, err)
+			o.log.Warn(string(obs.EventSpawnFailed),
+				string(obs.KeyAgentID), a.ID,
+				string(obs.KeyWorkItemID), a.WorkItemID,
+				string(obs.KeyErr), err.Error(),
+			)
 			continue
 		}
 		pid := result.PID
@@ -265,7 +289,13 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 		}
 		_ = o.db.RecordEvent(ctx, a.ID, "spawned",
 			fmt.Sprintf(`{"pid":%d,"session_id":%q}`, pid, sess))
-		o.logf("orchestrator: spawned agent %d (%s) pid=%d session=%s", a.ID, a.WorkItemID, pid, sess)
+		o.log.Info(string(obs.EventSpawnCompleted),
+			string(obs.KeyAgentID), a.ID,
+			string(obs.KeyWorkItemID), a.WorkItemID,
+			string(obs.KeyLane), a.Lane,
+			"pid", pid,
+			"session_id", sess,
+		)
 	}
 	if tickErr != nil {
 		return fmt.Errorf("orchestrator: scheduler tick: %w", tickErr)
@@ -315,10 +345,10 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	// before the first tick. Errors here are non-fatal for the same
 	// reason as the periodic ticks.
 	if err := o.PollOnce(ctx); err != nil {
-		o.logf("orchestrator: initial poll: %v", err)
+		o.log.Warn("orchestrator.poll_failed", "phase", "initial", string(obs.KeyErr), err.Error())
 	}
 	if err := o.ScheduleOnce(ctx); err != nil {
-		o.logf("orchestrator: initial schedule: %v", err)
+		o.log.Warn("orchestrator.schedule_failed", "phase", "initial", string(obs.KeyErr), err.Error())
 	}
 
 	for {
@@ -327,18 +357,18 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			return nil
 		case <-pollT.C:
 			if err := o.PollOnce(ctx); err != nil {
-				o.logf("orchestrator: poll: %v", err)
+				o.log.Warn("orchestrator.poll_failed", string(obs.KeyErr), err.Error())
 			}
 		case <-tickT.C:
 			if err := o.ScheduleOnce(ctx); err != nil {
-				o.logf("orchestrator: tick: %v", err)
+				o.log.Warn("orchestrator.schedule_failed", string(obs.KeyErr), err.Error())
 			}
 			if err := o.ReapTerminal(ctx); err != nil {
-				o.logf("orchestrator: reap: %v", err)
+				o.log.Warn("orchestrator.reap_failed", string(obs.KeyErr), err.Error())
 			}
 		case <-heartT.C:
 			if err := o.Heartbeat(ctx); err != nil {
-				o.logf("orchestrator: heartbeat: %v", err)
+				o.log.Warn("orchestrator.heartbeat_failed", string(obs.KeyErr), err.Error())
 			}
 		}
 	}

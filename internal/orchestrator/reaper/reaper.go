@@ -17,7 +17,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"time"
 
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -34,35 +37,43 @@ type ChildKiller interface {
 	KillAgent(agentID int64) (signaled bool, err error)
 }
 
+// Config wires the Reaper's collaborators and structured-event sink.
+// All fields except Logger are required; Logger defaults to
+// slog.Default() so embedded callers still get output (spec §4.1).
+type Config struct {
+	DB     *state.DB
+	WM     *spawner.WorktreeManager
+	Killer ChildKiller
+	Logger *slog.Logger
+}
+
 // Reaper owns the post-terminal cleanup path.
 type Reaper struct {
-	db      *state.DB
-	wm      *spawner.WorktreeManager
-	killer  ChildKiller
-	logf    func(format string, args ...any)
+	db       *state.DB
+	wm       *spawner.WorktreeManager
+	killer   ChildKiller
+	log      *slog.Logger
 	terminal []state.AgentState
 }
 
-// New constructs a Reaper. killer may be nil if the spawner has no
-// live processes to signal (e.g. the stub).
-func New(db *state.DB, wm *spawner.WorktreeManager, killer ChildKiller) *Reaper {
+// New constructs a Reaper from Config. cfg.Killer may be nil if the
+// spawner has no live processes to signal (e.g. the stub). cfg.Logger
+// nil defaults to slog.Default().
+func New(cfg Config) *Reaper {
+	log := cfg.Logger
+	if log == nil {
+		log = slog.Default()
+	}
 	return &Reaper{
-		db:     db,
-		wm:     wm,
-		killer: killer,
-		logf:   func(string, ...any) {},
+		db:     cfg.DB,
+		wm:     cfg.WM,
+		killer: cfg.Killer,
+		log:    log,
 		terminal: []state.AgentState{
 			state.AgentDone,
 			state.AgentWithdrawn,
 			state.AgentEscalated,
 		},
-	}
-}
-
-// SetLogger installs a printf-style logger. Silent by default.
-func (r *Reaper) SetLogger(f func(format string, args ...any)) {
-	if f != nil {
-		r.logf = f
 	}
 }
 
@@ -78,20 +89,32 @@ func (r *Reaper) SetLogger(f func(format string, args ...any)) {
 // Returns nil if the agent has no leftover state (the common case
 // for already-reaped agents).
 func (r *Reaper) Reap(ctx context.Context, agentID int64) error {
+	detectedAt := time.Now()
 	agent, err := r.db.GetAgent(ctx, agentID)
 	if err != nil {
 		return fmt.Errorf("reaper: load agent %d: %w", agentID, err)
 	}
 	if !r.isTerminal(agent.State) {
+		r.log.Info(string(obs.EventReapSkipped),
+			string(obs.KeyAgentID), agentID,
+			string(obs.KeyReason), "not_terminal",
+		)
 		return fmt.Errorf("%w: agent %d is in %s", ErrAgentNotTerminal, agentID, agent.State)
 	}
+	r.log.Info(string(obs.EventReapCandidateDetected),
+		string(obs.KeyAgentID), agentID,
+		string(obs.KeyWorkItemID), agent.WorkItemID,
+	)
 	if r.killer != nil {
 		signaled, err := r.killer.KillAgent(agentID)
 		if err != nil {
 			return fmt.Errorf("reaper: kill agent %d: %w", agentID, err)
 		}
 		if signaled {
-			r.logf("reaper: signaled agent %d", agentID)
+			r.log.Info(string(obs.EventReapKilled),
+				string(obs.KeyAgentID), agentID,
+				string(obs.KeyDurationMs), time.Since(detectedAt).Milliseconds(),
+			)
 		}
 	}
 	if r.wm != nil {
@@ -121,7 +144,11 @@ func (r *Reaper) ReapAll(ctx context.Context) error {
 			return err
 		}
 		if err := r.Reap(ctx, a.ID); err != nil {
-			r.logf("reaper: agent %d: %v", a.ID, err)
+			r.log.Warn(string(obs.EventReapSkipped),
+				string(obs.KeyAgentID), a.ID,
+				string(obs.KeyReason), "reap_failed",
+				string(obs.KeyErr), err.Error(),
+			)
 			if firstErr == nil {
 				firstErr = err
 			}

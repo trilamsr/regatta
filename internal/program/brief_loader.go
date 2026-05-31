@@ -2,9 +2,10 @@
 // verifies each brief, and upserts child work_items rows.
 //
 // per spec §2.4 + §3 sign-then-persist: a brief that fails Validate
-// or VerifySignature emits slog.Warn("brief.rejected") and no
-// child rows touch state. Rejections never enter sqlite; audit
-// trail lives in logs (RFC-0001 §audit deferral to MVP-3+).
+// or VerifySignature emits obs.EventBriefRejected through the
+// injected logger and no child rows touch state. Rejections never
+// enter sqlite; audit trail lives in logs (RFC-0001 §audit deferral
+// to MVP-3+).
 package program
 
 import (
@@ -19,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -227,11 +229,18 @@ func projectV2ToV1(v2 *ProgramBriefV2) *ProgramBrief {
 // warms its compile cache on v2 edges so the first scheduler tick sees
 // hot predicates; passing nil disables the warm pass (legal for v1-only
 // deployments and the pollonce_test harness).
+//
+// log is the structured-event sink for brief-rejection diagnostics.
+// Injected via NewBriefLoaderWithLogger; NewBriefLoader defaults to
+// slog.Default() so embedded callers still get output without
+// panicking (spec §4.1 + §5.7). All package-level slog.* calls were
+// retired in #101 task H.
 type BriefLoader struct {
 	fsys      fs.FS
 	db        *state.DB
 	keyring   map[string][]byte
 	evaluator *EdgeEvaluator
+	log       *slog.Logger
 
 	mu               sync.RWMutex
 	outputsSchemas   map[FeatureID]*OutputsSchema
@@ -250,12 +259,28 @@ type BriefLoader struct {
 // skip the v2 compile-cache warm pass. Production wiring shares the
 // same *EdgeEvaluator instance between the loader and the scheduler
 // so the cache survives across ticks.
+//
+// The structured-event sink defaults to slog.Default(); production
+// wiring should prefer NewBriefLoaderWithLogger so test capture
+// handlers and the off-host audit sink (#101 follow-up) can intercept
+// records.
 func NewBriefLoader(fsys fs.FS, db *state.DB, keyring map[string][]byte, evaluator *EdgeEvaluator) *BriefLoader {
+	return NewBriefLoaderWithLogger(fsys, db, keyring, evaluator, nil)
+}
+
+// NewBriefLoaderWithLogger constructs a BriefLoader with an explicit
+// structured log sink. nil logger falls back to slog.Default()
+// (spec §4.1).
+func NewBriefLoaderWithLogger(fsys fs.FS, db *state.DB, keyring map[string][]byte, evaluator *EdgeEvaluator, logger *slog.Logger) *BriefLoader {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &BriefLoader{
 		fsys:             fsys,
 		db:               db,
 		keyring:          keyring,
 		evaluator:        evaluator,
+		log:              logger,
 		outputsSchemas:   map[FeatureID]*OutputsSchema{},
 		programByFeature: map[FeatureID]string{},
 	}
@@ -325,12 +350,12 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		}
 		brief, v2, err := loadAndVerifyBriefBoth(b.fsys, path, b.keyring)
 		if err != nil {
-			slog.Warn("brief.rejected", "path", path, "reason", err.Error())
+			b.log.Warn(string(obs.EventBriefRejected), "path", path, "reason", err.Error())
 			continue
 		}
 		if _, err := b.db.GetWorkItem(ctx, brief.ParentWorkItemID); err != nil {
 			if errors.Is(err, state.ErrWorkItemNotFound) {
-				slog.Warn("brief.rejected", "path", path,
+				b.log.Warn(string(obs.EventBriefRejected), "path", path,
 					"reason", "unknown_parent_program", "id", brief.ParentWorkItemID)
 				continue
 			}
@@ -341,7 +366,7 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 			return fmt.Errorf("brief_loader: freshness watermark for %s: %w", brief.ParentWorkItemID, err)
 		}
 		if !watermark.IsZero() && !brief.ProducedAt.After(watermark) {
-			slog.Warn("brief.rejected", "path", path,
+			b.log.Warn(string(obs.EventBriefRejected), "path", path,
 				"reason", "stale_produced_at",
 				"produced_at", brief.ProducedAt, "watermark", watermark)
 			continue
@@ -353,7 +378,7 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		}
 		for _, feat := range brief.Features {
 			if firstPath, dup := seenFeature[feat.ID]; dup {
-				slog.Warn("brief.rejected", "path", path,
+				b.log.Warn(string(obs.EventBriefRejected), "path", path,
 					"reason", "feature_id_collision",
 					"feature", feat.ID, "first_seen_in", firstPath)
 				continue
@@ -375,7 +400,7 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 				AcceptanceJSON:    string(snapshot),
 			}
 			if cycErr := b.db.CycleCheck(ctx, child); cycErr != nil {
-				slog.Warn("brief.rejected", "path", path, "reason", cycErr.Error())
+				b.log.Warn(string(obs.EventBriefRejected), "path", path, "reason", cycErr.Error())
 				continue
 			}
 			if upErr := b.db.UpsertWorkItem(ctx, child, state.SourceBrief, pollStartedAt); upErr != nil {
@@ -407,7 +432,7 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		return fmt.Errorf("brief_loader: tombstone: %w", err)
 	}
 	for _, id := range archived {
-		slog.Warn("brief.tombstoned", "id", id, "cutoff", pollStartedAt)
+		b.log.Warn("brief.tombstoned", "id", id, "cutoff", pollStartedAt)
 	}
 
 	if err := b.reconcileDependencyArchive(ctx, pollStartedAt); err != nil {
@@ -458,7 +483,8 @@ func (b *BriefLoader) materialiseEdges(ctx context.Context, v2 *ProgramBriefV2, 
 	if err := b.db.UpsertEdgesAt(ctx, v2.ProgramID, rows, at); err != nil {
 		return fmt.Errorf("brief_loader: upsert edges for %s: %w", v2.ProgramID, err)
 	}
-	slog.Info("brief.edges_materialised", "program_id", v2.ProgramID, "count", len(rows))
+	b.log.Info(string(obs.EventBriefEdgesMaterialised),
+		string(obs.KeyProgramID), v2.ProgramID, "count", len(rows))
 	return nil
 }
 
@@ -559,7 +585,7 @@ func (b *BriefLoader) cascadeDependencyArchiveOnce(ctx context.Context, at time.
 				return false, err
 			}
 			applied = true
-			slog.Warn("child.dependency_archived", "child", r.id, "dep", dep)
+			b.log.Warn("child.dependency_archived", "child", r.id, "dep", dep)
 			break
 		}
 	}

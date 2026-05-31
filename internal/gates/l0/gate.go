@@ -2,10 +2,12 @@ package l0
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/obs"
 )
 
 // Config controls which files L0 treats as spec sources. For the
@@ -16,6 +18,11 @@ type Config struct {
 	// SpecPathSuffixes is the list of path suffixes L0 should treat as
 	// spec sources. Common values: ".md", "MILESTONES.md".
 	SpecPathSuffixes []string
+
+	// Logger is the structured-event sink for gate.verdict records.
+	// Nil falls back to slog.Default() so embedded callers still get
+	// output without panicking (spec §4.1, §5.5).
+	Logger *slog.Logger
 }
 
 // Default returns a Config that treats any markdown file as a spec source.
@@ -51,7 +58,28 @@ func Check(cfg Config, changes []FileChange) schemas.GateResult {
 		StartedAt:  start,
 		FinishedAt: time.Now(),
 	}
+
+	emitVerdict(cfg.Logger, out)
 	return out
+}
+
+// emitVerdict records a single structured gate.verdict event so
+// operators can grep gate decisions without parsing GateResult JSON
+// blobs out of the events table (spec §5.5).
+func emitVerdict(log *slog.Logger, gr schemas.GateResult) {
+	if log == nil {
+		log = slog.Default()
+	}
+	reason := ""
+	if len(gr.Findings) > 0 {
+		reason = gr.Findings[0].ID
+	}
+	log.Info(string(obs.EventGateVerdict),
+		string(obs.KeyGateID), "l0",
+		string(obs.KeyVerdict), string(gr.Verdict),
+		string(obs.KeyReason), reason,
+		string(obs.KeyDurationMs), gr.Telemetry.DurationMs,
+	)
 }
 
 func (c Config) isSpecPath(fc FileChange) bool {

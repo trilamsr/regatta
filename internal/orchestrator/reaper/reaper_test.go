@@ -95,7 +95,7 @@ func TestReapIsIdempotent(t *testing.T) {
 	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	killer := &fakeKiller{}
-	r := New(db, wm, killer)
+	r := New(Config{DB: db, WM: wm, Killer: killer})
 
 	a := upsert(t, db, "WORK-1", "server")
 	if _, err := wm.Create(ctx, a.ID, "HEAD"); err != nil {
@@ -121,7 +121,7 @@ func TestReapAllSweepsTerminalAgents(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
 	wm := newWM(t)
-	r := New(db, wm, nil)
+	r := New(Config{DB: db, WM: wm})
 
 	a := upsert(t, db, "WORK-1", "server")
 	b := upsert(t, db, "WORK-2", "server")
@@ -157,7 +157,7 @@ func TestReapRefusesNonTerminalAgent(t *testing.T) {
 	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	killer := &fakeKiller{}
-	r := New(db, wm, killer)
+	r := New(Config{DB: db, WM: wm, Killer: killer})
 
 	a := upsert(t, db, "WORK-1", "server")
 	mustTransition(t, db, a.ID, state.AgentSpawning)
@@ -185,7 +185,7 @@ func TestReapAllAggregatesErrors(t *testing.T) {
 	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	killer := &fakeKiller{fail: errors.New("synthetic")}
-	r := New(db, wm, killer)
+	r := New(Config{DB: db, WM: wm, Killer: killer})
 
 	a := upsert(t, db, "WORK-1", "server")
 	driveToDone(t, db, a.ID)

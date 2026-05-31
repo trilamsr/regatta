@@ -18,10 +18,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/obs"
 )
 
 // Config is the per-repo gate config (the `regatta.yaml` `gates:`
@@ -32,6 +34,11 @@ type Config struct {
 	DeterminismFloor  FloorConfig
 	AI                AIConfig
 	SeverityBlock     []string // mini-DSL: ["critical","2*high"]
+
+	// Logger is the structured-event sink for gate.verdict records.
+	// Nil falls back to slog.Default() so embedded callers still get
+	// output without panicking (spec §4.1, §5.5).
+	Logger *slog.Logger
 }
 
 // FloorConfig configures which deterministic-floor tools the gate
@@ -99,6 +106,7 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 			Claim:    fmt.Sprintf("deterministic floor errored: %v", err),
 		})
 		finalize(&gr, started)
+		emitVerdict(cfg.Logger, gr)
 		return gr, err
 	}
 	gr.Findings = append(gr.Findings, floorFindings...)
@@ -106,6 +114,7 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 		gr.Verdict = schemas.VerdictFail
 		gr.Blocking = true
 		finalize(&gr, started)
+		emitVerdict(cfg.Logger, gr)
 		return gr, nil // floor failure short-circuits; no AI spend
 	}
 
@@ -128,12 +137,33 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 	}
 
 	finalize(&gr, started)
+	emitVerdict(cfg.Logger, gr)
 	return gr, nil
 }
 
 func finalize(gr *schemas.GateResult, started time.Time) {
 	gr.Telemetry.DurationMs = time.Since(started).Milliseconds()
 	gr.Heartbeat.FinishedAt = time.Now()
+}
+
+// emitVerdict logs a single structured gate.verdict event per Run
+// invocation, regardless of which short-circuit path the gate took
+// (floor error, floor block, AI block, clean pass). Operators grep
+// these without joining against the events table (spec §5.5).
+func emitVerdict(log *slog.Logger, gr schemas.GateResult) {
+	if log == nil {
+		log = slog.Default()
+	}
+	reason := ""
+	if len(gr.Findings) > 0 {
+		reason = gr.Findings[0].ID
+	}
+	log.Info(string(obs.EventGateVerdict),
+		string(obs.KeyGateID), "security",
+		string(obs.KeyVerdict), string(gr.Verdict),
+		string(obs.KeyReason), reason,
+		string(obs.KeyDurationMs), gr.Telemetry.DurationMs,
+	)
 }
 
 // runFloor invokes each enabled static tool. Returns findings, a

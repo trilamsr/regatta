@@ -5,17 +5,70 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand/v2"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite"
 
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
+
+// captureHandler is an in-test slog.Handler that records every Record
+// the scheduler emits so assertions can match events by name and attr.
+// Kept package-local — Task F's shared obstest helper is not landed
+// yet; this is a minimal stand-in scoped to scheduler tests.
+type captureHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+
+func (h *captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *captureHandler) WithGroup(string) slog.Handler      { return h }
+
+func (h *captureHandler) Records() []slog.Record {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]slog.Record, len(h.records))
+	copy(out, h.records)
+	return out
+}
+
+func (h *captureHandler) findByMsg(msg string) (slog.Record, bool) {
+	for _, r := range h.Records() {
+		if r.Message == msg {
+			return r, true
+		}
+	}
+	return slog.Record{}, false
+}
+
+func recordHasAttr(r slog.Record, key string) bool {
+	found := false
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
 
 // fakeEvaluator is the in-test EdgeEvaluator. The production wiring
 // passes program.NewEdgeEvaluator() (wired from BriefLoader in W5);
@@ -359,25 +412,26 @@ func TestTickLogsSkipsOnLockHeld(t *testing.T) {
 	seedPlanned(t, db, "WORK-1", "server")
 	seedPlanned(t, db, "WORK-2", "server")
 
+	h := &captureHandler{}
 	sch := New(db, Config{
 		LockTTL:  time.Minute,
 		Hotspots: func(string) []string { return []string{"shared"} },
-	})
-	var logged []string
-	sch.SetLogger(func(f string, a ...any) {
-		logged = append(logged, fmt.Sprintf(f, a...))
+		Logger:   slog.New(h),
 	})
 	if _, err := sch.Tick(ctx); err != nil {
 		t.Fatalf("tick: %v", err)
 	}
 	gotSkip := false
-	for _, line := range logged {
-		if strings.Contains(line, "skipped") && strings.Contains(line, "hotspot") {
+	records := h.Records()
+	msgs := make([]string, 0, len(records))
+	for _, r := range records {
+		msgs = append(msgs, r.Message)
+		if strings.Contains(r.Message, "skipped") && strings.Contains(r.Message, "hotspot") {
 			gotSkip = true
 		}
 	}
 	if !gotSkip {
-		t.Fatalf("expected skip log, got %v", logged)
+		t.Fatalf("expected hotspot-skip log, got %v", msgs)
 	}
 }
 
@@ -797,5 +851,46 @@ func TestTick_DefaultDoesNotFireWithoutNonDefaultSiblings(t *testing.T) {
 	}
 	if edges[0].Fired != "pending" {
 		t.Fatalf("lone default fired=%q want pending — spec disallows lone defaults", edges[0].Fired)
+	}
+}
+
+// TestScheduler_Tick_EmitsEdgeFiredEvent pins spec §5.2: edge.fired routes through Config.Logger with from_id/to_id/edge_id.
+func TestScheduler_Tick_EmitsEdgeFiredEvent(t *testing.T) {
+	ctx := context.Background()
+	db := statetest.OpenDB(t)
+	seedMerged(t, db, "F-A")
+	seedPlanned(t, db, "F-B", "server")
+
+	if err := db.UpsertEdges(ctx, "m-1", []state.EdgeRow{{
+		ProgramID: "m-1", FromID: "F-A", ToID: "F-B",
+	}}); err != nil {
+		t.Fatalf("UpsertEdges: %v", err)
+	}
+	if _, err := db.AppendOutput(ctx, "F-A", json.RawMessage(`{}`)); err != nil {
+		t.Fatalf("AppendOutput: %v", err)
+	}
+
+	h := &captureHandler{}
+	sch := New(db, Config{
+		Evaluator: newFakeEvaluator(),
+		Logger:    slog.New(h),
+	})
+	if _, err := sch.Tick(ctx); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+
+	r, ok := h.findByMsg(string(obs.EventEdgeFired))
+	if !ok {
+		records := h.Records()
+		msgs := make([]string, 0, len(records))
+		for _, rec := range records {
+			msgs = append(msgs, rec.Message)
+		}
+		t.Fatalf("captured logger missing %q event; got %v", obs.EventEdgeFired, msgs)
+	}
+	for _, key := range []string{string(obs.KeyFromID), string(obs.KeyToID), string(obs.KeyEdgeID)} {
+		if !recordHasAttr(r, key) {
+			t.Errorf("edge.fired record missing %q attr", key)
+		}
 	}
 }

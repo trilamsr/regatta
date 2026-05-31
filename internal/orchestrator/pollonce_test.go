@@ -69,7 +69,6 @@ func newPollOnceHarness(t *testing.T, ad adaptersync.SpecAdapter) (*orchestrator
 		Spawner:     spawner.NewStub(),
 		DBPath:      dbPath,
 	})
-	o.SetLogger(t.Logf)
 	return o, db, dbPath
 }
 

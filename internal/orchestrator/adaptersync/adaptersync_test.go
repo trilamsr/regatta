@@ -3,9 +3,11 @@ package adaptersync_test
 import (
 	"bytes"
 	"context"
+	"io"
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +17,34 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
+
+// captureHandler records every slog.Record into a slice for the
+// LoggerInjected test below. Mirrors the spec §6.1 CaptureHandler
+// shape; lives locally because Task F's shared obstest helper has
+// not landed yet.
+type captureHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+func (h *captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *captureHandler) WithGroup(string) slog.Handler      { return h }
+func (h *captureHandler) Messages() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]string, len(h.records))
+	for i, r := range h.records {
+		out[i] = r.Message
+	}
+	return out
+}
 
 type stubAdapter struct {
 	items []schemas.WorkItem
@@ -414,5 +444,41 @@ func TestSync_LogFieldRenamedToCutoff(t *testing.T) {
 	}
 	if strings.Contains(out, " at=") {
 		t.Fatalf("legacy 'at=' field still present; must be renamed to cutoff:\n%s", out)
+	}
+}
+
+// TestAdapterSync_LoggerInjected pins spec §5.8 + Task H contract.
+func TestAdapterSync_LoggerInjected(t *testing.T) {
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	h := &captureHandler{}
+	logger := slog.New(h)
+
+	db := newSyncTestDB(t)
+	// Item with unknown_status triggers slog.Warn("adapter.item_skipped")
+	// on the warn path — the canonical "this should route through the
+	// injected logger" exercise.
+	adapter := &stubAdapter{items: []schemas.WorkItem{
+		{ID: "BAD", Kind: schemas.KindFeature, Title: "x", Lane: "server", Status: schemas.StatusInProgress},
+	}}
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	syncer := adaptersync.NewWithLogger(adapter, db, logger)
+
+	if err := syncer.Sync(context.Background(), now); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	msgs := h.Messages()
+	found := false
+	for _, m := range msgs {
+		if strings.Contains(m, "adapter.item_skipped") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("injected logger received no adapter.item_skipped record; got %v", msgs)
 	}
 }
