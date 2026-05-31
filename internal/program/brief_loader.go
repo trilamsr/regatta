@@ -199,8 +199,10 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	return nil
 }
 
-// featureAcceptanceSnapshot returns the subset of parent criteria
-// this feature fulfills, in stable order.
+// featureAcceptanceSnapshot snapshots the criteria a feature fulfills
+// at brief-ingestion time so downstream cascade-soft archival keeps the
+// child self-describing — operators reading a stale archived row can
+// still see what acceptance bar it was meant to clear (per spec §2.4).
 func featureAcceptanceSnapshot(f PlannedFeature, byFulfilled map[string]string) []PlanCriterion {
 	out := make([]PlanCriterion, 0, len(f.Fulfills))
 	for _, fid := range f.Fulfills {
