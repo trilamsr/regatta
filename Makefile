@@ -16,6 +16,14 @@ bench:  ## Run benchmarks across all packages. No corpus today; locks the invoca
 property-test:  ## Run rapid property tests with spec-mandated check count (200).
 	go test -race -run TestListSpawnable_PropertyTopologicalReady ./internal/orchestrator/state/... -rapid.checks=200
 
+bench:  ## Run benchmark corpus (scheduler.Tick, CycleCheck, ListSpawnable, BriefLoader.Sync, schemas.Verify, canon). ~30s total at -benchtime=3x.
+	go test -run=^$$ -bench=. -benchmem -benchtime=3x \
+		./internal/orchestrator/scheduler/... \
+		./internal/orchestrator/state/... \
+		./internal/program/... \
+		./contracts/schemas/... \
+		./internal/canon/...
+
 cover:  ## Print cross-package coverage; useful before declaring "done".
 	go test -coverpkg=./... -coverprofile=/tmp/regatta.cover ./...
 	go tool cover -func=/tmp/regatta.cover | tail -30
