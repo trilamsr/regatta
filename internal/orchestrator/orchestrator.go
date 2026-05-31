@@ -126,6 +126,13 @@ func New(cfg Config) *Orchestrator {
 	if log == nil {
 		log = slog.Default()
 	}
+	// Spawner implementations exposing WithLogger get the orchestrator
+	// logger so spawn.* emissions land on the same sink as tick.*.
+	if la, ok := cfg.Spawner.(interface {
+		WithLogger(*slog.Logger) *spawner.Stub
+	}); ok {
+		la.WithLogger(log)
+	}
 	return &Orchestrator{
 		adapterSync: cfg.AdapterSync,
 		briefLoader: cfg.BriefLoader,

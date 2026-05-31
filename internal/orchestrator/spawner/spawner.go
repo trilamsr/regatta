@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -57,6 +58,7 @@ type Stub struct {
 	seq   atomic.Int64
 	calls []Request
 	db    *state.DB
+	log   *slog.Logger
 }
 
 // NewStub returns a ready-to-use stub spawner without DB wiring.
@@ -69,10 +71,33 @@ func NewStub() *Stub { return &Stub{} }
 // lands.
 func NewStubWithDB(db *state.DB) *Stub { return &Stub{db: db} }
 
+// WithLogger installs the structured-event sink for spawn.started /
+// spawn.completed / spawn.failed emissions (spec §5.3). Returns the
+// receiver for chained construction. A nil logger restores the
+// slog.Default() fallback applied by logger().
+func (s *Stub) WithLogger(l *slog.Logger) *Stub {
+	s.log = l
+	return s
+}
+
+// logger returns the injected logger or slog.Default() so nil-Config
+// consumers still get output without panicking (spec §4.1).
+func (s *Stub) logger() *slog.Logger {
+	if s.log != nil {
+		return s.log
+	}
+	return slog.Default()
+}
+
 // Spawn returns a deterministic synthetic Result. PID is a negative
 // counter (so it cannot collide with any real OS pid) and SessionID
 // embeds the work-item ID for easier debugging.
 func (s *Stub) Spawn(_ context.Context, req Request) (Result, error) {
+	s.logger().Info(string(obs.EventSpawnStarted),
+		string(obs.KeyWorkItemID), req.WorkItemID,
+		string(obs.KeyAgentID), req.AgentID,
+		string(obs.KeyLane), req.Lane,
+	)
 	n := s.seq.Add(1)
 	s.mu.Lock()
 	s.calls = append(s.calls, req)
@@ -108,20 +133,32 @@ func (s *Stub) Calls() []Request {
 // observes status!=merged and the orchestrator's reconciliation
 // path retries.
 func (s *Stub) Complete(ctx context.Context, workItemID string, payload json.RawMessage) error {
+	start := time.Now()
+	emitFailed := func(err error) error {
+		s.logger().Warn(string(obs.EventSpawnFailed),
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyDurationMs), time.Since(start).Milliseconds(),
+			string(obs.KeyErr), err.Error(),
+		)
+		return err
+	}
 	if s.db == nil {
-		return fmt.Errorf("spawner: stub built without DB cannot Complete")
+		return emitFailed(fmt.Errorf("spawner: stub built without DB cannot Complete"))
 	}
 	if _, err := s.db.AppendOutputAt(ctx, workItemID, payload, time.Now()); err != nil {
-		return fmt.Errorf("spawner: append output: %w", err)
+		return emitFailed(fmt.Errorf("spawner: append output: %w", err))
 	}
 	wi, err := s.db.GetWorkItem(ctx, workItemID)
 	if err != nil {
-		return fmt.Errorf("spawner: load work_item: %w", err)
+		return emitFailed(fmt.Errorf("spawner: load work_item: %w", err))
 	}
 	wi.Status = state.WorkStatusMerged
 	if err := s.db.UpsertWorkItem(ctx, wi, wi.Source, time.Now()); err != nil {
-		return fmt.Errorf("spawner: mark merged: %w", err)
+		return emitFailed(fmt.Errorf("spawner: mark merged: %w", err))
 	}
-	slog.Info("spawner.completed", "work_item_id", workItemID)
+	s.logger().Info(string(obs.EventSpawnCompleted),
+		string(obs.KeyWorkItemID), workItemID,
+		string(obs.KeyDurationMs), time.Since(start).Milliseconds(),
+	)
 	return nil
 }
