@@ -16,7 +16,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -42,8 +44,9 @@ type EdgeEvaluator interface {
 // are also referenced verbatim by SQL filters in state.work_item_edges
 // (sqlite indexed equality on 'pending').
 const (
-	edgeFiredTrue  = "true"
-	edgeFiredFalse = "false"
+	edgeFiredTrue    = "true"
+	edgeFiredFalse   = "false"
+	edgeFiredPending = "pending"
 )
 
 // OutputsSchemaResolver maps an upstream feature ID to the live
@@ -96,6 +99,28 @@ type Config struct {
 	OutputsSchemas OutputsSchemaResolver
 }
 
+// schedulerDB is the seam between Scheduler and state.DB. The
+// production constructor accepts *state.DB (which satisfies this
+// interface by method set), and crash-injection tests wrap the real
+// DB to drop specific writes mid-tick — see Seam-2 in spec
+// docs/superpowers/specs/2026-05-31-fix-98-scheduler-default-fallback.md
+// §5.1. No production code path treats db as anything other than the
+// real *state.DB.
+type schedulerDB interface {
+	ListSpawnable(ctx context.Context) ([]state.WorkItem, error)
+	UpsertPending(ctx context.Context, workItemID, lane string) (*state.Agent, error)
+	ListAgentsByState(ctx context.Context, states ...state.AgentState) ([]state.Agent, error)
+	CountAgentsByLane(ctx context.Context, states ...state.AgentState) (map[string]int, error)
+	TransitionAgent(ctx context.Context, id int64, next state.AgentState, mut state.AgentMutation) (*state.Agent, error)
+	TryAcquireLocks(ctx context.Context, names []string, agentID int64, ttl time.Duration) error
+	ReleaseAgentLocks(ctx context.Context, agentID int64) (int64, error)
+	ExpireStaleLocks(ctx context.Context, ttl time.Duration) (int64, error)
+	ListPendingEdgesFromMerged(ctx context.Context) ([]state.EdgeRow, error)
+	ListEdgesFrom(ctx context.Context, fromID string) ([]state.EdgeRow, error)
+	MarkEdgeFired(ctx context.Context, edgeID int64, fired, contentSHA string) error
+	GetLatestOutput(ctx context.Context, workItemID string) (state.OutputJournalEntry, error)
+}
+
 // Scheduler is single-caller: Tick must not be invoked concurrently.
 // The orchestrator's Run loop owns the only call site and is itself
 // flock-guarded by PollOnce, so this contract holds in practice
@@ -103,18 +128,34 @@ type Config struct {
 // state must use the read-only state.DB queries directly rather than
 // calling Tick.
 type Scheduler struct {
-	db   *state.DB
+	db   schedulerDB
 	cfg  Config
 	logf func(format string, args ...any)
+
+	// multiDefaultLogged dedupes the edge.multiple_defaults_per_from
+	// warn so a misconfigured brief logs once per (program_id, from_id)
+	// per scheduler-process lifetime instead of every tick.
+	multiDefaultLogged sync.Map
 }
 
 // New constructs a Scheduler. The Config is copied; later mutations to
 // cfg.LaneCaps do not affect the running scheduler.
 func New(db *state.DB, cfg Config) *Scheduler {
 	caps := make(map[string]int, len(cfg.LaneCaps))
-	for k, v := range cfg.LaneCaps {
-		caps[k] = v
+	maps.Copy(caps, cfg.LaneCaps)
+	cfg.LaneCaps = caps
+	if cfg.LockTTL <= 0 {
+		cfg.LockTTL = 15 * time.Minute
 	}
+	return &Scheduler{db: db, cfg: cfg, logf: func(string, ...any) {}}
+}
+
+// newWithDB is a test-only constructor that accepts the schedulerDB
+// interface so crash-injection tests can wrap *state.DB. The exported
+// New keeps its *state.DB signature; production callers are unchanged.
+func newWithDB(db schedulerDB, cfg Config) *Scheduler {
+	caps := make(map[string]int, len(cfg.LaneCaps))
+	maps.Copy(caps, cfg.LaneCaps)
 	cfg.LaneCaps = caps
 	if cfg.LockTTL <= 0 {
 		cfg.LockTTL = 15 * time.Minute
@@ -301,11 +342,8 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 			continue
 		}
 		schema, _ := s.resolveSchema(fromID)
-		nonDefaultAllFalse := true
-		var defaultEdgeID int64
 		for _, e := range group {
 			if e.IsDefault {
-				defaultEdgeID = e.ID
 				continue
 			}
 			fired, reason, evalErr := s.cfg.Evaluator.Eval(ctx, e, schema, journal)
@@ -319,7 +357,6 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 			firedStr := edgeFiredFalse
 			if fired {
 				firedStr = edgeFiredTrue
-				nonDefaultAllFalse = false
 			}
 			if err := s.db.MarkEdgeFired(ctx, e.ID, firedStr, journal.ContentSHA); err != nil {
 				slog.Warn("edge.mark_failed", "edge_id", e.ID, "err", err)
@@ -334,15 +371,66 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 				"predicate", e.PredicateCEL, "reason", reason,
 				"journal_sha", journal.ContentSHA)
 		}
-		if defaultEdgeID != 0 && nonDefaultAllFalse {
-			if err := s.db.MarkEdgeFired(ctx, defaultEdgeID, edgeFiredTrue, journal.ContentSHA); err != nil {
-				slog.Warn("edge.default_mark_failed", "edge_id", defaultEdgeID, "err", err)
+
+		// Read the post-write sibling set from the DB so we see every
+		// edge already resolved by prior ticks plus everything this
+		// tick just committed. Pre-fix the tick-local accumulator
+		// missed siblings resolved before a partial-tick crash; spec
+		// §3.2 has the full rationale.
+		// Safe under single-writer flock invariant (state.go:9, orchestrator PollOnce).
+		siblings, err := s.db.ListEdgesFrom(ctx, fromID)
+		if err != nil {
+			slog.Warn("edge.list_siblings_failed", "from_id", fromID, "err", err)
+			continue
+		}
+		var (
+			defaultRow      *state.EdgeRow
+			defaultCount    int
+			nonDefaultFired int
+			anyTrue         bool
+			anyPending      bool
+		)
+		for i := range siblings {
+			e := &siblings[i]
+			if e.IsDefault {
+				defaultCount++
+				defaultRow = e
 				continue
 			}
-			slog.Info("edge.default_fallback",
-				"edge_id", defaultEdgeID, "from", fromID,
-				"journal_sha", journal.ContentSHA)
+			nonDefaultFired++
+			switch e.Fired {
+			case edgeFiredTrue:
+				anyTrue = true
+			case edgeFiredPending:
+				anyPending = true
+			}
 		}
+		if defaultCount > 1 {
+			// Dedupe per (program_id, from_id) so a permanently
+			// misconfigured brief does not spam every tick.
+			programID := ""
+			if len(siblings) > 0 {
+				programID = siblings[0].ProgramID
+			}
+			key := programID + "\x00" + fromID
+			if _, loaded := s.multiDefaultLogged.LoadOrStore(key, struct{}{}); !loaded {
+				slog.Warn("edge.multiple_defaults_per_from",
+					"program_id", programID, "from_id", fromID, "count", defaultCount)
+			}
+		}
+		if defaultRow == nil || defaultRow.Fired != edgeFiredPending {
+			continue
+		}
+		if anyTrue || anyPending || nonDefaultFired == 0 {
+			continue
+		}
+		if err := s.db.MarkEdgeFired(ctx, defaultRow.ID, edgeFiredTrue, journal.ContentSHA); err != nil {
+			slog.Warn("edge.default_mark_failed", "edge_id", defaultRow.ID, "err", err)
+			continue
+		}
+		slog.Info("edge.default_fallback",
+			"edge_id", defaultRow.ID, "from", fromID,
+			"journal_sha", journal.ContentSHA)
 	}
 	return nil
 }
