@@ -50,7 +50,7 @@ Humans should start at `README.md` (operators) or `AGENTS.md`
 - [docs/engineer/how-to-add-an-adapter.md](docs/engineer/how-to-add-an-adapter.md)
 - [docs/engineer/release-runbook.md](docs/engineer/release-runbook.md)
 - [docs/engineer/string-review.md](docs/engineer/string-review.md)
-- [docs/engineer/specs/mvp-1-planner.md](docs/engineer/specs/mvp-1-planner.md)
+- [docs/engineer/mvp-1-dod-checklist.md](docs/engineer/mvp-1-dod-checklist.md)
 - [docs/engineer/post-mortems/README.md](docs/engineer/post-mortems/README.md)
 
 ### docs/rfcs/

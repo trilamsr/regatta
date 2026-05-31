@@ -365,7 +365,9 @@ func buildSpawner(name, repoRoot, claudeBin, baseRef string) (spawnerSet, error)
 
 // loadBriefKeyring reads the HMAC key from REGATTA_HMAC_KEY (or the
 // env var named by REGATTA_HMAC_KEY_ENV when set) and returns it as a
-// one-entry keyring keyed "default". Empty keyring when unset —
+// one-entry keyring keyed by REGATTA_HMAC_KEY_ID (default "k1", which
+// matches the `program plan -hmac-key-id` default so the offline e2e
+// flow round-trips without per-key wiring). Empty keyring when unset —
 // BriefLoader skips brief verification only when no briefs exist on
 // disk; a brief landing without a configured key surfaces the misconfig
 // to the operator via brief.rejected logs.
@@ -378,7 +380,11 @@ func loadBriefKeyring() map[string][]byte {
 	if v == "" {
 		return map[string][]byte{}
 	}
-	return map[string][]byte{"default": []byte(v)}
+	keyID := os.Getenv("REGATTA_HMAC_KEY_ID")
+	if keyID == "" {
+		keyID = "k1"
+	}
+	return map[string][]byte{keyID: []byte(v)}
 }
 
 func runVerifyRepoConfig(args []string) int {

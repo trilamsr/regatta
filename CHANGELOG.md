@@ -8,6 +8,55 @@ Pre-v1.0 anything may break; entries record the break. After v1.0
 contracts follow the deprecation cycle described in `PRINCIPLES.md`
 #11 (warn one minor, fail the next).
 
+## v0.1.0 - 2026-05-30 - MVP-1 Planner-as-DAG
+
+### Added
+
+- `state.work_items` table; universal queue, single source of truth.
+- `internal/orchestrator/adaptersync`; mirrors SpecAdapter into
+  `work_items` each tick.
+- `internal/program.BriefLoader` + `LoadAndVerifyBrief`; verifies
+  signed program briefs and upserts child work_items.
+- `internal/program.LoadPlannerPrompt`; operator-pinned sha
+  verification with embedded-prompt fallback.
+- `internal/orchestrator/lockfile`; `gofrs/flock` wrapper with
+  stale-PID reclaim.
+- `internal/orchestrator/clock`; `Clock` interface for deterministic
+  time injection.
+- `internal/orchestrator/errors`; typed sentinels
+  (`ErrBriefSHAMismatch`, `ErrHMACInvalid`, `ErrTargetExists`,
+  `ErrFlockHeld`, `ErrSchemaTooNew`, `ErrCycleDetected`).
+- `regatta program plan --write`; atomic temp+rename of signed brief
+  into `.regatta/programs/<program_id>.json`.
+- `pressly/goose` migration runner
+  (`internal/orchestrator/state/migrations/`).
+- DAG enforcement: blocked children wait until upstream
+  `status=merged`; cycle detection at upsert.
+- Operator docs: program plan walkthrough, flock troubleshooting,
+  slog event reference.
+- [`docs/engineer/mvp-1-dod-checklist.md`](docs/engineer/mvp-1-dod-checklist.md);
+  series-complete + grade-A + grade-A+ tickable gates with
+  verification commands.
+
+### Changed
+
+- `orchestrator.PollOnce` rewired: flock acquire -> AdapterSync ->
+  BriefLoader -> Scheduler.Tick (fail-fast).
+- `scheduler.Tick` now reads `state.ListSpawnable` and reserves
+  agents in a single transaction (replaces direct `adapter.List` +
+  `UpsertPending` path).
+- `state.Open` uses `Migrate(ctx, db)` (goose) instead of inline
+  `schema.sql` apply.
+
+### Removed
+
+- `internal/orchestrator/state/schema.sql`; extracted into
+  `migrations/0001_initial.sql`.
+- `docs/engineer/specs/mvp-1-planner.md`; superseded by the MVP-1
+  Planner-as-DAG design spec under `docs/superpowers/specs/`
+  (local-only working spec; CHANGELOG + DoD checklist are the
+  customer-visible record).
+
 ## v0.0.1 - 2026-05-30
 
 First canary tag. Mutation-verifies the release.yml workflow
