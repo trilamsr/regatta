@@ -34,10 +34,9 @@ var (
 	ErrFlockHeld = errors.New("orchestrator: process flock held by another instance")
 
 	// ErrSchemaTooNew fires when a v2 database is opened by a binary
-	// that only knows v1 migrations — downgrade-resistance. The
-	// canonical sentinel lives in package state (which is upstream of
-	// orchestrator) and is re-exported here so downstream packages can
-	// import a single sentinels list.
+	// that only knows v1 migrations — downgrade-resistance.
+	// Re-exported from internal/orchestrator/state to avoid an import
+	// cycle; same value/identity.
 	ErrSchemaTooNew = state.ErrSchemaTooNew
 
 	// ErrCycleDetected fires when work_items.depends_on_features would

@@ -60,10 +60,9 @@ var ErrLockHeld = errors.New("state: lock held by another agent")
 
 // ErrSchemaTooNew is returned by Migrate when the database has been
 // touched by a newer binary's migrations than this binary knows
-// about. Operators must upgrade rather than downgrade. Re-exported
-// from internal/orchestrator/errors.go as the canonical sentinel for
-// downstream packages — this copy lives here only because state is
-// upstream of orchestrator (cannot import it).
+// about. Operators must upgrade rather than downgrade. Canonical
+// sentinel; re-exported by internal/orchestrator/errors.go for
+// downstream import discipline.
 var ErrSchemaTooNew = errors.New("state: database schema is newer than this binary supports")
 
 // DB wraps a *sql.DB with regatta-specific helpers. Open the DB via

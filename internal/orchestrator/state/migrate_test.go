@@ -42,7 +42,10 @@ func TestMigrate_EmptyDBAppliesV1AndV2(t *testing.T) {
 
 func TestMigrate_IdempotentOnSecondCall(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	raw, _ := sql.Open("sqlite", state.DSN(dbPath))
+	raw, err := sql.Open("sqlite", state.DSN(dbPath))
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer raw.Close()
 	raw.SetMaxOpenConns(1)
 
@@ -56,7 +59,10 @@ func TestMigrate_IdempotentOnSecondCall(t *testing.T) {
 
 func TestMigrate_DowngradeResistance(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
-	raw, _ := sql.Open("sqlite", state.DSN(dbPath))
+	raw, err := sql.Open("sqlite", state.DSN(dbPath))
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer raw.Close()
 	raw.SetMaxOpenConns(1)
 
@@ -67,7 +73,7 @@ func TestMigrate_DowngradeResistance(t *testing.T) {
 		t.Fatalf("inject future version: %v", err)
 	}
 
-	err := state.Migrate(context.Background(), raw)
+	err = state.Migrate(context.Background(), raw)
 	if !errors.Is(err, orchestrator.ErrSchemaTooNew) {
 		t.Fatalf("err=%v want ErrSchemaTooNew", err)
 	}

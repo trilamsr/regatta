@@ -27,5 +27,6 @@ CREATE INDEX IF NOT EXISTS idx_work_items_parent ON work_items(parent_program_id
 
 -- +goose Down
 -- +goose StatementBegin
+-- Forward-only; down migrations are intentionally empty.
 SELECT 1;
 -- +goose StatementEnd
