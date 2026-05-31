@@ -33,11 +33,11 @@ type Syncer struct {
 	db      *state.DB
 }
 
-// New constructs a Syncer. The clock used to be installed on db here;
-// that pattern stranded two Syncers sharing one DB into a SetClock
-// race. Production now threads the poll-start tick directly into Sync,
-// which calls UpsertWorkItemAt + TombstoneBySourceAt with the explicit
-// timestamp.
+// New constructs a Syncer. The clock used to live on db as a mutable
+// field; that pattern stranded two Syncers sharing one DB into a
+// race on the shared mutator. Production now threads the poll-start
+// tick directly into Sync, which calls UpsertWorkItem +
+// TombstoneBySource with the explicit timestamp.
 func New(adapter SpecAdapter, db *state.DB) *Syncer {
 	return &Syncer{adapter: adapter, db: db}
 }
@@ -108,12 +108,12 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 			Lane:   lane,
 			Status: status,
 		}
-		if err := s.db.UpsertWorkItemAt(ctx, wi, state.SourceAdapter, pollStartedAt); err != nil {
+		if err := s.db.UpsertWorkItem(ctx, wi, state.SourceAdapter, pollStartedAt); err != nil {
 			return fmt.Errorf("adaptersync: upsert %s: %w", id, err)
 		}
 	}
 
-	archived, err := s.db.TombstoneBySourceAt(ctx, state.SourceAdapter, pollStartedAt)
+	archived, err := s.db.TombstoneBySource(ctx, state.SourceAdapter, pollStartedAt)
 	if err != nil {
 		return fmt.Errorf("adaptersync: tombstone: %w", err)
 	}
@@ -131,7 +131,7 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 //
 // Emits one child.cascade_archived per newly-archived child (rubric §6:
 // operators grep by child id, not parent id). Threads at through to
-// CascadeArchiveChildrenAt so updated_at lines up with the poll-start
+// CascadeArchiveChildren so updated_at lines up with the poll-start
 // tick rather than wall-clock drift.
 func (s *Syncer) cascadeChildrenOfArchivedPrograms(ctx context.Context, at time.Time) error {
 	orphans, err := s.db.ListArchivedProgramsWithLiveChildren(ctx)
@@ -142,7 +142,7 @@ func (s *Syncer) cascadeChildrenOfArchivedPrograms(ctx context.Context, at time.
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		archived, err := s.db.CascadeArchiveChildrenAt(ctx, parentID, at)
+		archived, err := s.db.CascadeArchiveChildren(ctx, parentID, at)
 		if err != nil {
 			return fmt.Errorf("adaptersync: cascade %s: %w", parentID, err)
 		}

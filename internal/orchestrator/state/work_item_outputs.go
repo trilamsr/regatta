@@ -53,7 +53,7 @@ func (d *DB) AppendOutput(ctx context.Context, workItemID string, payload json.R
 // AppendOutputAt is the explicit-clock variant. New production writers
 // (scheduler, spawner) should call this with the poll-start tick so two
 // producers cannot race on the DB's clock — same constraint as
-// UpsertWorkItemAt.
+// UpsertWorkItem.
 func (d *DB) AppendOutputAt(ctx context.Context, workItemID string, payload json.RawMessage, at time.Time) (OutputJournalEntry, error) {
 	canonBytes, err := canon.CanonicaliseJSON([]byte(payload))
 	if err != nil {

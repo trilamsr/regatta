@@ -174,12 +174,21 @@ func VerifyWithAllowlist(payload map[string]any, keyring map[string][]byte, allo
 	if !ok {
 		return fmt.Errorf("%w: signature is not an object", ErrUnverifiable)
 	}
-	alg, _ := sigMap["alg"].(string)
+	alg, ok := sigMap["alg"].(string)
+	if !ok {
+		return fmt.Errorf("%w: alg field not a string", ErrUnverifiable)
+	}
 	if alg != SigAlg {
 		return fmt.Errorf("%w: unsupported alg %q", ErrUnverifiable, alg)
 	}
-	keyID, _ := sigMap["key_id"].(string)
-	want, _ := sigMap["mac"].(string)
+	keyID, ok := sigMap["key_id"].(string)
+	if !ok {
+		return fmt.Errorf("%w: key_id field not a string", ErrUnverifiable)
+	}
+	want, ok := sigMap["mac"].(string)
+	if !ok {
+		return fmt.Errorf("%w: mac field not a string", ErrUnverifiable)
+	}
 	if allowed != nil && !allowed[keyID] {
 		return fmt.Errorf("%w: key_id %q not in allowlist", ErrUnknownKeyID, keyID)
 	}

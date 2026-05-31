@@ -11,6 +11,13 @@ import (
 	"sync"
 )
 
+// processKiller is the seam tests use to inject classified Kill errors
+// without spawning real processes. Production code uses the default
+// (*exec.Cmd).Process.Kill via defaultKiller.
+type processKiller func(*exec.Cmd) error
+
+func defaultKiller(c *exec.Cmd) error { return c.Process.Kill() }
+
 // ClaudeSpawner launches an agent process inside a per-agent
 // worktree. It implements the Spawner interface.
 //
@@ -39,6 +46,7 @@ type ClaudeSpawner struct {
 	wm      *WorktreeManager
 	cfg     ClaudeSpawnerConfig
 	starter ProcessStarter
+	killer  processKiller
 
 	mu       sync.Mutex
 	children map[int64]*exec.Cmd
@@ -91,6 +99,7 @@ func NewClaudeSpawner(wm *WorktreeManager, cfg ClaudeSpawnerConfig) (*ClaudeSpaw
 		wm:       wm,
 		cfg:      cfg,
 		starter:  execStarter,
+		killer:   defaultKiller,
 		children: map[int64]*exec.Cmd{},
 	}, nil
 }
@@ -178,9 +187,8 @@ func (s *ClaudeSpawner) KillAgent(agentID int64) (bool, error) {
 	if !ok || cmd == nil || cmd.Process == nil {
 		return false, nil
 	}
-	if err := cmd.Process.Kill(); err != nil {
-		// Process may already be gone; that is a successful reap.
-		if strings.Contains(err.Error(), "process already finished") {
+	if err := s.killer(cmd); err != nil {
+		if errors.Is(err, os.ErrProcessDone) {
 			return true, nil
 		}
 		return false, err

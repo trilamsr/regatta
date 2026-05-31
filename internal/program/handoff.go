@@ -88,7 +88,7 @@ type DiscoveredIssue struct {
 var (
 	programIDRe   = regexp.MustCompile(`^m-[0-9a-f]{12}$`)
 	shaRe         = regexp.MustCompile(`^[0-9a-f]{40}$`)
-	citationRe    = regexp.MustCompile(`^(test|file|commit|run)=\S+$`)
+	handoffCitationRe    = regexp.MustCompile(`^(test|file|commit|run)=\S+$`)
 	trapPatternRe = regexp.MustCompile(`^P([1-9]|1[0-3])$`)
 
 	allowedSuccessStates  = map[string]bool{"success": true, "partial": true, "failure": true}
@@ -174,7 +174,7 @@ func (h *Handoff) validate() error {
 		if !allowedOutcomes[f.Outcome] {
 			return fmt.Errorf("%w: falsifications[%d].outcome %q invalid", ErrSchemaInvalid, i, f.Outcome)
 		}
-		if !citationRe.MatchString(f.Citation) {
+		if !handoffCitationRe.MatchString(f.Citation) {
 			return fmt.Errorf("%w: falsifications[%d].citation %q must match ^(test|file|commit|run)=\\S+$", ErrSchemaInvalid, i, f.Citation)
 		}
 		if f.Hypothesis == "" || f.TargetInvariant == "" {

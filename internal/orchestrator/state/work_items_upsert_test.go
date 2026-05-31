@@ -20,13 +20,15 @@ func newWorkItemsTestDB(t *testing.T) *DB {
 	return db
 }
 
-// fixedClockDB opens a fresh DB and pins its clock to t0 so tests get
-// deterministic timestamps without sprinkling SetClock through every
-// case.
+// fixedClockDB opens a fresh DB whose constructor-bound clock returns
+// t0 forever. Tests that don't need to advance time pick this.
 func fixedClockDB(t *testing.T, t0 time.Time) *DB {
 	t.Helper()
-	db := newWorkItemsTestDB(t)
-	db.SetClock(func() time.Time { return t0 })
+	db, err := OpenWithClock(context.Background(), DSN(filepath.Join(t.TempDir(), "wi.db")), func() time.Time { return t0 })
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
 	return db
 }
 
@@ -39,7 +41,7 @@ func TestUpsertWorkItem_RoundTrip(t *testing.T) {
 		ID: "PROG-1", Kind: KindProgram, Title: "test prog",
 		Lane: "server", Status: WorkStatusPlanned,
 	}
-	if err := db.UpsertWorkItem(ctx, item, SourceAdapter); err != nil {
+	if err := db.UpsertWorkItem(ctx, item, SourceAdapter, t0); err != nil {
 		t.Fatalf("UpsertWorkItem: %v", err)
 	}
 
@@ -53,20 +55,17 @@ func TestUpsertWorkItem_RoundTrip(t *testing.T) {
 }
 
 func TestUpsertWorkItem_UpdatePreservesCreatedAt(t *testing.T) {
-	db := newWorkItemsTestDB(t)
-	ctx := context.Background()
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	t1 := t0.Add(1 * time.Minute)
-	now := t0
-	db.SetClock(func() time.Time { return now })
+	db := newWorkItemsTestDB(t)
+	ctx := context.Background()
 
 	item := WorkItem{ID: "F-1", Kind: KindFeature, Title: "v1", Lane: "server", Status: WorkStatusPlanned}
-	if err := db.UpsertWorkItem(ctx, item, SourceBrief); err != nil {
+	if err := db.UpsertWorkItem(ctx, item, SourceBrief, t0); err != nil {
 		t.Fatal(err)
 	}
-	now = t1
 	item.Title = "v2"
-	if err := db.UpsertWorkItem(ctx, item, SourceBrief); err != nil {
+	if err := db.UpsertWorkItem(ctx, item, SourceBrief, t1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -98,10 +97,10 @@ func TestTombstoneBySource_SourceScoped(t *testing.T) {
 
 	adapter := WorkItem{ID: "ADAPT-1", Kind: KindFeature, Title: "a", Lane: "server", Status: WorkStatusPlanned}
 	brief := WorkItem{ID: "BRIEF-1", Kind: KindFeature, Title: "b", Lane: "server", Status: WorkStatusPlanned}
-	if err := db.UpsertWorkItem(ctx, adapter, SourceAdapter); err != nil {
+	if err := db.UpsertWorkItem(ctx, adapter, SourceAdapter, t0); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.UpsertWorkItem(ctx, brief, SourceBrief); err != nil {
+	if err := db.UpsertWorkItem(ctx, brief, SourceBrief, t0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -128,7 +127,7 @@ func TestTombstoneBySource_SkipsAlreadyArchived(t *testing.T) {
 	db := fixedClockDB(t, t0)
 	ctx := context.Background()
 	item := WorkItem{ID: "F-1", Kind: KindFeature, Title: "x", Lane: "server", Status: WorkStatusArchived}
-	if err := db.UpsertWorkItem(ctx, item, SourceBrief); err != nil {
+	if err := db.UpsertWorkItem(ctx, item, SourceBrief, t0); err != nil {
 		t.Fatal(err)
 	}
 
@@ -148,14 +147,14 @@ func TestCascadeArchiveChildren_FlipsStatusOnly(t *testing.T) {
 
 	parent := WorkItem{ID: "PROG-1", Kind: KindProgram, Title: "p", Lane: "server", Status: WorkStatusPlanned}
 	child := WorkItem{ID: "F-1", Kind: KindFeature, Title: "c", Lane: "server", Status: WorkStatusRunning, ParentProgramID: "PROG-1"}
-	if err := db.UpsertWorkItem(ctx, parent, SourceAdapter); err != nil {
+	if err := db.UpsertWorkItem(ctx, parent, SourceAdapter, t0); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.UpsertWorkItem(ctx, child, SourceBrief); err != nil {
+	if err := db.UpsertWorkItem(ctx, child, SourceBrief, t0); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := db.CascadeArchiveChildren(ctx, "PROG-1"); err != nil {
+	if _, err := db.CascadeArchiveChildren(ctx, "PROG-1", t0); err != nil {
 		t.Fatalf("CascadeArchiveChildren: %v", err)
 	}
 
@@ -182,7 +181,7 @@ func TestUpsertWorkItem_RoundTripsDependsOnFeatures(t *testing.T) {
 		ID: "F-2", Kind: KindFeature, Title: "depends", Lane: "server",
 		Status: WorkStatusPlanned, DependsOnFeatures: []string{"F-1", "F-A"},
 	}
-	if err := db.UpsertWorkItem(ctx, item, SourceBrief); err != nil {
+	if err := db.UpsertWorkItem(ctx, item, SourceBrief, t0); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := db.GetWorkItem(ctx, "F-2")
@@ -201,7 +200,7 @@ func TestUpsertWorkItem_RejectsMalformedAcceptanceJSON(t *testing.T) {
 		Lane: "server", Status: WorkStatusPlanned,
 		AcceptanceJSON: "{not valid json",
 	}
-	err := db.UpsertWorkItem(ctx, item, SourceBrief)
+	err := db.UpsertWorkItem(ctx, item, SourceBrief, t0)
 	if err == nil {
 		t.Fatal("UpsertWorkItem accepted malformed AcceptanceJSON; must reject")
 	}

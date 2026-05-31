@@ -288,14 +288,14 @@ func TestSync_CascadeReconcilerConverges(t *testing.T) {
 			ID: id, Kind: state.KindFeature, Title: id, Lane: "server",
 			Status: state.WorkStatusRunning, ParentProgramID: "PROG-X",
 		}
-		if err := db.UpsertWorkItemAt(ctx, child, state.SourceBrief, t0); err != nil {
+		if err := db.UpsertWorkItem(ctx, child, state.SourceBrief, t0); err != nil {
 			t.Fatalf("seed child %s: %v", id, err)
 		}
 	}
 
 	// Simulate a prior crash: PROG-X archived directly but children
 	// still live. (Real-world equivalent: previous tick crashed
-	// between TombstoneBySourceAt and CascadeArchiveChildren.)
+	// between TombstoneBySource and CascadeArchiveChildren.)
 	if _, err := db.SQL().ExecContext(ctx,
 		`UPDATE work_items SET status='archived', updated_at=? WHERE id='PROG-X'`, t0.Unix()); err != nil {
 		t.Fatalf("force-archive PROG-X: %v", err)
@@ -303,7 +303,7 @@ func TestSync_CascadeReconcilerConverges(t *testing.T) {
 
 	// Next tick: adapter no longer returns PROG-X. The reconciler
 	// catches orphan children even though PROG-X is already archived
-	// (so not in TombstoneBySourceAt's RETURNING set).
+	// (so not in TombstoneBySource's RETURNING set).
 	next := &stubAdapter{items: []schemas.WorkItem{
 		{ID: "KEEP", Kind: schemas.KindFeature, Title: "k", Lane: "server", Status: schemas.StatusPlanned},
 	}}
@@ -348,7 +348,7 @@ func TestSync_CascadeReconciler_EmitsPerChildEvent(t *testing.T) {
 			ID: id, Kind: state.KindFeature, Title: id, Lane: "server",
 			Status: state.WorkStatusRunning, ParentProgramID: "PROG-Y",
 		}
-		if err := db.UpsertWorkItemAt(ctx, child, state.SourceBrief, t0); err != nil {
+		if err := db.UpsertWorkItem(ctx, child, state.SourceBrief, t0); err != nil {
 			t.Fatalf("seed child %s: %v", id, err)
 		}
 	}

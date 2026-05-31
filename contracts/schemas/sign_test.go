@@ -192,3 +192,81 @@ func TestSign_KidInMAC_PreventsCrossKidForgery(t *testing.T) {
 		t.Fatalf("cross-kid forgery accepted; want ErrUnverifiable, got %v", err)
 	}
 }
+
+// TestVerify_RejectsNonStringSignatureFields proves Verify fails fast
+// when alg / key_id / mac arrive as non-string values. Pre-fix, the
+// silent .(string) type assertion coerced to "" and HMAC compared
+// against empty — a security-adjacent silent miss.
+func TestVerify_RejectsNonStringSignatureFields(t *testing.T) {
+	t.Parallel()
+	key := []byte("a-secret-key-for-testing-only-32")
+	keyring := map[string][]byte{"k1": key}
+
+	cases := []struct {
+		name string
+		sig  map[string]any
+	}{
+		{"alg-not-string", map[string]any{"alg": 1, "key_id": "k1", "mac": "deadbeef"}},
+		{"key_id-not-string", map[string]any{"alg": SigAlg, "key_id": 7, "mac": "deadbeef"}},
+		{"mac-not-string", map[string]any{"alg": SigAlg, "key_id": "k1", "mac": 42}},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			payload := map[string]any{"x": 1, "signature": tc.sig}
+			err := Verify(payload, keyring)
+			if !errors.Is(err, ErrUnverifiable) {
+				t.Fatalf("want ErrUnverifiable, got %v", err)
+			}
+			if err == nil || !strContains(err.Error(), "not a string") {
+				t.Fatalf("want %q in error, got %v", "not a string", err)
+			}
+		})
+	}
+}
+
+func strContains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
+// FuzzVerify exercises the verify path with arbitrary bytes. Hardens
+// the security boundary against panics on malformed signed-envelope
+// shapes (number-where-string, deeply nested, truncated, etc.) that a
+// trusted-path-tester might never construct by hand.
+func FuzzVerify(f *testing.F) {
+	key := []byte("seed-key-32-bytes-aaaaaaaaaaaaaaa")
+	payload := map[string]any{"hello": "world"}
+	sig, err := Sign(payload, key, "k1")
+	if err != nil {
+		f.Fatalf("seed sign: %v", err)
+	}
+	payload["signature"] = map[string]any{"alg": sig.Alg, "key_id": sig.KeyID, "mac": sig.MAC}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		f.Fatalf("seed marshal: %v", err)
+	}
+	f.Add(raw)
+	f.Add([]byte(`{"signature":{"alg":"HMAC-SHA256","key_id":"k1","mac":42}}`))
+	f.Add([]byte(`{"signature":42}`))
+	f.Add([]byte(`{}`))
+
+	keyring := map[string][]byte{"k1": key}
+	f.Fuzz(func(t *testing.T, body []byte) {
+		var m map[string]any
+		if err := json.Unmarshal(body, &m); err != nil {
+			return
+		}
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("Verify panicked on input %q: %v", body, r)
+			}
+		}()
+		_ = Verify(m, keyring)
+	})
+}

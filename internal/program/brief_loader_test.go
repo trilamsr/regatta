@@ -85,7 +85,7 @@ func seedParent(t *testing.T, db *state.DB, id string, at time.Time) {
 	t.Helper()
 	parent := state.WorkItem{ID: id, Kind: state.KindProgram, Title: "p",
 		Lane: "server", Status: state.WorkStatusPlanned}
-	if err := db.UpsertWorkItemAt(context.Background(), parent, state.SourceAdapter, at); err != nil {
+	if err := db.UpsertWorkItem(context.Background(), parent, state.SourceAdapter, at); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -484,7 +484,7 @@ func TestBriefLoaderSync_StaleBriefRejected(t *testing.T) {
 // Cascade-dep tests
 // ─────────────────────────────────────────────────────────────────
 
-// seedFeature inserts a feature child via UpsertWorkItemAt with the
+// seedFeature inserts a feature child via UpsertWorkItem with the
 // given status, depends_on, and at-timestamp. Caller seeds the parent
 // first.
 func seedFeature(t *testing.T, db *state.DB, id, parent string, deps []string, status state.WorkItemStatus, at time.Time) {
@@ -498,7 +498,7 @@ func seedFeature(t *testing.T, db *state.DB, id, parent string, deps []string, s
 		ParentProgramID:   parent,
 		DependsOnFeatures: deps,
 	}
-	if err := db.UpsertWorkItemAt(context.Background(), wi, state.SourceBrief, at); err != nil {
+	if err := db.UpsertWorkItem(context.Background(), wi, state.SourceBrief, at); err != nil {
 		t.Fatal(err)
 	}
 }

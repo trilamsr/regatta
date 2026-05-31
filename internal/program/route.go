@@ -1,4 +1,4 @@
-// Package programs holds the program-layer decision logic. See
+// Package program holds the program-layer decision logic. See
 // docs/design.md §Programs for the design contract.
 //
 // The package is deliberately tiny: program-progression past each

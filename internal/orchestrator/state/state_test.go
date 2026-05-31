@@ -29,6 +29,21 @@ func openTestDB(t *testing.T, path string) *DB {
 	return db
 }
 
+// newClockedTestDB returns a fresh DB whose clock reads through *now.
+// Tests assign through the pointer (*now = ...) to advance time; the
+// closure captures the pointer once at constructor time.
+func newClockedTestDB(t *testing.T, now *time.Time) *DB {
+	t.Helper()
+	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)",
+		filepath.Join(t.TempDir(), "state.db"))
+	db, err := OpenWithClock(context.Background(), dsn, func() time.Time { return *now })
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
 // TestOpenCapsConnectionPoolAtOne pins the load-bearing contract that
 // fixes the SQLITE_BUSY flake: Open() must cap *sql.DB's pool at one
 // connection so writers serialize at the app layer. Without this, a
@@ -40,6 +55,30 @@ func TestOpenCapsConnectionPoolAtOne(t *testing.T) {
 	db := newTestDB(t)
 	if got := db.SQL().Stats().MaxOpenConnections; got != 1 {
 		t.Fatalf("MaxOpenConnections=%d want 1", got)
+	}
+}
+
+// TestOpenWithClock_BindsAtConstructor proves the clock is fixed at
+// constructor time and that mutating tests can advance it through a
+// captured closure variable. Production code uses Open() which binds
+// time.Now; tests use OpenWithClock to inject a controllable source.
+// SetClock no longer exists.
+func TestOpenWithClock_BindsAtConstructor(t *testing.T) {
+	clock := time.Unix(1_700_000_000, 0).UTC()
+	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)",
+		filepath.Join(t.TempDir(), "state.db"))
+	db, err := OpenWithClock(context.Background(), dsn, func() time.Time { return clock })
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	a, err := db.UpsertPending(context.Background(), "WORK-1", "server")
+	if err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if !a.CreatedAt.Equal(clock) {
+		t.Fatalf("CreatedAt=%v want %v (injected clock)", a.CreatedAt, clock)
 	}
 }
 
@@ -179,7 +218,8 @@ func TestListAgentsByState(t *testing.T) {
 }
 
 func TestLockAcquisitionAndExpiry(t *testing.T) {
-	db := newTestDB(t)
+	clock := time.Unix(1_700_000_000, 0).UTC()
+	db := newClockedTestDB(t, &clock)
 	ctx := context.Background()
 	a, err := db.UpsertPending(ctx, "WORK-1", "server")
 	if err != nil {
@@ -189,9 +229,6 @@ func TestLockAcquisitionAndExpiry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-
-	clock := time.Unix(1_700_000_000, 0).UTC()
-	db.SetClock(func() time.Time { return clock })
 
 	if err := db.TryAcquireLock(ctx, "package.json", a.ID, 5*time.Minute); err != nil {
 		t.Fatalf("acquire a: %v", err)
@@ -221,15 +258,13 @@ func TestLockAcquisitionAndExpiry(t *testing.T) {
 }
 
 func TestHeartbeatLockRefreshesAllLocksForAgent(t *testing.T) {
-	db := newTestDB(t)
+	clock := time.Unix(1_700_000_000, 0).UTC()
+	db := newClockedTestDB(t, &clock)
 	ctx := context.Background()
 	a, err := db.UpsertPending(ctx, "WORK-1", "server")
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-
-	clock := time.Unix(1_700_000_000, 0).UTC()
-	db.SetClock(func() time.Time { return clock })
 
 	if err := db.TryAcquireLocks(ctx, []string{"alpha", "beta", "gamma"}, a.ID, 5*time.Minute); err != nil {
 		t.Fatalf("acquire batch: %v", err)
@@ -253,15 +288,13 @@ func TestHeartbeatLockRefreshesAllLocksForAgent(t *testing.T) {
 }
 
 func TestExpireStaleLocks(t *testing.T) {
-	db := newTestDB(t)
+	clock := time.Unix(1_700_000_000, 0).UTC()
+	db := newClockedTestDB(t, &clock)
 	ctx := context.Background()
 	a, err := db.UpsertPending(ctx, "WORK-1", "server")
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-
-	clock := time.Unix(1_700_000_000, 0).UTC()
-	db.SetClock(func() time.Time { return clock })
 	if err := db.TryAcquireLock(ctx, "x", a.ID, time.Minute); err != nil {
 		t.Fatalf("acquire: %v", err)
 	}

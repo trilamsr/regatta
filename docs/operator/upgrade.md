@@ -7,7 +7,9 @@ Expires when: schema v2 lands OR upgrade workflow changes.
 ## Status
 
 Pre-v1.0: anything may break. Read the release notes for the tag
-you are upgrading to before running `regatta migrate-config`.
+you are upgrading to. `regatta migrate-config` is the planned schema-
+migration entry point but is not yet implemented (see [`docs/engineer/followups.md`](../engineer/followups.md));
+for v0.x, edit `regatta.yaml` by hand and re-run `regatta validate-config`.
 
 After v1.0: SemVer strict; contracts follow the deprecation cycle
 per PRINCIPLES #11 (warn one minor, fail the next).

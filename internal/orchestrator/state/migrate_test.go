@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -53,6 +55,32 @@ func TestMigrate_IdempotentOnSecondCall(t *testing.T) {
 	}
 	if err := state.Migrate(context.Background(), raw); err != nil {
 		t.Fatalf("second Migrate (should be no-op): %v", err)
+	}
+}
+
+// TestMigrate_NoIfNotExistsInGooseManagedDDL pins the contract:
+// goose tracks applied versions, so IF NOT EXISTS in CREATE TABLE /
+// CREATE INDEX defeats version-tracking — a half-applied migration
+// becomes invisible on the next run. The regression keeps the
+// migration files honest forever.
+func TestMigrate_NoIfNotExistsInGooseManagedDDL(t *testing.T) {
+	migDir := "migrations"
+	entries, err := os.ReadDir(migDir)
+	if err != nil {
+		t.Fatalf("read %s: %v", migDir, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+			continue
+		}
+		path := filepath.Join(migDir, e.Name())
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if strings.Contains(strings.ToUpper(string(body)), "IF NOT EXISTS") {
+			t.Fatalf("%s: goose-managed migrations must not contain IF NOT EXISTS", path)
+		}
 	}
 }
 

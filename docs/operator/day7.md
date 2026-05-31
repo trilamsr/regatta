@@ -15,6 +15,7 @@ parallelism turns on.
 Day 1 finished:
 - `regatta validate-config` green.
 - `regatta validate-spec --dry-run` lists ready items.
+  *(planned; pre-v1.0 stand-in: hand-check `.regatta/items/*.md`.)*
 - `regatta verify-repo-config` green (or `--accept-degraded` with
   named gap logged to audit sink).
 

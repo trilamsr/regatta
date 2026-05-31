@@ -78,8 +78,22 @@ func DSN(path string) string {
 }
 
 // Open opens (or creates) the sqlite database at dsn and applies any
-// pending migrations. Prefer DSN(path) for the standard pragma set.
+// pending migrations, binding the DB's clock to time.Now. Prefer
+// DSN(path) for the standard pragma set. Tests that need a
+// controllable clock should call OpenWithClock instead.
 func Open(ctx context.Context, dsn string) (*DB, error) {
+	return OpenWithClock(ctx, dsn, time.Now)
+}
+
+// OpenWithClock is Open plus an explicit time source. The clock is
+// constructor-bound: there is no setter to swap it later, so two
+// goroutines cannot race on a mutation. Tests pass a closure over a
+// captured time.Time variable when they need to advance time mid-
+// test; mutating the captured variable propagates to every reader.
+func OpenWithClock(ctx context.Context, dsn string, now func() time.Time) (*DB, error) {
+	if now == nil {
+		return nil, fmt.Errorf("state: OpenWithClock requires a non-nil clock")
+	}
 	raw, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("state: open sqlite: %w", err)
@@ -97,8 +111,7 @@ func Open(ctx context.Context, dsn string) (*DB, error) {
 		_ = raw.Close()
 		return nil, err
 	}
-	db := &DB{sql: raw, now: time.Now}
-	return db, nil
+	return &DB{sql: raw, now: now}, nil
 }
 
 // Close closes the underlying database handle.
@@ -107,8 +120,4 @@ func (d *DB) Close() error { return d.sql.Close() }
 // SQL exposes the underlying *sql.DB for callers that need raw
 // transactions (e.g. scheduler.Tick). Use sparingly.
 func (d *DB) SQL() *sql.DB { return d.sql }
-
-// SetClock overrides the time source. Tests use this for deterministic
-// timestamps; production code MUST NOT call this.
-func (d *DB) SetClock(now func() time.Time) { d.now = now }
 

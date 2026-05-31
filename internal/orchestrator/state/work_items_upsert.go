@@ -9,25 +9,17 @@ import (
 	"time"
 )
 
-// UpsertWorkItem is the legacy shim that stamps timestamps from
-// d.now(). New production writers should call UpsertWorkItemAt with
-// an explicit poll-start tick — see SetClock's "production MUST NOT
-// call this" warning in state.go.
-func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemSource) error {
-	return d.UpsertWorkItemAt(ctx, item, source, d.now())
-}
-
-// UpsertWorkItemAt inserts a new work_items row or updates an existing
+// UpsertWorkItem inserts a new work_items row or updates an existing
 // one (matched by id). last_seen_at and updated_at are stamped from
-// the caller-supplied at instead of d.now(); created_at is preserved
-// on update and set to at on insert. Production writers (AdapterSync,
-// BriefLoader) call this with their poll-start tick so concurrent
-// producers never race on the DB's clock.
+// the caller-supplied at; created_at is preserved on update and set
+// to at on insert. Production writers (AdapterSync, BriefLoader)
+// pass their poll-start tick so concurrent producers never race on
+// the DB's clock.
 //
 // per spec §2.2 — depends_on_features and acceptance_json are stored
 // as JSON text. Empty slice -> "[]". AcceptanceJSON must be valid
 // JSON; an empty string is normalized to "[]".
-func (d *DB) UpsertWorkItemAt(ctx context.Context, item WorkItem, source WorkItemSource, at time.Time) error {
+func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemSource, at time.Time) error {
 	depsJSON, err := encodeDeps(item.DependsOnFeatures)
 	if err != nil {
 		return fmt.Errorf("state: encode deps: %w", err)
@@ -83,20 +75,13 @@ func (d *DB) UpsertWorkItemAt(ctx context.Context, item WorkItem, source WorkIte
 	return tx.Commit()
 }
 
-// TombstoneBySource is the legacy shim that pulls the cutoff through
-// d.now(). New production sweepers should call TombstoneBySourceAt
-// with the explicit poll-start tick.
-func (d *DB) TombstoneBySource(ctx context.Context, source WorkItemSource, before time.Time) ([]string, error) {
-	return d.TombstoneBySourceAt(ctx, source, before)
-}
-
-// TombstoneBySourceAt archives every row whose source matches and
+// TombstoneBySource archives every row whose source matches and
 // last_seen_at < before AND status is not already archived. Returns
 // the list of archived IDs. Per-source so AdapterSync and BriefLoader
 // cannot tombstone each other's rows. The caller-supplied before is
 // used for both the cutoff and the updated_at stamp so a sweep is
 // idempotent under retry.
-func (d *DB) TombstoneBySourceAt(ctx context.Context, source WorkItemSource, before time.Time) ([]string, error) {
+func (d *DB) TombstoneBySource(ctx context.Context, source WorkItemSource, before time.Time) ([]string, error) {
 	cutoff := before.UTC().Unix()
 	rows, err := d.sql.QueryContext(ctx, `
 		UPDATE work_items
@@ -119,24 +104,14 @@ func (d *DB) TombstoneBySourceAt(ctx context.Context, source WorkItemSource, bef
 	return ids, rows.Err()
 }
 
-// CascadeArchiveChildren is the legacy shim that stamps updated_at
-// from d.now() and discards the returned id slice. New production
-// callers should use CascadeArchiveChildrenAt with an explicit
-// poll-start tick so concurrent producers cannot race on the DB's
-// clock — same constraint as UpsertWorkItemAt + TombstoneBySourceAt.
-func (d *DB) CascadeArchiveChildren(ctx context.Context, parentID string) error {
-	_, err := d.CascadeArchiveChildrenAt(ctx, parentID, d.now())
-	return err
-}
-
-// CascadeArchiveChildrenAt marks every live work_items row whose
+// CascadeArchiveChildren marks every live work_items row whose
 // parent_program_id matches as archived and returns the IDs that
 // were just flipped (rows already archived are skipped, both in
 // the UPDATE and the return slice). Cascade-SOFT (spec §2.4): the
 // agents table is not touched, so any in-flight agent continues to
 // its natural terminal state. The caller-supplied at stamps
 // updated_at so a sweep is idempotent under retry.
-func (d *DB) CascadeArchiveChildrenAt(ctx context.Context, parentID string, at time.Time) ([]string, error) {
+func (d *DB) CascadeArchiveChildren(ctx context.Context, parentID string, at time.Time) ([]string, error) {
 	stamp := at.UTC().Unix()
 	rows, err := d.sql.QueryContext(ctx, `
 		UPDATE work_items SET status = ?, updated_at = ?

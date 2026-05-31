@@ -10,21 +10,21 @@ import (
 
 // seedWorkItem inserts a minimal planned work_item so journal rows can
 // honour the work_item_outputs.work_item_id FK without dragging the full
-// PlannedFeature shape into journal-only tests.
+// PlannedFeature shape into journal-only tests. The seed timestamp is
+// fixed and irrelevant to the journal-only tests below.
 func seedWorkItem(t *testing.T, db *DB, id string) {
 	t.Helper()
 	w := WorkItem{ID: id, Kind: KindFeature, Title: id, Lane: "server", Status: WorkStatusPlanned}
-	if err := db.UpsertWorkItem(context.Background(), w, SourceBrief); err != nil {
+	seedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	if err := db.UpsertWorkItem(context.Background(), w, SourceBrief, seedAt); err != nil {
 		t.Fatalf("seedWorkItem %s: %v", id, err)
 	}
 }
 
 func TestAppendOutput_NewAttempt(t *testing.T) {
-	db := newWorkItemsTestDB(t)
-	seedWorkItem(t, db, "F-1")
-
 	at := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
-	db.SetClock(func() time.Time { return at })
+	db := fixedClockDB(t, at)
+	seedWorkItem(t, db, "F-1")
 	ctx := context.Background()
 
 	entry, err := db.AppendOutput(ctx, "F-1", json.RawMessage(`{"b":2,"a":1}`))

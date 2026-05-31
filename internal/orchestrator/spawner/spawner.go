@@ -119,7 +119,7 @@ func (s *Stub) Complete(ctx context.Context, workItemID string, payload json.Raw
 		return fmt.Errorf("spawner: load work_item: %w", err)
 	}
 	wi.Status = state.WorkStatusMerged
-	if err := s.db.UpsertWorkItemAt(ctx, wi, wi.Source, time.Now()); err != nil {
+	if err := s.db.UpsertWorkItem(ctx, wi, wi.Source, time.Now()); err != nil {
 		return fmt.Errorf("spawner: mark merged: %w", err)
 	}
 	slog.Info("spawner.completed", "work_item_id", workItemID)

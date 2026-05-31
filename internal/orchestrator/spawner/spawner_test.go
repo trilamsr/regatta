@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	_ "modernc.org/sqlite"
 
@@ -26,7 +27,7 @@ func openSpawnerTestDB(t *testing.T) *state.DB {
 func seedPlannedWI(t *testing.T, db *state.DB, id string) {
 	t.Helper()
 	w := state.WorkItem{ID: id, Kind: state.KindFeature, Title: id, Lane: "server", Status: state.WorkStatusPlanned}
-	if err := db.UpsertWorkItem(context.Background(), w, state.SourceBrief); err != nil {
+	if err := db.UpsertWorkItem(context.Background(), w, state.SourceBrief, time.Now()); err != nil {
 		t.Fatalf("seed %s: %v", id, err)
 	}
 }

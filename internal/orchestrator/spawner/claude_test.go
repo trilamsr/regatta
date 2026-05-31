@@ -165,6 +165,30 @@ func TestClaudeSpawnKillRace(t *testing.T) {
 	}
 }
 
+// opaqueWrap hides the wrapped error's message but preserves the
+// errors.Is chain. The whole point of F2: stop trusting err.Error()
+// substring matches when the stdlib already gives us a sentinel.
+type opaqueWrap struct{ err error }
+
+func (e *opaqueWrap) Error() string { return "kill failed: opaque" }
+func (e *opaqueWrap) Unwrap() error { return e.err }
+
+func TestKillAgent_AlreadyFinished_RecognizesErrProcessDone(t *testing.T) {
+	cs, _, _ := newClaudeHarness(t)
+	cs.killer = func(*exec.Cmd) error { return &opaqueWrap{err: os.ErrProcessDone} }
+	cs.mu.Lock()
+	cs.children[99] = &exec.Cmd{Process: &os.Process{Pid: 1}}
+	cs.mu.Unlock()
+
+	signaled, err := cs.KillAgent(99)
+	if err != nil {
+		t.Fatalf("KillAgent: %v", err)
+	}
+	if !signaled {
+		t.Fatal("expected signaled=true for ErrProcessDone")
+	}
+}
+
 func TestDefaultPromptBuilderCarriesIdentifiers(t *testing.T) {
 	prompt := defaultPromptBuilder(Request{AgentID: 42, WorkItemID: "WORK-X", Lane: "server"})
 	for _, want := range []string{"42", "WORK-X", "server"} {
