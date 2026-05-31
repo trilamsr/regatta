@@ -35,10 +35,19 @@ func (d *DB) ListByParent(ctx context.Context, parentID string) ([]WorkItem, err
 }
 
 // ListSpawnable returns every work_items row whose status is
-// 'planned', that has no entry in agents yet, and whose
-// depends_on_features are either empty or all already 'merged'.
-// per spec §2.8 — the SELECT here is the materialization-eliminator:
-// scheduler.Tick consumes the rows directly into the reservation tx.
+// 'planned', that has no entry in agents yet, whose legacy
+// depends_on_features are either empty or all already 'merged', and
+// whose inbound work_item_edges (if any) are satisfied. per spec §2.8
+// — the SELECT here is the materialization-eliminator: scheduler.Tick
+// consumes the rows directly into the reservation tx.
+//
+// Edge satisfaction (W4-A): a planned row qualifies when any of:
+//   - no inbound work_item_edges at all (v1 fast-path, unchanged);
+//   - at least one inbound edge has fired='true';
+//   - every inbound edge resolved (no 'pending') AND at least one
+//     inbound edge carries on_skip='ignore' — the diamond-join /
+//     default-next escape hatch so a downstream node still spawns
+//     when every gating predicate evaluated false.
 //
 // Note: relies on the work_items.depends_on_features NOT NULL
 // schema invariant. If a future migration allows NULL, the
@@ -60,6 +69,23 @@ func (d *DB) ListSpawnable(ctx context.Context) ([]WorkItem, error) {
 		    OR NOT EXISTS (
 		      SELECT 1 FROM json_each(w.depends_on_features)
 		      WHERE value NOT IN (SELECT id FROM work_items WHERE status = 'merged')
+		    )
+		  )
+		  AND (
+		    NOT EXISTS (SELECT 1 FROM work_item_edges WHERE to_id = w.id)
+		    OR EXISTS (
+		      SELECT 1 FROM work_item_edges
+		      WHERE to_id = w.id AND fired = 'true'
+		    )
+		    OR (
+		      NOT EXISTS (
+		        SELECT 1 FROM work_item_edges
+		        WHERE to_id = w.id AND fired = 'pending'
+		      )
+		      AND EXISTS (
+		        SELECT 1 FROM work_item_edges
+		        WHERE to_id = w.id AND on_skip = 'ignore'
+		      )
 		    )
 		  )
 		ORDER BY w.id`)

@@ -291,6 +291,97 @@ func TestMaxUpdatedAtForBriefChildren_Empty(t *testing.T) {
 	}
 }
 
+// TestListSpawnable_HonoursFiredEdges pins the W4-A contract: a
+// planned row with an inbound work_item_edges row must NOT be
+// spawnable until that edge fires. Once MarkEdgeFired flips it to
+// 'true', the row surfaces.
+func TestListSpawnable_HonoursFiredEdges(t *testing.T) {
+	db := newQueryTestDB(t)
+	ctx := context.Background()
+	scan := state.WorkItem{ID: "F-SCAN", Kind: state.KindFeature, Title: "scan", Lane: "server", Status: state.WorkStatusMerged}
+	if err := db.UpsertWorkItem(ctx, scan, state.SourceBrief); err != nil {
+		t.Fatal(err)
+	}
+	deep := state.WorkItem{ID: "F-DEEP", Kind: state.KindFeature, Title: "deep", Lane: "server", Status: state.WorkStatusPlanned}
+	if err := db.UpsertWorkItem(ctx, deep, state.SourceBrief); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertEdges(ctx, "m-1", []state.EdgeRow{{
+		ProgramID: "m-1", FromID: "F-SCAN", ToID: "F-DEEP",
+		PredicateCEL: `out.severity == "high"`, OnSkip: "cascade",
+	}}); err != nil {
+		t.Fatalf("UpsertEdges: %v", err)
+	}
+	rows, err := db.ListSpawnable(ctx)
+	if err != nil {
+		t.Fatalf("ListSpawnable: %v", err)
+	}
+	for _, r := range rows {
+		if r.ID == "F-DEEP" {
+			t.Fatalf("F-DEEP spawnable while edge pending")
+		}
+	}
+	edges, err := db.ListEdgesFrom(ctx, "F-SCAN")
+	if err != nil {
+		t.Fatalf("ListEdgesFrom: %v", err)
+	}
+	if err := db.MarkEdgeFired(ctx, edges[0].ID, "true", "sha-x"); err != nil {
+		t.Fatalf("MarkEdgeFired: %v", err)
+	}
+	rows, err = db.ListSpawnable(ctx)
+	if err != nil {
+		t.Fatalf("ListSpawnable #2: %v", err)
+	}
+	found := false
+	for _, r := range rows {
+		if r.ID == "F-DEEP" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("F-DEEP must be spawnable once edge fired; got %v", idsOf(rows))
+	}
+}
+
+// TestListSpawnable_DefaultNextOnAllFalse covers the diamond-join /
+// default-next path: every inbound edge resolved (no 'pending'), and
+// the row qualifies because at least one inbound carries
+// on_skip='ignore' — the ListSpawnable disjunct that lets a
+// default-next target spawn even when its predicate fired false on
+// some branches.
+func TestListSpawnable_DefaultNextOnAllFalse(t *testing.T) {
+	db := newQueryTestDB(t)
+	ctx := context.Background()
+	scan := state.WorkItem{ID: "F-SCAN", Kind: state.KindFeature, Title: "scan", Lane: "server", Status: state.WorkStatusMerged}
+	if err := db.UpsertWorkItem(ctx, scan, state.SourceBrief); err != nil {
+		t.Fatal(err)
+	}
+	quick := state.WorkItem{ID: "F-QUICK", Kind: state.KindFeature, Title: "quick", Lane: "server", Status: state.WorkStatusPlanned}
+	if err := db.UpsertWorkItem(ctx, quick, state.SourceBrief); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertEdges(ctx, "m-1", []state.EdgeRow{{
+		ProgramID: "m-1", FromID: "F-SCAN", ToID: "F-QUICK",
+		PredicateCEL: `out.severity == "high"`, OnSkip: "cascade", IsDefault: true,
+	}}); err != nil {
+		t.Fatalf("UpsertEdges: %v", err)
+	}
+	edges, err := db.ListEdgesFrom(ctx, "F-SCAN")
+	if err != nil {
+		t.Fatalf("ListEdgesFrom: %v", err)
+	}
+	if err := db.MarkEdgeFired(ctx, edges[0].ID, "true", "sha-y"); err != nil {
+		t.Fatalf("MarkEdgeFired: %v", err)
+	}
+	rows, err := db.ListSpawnable(ctx)
+	if err != nil {
+		t.Fatalf("ListSpawnable: %v", err)
+	}
+	if len(rows) != 1 || rows[0].ID != "F-QUICK" {
+		t.Fatalf("default-next path: got %v want [F-QUICK]", idsOf(rows))
+	}
+}
+
 func TestMaxUpdatedAtForBriefChildren_ReturnsMax(t *testing.T) {
 	ctx := context.Background()
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
