@@ -32,7 +32,7 @@ func seedPlannedBench(b *testing.B, db *state.DB, id, lane string) {
 		ID: id, Kind: state.KindFeature, Title: id,
 		Lane: lane, Status: state.WorkStatusPlanned,
 	}
-	if err := db.UpsertWorkItemAt(context.Background(), w, state.SourceBrief, time.Unix(1_700_000_000, 0)); err != nil {
+	if err := db.UpsertWorkItem(context.Background(), w, state.SourceBrief, time.Unix(1_700_000_000, 0)); err != nil {
 		b.Fatalf("seed %s: %v", id, err)
 	}
 }

@@ -78,7 +78,7 @@ func seedBriefCorpus(b *testing.B, db *state.DB, n int, key []byte) fstest.MapFS
 			ID: parentID, Kind: state.KindProgram, Title: parentID,
 			Lane: "server", Status: state.WorkStatusPlanned,
 		}
-		if err := db.UpsertWorkItemAt(ctx, parent, state.SourceAdapter, at.Add(-time.Hour)); err != nil {
+		if err := db.UpsertWorkItem(ctx, parent, state.SourceAdapter, at.Add(-time.Hour)); err != nil {
 			b.Fatalf("seed parent %s: %v", parentID, err)
 		}
 	}
@@ -88,7 +88,7 @@ func seedBriefCorpus(b *testing.B, db *state.DB, n int, key []byte) fstest.MapFS
 // BenchmarkBriefLoaderSync times an end-to-end BriefLoader.Sync over a
 // fixed-size brief corpus. The fixture is a fstest.MapFS — no on-disk
 // I/O — so the cost we see is signature verify + Validate + per-feature
-// CycleCheck + UpsertWorkItemAt + the tombstone sweep. Each iteration
+// CycleCheck + UpsertWorkItem + the tombstone sweep. Each iteration
 // bumps pollStartedAt so the watermark check stays well-defined across
 // repeats (later iterations exercise the stale_produced_at no-op path —
 // the operator-visible cost of polling when no brief changed).
