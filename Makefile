@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test bench
+.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test bench pre-push-check cleanup-branches
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -10,9 +10,6 @@ go-check:  ## Build and test every Go package with the race detector.
 	go build -buildvcs=false ./...
 	go test -race ./...
 
-bench:  ## Run benchmarks across all packages. No corpus today; locks the invocation pattern for #104.
-	go test -bench=. -benchmem -benchtime=3x -run=^$$ ./...
-
 property-test:  ## Run rapid property tests with spec-mandated check count (200).
 	go test -race -run TestListSpawnable_PropertyTopologicalReady ./internal/orchestrator/state/... -rapid.checks=200
 
@@ -23,6 +20,12 @@ bench:  ## Run benchmark corpus (scheduler.Tick, CycleCheck, ListSpawnable, Brie
 		./internal/program/... \
 		./contracts/schemas/... \
 		./internal/canon/...
+
+pre-push-check: check  ## Local pre-push gate. Runs `make check` + PR-body release-notes block sanity check.
+	bash scripts/check-release-notes-local.sh
+
+cleanup-branches:  ## Delete local branches + worktrees whose PRs are merged. --dry-run aware.
+	bash scripts/cleanup-merged-branches.sh
 
 cover:  ## Print cross-package coverage; useful before declaring "done".
 	go test -coverpkg=./... -coverprofile=/tmp/regatta.cover ./...
