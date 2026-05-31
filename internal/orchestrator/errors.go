@@ -8,7 +8,11 @@
 // work_items table.
 package orchestrator
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
+)
 
 var (
 	// ErrBriefSHAMismatch fires when the operator-pinned planner
@@ -30,8 +34,11 @@ var (
 	ErrFlockHeld = errors.New("orchestrator: process flock held by another instance")
 
 	// ErrSchemaTooNew fires when a v2 database is opened by a binary
-	// that only knows v1 migrations — downgrade-resistance.
-	ErrSchemaTooNew = errors.New("orchestrator: database schema is newer than this binary supports")
+	// that only knows v1 migrations — downgrade-resistance. The
+	// canonical sentinel lives in package state (which is upstream of
+	// orchestrator) and is re-exported here so downstream packages can
+	// import a single sentinels list.
+	ErrSchemaTooNew = state.ErrSchemaTooNew
 
 	// ErrCycleDetected fires when work_items.depends_on_features would
 	// introduce a cycle, blocking the upsert.
