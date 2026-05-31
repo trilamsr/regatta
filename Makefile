@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test
+.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test bench
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -6,9 +6,12 @@ help:  ## Show this help.
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
 
-go-check:  ## Build and test every Go package.
+go-check:  ## Build and test every Go package with the race detector.
 	go build -buildvcs=false ./...
-	go test ./...
+	go test -race ./...
+
+bench:  ## Run benchmarks across all packages. No corpus today; locks the invocation pattern for #104.
+	go test -bench=. -benchmem -benchtime=3x -run=^$$ ./...
 
 property-test:  ## Run rapid property tests with spec-mandated check count (200).
 	go test -race -run TestListSpawnable_PropertyTopologicalReady ./internal/orchestrator/state/... -rapid.checks=200

@@ -234,3 +234,39 @@ func strContains(s, sub string) bool {
 	}
 	return false
 }
+
+// FuzzVerify exercises the verify path with arbitrary bytes. Hardens
+// the security boundary against panics on malformed signed-envelope
+// shapes (number-where-string, deeply nested, truncated, etc.) that a
+// trusted-path-tester might never construct by hand.
+func FuzzVerify(f *testing.F) {
+	key := []byte("seed-key-32-bytes-aaaaaaaaaaaaaaa")
+	payload := map[string]any{"hello": "world"}
+	sig, err := Sign(payload, key, "k1")
+	if err != nil {
+		f.Fatalf("seed sign: %v", err)
+	}
+	payload["signature"] = map[string]any{"alg": sig.Alg, "key_id": sig.KeyID, "mac": sig.MAC}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		f.Fatalf("seed marshal: %v", err)
+	}
+	f.Add(raw)
+	f.Add([]byte(`{"signature":{"alg":"HMAC-SHA256","key_id":"k1","mac":42}}`))
+	f.Add([]byte(`{"signature":42}`))
+	f.Add([]byte(`{}`))
+
+	keyring := map[string][]byte{"k1": key}
+	f.Fuzz(func(t *testing.T, body []byte) {
+		var m map[string]any
+		if err := json.Unmarshal(body, &m); err != nil {
+			return
+		}
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("Verify panicked on input %q: %v", body, r)
+			}
+		}()
+		_ = Verify(m, keyring)
+	})
+}
