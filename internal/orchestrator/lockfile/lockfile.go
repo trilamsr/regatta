@@ -40,19 +40,28 @@ type Lock struct {
 // (wrapped) if another live process holds the lock. Reclaims if the
 // lockfile contains a stale PID.
 func Acquire(path string) (*Lock, error) {
-	if err := maybeReclaimStale(path); err != nil {
-		return nil, err
-	}
-
 	fl := flock.New(path)
 	locked, err := fl.TryLock()
 	if err != nil {
 		return nil, fmt.Errorf("lockfile: trylock: %w", err)
 	}
 	if !locked {
-		return nil, fmt.Errorf("%w: %s", orchestrator.ErrFlockHeld, path)
+		// Held by another process — check liveness from file content.
+		// If holder is dead (stale crash), remove + retry once.
+		if reclaimed, rerr := maybeReclaimStale(path); rerr != nil {
+			return nil, rerr
+		} else if reclaimed {
+			locked, err = fl.TryLock()
+			if err != nil {
+				return nil, fmt.Errorf("lockfile: trylock retry: %w", err)
+			}
+		}
+		if !locked {
+			return nil, fmt.Errorf("%w: %s", orchestrator.ErrFlockHeld, path)
+		}
 	}
 
+	// We hold the flock. Write our PID (overwriting any empty/stale content).
 	pid := strconv.Itoa(os.Getpid())
 	if err := os.WriteFile(path, []byte(pid), 0o600); err != nil {
 		_ = fl.Unlock()
@@ -75,27 +84,40 @@ func (l *Lock) Release() error {
 	return nil
 }
 
-func maybeReclaimStale(path string) error {
+// maybeReclaimStale returns (true, nil) if it removed a stale file,
+// (false, nil) if the lockfile holder appears alive, or
+// (false, err) on read errors. Called only when TryLock failed,
+// so a race here is bounded by flock's own serialization.
+func maybeReclaimStale(path string) (bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil
+			return false, nil
 		}
-		return fmt.Errorf("lockfile: read: %w", err)
+		return false, fmt.Errorf("lockfile: read: %w", err)
 	}
 	pidStr := strings.TrimSpace(string(data))
 	if pidStr == "" {
-		return os.Remove(path)
+		// Empty file inside a held flock means the holder is mid-
+		// Acquire (between TryLock and WriteFile). Don't reclaim —
+		// just report contention.
+		return false, nil
 	}
 	pid, err := strconv.Atoi(pidStr)
 	if err != nil {
-		// Garbage content — treat as stale, reclaim.
-		return os.Remove(path)
+		// Garbage from a crashed predecessor; treat as stale.
+		if rerr := os.Remove(path); rerr != nil && !os.IsNotExist(rerr) {
+			return false, rerr
+		}
+		return true, nil
 	}
 	if processAlive(pid) {
-		return nil
+		return false, nil
 	}
-	return os.Remove(path)
+	if rerr := os.Remove(path); rerr != nil && !os.IsNotExist(rerr) {
+		return false, rerr
+	}
+	return true, nil
 }
 
 func processAlive(pid int) bool {
