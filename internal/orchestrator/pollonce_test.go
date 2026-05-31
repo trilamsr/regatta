@@ -53,7 +53,7 @@ func newPollOnceHarness(t *testing.T, ad adaptersync.SpecAdapter) (*orchestrator
 	t.Cleanup(func() { _ = db.Close() })
 
 	syncer := adaptersync.New(ad, db)
-	loader := program.NewBriefLoader(fstest.MapFS{}, db, map[string][]byte{})
+	loader := program.NewBriefLoader(fstest.MapFS{}, db, map[string][]byte{}, nil)
 	sched := scheduler.New(db, scheduler.Config{})
 	o := orchestrator.New(orchestrator.Config{
 		AdapterSync: syncer,

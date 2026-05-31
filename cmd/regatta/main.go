@@ -279,10 +279,16 @@ func runServe(args []string) int {
 		return 2
 	}
 	syncer := adaptersync.New(ad, db)
-	loader := program.NewBriefLoader(os.DirFS(briefsDir), db, loadBriefKeyring())
+	// Shared evaluator: BriefLoader materialises edges (and could warm
+	// the compile cache); Scheduler.Tick step-0 Evals through the same
+	// instance so cached cel.Program survives across ticks.
+	evaluator := program.NewEdgeEvaluator()
+	loader := program.NewBriefLoader(os.DirFS(briefsDir), db, loadBriefKeyring(), evaluator)
 	sched := scheduler.New(db, scheduler.Config{
-		LaneCaps: map[string]int(laneCaps),
-		LockTTL:  *lockTTL,
+		LaneCaps:       map[string]int(laneCaps),
+		LockTTL:        *lockTTL,
+		Evaluator:      schedulerEvaluator{evaluator},
+		OutputsSchemas: outputsSchemaResolverFor(loader),
 	})
 
 	o := orchestrator.New(orchestrator.Config{
@@ -328,6 +334,36 @@ func runServe(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// schedulerEvaluator adapts a *program.EdgeEvaluator to the scheduler-
+// side EdgeEvaluator interface. The scheduler seam types schema as
+// `any` so it never imports program; the production evaluator types it
+// as *program.OutputsSchema. The adapter unboxes the any back to the
+// concrete type, defaulting to nil when the resolver missed (matching
+// the runtime evaluator's contract that schema is advisory at eval).
+type schedulerEvaluator struct {
+	ev *program.EdgeEvaluator
+}
+
+func (s schedulerEvaluator) Eval(ctx context.Context, edge state.EdgeRow, schema any, journal state.OutputJournalEntry) (bool, string, error) {
+	sch, _ := schema.(*program.OutputsSchema)
+	return s.ev.Eval(ctx, edge, sch, journal)
+}
+
+// outputsSchemaResolverFor closes over the BriefLoader's per-feature
+// schema map so the scheduler can resolve an upstream feature's
+// declared OutputsSchema at predicate-eval time. The returned closure
+// boxes the *program.OutputsSchema into the scheduler-side `any` so
+// the scheduler stays import-free of package program.
+func outputsSchemaResolverFor(loader *program.BriefLoader) scheduler.OutputsSchemaResolver {
+	return func(featureID string) (any, bool) {
+		sch, ok := loader.OutputsSchemaForFeature(featureID)
+		if !ok {
+			return nil, false
+		}
+		return sch, true
+	}
 }
 
 // spawnerSet bundles the three handles a serve invocation needs to

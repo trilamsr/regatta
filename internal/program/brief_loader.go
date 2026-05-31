@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator"
@@ -72,6 +73,42 @@ func LoadAndVerifyBrief(fsys fs.FS, path string, keyring map[string][]byte) (*Pr
 		return nil, fmt.Errorf("%w: %w", orchestrator.ErrHMACInvalid, err)
 	}
 	return &brief, nil
+}
+
+// loadAndVerifyBriefBoth returns both the v1-projected brief (for the
+// existing v1-shaped Sync pipeline) and, when the source brief was v2,
+// the raw v2 view (so Sync can lower edges + outputs_schemas without
+// re-reading the file). v1 briefs return (brief, nil, nil).
+//
+// Centralising this here keeps the v2 detection + verification logic in
+// one place — LoadAndVerifyBrief continues to satisfy callers that only
+// need the v1 projection.
+func loadAndVerifyBriefBoth(fsys fs.FS, path string, keyring map[string][]byte) (*ProgramBrief, *ProgramBriefV2, error) {
+	if len(keyring) == 0 {
+		return nil, nil, fmt.Errorf("program: keyring required to verify briefs")
+	}
+	raw, err := readBriefBytes(fsys, path)
+	if err != nil {
+		return nil, nil, err
+	}
+	if IsV2Brief(raw) {
+		v2, err := loadAndVerifyV2FromBytes(raw, keyring)
+		if err != nil {
+			return nil, nil, err
+		}
+		return projectV2ToV1(v2), v2, nil
+	}
+	var brief ProgramBrief
+	if err := json.Unmarshal(raw, &brief); err != nil {
+		return nil, nil, fmt.Errorf("program: parse brief: %w", err)
+	}
+	if err := brief.Validate(); err != nil {
+		return nil, nil, fmt.Errorf("program: validate brief: %w", err)
+	}
+	if err := brief.VerifySignature(keyring); err != nil {
+		return nil, nil, fmt.Errorf("%w: %w", orchestrator.ErrHMACInvalid, err)
+	}
+	return &brief, nil, nil
 }
 
 // LoadAndVerifyBriefV2 is the v2-typed sibling of LoadAndVerifyBrief.
@@ -180,10 +217,25 @@ func projectV2ToV1(v2 *ProgramBriefV2) *ProgramBrief {
 
 // BriefLoader is the recurring sync. Construct once at orchestrator
 // boot; Sync once per PollOnce tick.
+//
+// outputsSchemas + programByFeature are the live brief-load projection
+// the scheduler's OutputsSchemaResolver reads. They are rebuilt from
+// scratch on every Sync so a re-plan that drops feature F-X removes
+// F-X's schema entry by next tick (cross-brief staleness defence).
+//
+// evaluator is the shared *EdgeEvaluator handed to the scheduler. Sync
+// warms its compile cache on v2 edges so the first scheduler tick sees
+// hot predicates; passing nil disables the warm pass (legal for v1-only
+// deployments and the pollonce_test harness).
 type BriefLoader struct {
-	fsys    fs.FS
-	db      *state.DB
-	keyring map[string][]byte
+	fsys      fs.FS
+	db        *state.DB
+	keyring   map[string][]byte
+	evaluator *EdgeEvaluator
+
+	mu               sync.RWMutex
+	outputsSchemas   map[FeatureID]*OutputsSchema
+	programByFeature map[FeatureID]string
 }
 
 // NewBriefLoader constructs a BriefLoader. fsys is typically
@@ -193,8 +245,36 @@ type BriefLoader struct {
 // explicit *At state APIs, mirroring the AdapterSync DI pattern from
 // commit 3741f0a — concurrent producers can no longer race on a
 // SetClock-installed clock.
-func NewBriefLoader(fsys fs.FS, db *state.DB, keyring map[string][]byte) *BriefLoader {
-	return &BriefLoader{fsys: fsys, db: db, keyring: keyring}
+//
+// evaluator may be nil — v1-only deployments and tests pass nil to
+// skip the v2 compile-cache warm pass. Production wiring shares the
+// same *EdgeEvaluator instance between the loader and the scheduler
+// so the cache survives across ticks.
+func NewBriefLoader(fsys fs.FS, db *state.DB, keyring map[string][]byte, evaluator *EdgeEvaluator) *BriefLoader {
+	return &BriefLoader{
+		fsys:             fsys,
+		db:               db,
+		keyring:          keyring,
+		evaluator:        evaluator,
+		outputsSchemas:   map[FeatureID]*OutputsSchema{},
+		programByFeature: map[FeatureID]string{},
+	}
+}
+
+// OutputsSchemaForFeature returns the OutputsSchema declared by the
+// most-recent successful brief Sync for featureID. (nil, false) when
+// no brief has declared a schema for that feature — schedulers treat
+// this as "no schema", matching the runtime evaluator's contract that
+// schema is opaque at the runtime seam (type-check is at brief-load).
+//
+// Production wires this into scheduler.Config.OutputsSchemas via an
+// adapter closure in cmd/regatta that boxes the *OutputsSchema return
+// as the scheduler-side `any`.
+func (b *BriefLoader) OutputsSchemaForFeature(id FeatureID) (*OutputsSchema, bool) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	sch, ok := b.outputsSchemas[id]
+	return sch, ok
 }
 
 // Sync globs *.json in fsys (skipping *.tmp), verifies each, and
@@ -224,6 +304,15 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	}
 	sort.Strings(entries)
 
+	// Stage v2 OutputsSchemas in a per-sync scratch map so a brief
+	// rejected mid-loop never leaks into the resolver, and features
+	// dropped from the new sync's brief set vanish from the resolver
+	// when we swap maps at the end. The active map is only replaced on
+	// the success path so a panic during loop body leaves the prior
+	// view intact.
+	freshSchemas := map[FeatureID]*OutputsSchema{}
+	freshProgramBy := map[FeatureID]string{}
+
 	seenFeature := map[string]string{}
 	for _, path := range entries {
 		if err := ctx.Err(); err != nil {
@@ -234,7 +323,7 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		if strings.HasSuffix(path, ".tmp") {
 			continue
 		}
-		brief, err := LoadAndVerifyBrief(b.fsys, path, b.keyring)
+		brief, v2, err := loadAndVerifyBriefBoth(b.fsys, path, b.keyring)
 		if err != nil {
 			slog.Warn("brief.rejected", "path", path, "reason", err.Error())
 			continue
@@ -293,7 +382,25 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 				return fmt.Errorf("brief_loader: upsert %s: %w", feat.ID, upErr)
 			}
 		}
+		if v2 != nil {
+			if err := b.materialiseEdges(ctx, v2, pollStartedAt); err != nil {
+				return err
+			}
+			for i := range v2.FeaturesV2 {
+				f := &v2.FeaturesV2[i]
+				if f.OutputsSchema == nil {
+					continue
+				}
+				freshSchemas[f.ID] = f.OutputsSchema
+				freshProgramBy[f.ID] = v2.ProgramID
+			}
+		}
 	}
+
+	b.mu.Lock()
+	b.outputsSchemas = freshSchemas
+	b.programByFeature = freshProgramBy
+	b.mu.Unlock()
 
 	archived, err := b.db.TombstoneBySourceAt(ctx, state.SourceBrief, pollStartedAt)
 	if err != nil {
@@ -307,6 +414,61 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		return err
 	}
 	return nil
+}
+
+// materialiseEdges lowers a v2 brief's Edges + DefaultNext into
+// work_item_edges rows and upserts them in one transaction (per
+// UpsertEdgesAt's contract). v1 briefs have no edge data and skip
+// this pass entirely.
+//
+// Existing rows preserve their fired/fired_against state — re-plans
+// that mutate predicate text refresh predicate_cel + on_skip but the
+// scheduler's eval result for the prior predicate stays put. Operators
+// who want a clean re-evaluation tombstone the program manually.
+func (b *BriefLoader) materialiseEdges(ctx context.Context, v2 *ProgramBriefV2, at time.Time) error {
+	if v2 == nil {
+		return nil
+	}
+	var rows []state.EdgeRow
+	for _, f := range v2.FeaturesV2 {
+		for _, e := range f.Edges {
+			rows = append(rows, state.EdgeRow{
+				ProgramID:    v2.ProgramID,
+				FromID:       e.From,
+				ToID:         e.To,
+				PredicateCEL: e.Predicate,
+				IsDefault:    false,
+				OnSkip:       string(skipOrDefault(e.OnSkip)),
+			})
+		}
+		if f.DefaultNext != nil {
+			rows = append(rows, state.EdgeRow{
+				ProgramID:    v2.ProgramID,
+				FromID:       f.ID,
+				ToID:         *f.DefaultNext,
+				PredicateCEL: "",
+				IsDefault:    true,
+				OnSkip:       string(SkipCascade),
+			})
+		}
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	if err := b.db.UpsertEdgesAt(ctx, v2.ProgramID, rows, at); err != nil {
+		return fmt.Errorf("brief_loader: upsert edges for %s: %w", v2.ProgramID, err)
+	}
+	slog.Info("brief.edges_materialised", "program_id", v2.ProgramID, "count", len(rows))
+	return nil
+}
+
+// skipOrDefault canonicalises an empty SkipMode to SkipCascade so
+// every persisted edge row carries a non-empty on_skip value.
+func skipOrDefault(s SkipMode) SkipMode {
+	if s == "" {
+		return SkipCascade
+	}
+	return s
 }
 
 // featureAcceptanceSnapshot snapshots the criteria a feature fulfills

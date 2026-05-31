@@ -281,7 +281,7 @@ func TestBriefLoaderSync_UpsertsThreeChildren(t *testing.T) {
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	seedParent(t, db, "PROG-1", now)
 
-	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key})
+	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, nil)
 
 	if err := loader.Sync(context.Background(), now); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -308,7 +308,7 @@ func TestBriefLoaderSync_SkipsTmpFiles(t *testing.T) {
 	fsys := fstest.MapFS{"PROG-1.json.tmp": &fstest.MapFile{Data: raw}}
 
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key})
+	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, nil)
 	if err := loader.Sync(context.Background(), now); err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +327,7 @@ func TestBriefLoaderSync_TombstonesMissingBrief(t *testing.T) {
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	seedParent(t, db, "PROG-1", t0)
 
-	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key})
+	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key}, nil)
 	if err := loader.Sync(context.Background(), t0); err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +358,7 @@ func TestBriefLoaderSync_TombstoneLogsCutoff(t *testing.T) {
 
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	seedParent(t, db, "PROG-1", t0)
-	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key})
+	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key}, nil)
 	if err := loader.Sync(context.Background(), t0); err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +401,7 @@ func TestBriefLoaderSync_CrossBriefFeatureIDCollision(t *testing.T) {
 	}
 
 	logs := captureLogs(t)
-	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key})
+	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, nil)
 	if err := loader.Sync(context.Background(), t0); err != nil {
 		t.Fatal(err)
 	}
@@ -433,7 +433,7 @@ func TestBriefLoaderSync_RejectsUnknownParent(t *testing.T) {
 
 	logs := captureLogs(t)
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key})
+	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, nil)
 	if err := loader.Sync(context.Background(), now); err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +457,7 @@ func TestBriefLoaderSync_StaleBriefRejected(t *testing.T) {
 	_, raw := mustSignedBrief(t, key) // ProducedAt = t0
 	files := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
 
-	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key})
+	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key}, nil)
 	if err := loader.Sync(context.Background(), t0); err != nil {
 		t.Fatal(err)
 	}
@@ -506,7 +506,7 @@ func seedFeature(t *testing.T, db *state.DB, id, parent string, deps []string, s
 // freshBriefLoader returns a loader with no fsys content (Sync just
 // runs the reconciler). The reconciler is independent of any brief.
 func freshBriefLoader(db *state.DB) *BriefLoader {
-	return NewBriefLoader(fstest.MapFS{}, db, map[string][]byte{"key-1": []byte("k")})
+	return NewBriefLoader(fstest.MapFS{}, db, map[string][]byte{"key-1": []byte("k")}, nil)
 }
 
 // Note for cascade-dep tests: seed timestamps must equal pollStartedAt
@@ -596,6 +596,258 @@ func TestCascadeDep_MultiHopWithinOneSync(t *testing.T) {
 	gotC, _ := db.GetWorkItem(context.Background(), "F-C")
 	if gotC.Status != state.WorkStatusArchived {
 		t.Fatalf("F-C.status=%s want archived (multi-hop convergence)", gotC.Status)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────
+// W5 — v2 brief Sync materialises edges + exposes OutputsSchemas
+// ─────────────────────────────────────────────────────────────────
+
+// mustSignedBriefV2WithOpts builds + signs a v2 brief with caller-
+// supplied parent + program IDs so cross-brief tests can stand up
+// multiple briefs in one fsys.
+func mustSignedBriefV2WithOpts(t *testing.T, key []byte, parentID, programID string, features []PlannedFeatureV2, producedAt time.Time) []byte {
+	t.Helper()
+	v2 := &ProgramBriefV2{
+		ProgramBrief: ProgramBrief{
+			SchemaVersion:    2,
+			ProgramID:        programID,
+			ParentWorkItemID: parentID,
+			ParentCriteria:   []PlanCriterion{{ID: "c1", Text: "ship"}},
+			PlannerModelID:   "test:model",
+			ProducedAt:       producedAt,
+		},
+		FeaturesV2: features,
+	}
+	raw, err := json.Marshal(v2)
+	if err != nil {
+		t.Fatalf("marshal v2: %v", err)
+	}
+	var generic map[string]any
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		t.Fatalf("unmarshal generic: %v", err)
+	}
+	sig, err := schemas.Sign(generic, key, "key-1")
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	v2.Signature = sig
+	signed, err := json.Marshal(v2)
+	if err != nil {
+		t.Fatalf("marshal signed v2: %v", err)
+	}
+	return signed
+}
+
+func TestBriefLoaderSync_V2BriefUpsertsEdges(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-V2", t0)
+
+	// Topology: F-A has a predicated edge to F-B and a default to F-C.
+	// CheckReachability is satisfied because F-A's outgoing edge to F-B
+	// transitively reaches F-C via F-B -> F-C.
+	raw := mustSignedBriefV2WithOpts(t, key, "PROG-V2", "m-cccccccccccc",
+		[]PlannedFeatureV2{
+			{
+				PlannedFeature: PlannedFeature{ID: "F-A", Title: "scan", Fulfills: []string{"c1"}},
+				OutputsSchema: &OutputsSchema{
+					Type:       "object",
+					Properties: map[string]*OutputsSchema{"severity": {Type: "string"}},
+				},
+				Edges:       []Edge{{From: "F-A", To: "F-B", Predicate: `out.severity == "high"`, OnSkip: SkipCascade}},
+				DefaultNext: strPtr("F-C"),
+			},
+			{
+				PlannedFeature: PlannedFeature{ID: "F-B", Title: "remediate"},
+				Edges:          []Edge{{From: "F-B", To: "F-C"}},
+			},
+			{PlannedFeature: PlannedFeature{ID: "F-C", Title: "report"}},
+		}, t0)
+
+	fsys := fstest.MapFS{"PROG-V2.json": &fstest.MapFile{Data: raw}}
+	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, NewEdgeEvaluator())
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	edges, err := db.ListEdgesFrom(context.Background(), "F-A")
+	if err != nil {
+		t.Fatalf("ListEdgesFrom: %v", err)
+	}
+	if len(edges) != 2 {
+		t.Fatalf("edges from F-A=%d want 2 (predicated + default): %+v", len(edges), edges)
+	}
+	var predicated, def *state.EdgeRow
+	for i := range edges {
+		e := edges[i]
+		switch {
+		case e.IsDefault:
+			def = &edges[i]
+		case e.PredicateCEL != "":
+			predicated = &edges[i]
+		}
+	}
+	if predicated == nil {
+		t.Fatalf("predicated edge missing: %+v", edges)
+	}
+	if predicated.ToID != "F-B" || predicated.PredicateCEL != `out.severity == "high"` {
+		t.Fatalf("predicated edge wrong: %+v", predicated)
+	}
+	if predicated.OnSkip != string(SkipCascade) {
+		t.Fatalf("OnSkip=%q want cascade", predicated.OnSkip)
+	}
+	if def == nil {
+		t.Fatalf("default edge missing: %+v", edges)
+	}
+	if def.ToID != "F-C" || !def.IsDefault {
+		t.Fatalf("default edge wrong: %+v", def)
+	}
+	// F-B -> F-C unconditional should also be persisted.
+	fromB, err := db.ListEdgesFrom(context.Background(), "F-B")
+	if err != nil {
+		t.Fatalf("ListEdgesFrom F-B: %v", err)
+	}
+	if len(fromB) != 1 || fromB[0].ToID != "F-C" {
+		t.Fatalf("F-B edges=%+v want one edge to F-C", fromB)
+	}
+}
+
+func TestBriefLoaderSync_V2BriefStoresOutputsSchemas(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-V2", t0)
+
+	raw := mustSignedBriefV2WithOpts(t, key, "PROG-V2", "m-cccccccccccc",
+		[]PlannedFeatureV2{
+			{
+				PlannedFeature: PlannedFeature{ID: "F-A", Title: "scan", Fulfills: []string{"c1"}},
+				OutputsSchema: &OutputsSchema{
+					Type:       "object",
+					Properties: map[string]*OutputsSchema{"severity": {Type: "string"}},
+				},
+				Edges:       []Edge{{From: "F-A", To: "F-B", Predicate: `out.severity == "high"`, OnSkip: SkipCascade}},
+				DefaultNext: strPtr("F-B"),
+			},
+			{PlannedFeature: PlannedFeature{ID: "F-B", Title: "remediate"}},
+		}, t0)
+	fsys := fstest.MapFS{"PROG-V2.json": &fstest.MapFile{Data: raw}}
+
+	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, NewEdgeEvaluator())
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	sch, ok := loader.OutputsSchemaForFeature("F-A")
+	if !ok {
+		t.Fatalf("F-A schema missing after sync")
+	}
+	if sch == nil || sch.Type != "object" {
+		t.Fatalf("F-A schema wrong: %+v", sch)
+	}
+	if sch.Properties["severity"] == nil || sch.Properties["severity"].Type != "string" {
+		t.Fatalf("F-A.severity property lost: %+v", sch.Properties)
+	}
+	if _, ok := loader.OutputsSchemaForFeature("F-B"); ok {
+		t.Fatalf("F-B has no schema declared, lookup must miss")
+	}
+	if _, ok := loader.OutputsSchemaForFeature("F-UNKNOWN"); ok {
+		t.Fatalf("unknown feature must miss")
+	}
+}
+
+func TestBriefLoaderSync_V2BriefRejectionDoesNotWriteEdges(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-V2-BAD", t0)
+
+	// Predicate references undeclared field — ValidateV2 (via the
+	// LoadAndVerifyBrief path) rejects with ErrPredicateUnknownField.
+	raw := mustSignedBriefV2WithOpts(t, key, "PROG-V2-BAD", "m-dddddddddddd",
+		[]PlannedFeatureV2{
+			{
+				PlannedFeature: PlannedFeature{ID: "F-A", Title: "scan", Fulfills: []string{"c1"}},
+				OutputsSchema: &OutputsSchema{
+					Type:       "object",
+					Properties: map[string]*OutputsSchema{"severity": {Type: "string"}},
+				},
+				Edges:       []Edge{{From: "F-A", To: "F-B", Predicate: `out.missing == "x"`, OnSkip: SkipCascade}},
+				DefaultNext: strPtr("F-B"),
+			},
+			{PlannedFeature: PlannedFeature{ID: "F-B", Title: "remediate"}},
+		}, t0)
+	fsys := fstest.MapFS{"PROG-V2-BAD.json": &fstest.MapFile{Data: raw}}
+
+	logs := captureLogs(t)
+	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, NewEdgeEvaluator())
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	edges, err := db.ListEdgesFrom(context.Background(), "F-A")
+	if err != nil {
+		t.Fatalf("ListEdgesFrom: %v", err)
+	}
+	if len(edges) != 0 {
+		t.Fatalf("edges=%d want 0 (rejected brief must not write edges)", len(edges))
+	}
+	if _, ok := loader.OutputsSchemaForFeature("F-A"); ok {
+		t.Fatalf("rejected brief must not expose schema")
+	}
+	out := logs.String()
+	if !strings.Contains(out, "brief.rejected") {
+		t.Fatalf("missing brief.rejected warn: %s", out)
+	}
+}
+
+// TestBriefLoaderSync_V2SchemaStalePurged verifies cross-Sync hygiene:
+// when a feature disappears from a brief on the next tick, its
+// OutputsSchema entry is dropped. Operators rely on this so a re-plan
+// that removes F-X cannot leave stale predicate-typing data behind.
+func TestBriefLoaderSync_V2SchemaStalePurged(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-V2", t0)
+
+	rawT0 := mustSignedBriefV2WithOpts(t, key, "PROG-V2", "m-cccccccccccc",
+		[]PlannedFeatureV2{
+			{
+				PlannedFeature: PlannedFeature{ID: "F-A", Title: "scan", Fulfills: []string{"c1"}},
+				OutputsSchema: &OutputsSchema{
+					Type:       "object",
+					Properties: map[string]*OutputsSchema{"severity": {Type: "string"}},
+				},
+				Edges:       []Edge{{From: "F-A", To: "F-B", Predicate: `out.severity == "high"`, OnSkip: SkipCascade}},
+				DefaultNext: strPtr("F-B"),
+			},
+			{PlannedFeature: PlannedFeature{ID: "F-B", Title: "remediate"}},
+		}, t0)
+	files := fstest.MapFS{"PROG-V2.json": &fstest.MapFile{Data: rawT0}}
+	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key}, NewEdgeEvaluator())
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatalf("Sync 1: %v", err)
+	}
+	if _, ok := loader.OutputsSchemaForFeature("F-A"); !ok {
+		t.Fatalf("F-A schema must be present after first sync")
+	}
+
+	// Re-plan removes F-A entirely (kept as a degenerate single-feature
+	// brief). ProducedAt must advance past the prior watermark.
+	t1 := t0.Add(time.Minute)
+	rawT1 := mustSignedBriefV2WithOpts(t, key, "PROG-V2", "m-cccccccccccc",
+		[]PlannedFeatureV2{
+			{PlannedFeature: PlannedFeature{ID: "F-B", Title: "remediate", Fulfills: []string{"c1"}}},
+		}, t1)
+	files["PROG-V2.json"] = &fstest.MapFile{Data: rawT1}
+	if err := loader.Sync(context.Background(), t1); err != nil {
+		t.Fatalf("Sync 2: %v", err)
+	}
+	if _, ok := loader.OutputsSchemaForFeature("F-A"); ok {
+		t.Fatalf("F-A schema must be purged after re-plan dropped the feature")
 	}
 }
 
