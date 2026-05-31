@@ -8,6 +8,49 @@ Pre-v1.0 anything may break; entries record the break. After v1.0
 contracts follow the deprecation cycle described in `PRINCIPLES.md`
 #11 (warn one minor, fail the next).
 
+## [Unreleased]
+
+### Added
+
+- `FuzzVerify` fuzz target on the HMAC signature envelope verifier
+  (`contracts/schemas/sign_test.go`) — hardens the security boundary
+  against malformed envelope shapes.
+- `make bench` target invocation pattern (no corpus yet; locks the
+  CI shape for issue #104).
+- `internal/testutil/statetest` shared `OpenDB` helper — replaces the
+  duplicated `newDB` test fixture across scheduler + reaper packages.
+
+### Changed
+
+- `state.DB` clock now binds at constructor via `OpenWithClock`;
+  the post-construction `SetClock` mutator is removed (closed the
+  "production must not call this" antipattern). The three legacy
+  `*At` shims on `state.DB` are deleted; `UpsertWorkItem`,
+  `TombstoneBySource`, and `CascadeArchiveChildren` are the canonical
+  names again with explicit `time.Time` parameters.
+- `state.WorkItemKind` aliases `schemas.WorkItemKind` instead of
+  redeclaring the enum.
+- `l0.Criterion` renamed to internal `matchedCriterion` to remove
+  the shadow against `schemas.Criterion`.
+- `make go-check` now runs `go test -race ./...` repo-wide (was
+  no-race; only the property test ran with `-race`).
+- Goose-managed migrations (`0001`, `0002`, `0003`) no longer use
+  `IF NOT EXISTS` — half-applied migrations now surface instead of
+  silently skipping.
+- `contracts/schemas/Verify` rejects non-string `alg`, `key_id`, and
+  `mac` envelope fields explicitly instead of silently coercing.
+- `internal/orchestrator/spawner` classifies the "process already
+  finished" race via `errors.Is(err, os.ErrProcessDone)` instead of
+  matching the Go stdlib error string.
+- `internal/orchestrator/adapter/markdown` exposes a `Logger` hook;
+  malformed work-item files now surface via a structured log line
+  instead of silently disappearing from listings.
+- `golangci-lint` now excludes sibling worktrees under
+  `.claude/worktrees/` from the lint scope.
+- Package doc comments on `route.go`, `migrate.go`, and
+  `spec_adapter.go` fixed to ST1000 form (start with the package
+  name).
+
 ## v0.2.0 - 2026-05-31 - MVP-2 Conditional DAG
 
 ### Added
