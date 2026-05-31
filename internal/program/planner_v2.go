@@ -107,12 +107,10 @@ func (p *ProgramBriefV2) ValidateV2() error {
 				return fmt.Errorf("%w: feature %s default_next=%s",
 					orchestrator.ErrEdgeUnknownTarget, f.ID, *f.DefaultNext)
 			}
-			// TODO(W3): reachability check — spec §3.3 rule 2c
-			// (deferred to runtime evaluator: a DefaultNext target
-			// must be reachable from its source via the union of
-			// unconditional + predicated edges given a journal-eval
-			// context, which is W3 territory).
 		}
+	}
+	if err := p.CheckReachability(); err != nil {
+		return err
 	}
 
 	// Cycle check: project edges into a v1-shaped DependsOnFeatures
@@ -160,7 +158,7 @@ func (p *ProgramBriefV2) ValidateV2() error {
 // fails loudly so we update the heuristics before downstream
 // errors.Is-callers regress.
 func compilePredicate(predicate string, schema *OutputsSchema) error {
-	env, err := cel.NewEnv(cel.Variable("out", cel.MapType(cel.StringType, cel.DynType)))
+	env, err := buildPredicateEnv()
 	if err != nil {
 		return fmt.Errorf("%w: build env: %w", orchestrator.ErrPredicateCompile, err)
 	}
@@ -341,6 +339,15 @@ func resolveSchemaPath(root *OutputsSchema, path []string) (*OutputsSchema, erro
 		cur = next
 	}
 	return cur, nil
+}
+
+// buildPredicateEnv returns the cel.Env shared by the planner_v2 type
+// checker and the runtime edge evaluator. Keeping one builder enforces
+// the invariant that a predicate which compiled at validation time
+// also compiles at eval time — drift between the two envs would cause
+// runtime compile failures the planner never warned about.
+func buildPredicateEnv() (*cel.Env, error) {
+	return cel.NewEnv(cel.Variable("out", cel.MapType(cel.StringType, cel.DynType)))
 }
 
 // celTypeNameFor maps OutputsSchema property type strings onto cel-go

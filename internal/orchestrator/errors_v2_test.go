@@ -12,6 +12,7 @@ func TestSentinelsV2Distinct(t *testing.T) {
 		ErrPredicateTypeMismatch,
 		ErrEdgeMissingDefault,
 		ErrEdgeUnknownTarget,
+		ErrEdgeUnreachable,
 		ErrJournalNotFound,
 	}
 	seen := map[string]bool{}
@@ -36,6 +37,7 @@ func TestSentinelsV2Wrappable(t *testing.T) {
 		{"ErrPredicateTypeMismatch", ErrPredicateTypeMismatch},
 		{"ErrEdgeMissingDefault", ErrEdgeMissingDefault},
 		{"ErrEdgeUnknownTarget", ErrEdgeUnknownTarget},
+		{"ErrEdgeUnreachable", ErrEdgeUnreachable},
 		{"ErrJournalNotFound", ErrJournalNotFound},
 	}
 	for _, tc := range cases {

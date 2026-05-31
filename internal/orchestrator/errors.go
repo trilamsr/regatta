@@ -66,6 +66,13 @@ var (
 	// the predicate against the env derived from outputs_schema.
 	ErrPredicateTypeMismatch = errors.New("orchestrator: CEL predicate has type mismatch against outputs_schema")
 
+	// ErrPredicateEval fires when a successfully-compiled CEL predicate
+	// fails at runtime against a journaled output — non-bool result,
+	// missing reference, or canonical-JSON parse failure. Distinct from
+	// ErrPredicateCompile so the scheduler can tell a config bug from a
+	// journal-shape mismatch and route operator alerts accordingly.
+	ErrPredicateEval = errors.New("orchestrator: CEL predicate failed at evaluation")
+
 	// ErrEdgeMissingDefault fires when a feature has ≥1 outgoing
 	// predicated edge but no DefaultNext target.
 	ErrEdgeMissingDefault = errors.New("orchestrator: conditional fan-out missing default_next")
@@ -73,6 +80,13 @@ var (
 	// ErrEdgeUnknownTarget fires when an edge references a feature ID
 	// not present in the brief.
 	ErrEdgeUnknownTarget = errors.New("orchestrator: edge references unknown feature id")
+
+	// ErrEdgeUnreachable fires when a feature's DefaultNext target is
+	// not transitively reachable from the feature itself via the forward
+	// closure of outgoing edges + DefaultNext links (spec §3.3 rule 2c).
+	// Catches operator-authoring deadlocks where every predicated edge
+	// resolves false and the default routes to a node no edge targets.
+	ErrEdgeUnreachable = errors.New("orchestrator: default_next target not reachable from source")
 
 	// ErrJournalNotFound is re-exported from package state so callers
 	// outside state (edge evaluator, scheduler) keep the
