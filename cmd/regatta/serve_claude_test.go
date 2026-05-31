@@ -1,3 +1,10 @@
+//go:build unix
+
+// Build-tagged unix-only: the test uses a bash shim plus
+// syscall.Kill/SIGKILL, neither of which exist on Windows. The
+// production code paths exercised here (claude spawner) target
+// Linux + macOS per docs/design.md.
+
 package main
 
 import (
@@ -7,7 +14,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"syscall"
 	"testing"
 	"time"
@@ -25,12 +31,10 @@ import (
 // captured PID at teardown.
 //
 // Uses modernc.org/sqlite directly to read the agent row so the
-// test does not require the sqlite3 CLI on PATH. Skipped on
-// windows because the shim is a bash script.
+// test does not require the sqlite3 CLI on PATH. Excluded from
+// Windows builds via the `unix` build tag — the bash shim and
+// syscall.Kill are POSIX-only.
 func TestServeWithClaudeSpawnerEndToEnd(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("bash shim is unix-only")
-	}
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")
 	}
