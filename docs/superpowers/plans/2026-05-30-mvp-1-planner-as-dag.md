@@ -260,16 +260,20 @@ Wave 1, parallel with A2. Owns the migration numbering authority for the entire 
 - Delete: `internal/orchestrator/state/schema.sql` (after extraction into 0001_initial.sql)
 - Modify: `go.mod`, `go.sum`
 
-- [ ] **Step 1.1: Add goose + flock dependencies**
+- [ ] **Step 1.1: Front-load every PR-series dependency**
 
-Run:
+Task 1 owns sole authority on `go.mod` / `go.sum` for the entire PR series. Add every dep any downstream task will need so no later task touches the module file:
+
 ```bash
-go get github.com/pressly/goose/v3@v3.22.1
-go get github.com/gofrs/flock@v0.12.1
+go get github.com/pressly/goose/v3@v3.22.1     # Task 1: migrations
+go get github.com/gofrs/flock@v0.12.1          # Task 2: lockfile
+go get pgregory.net/rapid@v1.1.0               # Task 4: DAG property test
 go mod tidy
 ```
 
-Expected: `go.sum` updated; `go.mod` shows both new deps.
+Expected: `go.sum` updated; `go.mod` shows all three new deps. **Subsequent tasks MUST NOT run `go get`** — flag any plan step that does as a bug and back-port the dep here.
+
+In Task 4 Step 4.5, the `go get rapid` line is now a no-op; skip it.
 
 - [ ] **Step 1.2: Extract schema.sql into 0001_initial.sql**
 
@@ -1559,12 +1563,7 @@ Expected: PASS — all work_items tests (A3 + A4) green; existing state tests st
 
 - [ ] **Step 4.5: Add DAG property test (rubric Grade-A)**
 
-Add `pgregory.net/rapid` if not already present:
-
-```bash
-go get pgregory.net/rapid@v1.1.0
-go mod tidy
-```
+`pgregory.net/rapid` was pre-staged by Task 1; no `go get` here.
 
 Create `internal/orchestrator/state/work_items_property_test.go`:
 
@@ -1708,8 +1707,7 @@ Expected: PASS — `rapid` exercises 200 random DAGs.
 ```bash
 git add internal/orchestrator/state/work_items_query.go \
         internal/orchestrator/state/work_items_query_test.go \
-        internal/orchestrator/state/work_items_property_test.go \
-        go.mod go.sum
+        internal/orchestrator/state/work_items_property_test.go
 git commit -m "feat(state): work_items query side — ListSpawnable join, CycleCheck, GetWorkItem + DAG property test
 
 ListSpawnable is the materialization-eliminator query (spec §2.8):
