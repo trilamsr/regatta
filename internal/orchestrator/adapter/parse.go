@@ -9,6 +9,14 @@ import (
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
+// ParseMarkdownItem is the exported form of parseMarkdownItem for
+// callers outside the adapter package (cmd/regatta program plan reuses
+// it to accept a .md parent WorkItem). Format is documented on
+// MarkdownCatalogConfig.
+func ParseMarkdownItem(data []byte) (schemas.WorkItem, error) {
+	return parseMarkdownItem(data)
+}
+
 // parseMarkdownItem extracts a WorkItem from a single markdown file.
 // The format is documented on MarkdownCatalogConfig.
 func parseMarkdownItem(data []byte) (schemas.WorkItem, error) {
