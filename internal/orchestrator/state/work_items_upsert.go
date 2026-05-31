@@ -9,15 +9,25 @@ import (
 	"time"
 )
 
-// UpsertWorkItem inserts a new work_items row or updates an existing
-// one (matched by id). last_seen_at and updated_at are set to d.now();
-// created_at is preserved on update. Tests override the clock via
-// SetClock for deterministic timestamps.
+// UpsertWorkItem is the legacy shim that stamps timestamps from
+// d.now(). New production writers should call UpsertWorkItemAt with
+// an explicit poll-start tick — see SetClock's "production MUST NOT
+// call this" warning in state.go.
+func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemSource) error {
+	return d.UpsertWorkItemAt(ctx, item, source, d.now())
+}
+
+// UpsertWorkItemAt inserts a new work_items row or updates an existing
+// one (matched by id). last_seen_at and updated_at are stamped from
+// the caller-supplied at instead of d.now(); created_at is preserved
+// on update and set to at on insert. Production writers (AdapterSync,
+// BriefLoader) call this with their poll-start tick so concurrent
+// producers never race on the DB's clock.
 //
 // per spec §2.2 — depends_on_features and acceptance_json are stored
 // as JSON text. Empty slice -> "[]". AcceptanceJSON must be valid
 // JSON; an empty string is normalized to "[]".
-func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemSource) error {
+func (d *DB) UpsertWorkItemAt(ctx context.Context, item WorkItem, source WorkItemSource, at time.Time) error {
 	depsJSON, err := encodeDeps(item.DependsOnFeatures)
 	if err != nil {
 		return fmt.Errorf("state: encode deps: %w", err)
@@ -29,7 +39,7 @@ func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemS
 	if !json.Valid([]byte(accept)) {
 		return fmt.Errorf("state: acceptance_json for %s is not valid JSON", item.ID)
 	}
-	now := d.now().UTC().Unix()
+	now := at.UTC().Unix()
 
 	tx, err := d.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -73,13 +83,20 @@ func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemS
 	return tx.Commit()
 }
 
-// TombstoneBySource archives every row whose source matches and
+// TombstoneBySource is the legacy shim that pulls the cutoff through
+// d.now(). New production sweepers should call TombstoneBySourceAt
+// with the explicit poll-start tick.
+func (d *DB) TombstoneBySource(ctx context.Context, source WorkItemSource, before time.Time) ([]string, error) {
+	return d.TombstoneBySourceAt(ctx, source, before)
+}
+
+// TombstoneBySourceAt archives every row whose source matches and
 // last_seen_at < before AND status is not already archived. Returns
 // the list of archived IDs. Per-source so AdapterSync and BriefLoader
-// cannot tombstone each other's rows. The cutoff is a parameter: the
-// caller passes the poll-start timestamp so rows last-seen within the
-// current poll window survive.
-func (d *DB) TombstoneBySource(ctx context.Context, source WorkItemSource, before time.Time) ([]string, error) {
+// cannot tombstone each other's rows. The caller-supplied before is
+// used for both the cutoff and the updated_at stamp so a sweep is
+// idempotent under retry.
+func (d *DB) TombstoneBySourceAt(ctx context.Context, source WorkItemSource, before time.Time) ([]string, error) {
 	cutoff := before.UTC().Unix()
 	rows, err := d.sql.QueryContext(ctx, `
 		UPDATE work_items
