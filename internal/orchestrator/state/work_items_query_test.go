@@ -192,6 +192,62 @@ func TestCycleCheck_RejectsSelfLoop(t *testing.T) {
 	}
 }
 
+// TestListArchivedProgramsWithLiveChildren_ReturnsOrphanedParents
+// pins the AdapterSync reconciler contract: archived programs whose
+// children weren't cascade-archived (e.g. prior tick crashed mid-
+// sweep) MUST surface here so the reconciler can converge them.
+func TestListArchivedProgramsWithLiveChildren_ReturnsOrphanedParents(t *testing.T) {
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	db := queryTestDBAt(t, now)
+	ctx := context.Background()
+
+	// PROG-DEAD: archived parent, one live + one archived child. Must surface.
+	dead := state.WorkItem{ID: "PROG-DEAD", Kind: state.KindProgram, Title: "d", Lane: "server", Status: state.WorkStatusArchived}
+	if err := db.UpsertWorkItem(ctx, dead, state.SourceAdapter); err != nil {
+		t.Fatal(err)
+	}
+	live := state.WorkItem{ID: "C-LIVE", Kind: state.KindFeature, Title: "l", Lane: "server",
+		Status: state.WorkStatusRunning, ParentProgramID: "PROG-DEAD"}
+	if err := db.UpsertWorkItem(ctx, live, state.SourceBrief); err != nil {
+		t.Fatal(err)
+	}
+	gone := state.WorkItem{ID: "C-GONE", Kind: state.KindFeature, Title: "g", Lane: "server",
+		Status: state.WorkStatusArchived, ParentProgramID: "PROG-DEAD"}
+	if err := db.UpsertWorkItem(ctx, gone, state.SourceBrief); err != nil {
+		t.Fatal(err)
+	}
+
+	// PROG-CLEAN: archived parent, all children archived. Must NOT surface.
+	clean := state.WorkItem{ID: "PROG-CLEAN", Kind: state.KindProgram, Title: "c", Lane: "server", Status: state.WorkStatusArchived}
+	if err := db.UpsertWorkItem(ctx, clean, state.SourceAdapter); err != nil {
+		t.Fatal(err)
+	}
+	cchild := state.WorkItem{ID: "C-ARCH", Kind: state.KindFeature, Title: "ca", Lane: "server",
+		Status: state.WorkStatusArchived, ParentProgramID: "PROG-CLEAN"}
+	if err := db.UpsertWorkItem(ctx, cchild, state.SourceBrief); err != nil {
+		t.Fatal(err)
+	}
+
+	// PROG-ALIVE: parent still planned, live children. Must NOT surface (parent not archived).
+	alive := state.WorkItem{ID: "PROG-ALIVE", Kind: state.KindProgram, Title: "a", Lane: "server", Status: state.WorkStatusPlanned}
+	if err := db.UpsertWorkItem(ctx, alive, state.SourceAdapter); err != nil {
+		t.Fatal(err)
+	}
+	achild := state.WorkItem{ID: "C-ALIVE", Kind: state.KindFeature, Title: "aa", Lane: "server",
+		Status: state.WorkStatusRunning, ParentProgramID: "PROG-ALIVE"}
+	if err := db.UpsertWorkItem(ctx, achild, state.SourceBrief); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := db.ListArchivedProgramsWithLiveChildren(ctx)
+	if err != nil {
+		t.Fatalf("ListArchivedProgramsWithLiveChildren: %v", err)
+	}
+	if len(got) != 1 || got[0] != "PROG-DEAD" {
+		t.Fatalf("got %v want [PROG-DEAD] (only archived programs with live children must surface)", got)
+	}
+}
+
 func TestListByParent_ReturnsChildrenInIDOrder(t *testing.T) {
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	db := queryTestDBAt(t, now)
