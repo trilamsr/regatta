@@ -154,3 +154,36 @@ func TestRunProgramPlan_WriteTargetExistsErrors(t *testing.T) {
 		t.Fatalf("post-force content = %q want %q", got, `{"new":true}`)
 	}
 }
+
+// TestLoadBriefKeyring_HonorsKeyIDEnv pins the sign/verify keyID
+// contract: program plan's -hmac-key-id default ("k1") must match
+// the keyID under which serve verifies. Without this, briefs sign
+// under "k1" and serve rejects them as unknown_key_id — the bug
+// A11's e2e test surfaced.
+func TestLoadBriefKeyring_HonorsKeyIDEnv(t *testing.T) {
+	t.Setenv("REGATTA_HMAC_KEY", "test-key-32-bytes-aaaaaaaaaaaaaaa")
+	t.Setenv("REGATTA_HMAC_KEY_ID", "")
+	got := loadBriefKeyring()
+	if _, ok := got["k1"]; !ok {
+		t.Fatalf("default keyID: got keys %v want k1", keysOf(got))
+	}
+
+	t.Setenv("REGATTA_HMAC_KEY_ID", "rotated-v2")
+	got = loadBriefKeyring()
+	if _, ok := got["rotated-v2"]; !ok {
+		t.Fatalf("explicit keyID: got keys %v want rotated-v2", keysOf(got))
+	}
+
+	t.Setenv("REGATTA_HMAC_KEY", "")
+	if got := loadBriefKeyring(); len(got) != 0 {
+		t.Fatalf("empty key: got %d entries want 0", len(got))
+	}
+}
+
+func keysOf(m map[string][]byte) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
