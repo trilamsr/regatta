@@ -2,24 +2,19 @@
 
 Reader: customer-operator on the first day with Regatta.
 Read time: 10 minutes.
-Expires when: command surface for `init`, `validate-config`,
-`validate-spec`, `verify-repo-config` changes.
+Expires when: command surface for `init` or `verify-repo-config` changes.
 
 ## Goal
 
-Land a parsed-items count + NFC + invisible-glyph cleanliness
-report + DAG verification + ready-to-spawn item IDs, and a
-green `verify-repo-config` audit.
+See a worked example of what L0 catches (via `regatta init`'s demo
+fixture) and a green `verify-repo-config` audit on your repo.
 
 ## Steps
 
 ```sh
 brew install trilamsr/regatta/regatta   # or `go install ...`
 cd ~/code/myproject
-regatta init                            # writes regatta.yaml skeleton
-$EDITOR regatta.yaml                    # fill in adapter, ci.command, lanes
-regatta validate-config                 # CUE-validates regatta.yaml
-regatta validate-spec --dry-run         # connects to adapter, lists items
+regatta init                            # writes config + runs demo
 regatta verify-repo-config              # audits branch protection + CODEOWNERS
 ```
 

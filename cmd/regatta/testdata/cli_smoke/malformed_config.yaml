@@ -1,0 +1,4 @@
+# Missing required `version` field; CUE should reject.
+gates:
+  l0:
+    enabled: not-a-bool

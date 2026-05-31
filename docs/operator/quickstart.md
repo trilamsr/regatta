@@ -8,9 +8,9 @@ output format changes.
 
 ## Status
 
-Regatta is pre-implementation. Commands below describe the v1
-release surface; the schemas + this quickstart are the contract.
-The binary follows.
+`regatta init`, `l0`, `validate-config`, and `verify-repo-config`
+ship today. AI gates (L3/L4/L5) and the orchestrator runtime are
+in progress; the schemas + this quickstart pin the contract.
 
 ## 1. Install
 
@@ -21,15 +21,20 @@ brew install trilamsr/regatta/regatta
 
 See [install.md](install.md) for offline / pinned-version paths.
 
-## 2. Scaffold + validate
+## 2. Scaffold
 
 ```sh
 cd ~/code/myproject
-regatta init                       # writes regatta.yaml skeleton
-$EDITOR regatta.yaml               # fill in version, repo, spec_adapter,
-                                   # ci.command, gates, safety
-regatta validate-config            # CUE-validates regatta.yaml
+regatta init
 ```
+
+`regatta init` writes a starter `regatta.yaml`, drops a demo attack
+into `.regatta/sample.diff`, and runs the L0 gate against the demo so
+you see in one command what regatta catches.
+
+Commit `regatta.yaml` to git. Add `.regatta/` to `.gitignore` — the
+directory holds local state (`sample.diff`, future `items/`,
+`worktrees/`, `state.db`) that should not be versioned.
 
 Required fields per the v1 schema: `version`, `repo`, `spec_adapter`,
 `ci.command`, `gates`, `safety`. See
