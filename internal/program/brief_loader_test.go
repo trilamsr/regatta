@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -18,6 +20,34 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
+
+// captureHandler records every slog.Record into a slice for the
+// LoggerInjected test below. Mirrors the spec §6.1 CaptureHandler
+// shape; lives locally because Task F's shared obstest helper has
+// not landed yet.
+type captureHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+func (h *captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *captureHandler) WithGroup(string) slog.Handler      { return h }
+func (h *captureHandler) Messages() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]string, len(h.records))
+	for i, r := range h.records {
+		out[i] = r.Message
+	}
+	return out
+}
 
 func newBriefTestDB(t *testing.T) *state.DB {
 	t.Helper()
@@ -875,5 +905,42 @@ func TestCascadeDep_UpdatedAtAdvances(t *testing.T) {
 	}
 	if !after.UpdatedAt.Equal(t1.UTC().Truncate(time.Second)) {
 		t.Fatalf("updated_at=%v want %v (pollStartedAt)", after.UpdatedAt, t1)
+	}
+}
+
+// TestBriefLoader_LoggerInjected pins spec §5.7 + Task H contract.
+func TestBriefLoader_LoggerInjected(t *testing.T) {
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	h := &captureHandler{}
+	logger := slog.New(h)
+
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	_, raw := mustSignedBrief(t, key)
+	// Parent is intentionally NOT seeded so the brief is rejected
+	// with reason=unknown_parent_program — triggers the slog.Warn
+	// callsite we want to verify routes through the injected logger.
+	fsys := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	loader := NewBriefLoaderWithLogger(fsys, db, map[string][]byte{"key-1": key}, nil, logger)
+
+	if err := loader.Sync(context.Background(), now); err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+
+	msgs := h.Messages()
+	found := false
+	for _, m := range msgs {
+		if strings.Contains(m, "brief.rejected") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("injected logger received no brief.rejected record; got %v", msgs)
 	}
 }

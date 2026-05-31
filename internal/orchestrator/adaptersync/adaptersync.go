@@ -23,14 +23,32 @@ type SpecAdapter interface {
 // Syncer pairs an adapter with the state DB. Timestamps are passed
 // to Sync rather than held here, so concurrent producers sharing a
 // DB cannot race on a shared clock.
+//
+// log is the structured-event sink for adapter-skip diagnostics.
+// Injected via NewWithLogger; New defaults to slog.Default() so
+// embedded callers still get output without panicking (spec §4.1 +
+// §5.8). All package-level slog.* calls were retired in #101 task H.
 type Syncer struct {
 	adapter SpecAdapter
 	db      *state.DB
+	log     *slog.Logger
 }
 
-// New constructs a Syncer.
+// New constructs a Syncer whose log sink is slog.Default(). Kept for
+// callsites that have not yet plumbed an explicit logger; production
+// wiring should prefer NewWithLogger so test capture handlers and
+// the off-host audit sink (#101 follow-up) can intercept records.
 func New(adapter SpecAdapter, db *state.DB) *Syncer {
-	return &Syncer{adapter: adapter, db: db}
+	return NewWithLogger(adapter, db, nil)
+}
+
+// NewWithLogger constructs a Syncer with an explicit structured log
+// sink. nil logger falls back to slog.Default() (spec §4.1).
+func NewWithLogger(adapter SpecAdapter, db *state.DB, logger *slog.Logger) *Syncer {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Syncer{adapter: adapter, db: db, log: logger}
 }
 
 // Sync upserts adapter items, tombstones rows the adapter no longer
@@ -38,9 +56,10 @@ func New(adapter SpecAdapter, db *state.DB) *Syncer {
 // failure: a mid-cascade crash converges on the next tick.
 //
 // Empty adapter.List skips the tombstone sweep (transient upstream
-// hiccups must not wipe the queue). Unmappable items are slog.Warn'd
-// and skipped — one bad row must not stop a poll. Per spec §3 any DB
-// error returns immediately; per-item upserts are individual txs.
+// hiccups must not wipe the queue). Unmappable items are warn-logged
+// through the injected sink and skipped — one bad row must not stop
+// a poll. Per spec §3 any DB error returns immediately; per-item
+// upserts are individual txs.
 func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	items, err := s.adapter.List(ctx)
 	if err != nil {
@@ -48,7 +67,7 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	}
 
 	if len(items) == 0 {
-		slog.Warn("adapter.empty_list", "cutoff", pollStartedAt, "skipping_tombstone", true)
+		s.log.Warn("adapter.empty_list", "cutoff", pollStartedAt, "skipping_tombstone", true)
 		return s.cascadeChildrenOfArchivedPrograms(ctx, pollStartedAt)
 	}
 
@@ -59,24 +78,24 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		}
 		id := string(it.ID)
 		if seen[id] {
-			slog.Warn("adapter.duplicate_id", "id", id)
+			s.log.Warn("adapter.duplicate_id", "id", id)
 			continue
 		}
 		seen[id] = true
 
 		kind, ok := mapAdapterKind(it.Kind)
 		if !ok {
-			slog.Warn("adapter.item_skipped", "id", id, "reason", "unknown_kind", "value", string(it.Kind))
+			s.log.Warn("adapter.item_skipped", "id", id, "reason", "unknown_kind", "value", string(it.Kind))
 			continue
 		}
 		status, ok := mapAdapterStatus(it.Status)
 		if !ok {
-			slog.Warn("adapter.item_skipped", "id", id, "reason", "unknown_status", "value", string(it.Status))
+			s.log.Warn("adapter.item_skipped", "id", id, "reason", "unknown_status", "value", string(it.Status))
 			continue
 		}
 		lane := string(it.Lane)
 		if lane == "" {
-			slog.Warn("adapter.item_skipped", "id", id, "reason", "empty_lane")
+			s.log.Warn("adapter.item_skipped", "id", id, "reason", "empty_lane")
 			continue
 		}
 
@@ -97,7 +116,7 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		return fmt.Errorf("adaptersync: tombstone: %w", err)
 	}
 	for _, id := range archived {
-		slog.Warn("adapter.tombstoned", "id", id, "cutoff", pollStartedAt)
+		s.log.Warn("adapter.tombstoned", "id", id, "cutoff", pollStartedAt)
 	}
 	return s.cascadeChildrenOfArchivedPrograms(ctx, pollStartedAt)
 }
@@ -120,7 +139,7 @@ func (s *Syncer) cascadeChildrenOfArchivedPrograms(ctx context.Context, at time.
 			return fmt.Errorf("adaptersync: cascade %s: %w", parentID, err)
 		}
 		for _, childID := range archived {
-			slog.Warn("child.cascade_archived", "child", childID, "parent", parentID, "cutoff", at)
+			s.log.Warn("child.cascade_archived", "child", childID, "parent", parentID, "cutoff", at)
 		}
 	}
 	return nil

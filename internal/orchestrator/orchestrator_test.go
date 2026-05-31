@@ -394,9 +394,7 @@ status: planned
 	}
 }
 
-// TestOrchestrator_Tick_EmitsStartedAndCompleted pins the spec §5.1
-// invariant: a scheduler tick emits tick.started at entry and
-// tick.completed at exit on the injected logger.
+// TestOrchestrator_Tick_EmitsStartedAndCompleted pins spec §5.1.
 func TestOrchestrator_Tick_EmitsStartedAndCompleted(t *testing.T) {
 	ctx := context.Background()
 	o, _, _, _ := newHarness(t, 1)
@@ -425,9 +423,7 @@ func TestOrchestrator_Tick_EmitsStartedAndCompleted(t *testing.T) {
 	}
 }
 
-// TestOrchestrator_Tick_EmitsOnEmptyQueue pins spec §3.3: an empty-queue
-// tick still emits both started and completed; attrs.work_items_evaluated
-// may be 0 but the events are unconditional.
+// TestOrchestrator_Tick_EmitsOnEmptyQueue pins spec §3.3.
 func TestOrchestrator_Tick_EmitsOnEmptyQueue(t *testing.T) {
 	ctx := context.Background()
 	o, _, _, _ := newHarness(t, 0)
@@ -453,8 +449,7 @@ func TestOrchestrator_Tick_EmitsOnEmptyQueue(t *testing.T) {
 	}
 }
 
-// TestOrchestrator_NilLogger_UsesDefault pins the spec §4.1 contract:
-// nil cfg.Logger does not panic and falls back to slog.Default().
+// TestOrchestrator_NilLogger_UsesDefault pins spec §4.1.
 func TestOrchestrator_NilLogger_UsesDefault(t *testing.T) {
 	o, _, _, _ := newHarness(t, 0)
 	if o.log == nil {
