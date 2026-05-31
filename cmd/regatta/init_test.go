@@ -189,6 +189,12 @@ func TestInit_JSONOutput(t *testing.T) {
 	if len(env.Written) != 2 {
 		t.Errorf("expected 2 written files; got %v", env.Written)
 	}
+	if len(env.Skipped) != 0 {
+		t.Errorf("expected 0 skipped files on fresh init; got %v", env.Skipped)
+	}
+	if len(env.Overwritten) != 0 {
+		t.Errorf("expected 0 overwritten files on fresh init; got %v", env.Overwritten)
+	}
 }
 
 func TestInit_PatternBlurbFallback(t *testing.T) {
@@ -216,6 +222,14 @@ func TestInit_IdempotentReRun(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(stdout), []byte("= .regatta/sample.diff unchanged")) {
 		t.Errorf("expected '= .regatta/sample.diff unchanged' marker; got %q", stdout)
+	}
+	// Demo MUST still run on every invocation — operator re-running
+	// init expects to see the verdict, not just file-state markers.
+	if !bytes.Contains([]byte(stdout), []byte("FAIL")) {
+		t.Errorf("expected demo FAIL verdict on re-run; got %q", stdout)
+	}
+	if !bytes.Contains([]byte(stdout), []byte("Running L0 gate")) {
+		t.Errorf("expected demo prose header on re-run; got %q", stdout)
 	}
 }
 
@@ -249,6 +263,11 @@ func TestInit_DivergedSampleDiff(t *testing.T) {
 	}
 	if !bytes.Contains([]byte(stderr), []byte(".regatta/sample.diff")) || !bytes.Contains([]byte(stderr), []byte("--force")) {
 		t.Errorf("stderr should mention path + --force; got %q", stderr)
+	}
+	// Atomicity reverse direction: yaml must NOT be written when
+	// sample.diff diverges.
+	if _, err := os.Stat(filepath.Join(dir, "regatta.yaml")); !os.IsNotExist(err) {
+		t.Fatalf("regatta.yaml should not have been written when sample.diff diverged; err=%v", err)
 	}
 }
 
@@ -368,5 +387,54 @@ func TestInitUsesEmbeddedBytes(t *testing.T) {
 	}
 	if !bytes.Equal(written, embedded) {
 		t.Fatalf("init wrote bytes that diverge from the embed.FS blob; if init now sources from disk instead of embed, the drift gate is defeated")
+	}
+}
+
+func TestInit_ForceJSONOverwriteEnvelope(t *testing.T) {
+	dir := t.TempDir()
+	seed := []byte("operator edit\n")
+	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), seed, 0o600); err != nil {
+		t.Fatalf("seed yaml: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, ".regatta"), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".regatta", "sample.diff"), seed, 0o600); err != nil {
+		t.Fatalf("seed diff: %v", err)
+	}
+	code, stdout, stderr := runInitInDir(t, dir, []string{"--force", "--json"})
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr; got %q", stderr)
+	}
+	var env struct {
+		Written     []string `json:"written"`
+		Skipped     []string `json:"skipped"`
+		Overwritten []string `json:"overwritten"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &env); err != nil {
+		t.Fatalf("invalid JSON: %v\nstdout=%q", err, stdout)
+	}
+	if len(env.Overwritten) != 2 {
+		t.Errorf("expected 2 overwritten; got %v", env.Overwritten)
+	}
+	if len(env.Written) != 0 {
+		t.Errorf("expected 0 written; got %v", env.Written)
+	}
+}
+
+func TestInit_RefusesRegularFileAtRegattaPath(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".regatta"), []byte("not a dir\n"), 0o600); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	code, _, stderr := runInitInDir(t, dir, nil)
+	if code != 2 {
+		t.Fatalf("expected exit 2; got %d stderr=%q", code, stderr)
+	}
+	if !bytes.Contains([]byte(stderr), []byte("not a regular directory")) {
+		t.Errorf("stderr should explain the refusal; got %q", stderr)
 	}
 }

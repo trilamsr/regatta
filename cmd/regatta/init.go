@@ -68,6 +68,17 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 
+	// Defense before classification: if .regatta/ exists but is not a
+	// real directory (regular file, symlink, device), refuse early so
+	// we surface the friendly explanation instead of a generic
+	// "not a directory" from os.ReadFile.
+	if info, err := os.Lstat(".regatta"); err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			_, _ = fmt.Fprintf(stderr, "regatta init: refusing to write: .regatta exists but is not a regular directory (got mode %s). Remove or rename it, then re-run.\n", info.Mode())
+			return 2
+		}
+	}
+
 	// Classify each file's action BEFORE any write so divergence
 	// causes an atomic refusal — never partial state.
 	type decision struct {

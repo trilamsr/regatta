@@ -262,16 +262,23 @@ func TestCLI_Serve_TickOnceStub(t *testing.T) {
 	if err := os.MkdirAll(itemsDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
+	dbPath := filepath.Join(dir, "state.db")
 	args := []string{
 		"serve",
 		"-tick-once",
 		"-spawner=stub",
 		"-repo=" + dir,
 		"-items-root=" + dir,
-		"-db=" + filepath.Join(dir, "state.db"),
+		"-db=" + dbPath,
 	}
 	code, stdout, stderr := runSmoke(t, dir, args, nil)
 	expectExit(t, 0, code, stdout, stderr)
+	// Side-effect proof: serve must initialize the state DB; a no-op
+	// stub that exits 0 without touching disk would pass exit-code
+	// alone but fail this stat.
+	if _, err := os.Stat(dbPath); err != nil {
+		t.Fatalf("serve --tick-once did not create state.db at %s: %v", dbPath, err)
+	}
 }
 
 func TestCLI_Serve_BogusSpawner(t *testing.T) {
