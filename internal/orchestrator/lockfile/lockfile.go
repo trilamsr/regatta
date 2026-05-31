@@ -33,6 +33,7 @@ package lockfile
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -103,11 +104,17 @@ func (l *Lock) Release() error {
 // silently swallowing garbage is the right move (we don't want to
 // leak arbitrary bytes from a corrupted file into error chains).
 func readHolderPID(path string) string {
-	data, err := os.ReadFile(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return ""
 	}
-	s := strings.TrimSpace(string(data))
+	defer f.Close()
+	var buf [64]byte
+	n, err := io.ReadFull(io.LimitReader(f, int64(len(buf))), buf[:])
+	if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
+		return ""
+	}
+	s := strings.TrimSpace(string(buf[:n]))
 	if pid, err := strconv.Atoi(s); err != nil || pid <= 0 {
 		return ""
 	}

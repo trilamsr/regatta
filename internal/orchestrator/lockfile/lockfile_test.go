@@ -123,3 +123,18 @@ func TestAcquire_DualHolderImpossible_WithStalePID(t *testing.T) {
 		}
 	}
 }
+
+func TestAcquire_CreatesMissingParentDir(t *testing.T) {
+	// MkdirAll the lockfile's parent so operators don't ENOENT when
+	// pointing -db at a fresh path. Regression for the operator
+	// footgun the adversarial reviewer flagged.
+	path := filepath.Join(t.TempDir(), "sub", "deep", "test.lock")
+	lock, err := Acquire(path)
+	if err != nil {
+		t.Fatalf("Acquire with missing parent dir: %v", err)
+	}
+	defer lock.Release()
+	if _, err := os.Stat(filepath.Dir(path)); err != nil {
+		t.Fatalf("parent dir not created: %v", err)
+	}
+}
