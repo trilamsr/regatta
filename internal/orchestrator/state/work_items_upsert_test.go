@@ -1,0 +1,179 @@
+package state
+
+import (
+	"context"
+	"errors"
+	"path/filepath"
+	"testing"
+	"time"
+
+	_ "modernc.org/sqlite"
+)
+
+func newWorkItemsTestDB(t *testing.T) *DB {
+	t.Helper()
+	db, err := Open(context.Background(), DSN(filepath.Join(t.TempDir(), "wi.db")))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+func TestUpsertWorkItem_RoundTrip(t *testing.T) {
+	db := newWorkItemsTestDB(t)
+	ctx := context.Background()
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+
+	item := WorkItem{
+		ID: "PROG-1", Kind: KindProgram, Title: "test prog",
+		Lane: "server", Status: WorkStatusPlanned,
+	}
+	if err := db.UpsertWorkItem(ctx, item, SourceAdapter, now); err != nil {
+		t.Fatalf("UpsertWorkItem: %v", err)
+	}
+
+	got, err := db.GetWorkItem(ctx, "PROG-1")
+	if err != nil {
+		t.Fatalf("GetWorkItem: %v", err)
+	}
+	if got.Title != "test prog" || got.Source != SourceAdapter || got.Kind != KindProgram {
+		t.Fatalf("round-trip mismatch: %+v", got)
+	}
+}
+
+func TestUpsertWorkItem_UpdatePreservesCreatedAt(t *testing.T) {
+	db := newWorkItemsTestDB(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	t1 := t0.Add(1 * time.Minute)
+
+	item := WorkItem{ID: "F-1", Kind: KindFeature, Title: "v1", Lane: "server", Status: WorkStatusPlanned}
+	if err := db.UpsertWorkItem(ctx, item, SourceBrief, t0); err != nil {
+		t.Fatal(err)
+	}
+	item.Title = "v2"
+	if err := db.UpsertWorkItem(ctx, item, SourceBrief, t1); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _ := db.GetWorkItem(ctx, "F-1")
+	if !got.CreatedAt.Equal(t0) {
+		t.Fatalf("CreatedAt=%v want %v (must persist across updates)", got.CreatedAt, t0)
+	}
+	if !got.UpdatedAt.Equal(t1) {
+		t.Fatalf("UpdatedAt=%v want %v", got.UpdatedAt, t1)
+	}
+	if got.Title != "v2" {
+		t.Fatalf("Title=%q want v2 (update not applied)", got.Title)
+	}
+}
+
+func TestGetWorkItem_NotFound(t *testing.T) {
+	db := newWorkItemsTestDB(t)
+	_, err := db.GetWorkItem(context.Background(), "missing")
+	if !errors.Is(err, ErrWorkItemNotFound) {
+		t.Fatalf("err=%v want ErrWorkItemNotFound", err)
+	}
+}
+
+func TestTombstoneBySource_SourceScoped(t *testing.T) {
+	db := newWorkItemsTestDB(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	t1 := t0.Add(1 * time.Minute)
+
+	adapter := WorkItem{ID: "ADAPT-1", Kind: KindFeature, Title: "a", Lane: "server", Status: WorkStatusPlanned}
+	brief := WorkItem{ID: "BRIEF-1", Kind: KindFeature, Title: "b", Lane: "server", Status: WorkStatusPlanned}
+	if err := db.UpsertWorkItem(ctx, adapter, SourceAdapter, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertWorkItem(ctx, brief, SourceBrief, t0); err != nil {
+		t.Fatal(err)
+	}
+
+	archived, err := db.TombstoneBySource(ctx, string(SourceBrief), t1)
+	if err != nil {
+		t.Fatalf("TombstoneBySource: %v", err)
+	}
+	if len(archived) != 1 || archived[0] != "BRIEF-1" {
+		t.Fatalf("archived=%v want [BRIEF-1]", archived)
+	}
+
+	got, _ := db.GetWorkItem(ctx, "ADAPT-1")
+	if got.Status != WorkStatusPlanned {
+		t.Fatalf("ADAPT-1.status=%s want planned (per-source must not stomp adapter rows)", got.Status)
+	}
+	got, _ = db.GetWorkItem(ctx, "BRIEF-1")
+	if got.Status != WorkStatusArchived {
+		t.Fatalf("BRIEF-1.status=%s want archived", got.Status)
+	}
+}
+
+func TestTombstoneBySource_SkipsAlreadyArchived(t *testing.T) {
+	db := newWorkItemsTestDB(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	item := WorkItem{ID: "F-1", Kind: KindFeature, Title: "x", Lane: "server", Status: WorkStatusArchived}
+	if err := db.UpsertWorkItem(ctx, item, SourceBrief, t0); err != nil {
+		t.Fatal(err)
+	}
+
+	archived, err := db.TombstoneBySource(context.Background(), string(SourceBrief), t0.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(archived) != 0 {
+		t.Fatalf("archived=%v want empty (already-archived rows must not be re-tombstoned)", archived)
+	}
+}
+
+func TestCascadeArchiveChildren_FlipsStatusOnly(t *testing.T) {
+	db := newWorkItemsTestDB(t)
+	ctx := context.Background()
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+
+	parent := WorkItem{ID: "PROG-1", Kind: KindProgram, Title: "p", Lane: "server", Status: WorkStatusPlanned}
+	child := WorkItem{ID: "F-1", Kind: KindFeature, Title: "c", Lane: "server", Status: WorkStatusRunning, ParentProgramID: "PROG-1"}
+	if err := db.UpsertWorkItem(ctx, parent, SourceAdapter, t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.UpsertWorkItem(ctx, child, SourceBrief, t0); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.CascadeArchiveChildren(ctx, "PROG-1"); err != nil {
+		t.Fatalf("CascadeArchiveChildren: %v", err)
+	}
+
+	got, _ := db.GetWorkItem(ctx, "F-1")
+	if got.Status != WorkStatusArchived {
+		t.Fatalf("F-1.status=%s want archived", got.Status)
+	}
+	// Cascade-SOFT: agents table untouched. Verify no agent row was
+	// created or modified for F-1.
+	var count int
+	if err := db.sql.QueryRowContext(ctx, `SELECT COUNT(*) FROM agents WHERE work_item_id=?`, "F-1").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("agents table for F-1 has %d rows; cascade-soft must not touch agents", count)
+	}
+}
+
+func TestUpsertWorkItem_RoundTripsDependsOnFeatures(t *testing.T) {
+	db := newWorkItemsTestDB(t)
+	ctx := context.Background()
+	now := time.Now()
+	item := WorkItem{
+		ID: "F-2", Kind: KindFeature, Title: "depends", Lane: "server",
+		Status: WorkStatusPlanned, DependsOnFeatures: []string{"F-1", "F-A"},
+	}
+	if err := db.UpsertWorkItem(ctx, item, SourceBrief, now); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := db.GetWorkItem(ctx, "F-2")
+	if len(got.DependsOnFeatures) != 2 || got.DependsOnFeatures[0] != "F-1" || got.DependsOnFeatures[1] != "F-A" {
+		t.Fatalf("DependsOnFeatures=%v want [F-1 F-A]", got.DependsOnFeatures)
+	}
+}
