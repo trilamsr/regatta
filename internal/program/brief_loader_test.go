@@ -14,6 +14,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -134,6 +135,123 @@ func TestLoadAndVerifyBrief_KIDMismatchFails(t *testing.T) {
 	_, err = LoadAndVerifyBrief(fsys, "PROG-1.json", map[string][]byte{"key-1": key, "key-2": key})
 	if !errors.Is(err, orchestrator.ErrHMACInvalid) {
 		t.Fatalf("err=%v want ErrHMACInvalid (kid bound into MAC; relabel must fail)", err)
+	}
+}
+
+// mustSignedBriefV2 returns a v2 brief whose features carry edges +
+// outputs_schema, signed with key under kid "key-1".
+func mustSignedBriefV2(t *testing.T, key []byte) ([]byte, string) {
+	t.Helper()
+	parent := "PROG-V2"
+	v2 := &ProgramBriefV2{
+		ProgramBrief: ProgramBrief{
+			SchemaVersion:    2,
+			ProgramID:        "m-cccccccccccc",
+			ParentWorkItemID: parent,
+			ParentCriteria:   []PlanCriterion{{ID: "c1", Text: "ship"}},
+			PlannerModelID:   "test:model",
+			ProducedAt:       time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC),
+		},
+		FeaturesV2: []PlannedFeatureV2{
+			{
+				PlannedFeature: PlannedFeature{ID: "F-A", Title: "scan", Fulfills: []string{"c1"}},
+				OutputsSchema: &OutputsSchema{
+					Type:       "object",
+					Properties: map[string]*OutputsSchema{"severity": {Type: "string"}},
+				},
+				Edges:       []Edge{{From: "F-A", To: "F-B", Predicate: `out.severity == "high"`, OnSkip: SkipCascade}},
+				DefaultNext: strPtr("F-B"),
+			},
+			{PlannedFeature: PlannedFeature{ID: "F-B", Title: "remediate"}},
+		},
+	}
+	// Sign via the v1 Sign helper on the embedded ProgramBrief so HMAC
+	// covers the canonical-JSON form. We marshal the full v2 brief
+	// (which includes the v2 features array) and sign that canonical
+	// payload through schemas.Sign directly.
+	raw, err := json.Marshal(v2)
+	if err != nil {
+		t.Fatalf("marshal v2: %v", err)
+	}
+	var generic map[string]any
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		t.Fatalf("unmarshal generic: %v", err)
+	}
+	sig, err := schemas.Sign(generic, key, "key-1")
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	v2.Signature = sig
+	signed, err := json.Marshal(v2)
+	if err != nil {
+		t.Fatalf("marshal signed v2: %v", err)
+	}
+	return signed, parent
+}
+
+func TestLoadAndVerifyBrief_V2_RoutesThroughValidateV2(t *testing.T) {
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	raw, _ := mustSignedBriefV2(t, key)
+	fsys := fstest.MapFS{"PROG-V2.json": &fstest.MapFile{Data: raw}}
+
+	got, err := LoadAndVerifyBriefV2(fsys, "PROG-V2.json", map[string][]byte{"key-1": key})
+	if err != nil {
+		t.Fatalf("LoadAndVerifyBriefV2: %v", err)
+	}
+	if got.SchemaVersion != 2 {
+		t.Fatalf("SchemaVersion=%d want 2", got.SchemaVersion)
+	}
+	if len(got.FeaturesV2) != 2 {
+		t.Fatalf("FeaturesV2 len=%d want 2", len(got.FeaturesV2))
+	}
+	if got.FeaturesV2[0].Edges[0].Predicate == "" {
+		t.Fatalf("predicated edge lost in roundtrip")
+	}
+}
+
+func TestLoadAndVerifyBrief_V2_RejectsBadPredicate(t *testing.T) {
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	// Build a v2 brief whose predicate references an undeclared field.
+	v2 := &ProgramBriefV2{
+		ProgramBrief: ProgramBrief{
+			SchemaVersion:    2,
+			ProgramID:        "m-dddddddddddd",
+			ParentWorkItemID: "PROG-V2-BAD",
+			ParentCriteria:   []PlanCriterion{{ID: "c1", Text: "ship"}},
+			PlannerModelID:   "test:model",
+		},
+		FeaturesV2: []PlannedFeatureV2{
+			{
+				PlannedFeature: PlannedFeature{ID: "F-A", Title: "scan", Fulfills: []string{"c1"}},
+				OutputsSchema: &OutputsSchema{
+					Type:       "object",
+					Properties: map[string]*OutputsSchema{"severity": {Type: "string"}},
+				},
+				Edges:       []Edge{{From: "F-A", To: "F-B", Predicate: `out.missing == "x"`, OnSkip: SkipCascade}},
+				DefaultNext: strPtr("F-B"),
+			},
+			{PlannedFeature: PlannedFeature{ID: "F-B", Title: "remediate"}},
+		},
+	}
+	raw, err := json.Marshal(v2)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var generic map[string]any
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	sig, err := schemas.Sign(generic, key, "key-1")
+	if err != nil {
+		t.Fatalf("sign: %v", err)
+	}
+	v2.Signature = sig
+	signed, _ := json.Marshal(v2)
+	fsys := fstest.MapFS{"PROG-V2-BAD.json": &fstest.MapFile{Data: signed}}
+
+	_, err = LoadAndVerifyBriefV2(fsys, "PROG-V2-BAD.json", map[string][]byte{"key-1": key})
+	if !errors.Is(err, orchestrator.ErrPredicateUnknownField) {
+		t.Fatalf("err=%v want ErrPredicateUnknownField", err)
 	}
 }
 

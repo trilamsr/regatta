@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 )
 
@@ -64,11 +65,22 @@ func (e Edge) Validate() error {
 
 // OutputsSchema is the JSON-Schema subset declared per feature for its
 // produced output. CEL predicates type-check against this at ingest.
-// Property type strings are CEL primitives: string, int, double, bool,
-// list, map.
+//
+// Type strings: object, string, int, double, bool, list. Object types
+// declare per-property schemas via Properties; list types declare an
+// element schema via Items. Enum constrains a scalar's value set;
+// ValidateV2 (W2-A) uses it for forward-compatibility and the
+// evaluator (W3) honours it at runtime.
+//
+// Recursive shape is required so nested objects and typed lists
+// participate in CEL type-checking. W1-D shipped Properties as
+// map[string]string; W2-A widens it to map[string]*OutputsSchema
+// before any external caller depends on the narrower form.
 type OutputsSchema struct {
-	Type       string            `json:"type"`
-	Properties map[string]string `json:"properties,omitempty"`
+	Type       string                    `json:"type"`
+	Properties map[string]*OutputsSchema `json:"properties,omitempty"`
+	Items      *OutputsSchema            `json:"items,omitempty"`
+	Enum       []any                     `json:"enum,omitempty"`
 }
 
 // PlannedFeatureV2 extends PlannedFeature with edges, default_next,
@@ -112,6 +124,24 @@ func IsV2Brief(raw []byte) bool {
 		return false
 	}
 	return probe.SchemaVersion == 2
+}
+
+// VerifySignatureV2 checks the v2 brief's HMAC under keyring. The
+// canonical body is the full v2 JSON (features array carries Edges +
+// OutputsSchema + DefaultNext), so v1 VerifySignature on the embedded
+// struct would skip those fields and fail to detect tampering of v2-
+// only payload. This method marshals the outer ProgramBriefV2 so
+// every signed byte rides through schemas.Verify.
+func (p *ProgramBriefV2) VerifySignatureV2(keyring map[string][]byte) error {
+	raw, err := json.Marshal(p)
+	if err != nil {
+		return err
+	}
+	var generic map[string]any
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		return err
+	}
+	return schemas.Verify(generic, keyring)
 }
 
 // LowerV1ToV2 lifts a v1 ProgramBrief into the equivalent v2 view by
