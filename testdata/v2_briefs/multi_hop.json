@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "program_id": "m-dddddddddddd",
+  "parent_work_item_id": "PROG-MULTIHOP",
+  "parent_criteria": [
+    {"id": "c1", "text": "classify input"},
+    {"id": "c2", "text": "expand on hot path"},
+    {"id": "c3", "text": "enrich after expansion"},
+    {"id": "c4", "text": "deliver final artifact"}
+  ],
+  "planner_model_id": "test:v2-multihop",
+  "features": [
+    {
+      "id": "F-A",
+      "title": "classify",
+      "fulfills": ["c1"],
+      "outputs_schema": {
+        "type": "object",
+        "properties": {
+          "tier": "string"
+        }
+      },
+      "edges": [
+        {"from": "F-A", "to": "F-B", "predicate": "out.tier == \"hot\"", "on_skip": "cascade"}
+      ],
+      "default_next": "F-D"
+    },
+    {
+      "id": "F-B",
+      "title": "expand",
+      "fulfills": ["c2"],
+      "outputs_schema": {
+        "type": "object",
+        "properties": {
+          "ready": "bool"
+        }
+      },
+      "edges": [
+        {"from": "F-B", "to": "F-C", "predicate": "out.ready == true", "on_skip": "cascade"}
+      ]
+    },
+    {
+      "id": "F-C",
+      "title": "enrich",
+      "fulfills": ["c3"],
+      "edges": [
+        {"from": "F-C", "to": "F-D", "on_skip": "cascade"}
+      ]
+    },
+    {
+      "id": "F-D",
+      "title": "deliver",
+      "fulfills": ["c4"]
+    }
+  ],
+  "produced_at": "2026-05-31T12:00:00Z"
+}

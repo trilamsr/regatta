@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "program_id": "m-bbbbbbbbbbbb",
+  "parent_work_item_id": "PROG-V1-LOWERED",
+  "parent_criteria": [
+    {"id": "c1", "text": "build alpha"},
+    {"id": "c2", "text": "build bravo on top of alpha"},
+    {"id": "c3", "text": "fan-in charlie after both"}
+  ],
+  "planner_model_id": "test:v1-lowered",
+  "features": [
+    {
+      "id": "F-A",
+      "title": "alpha",
+      "fulfills": ["c1"],
+      "depends_on_features": []
+    },
+    {
+      "id": "F-B",
+      "title": "bravo",
+      "fulfills": ["c2"],
+      "depends_on_features": ["F-A"]
+    },
+    {
+      "id": "F-C",
+      "title": "charlie",
+      "fulfills": ["c3"],
+      "depends_on_features": ["F-A", "F-B"]
+    }
+  ],
+  "produced_at": "2026-05-31T12:00:00Z"
+}
