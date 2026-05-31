@@ -10,19 +10,74 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
-	"github.com/trilamsr/regatta/contracts/schemas"
 )
+
+// captureHandler records every slog.Record so tests can assert the
+// orchestrator emitted the canonical obs events. Threadsafe so the Run
+// loop tests can hit it without -race tripping.
+type captureHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+
+func (h *captureHandler) WithAttrs(attrs []slog.Attr) slog.Handler { return h }
+
+func (h *captureHandler) WithGroup(name string) slog.Handler { return h }
+
+func (h *captureHandler) Records() []slog.Record {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]slog.Record, len(h.records))
+	copy(out, h.records)
+	return out
+}
+
+func (h *captureHandler) findEvent(name obs.EventName) (slog.Record, bool) {
+	for _, r := range h.Records() {
+		if r.Message == string(name) {
+			return r, true
+		}
+	}
+	return slog.Record{}, false
+}
+
+func recordHasAttr(r slog.Record, key string) (slog.Value, bool) {
+	var found slog.Value
+	var ok bool
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			found = a.Value
+			ok = true
+			return false
+		}
+		return true
+	})
+	return found, ok
+}
 
 // noopBriefLoader is a zero-side-effect BriefLoader stub used by the
 // internal orchestrator_test harness. Live tests against the real
@@ -83,7 +138,6 @@ func newHarness(t *testing.T, count int) (*Orchestrator, *spawner.Stub, *state.D
 		HeartbeatInterval: time.Second,
 		LockTTL:           time.Minute,
 	})
-	o.SetLogger(t.Logf)
 	return o, stub, db, dir
 }
 
@@ -214,7 +268,6 @@ func TestRunSurvivesFailingAdapter(t *testing.T) {
 		HeartbeatInterval: 10 * time.Millisecond,
 		LockTTL:           time.Minute,
 	})
-	o.SetLogger(t.Logf)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
 	defer cancel()
@@ -338,6 +391,74 @@ status: planned
 	}
 	if wi.Lane != "client" {
 		t.Fatalf("expected work_item lane=client after re-poll; got %q", wi.Lane)
+	}
+}
+
+// TestOrchestrator_Tick_EmitsStartedAndCompleted pins the spec §5.1
+// invariant: a scheduler tick emits tick.started at entry and
+// tick.completed at exit on the injected logger.
+func TestOrchestrator_Tick_EmitsStartedAndCompleted(t *testing.T) {
+	ctx := context.Background()
+	o, _, _, _ := newHarness(t, 1)
+	h := &captureHandler{}
+	o.cfg.Logger = slog.New(h)
+	// Re-init the logger on the live orchestrator so the test exercises
+	// the same field New() would populate from cfg.Logger.
+	o.log = slog.New(h)
+
+	if err := o.PollOnce(ctx); err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+	if err := o.ScheduleOnce(ctx); err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+
+	if _, ok := h.findEvent(obs.EventTickStarted); !ok {
+		t.Fatalf("expected event %q in captured records; got %d records", obs.EventTickStarted, len(h.Records()))
+	}
+	completed, ok := h.findEvent(obs.EventTickCompleted)
+	if !ok {
+		t.Fatalf("expected event %q in captured records; got %d records", obs.EventTickCompleted, len(h.Records()))
+	}
+	if _, ok := recordHasAttr(completed, string(obs.KeyWorkItemsEvaluated)); !ok {
+		t.Fatalf("tick.completed missing attr %q", obs.KeyWorkItemsEvaluated)
+	}
+}
+
+// TestOrchestrator_Tick_EmitsOnEmptyQueue pins spec §3.3: an empty-queue
+// tick still emits both started and completed; attrs.work_items_evaluated
+// may be 0 but the events are unconditional.
+func TestOrchestrator_Tick_EmitsOnEmptyQueue(t *testing.T) {
+	ctx := context.Background()
+	o, _, _, _ := newHarness(t, 0)
+	h := &captureHandler{}
+	o.log = slog.New(h)
+
+	if err := o.ScheduleOnce(ctx); err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+	if _, ok := h.findEvent(obs.EventTickStarted); !ok {
+		t.Fatalf("tick.started missing on empty-queue tick")
+	}
+	completed, ok := h.findEvent(obs.EventTickCompleted)
+	if !ok {
+		t.Fatalf("tick.completed missing on empty-queue tick")
+	}
+	v, ok := recordHasAttr(completed, string(obs.KeyWorkItemsEvaluated))
+	if !ok {
+		t.Fatalf("tick.completed missing work_items_evaluated on empty queue")
+	}
+	if v.Int64() != 0 {
+		t.Fatalf("work_items_evaluated=%d, want 0 on empty queue", v.Int64())
+	}
+}
+
+// TestOrchestrator_NilLogger_UsesDefault pins the spec §4.1 contract:
+// nil cfg.Logger does not panic and falls back to slog.Default().
+func TestOrchestrator_NilLogger_UsesDefault(t *testing.T) {
+	o, _, _, _ := newHarness(t, 0)
+	if o.log == nil {
+		t.Fatalf("New() left log nil; slog.Default fallback not wired")
 	}
 }
 

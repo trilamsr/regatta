@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -71,6 +72,10 @@ func runServe(args []string) int {
 	_ = fs.Parse(args)
 
 	logger := log.New(os.Stderr, "regatta: ", log.LstdFlags|log.Lmicroseconds)
+	// slogger is the structured-logging sink for orchestrator + future
+	// scheduler/spawner/reaper wiring (obs-101). Task E will replace
+	// this default text handler with --log-format-controlled JSON.
+	slogger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -123,8 +128,8 @@ func runServe(args []string) int {
 		TickInterval:      *tickDur,
 		HeartbeatInterval: *heartDur,
 		LockTTL:           *lockTTL,
+		Logger:            slogger,
 	})
-	o.SetLogger(logger.Printf)
 	if set.Worktrees != nil {
 		o.SetReaper(reaper.New(db, set.Worktrees, set.Killer))
 	}
