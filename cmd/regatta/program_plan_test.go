@@ -9,6 +9,7 @@ import (
 
 	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/orchestrator"
+	"github.com/trilamsr/regatta/internal/program"
 )
 
 // TestRunProgramPlanRejectsNonProgramKind verifies that `regatta program plan`
@@ -186,4 +187,16 @@ func keysOf(m map[string][]byte) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// TestOutputsSchemaResolverFor pins the scheduler↔BriefLoader bridge: the
+// closure unboxes the program-side schema and reports presence for known
+// features, absence otherwise. Without this, scheduler.Config.OutputsSchemas
+// silently returns nil and predicates evaluate against an empty env.
+func TestOutputsSchemaResolverFor(t *testing.T) {
+	loader := program.NewBriefLoader(nil, nil, map[string][]byte{"k1": []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")}, program.NewEdgeEvaluator())
+	resolver := outputsSchemaResolverFor(loader)
+	if _, ok := resolver("F-NOPE"); ok {
+		t.Fatalf("unknown feature: resolver returned ok=true")
+	}
 }
