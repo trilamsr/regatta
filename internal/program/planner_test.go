@@ -1,12 +1,16 @@
 package program
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -247,5 +251,180 @@ func TestLoadPlannerPrompt_FallbackOnMissingPath(t *testing.T) {
 	}
 	if got != defaultPlannerPrompt {
 		t.Fatalf("did not fall back to defaultPlannerPrompt")
+	}
+}
+
+// Fix #1: SHA pin must fail closed when the file disappears. Falling
+// back to defaultPlannerPrompt would silently swap the contents of a
+// pinned prompt, defeating the pin.
+func TestLoadPlannerPrompt_PinnedButMissingFails(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "absent.md")
+	pin := "0000000000000000000000000000000000000000000000000000000000000000"
+	got, err := LoadPlannerPrompt(missing, pin)
+	if err == nil {
+		t.Fatalf("expected error when pinned path missing, got prompt %q", got)
+	}
+	if !errors.Is(err, orchestrator.ErrPlannerPromptMissing) {
+		t.Fatalf("err=%v want wrap of ErrPlannerPromptMissing", err)
+	}
+}
+
+// Fix #2: protect against operator typo pointing at a huge file
+// (e.g. /var/log/system.log). Reject before allocating gigabytes.
+func TestLoadPlannerPrompt_TooLargeRejected(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "big.md")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Truncate(2 << 20); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = LoadPlannerPrompt(path, "")
+	if err == nil {
+		t.Fatal("expected error for oversized file")
+	}
+	if !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("err=%v want 'too large' phrase", err)
+	}
+}
+
+// Fix #3: a path that is not a regular file (directory, pipe, device)
+// must be rejected — os.ReadFile on a pipe blocks forever.
+func TestLoadPlannerPrompt_DirectoryPathRejected(t *testing.T) {
+	dir := t.TempDir()
+	_, err := LoadPlannerPrompt(dir, "")
+	if err == nil {
+		t.Fatal("expected error when path is a directory")
+	}
+	if !strings.Contains(err.Error(), "regular file") {
+		t.Fatalf("err=%v want 'regular file' phrase", err)
+	}
+}
+
+// Fix #4: operators paste uppercase hex from CertUtil / OpenSSL.
+// Lowercase normalize so the compare doesn't silently miss.
+func TestLoadPlannerPrompt_UppercaseHexAccepted(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.md")
+	content := "pinned prompt"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := sha256.Sum256([]byte(content))
+	got, err := LoadPlannerPrompt(path, strings.ToUpper(hex.EncodeToString(h[:])))
+	if err != nil {
+		t.Fatalf("LoadPlannerPrompt: %v", err)
+	}
+	if got != content {
+		t.Fatalf("got %q want %q", got, content)
+	}
+}
+
+// Fix #5: when path is missing AND no SHA pin, the silent fallback
+// to the embedded prompt must leave a breadcrumb so operators can
+// see why their custom prompt isn't loading.
+func TestLoadPlannerPrompt_FallbackLogsMissing(t *testing.T) {
+	prev := slog.Default()
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	var buf bytes.Buffer
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+
+	missing := filepath.Join(t.TempDir(), "nope.md")
+	if _, err := LoadPlannerPrompt(missing, ""); err != nil {
+		t.Fatalf("LoadPlannerPrompt: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "planner.prompt.fallback") {
+		t.Fatalf("expected fallback slog line, got:\n%s", out)
+	}
+	if !strings.Contains(out, "missing_file") {
+		t.Fatalf("expected reason=missing_file in log, got:\n%s", out)
+	}
+}
+
+// Fix #6: empty file content would short-circuit downstream API
+// calls with an empty system prompt. Reject up-front.
+func TestLoadPlannerPrompt_EmptyFileRejected(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.md")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadPlannerPrompt(path, "")
+	if err == nil {
+		t.Fatal("expected error for empty file")
+	}
+	if !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("err=%v want 'empty' phrase", err)
+	}
+}
+
+// Fix #8: unreadable file. Skip on Windows (perm bits noop) and root
+// (chmod 000 still readable).
+func TestLoadPlannerPrompt_UnreadableFile(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file mode 000 is not enforced on Windows")
+	}
+	if os.Getuid() == 0 {
+		t.Skip("root bypasses mode 000")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.md")
+	if err := os.WriteFile(path, []byte("x"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(path, 0o600) })
+	_, err := LoadPlannerPrompt(path, "")
+	if err == nil {
+		t.Fatal("expected error reading mode-000 file")
+	}
+}
+
+// Fix #9: the SHA mismatch error should surface both got/want so
+// operators can diff without re-hashing on the command line.
+func TestLoadPlannerPrompt_SHAMismatchErrorIncludesGotWant(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.md")
+	if err := os.WriteFile(path, []byte("actual"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadPlannerPrompt(path, "0000000000000000000000000000000000000000000000000000000000000000")
+	if err == nil {
+		t.Fatal("expected SHA mismatch error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "got=") || !strings.Contains(msg, "want=") {
+		t.Fatalf("err message must include got=/want=, got: %s", msg)
+	}
+}
+
+// Fix #10: malformed SHA pin (wrong length or non-hex) should
+// surface a config error early, not be treated as a content
+// mismatch later.
+func TestLoadPlannerPrompt_MalformedSHARejected(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.md")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := []string{
+		"deadbeef",
+		"0000000000000000000000000000000000000000000000000000000000000000z",
+		"zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+	}
+	for _, pin := range cases {
+		_, err := LoadPlannerPrompt(path, pin)
+		if err == nil {
+			t.Fatalf("pin=%q: expected error, got nil", pin)
+		}
+		if !strings.Contains(err.Error(), "malformed") {
+			t.Fatalf("pin=%q: err=%v want 'malformed' phrase", pin, err)
+		}
 	}
 }

@@ -11,6 +11,12 @@ var (
 	// prompt SHA in regatta.yaml does not match the on-disk prompt.
 	ErrBriefSHAMismatch = errors.New("orchestrator: planner prompt SHA does not match pinned value")
 
+	// ErrPlannerPromptMissing fires when prompts.planner_path points
+	// at a file that does not exist AND prompts.planner_sha is pinned.
+	// A pinned hash with a missing file must fail closed -- silently
+	// swapping in the embedded default defeats the pin.
+	ErrPlannerPromptMissing = errors.New("orchestrator: planner prompt path missing while SHA is pinned")
+
 	// ErrHMACInvalid fires when a program_brief.json fails HMAC
 	// verification against the configured keyring.
 	ErrHMACInvalid = errors.New("orchestrator: brief HMAC signature invalid")
