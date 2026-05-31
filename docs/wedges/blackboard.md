@@ -120,6 +120,16 @@ result is not yet proven.
 
 ## Proposed data model
 
+Substrate note: the `facts` and `blobs` tables below are
+**superseded** by the [unified substrate](./unified-substrate.md).
+Facts ship as `events WHERE kind='fact'` (with `key`, `supersedes`,
+`written_by` carried over verbatim). Reducers move into
+`policies WHERE kind='reducer'`; key ACLs into
+`policies WHERE kind='acl'`. The `blobs` content-addressed store
+is shared substrate, not blackboard-specific. The columns below
+are the `spec_json` shapes for those policy rows and the
+`payload_json` shape for fact events.
+
 A single-table shape conflates two concerns. Split metadata from
 payload, Bazel-style:
 

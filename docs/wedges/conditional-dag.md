@@ -100,6 +100,13 @@ regatta refuses that route by design.
 
 ## Proposed minimal extension
 
+Substrate note: the run journal proposed below is **superseded**
+by the [unified substrate](./unified-substrate.md). Output
+snapshots are `events WHERE kind='node_output'`. The CEL
+evaluator becomes a `Decider` impl (`CELDecider`) feeding the
+existing `RouteVerdicts`. The `Edge` struct below stays as-is --
+it is the planner-side schema, not a storage table.
+
 The current edge is implicit in `DependsOnFeatures []string`.
 Make edges first-class with an optional predicate:
 

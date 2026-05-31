@@ -50,8 +50,12 @@ the wedge.
 
 ## Index
 
+Read the meta-dossier first -- it changes how the others' data
+models land.
+
 | Dossier | One-liner | Trap fit | Wave |
 |---|---|---|---|
+| [unified-substrate.md](./unified-substrate.md) | **Read first.** Collapses the five wedges' tables into three primitives (`events`, `policies`, `blobs`) + one `Decider` interface + one plan envelope, without losing features | n/a (meta) | adopt before the second wedge lands |
 | [cost-governor.md](./cost-governor.md) | Per-DAG / per-operator USD + token caps with pre-call deny and post-hoc Anthropic Usage API reconciliation | **P8** (load-bearing) | MVP-2 W1 |
 | [approval-gates.md](./approval-gates.md) | DAG node type that pauses, notifies, resumes with single-use token and append-only audit log | **P2 + P3** (both load-bearing) | MVP-2 W1 |
 | [plan-as-code.md](./plan-as-code.md) | `.regatta/plans/*.yaml` declarative DAGs, CUE-validated, round-trips with runtime planner output | P3, P10 | MVP-2 W2 |

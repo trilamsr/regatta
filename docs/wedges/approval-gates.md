@@ -106,6 +106,14 @@ the agent, pausing the DAG, and feeding the journal that the
 
 ## Proposed data model
 
+Substrate note: the `approvals` and `approval_events` tables
+below are **superseded** by the [unified substrate](./unified-substrate.md).
+Ship the policy as `policies WHERE kind='approval'` (carrying
+reviewer_set, quorum, payload_schema, on_timeout, escalation_chain)
+and the audit log as `events WHERE kind='approval_event'`. State
+is `fold(events)` -- unchanged from below. The schemas below are
+the `spec_json` shapes for those policy rows and event payloads.
+
 Extend `work_items.state` with two new values:
 
 ```

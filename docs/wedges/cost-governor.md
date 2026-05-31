@@ -46,6 +46,12 @@ crack this wedge widens.
 
 ## Proposed minimal data model
 
+Substrate note: this section's bespoke `budget` table is
+**superseded** by the [unified substrate](./unified-substrate.md).
+Ship the policy as `policies WHERE kind='budget'` and the spend
+view over `events WHERE kind='token_spend'`. The fields below are
+the `spec_json` for the policy row.
+
 `budget` holds *policy* only. Spend is **not** stored here -- it
 derives from existing `events` rows (which already record token
 usage per call), surfaced through a materialized view for cheap
