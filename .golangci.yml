@@ -42,6 +42,10 @@ linters:
         - name: error-naming
 
   exclusions:
+    # In-progress feature work lives in sibling worktrees under .claude/worktrees/.
+    # Lint scope is the canonical tree only; worktrees lint themselves at PR time.
+    paths:
+      - \.claude/worktrees/
     rules:
       # Test files exercise the L0 invisible-glyph + Trojan-source defenses.
       # The literals MUST contain the actual codepoints (visual fidelity to
