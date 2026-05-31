@@ -9,7 +9,7 @@
 //
 // Methods split across:
 //   - work_items_upsert.go: UpsertWorkItem, TombstoneBySource, CascadeArchiveChildren
-//   - work_items_query.go (A4): ListSpawnable, CycleCheck, ListByParent
+//   - work_items_query.go: ListSpawnable, CycleCheck, ListByParent
 package state
 
 import (

@@ -3,8 +3,7 @@
 // directory. Open() calls Migrate(); callers should not invoke this
 // directly outside tests.
 //
-// per RFC-0001 §3: schema bumps require goose-managed migrations,
-// hand-rolled DDL inside Open() is replaced.
+// per RFC-0001 §3: schema bumps require goose-managed migrations.
 package state
 
 import (
