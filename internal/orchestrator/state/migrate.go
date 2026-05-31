@@ -1,4 +1,4 @@
-// Migration runner for package state. Wraps pressly/goose to apply
+// Package state's migration runner wraps pressly/goose to apply
 // versioned forward-only migrations from the embedded migrations/
 // directory. Open() calls Migrate(); callers should not invoke this
 // directly outside tests.

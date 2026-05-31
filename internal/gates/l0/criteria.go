@@ -36,7 +36,7 @@ var (
 	checkboxRe = regexp.MustCompile(`^\s*-\s+\[([ xX])\]\s+(.*)$`)
 	// Citation trailer: one or more space-separated `(test|file|commit)=value`
 	// fragments at end of line. Comma-separated also accepted within a fragment.
-	citationRe = regexp.MustCompile(`\s+((?:test|file|commit)=\S+(?:,\s*(?:test|file|commit)=\S+)*)\s*$`)
+	criteriaCitationRe = regexp.MustCompile(`\s+((?:test|file|commit)=\S+(?:,\s*(?:test|file|commit)=\S+)*)\s*$`)
 )
 
 // Extract pulls every checkbox criterion from a markdown blob. Order
@@ -54,7 +54,7 @@ func Extract(content string) []Criterion {
 		}
 		text := m[2]
 		citation := ""
-		if cm := citationRe.FindStringSubmatch(text); cm != nil {
+		if cm := criteriaCitationRe.FindStringSubmatch(text); cm != nil {
 			citation = cm[1]
 			text = strings.TrimSpace(text[:len(text)-len(cm[0])])
 		}

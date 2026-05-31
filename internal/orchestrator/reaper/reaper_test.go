@@ -3,14 +3,13 @@ package reaper
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
-	"path/filepath"
 	"sync"
 	"testing"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
 type fakeKiller struct {
@@ -32,17 +31,6 @@ func (f *fakeKiller) KillAgent(id int64) (bool, error) {
 	return true, nil
 }
 
-func newDB(t *testing.T) *state.DB {
-	t.Helper()
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)",
-		filepath.Join(t.TempDir(), "state.db"))
-	db, err := state.Open(context.Background(), dsn)
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
-}
 
 func newWM(t *testing.T) *spawner.WorktreeManager {
 	t.Helper()
@@ -104,7 +92,7 @@ func driveToDone(t *testing.T, db *state.DB, id int64) {
 
 func TestReapIsIdempotent(t *testing.T) {
 	ctx := context.Background()
-	db := newDB(t)
+	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	killer := &fakeKiller{}
 	r := New(db, wm, killer)
@@ -131,7 +119,7 @@ func TestReapIsIdempotent(t *testing.T) {
 
 func TestReapAllSweepsTerminalAgents(t *testing.T) {
 	ctx := context.Background()
-	db := newDB(t)
+	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	r := New(db, wm, nil)
 
@@ -166,7 +154,7 @@ func TestReapAllSweepsTerminalAgents(t *testing.T) {
 
 func TestReapRefusesNonTerminalAgent(t *testing.T) {
 	ctx := context.Background()
-	db := newDB(t)
+	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	killer := &fakeKiller{}
 	r := New(db, wm, killer)
@@ -194,7 +182,7 @@ func TestReapRefusesNonTerminalAgent(t *testing.T) {
 
 func TestReapAllAggregatesErrors(t *testing.T) {
 	ctx := context.Background()
-	db := newDB(t)
+	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	killer := &fakeKiller{fail: errors.New("synthetic")}
 	r := New(db, wm, killer)

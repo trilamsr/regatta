@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
 // fakeEvaluator is the in-test EdgeEvaluator. The production wiring
@@ -47,15 +47,6 @@ func (f *fakeEvaluator) Eval(_ context.Context, edge state.EdgeRow, _ any, _ sta
 	return false, "no-rule", nil
 }
 
-func newSchedTestDB(t *testing.T) *state.DB {
-	t.Helper()
-	db, err := state.Open(context.Background(), state.DSN(filepath.Join(t.TempDir(), "s.db")))
-	if err != nil {
-		t.Fatalf("Open: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
-}
 
 // seedMerged inserts a merged work_item so ListPendingEdgesFromMerged
 // sees the from_id as a valid edge source.
@@ -113,7 +104,7 @@ func agentForWorkItem(t *testing.T, db *state.DB, id string) state.Agent {
 }
 
 func TestTick_ReservesAllPlannedNoDeps(t *testing.T) {
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	ctx := context.Background()
 	for _, id := range []string{"F-1", "F-2", "F-3"} {
 		seedPlanned(t, db, id, "server")
@@ -144,7 +135,7 @@ func TestTick_ReservesAllPlannedNoDeps(t *testing.T) {
 }
 
 func TestTick_DepBlocksUntilMerged(t *testing.T) {
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	ctx := context.Background()
 	now := time.Now()
 	c1 := state.WorkItem{ID: "F-1", Kind: state.KindFeature, Title: "c1",
@@ -179,7 +170,7 @@ func TestTick_DepBlocksUntilMerged(t *testing.T) {
 }
 
 func TestTick_IdempotentSecondCall(t *testing.T) {
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	ctx := context.Background()
 	seedPlanned(t, db, "F-1", "server")
 
@@ -207,7 +198,7 @@ func TestTick_IdempotentSecondCall(t *testing.T) {
 }
 
 func TestTickReservesPending(t *testing.T) {
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	ctx := context.Background()
 	seedPlanned(t, db, "WORK-1", "server")
 	seedPlanned(t, db, "WORK-2", "server")
@@ -227,7 +218,7 @@ func TestTickReservesPending(t *testing.T) {
 }
 
 func TestTickHonorsLaneCap(t *testing.T) {
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	ctx := context.Background()
 	seedPlanned(t, db, "WORK-1", "server")
 	seedPlanned(t, db, "WORK-2", "server")
@@ -254,7 +245,7 @@ func TestTickHonorsLaneCap(t *testing.T) {
 }
 
 func TestTickHotspotBlocks(t *testing.T) {
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	ctx := context.Background()
 	seedPlanned(t, db, "WORK-1", "server")
 	seedPlanned(t, db, "WORK-2", "server")
@@ -275,7 +266,7 @@ func TestTickHotspotBlocks(t *testing.T) {
 }
 
 func TestTickHotspotsSortedAcquisition(t *testing.T) {
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	ctx := context.Background()
 	seedPlanned(t, db, "WORK-1", "server")
 	seedPlanned(t, db, "WORK-2", "server")
@@ -312,7 +303,7 @@ func TestTickHotspotsSortedAcquisition(t *testing.T) {
 // sqlite returns rows by name regardless of insertion order, so this
 // test calls the unexported resolveLocks directly.
 func TestResolveLocksSorts(t *testing.T) {
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	sch := New(db, Config{
 		LockTTL: time.Minute,
 		Hotspots: func(string) []string {
@@ -332,7 +323,7 @@ func TestResolveLocksSorts(t *testing.T) {
 }
 
 func TestResolveLocksDoesNotMutateResolverSlice(t *testing.T) {
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	source := []string{"zeta", "alpha", "mu"}
 	sch := New(db, Config{
 		LockTTL:  time.Minute,
@@ -345,7 +336,7 @@ func TestResolveLocksDoesNotMutateResolverSlice(t *testing.T) {
 }
 
 func TestTickHonorsEmptyLaneCap(t *testing.T) {
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	ctx := context.Background()
 	seedPlanned(t, db, "WORK-1", "")
 	seedPlanned(t, db, "WORK-2", "")
@@ -361,7 +352,7 @@ func TestTickHonorsEmptyLaneCap(t *testing.T) {
 }
 
 func TestTickLogsSkipsOnLockHeld(t *testing.T) {
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	ctx := context.Background()
 	seedPlanned(t, db, "WORK-1", "server")
 	seedPlanned(t, db, "WORK-2", "server")
@@ -389,7 +380,7 @@ func TestTickLogsSkipsOnLockHeld(t *testing.T) {
 }
 
 func TestTickStaleLockReclaimed(t *testing.T) {
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	ctx := context.Background()
 	clock := time.Unix(1_700_000_000, 0).UTC()
 	db.SetClock(func() time.Time { return clock })
@@ -433,7 +424,7 @@ func TestTickStaleLockReclaimed(t *testing.T) {
 
 func TestTick_EvaluatesPendingEdgesBeforeReserve(t *testing.T) {
 	ctx := context.Background()
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	seedMerged(t, db, "F-A")
 	seedPlanned(t, db, "F-B", "server")
 
@@ -467,7 +458,7 @@ func TestTick_EvaluatesPendingEdgesBeforeReserve(t *testing.T) {
 
 func TestTick_FiresPredicateAgainstJournal(t *testing.T) {
 	ctx := context.Background()
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	seedMerged(t, db, "F-A")
 	seedPlanned(t, db, "F-B", "server")
 
@@ -501,7 +492,7 @@ func TestTick_FiresPredicateAgainstJournal(t *testing.T) {
 
 func TestTick_PredicateFalseSkipsEdge(t *testing.T) {
 	ctx := context.Background()
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	seedMerged(t, db, "F-A")
 	seedPlanned(t, db, "F-B", "server")
 
@@ -531,7 +522,7 @@ func TestTick_PredicateFalseSkipsEdge(t *testing.T) {
 
 func TestTick_EdgeEvalFailureLogsAndContinues(t *testing.T) {
 	ctx := context.Background()
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	seedMerged(t, db, "F-A")
 	seedMerged(t, db, "F-C")
 	seedPlanned(t, db, "F-B", "server")
@@ -576,7 +567,7 @@ func TestTick_EdgeEvalFailureLogsAndContinues(t *testing.T) {
 
 func TestTick_EdgeEvalSkippedNoJournal(t *testing.T) {
 	ctx := context.Background()
-	db := newSchedTestDB(t)
+	db := statetest.OpenDB(t)
 	seedMerged(t, db, "F-A")
 	seedPlanned(t, db, "F-B", "server")
 

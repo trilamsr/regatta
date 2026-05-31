@@ -1,4 +1,4 @@
-// Package regatta defines the canonical interfaces a SpecAdapter must satisfy.
+// Package schemas defines the canonical interfaces a SpecAdapter must satisfy.
 //
 // This file is the normative contract referenced by docs/design.md §Spec contract.
 // Two independent implementations of SpecAdapter must be interchangeable; the
