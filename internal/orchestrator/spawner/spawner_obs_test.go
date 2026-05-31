@@ -31,7 +31,7 @@ func (h *captureHandler) WithAttrs(attrs []slog.Attr) slog.Handler { return h }
 
 func (h *captureHandler) WithGroup(name string) slog.Handler { return h }
 
-func (h *captureHandler) records_() []slog.Record {
+func (h *captureHandler) snapshot() []slog.Record {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	out := make([]slog.Record, len(h.records))
@@ -40,7 +40,7 @@ func (h *captureHandler) records_() []slog.Record {
 }
 
 func (h *captureHandler) findEvent(name obs.EventName) (slog.Record, bool) {
-	for _, r := range h.records_() {
+	for _, r := range h.snapshot() {
 		if r.Message == string(name) {
 			return r, true
 		}
@@ -82,7 +82,7 @@ func TestSpawner_Spawn_EmitsStartedAndCompleted(t *testing.T) {
 
 	started, ok := h.findEvent(obs.EventSpawnStarted)
 	if !ok {
-		t.Fatalf("missing %q event; got %d records", obs.EventSpawnStarted, len(h.records_()))
+		t.Fatalf("missing %q event; got %d records", obs.EventSpawnStarted, len(h.snapshot()))
 	}
 	if v, ok := recordAttr(started, string(obs.KeyWorkItemID)); !ok || v.String() != "F-1" {
 		t.Errorf("%s missing work_item_id=F-1; got %v ok=%v", obs.EventSpawnStarted, v, ok)
@@ -96,7 +96,7 @@ func TestSpawner_Spawn_EmitsStartedAndCompleted(t *testing.T) {
 
 	completed, ok := h.findEvent(obs.EventSpawnCompleted)
 	if !ok {
-		t.Fatalf("missing %q event; got %d records", obs.EventSpawnCompleted, len(h.records_()))
+		t.Fatalf("missing %q event; got %d records", obs.EventSpawnCompleted, len(h.snapshot()))
 	}
 	if v, ok := recordAttr(completed, string(obs.KeyWorkItemID)); !ok || v.String() != "F-1" {
 		t.Errorf("%s missing work_item_id=F-1; got %v ok=%v", obs.EventSpawnCompleted, v, ok)
@@ -128,7 +128,7 @@ func TestSpawner_SpawnFailed_EmitsErr(t *testing.T) {
 
 	failed, ok := h.findEvent(obs.EventSpawnFailed)
 	if !ok {
-		t.Fatalf("missing %q event; got %d records", obs.EventSpawnFailed, len(h.records_()))
+		t.Fatalf("missing %q event; got %d records", obs.EventSpawnFailed, len(h.snapshot()))
 	}
 	if v, ok := recordAttr(failed, string(obs.KeyErr)); !ok || v.String() == "" {
 		t.Errorf("%s missing err; got %v ok=%v", obs.EventSpawnFailed, v, ok)

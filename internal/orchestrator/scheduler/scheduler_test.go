@@ -422,8 +422,9 @@ func TestTickLogsSkipsOnLockHeld(t *testing.T) {
 		t.Fatalf("tick: %v", err)
 	}
 	gotSkip := false
-	var msgs []string
-	for _, r := range h.Records() {
+	records := h.Records()
+	msgs := make([]string, 0, len(records))
+	for _, r := range records {
 		msgs = append(msgs, r.Message)
 		if strings.Contains(r.Message, "skipped") && strings.Contains(r.Message, "hotspot") {
 			gotSkip = true
@@ -880,8 +881,9 @@ func TestScheduler_Tick_EmitsEdgeFiredEvent(t *testing.T) {
 
 	r, ok := h.findByMsg(string(obs.EventEdgeFired))
 	if !ok {
-		var msgs []string
-		for _, rec := range h.Records() {
+		records := h.Records()
+		msgs := make([]string, 0, len(records))
+		for _, rec := range records {
 			msgs = append(msgs, rec.Message)
 		}
 		t.Fatalf("captured logger missing %q event; got %v", obs.EventEdgeFired, msgs)
