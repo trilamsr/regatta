@@ -111,7 +111,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 	// diverged file and refuse before any write happens.
 	for _, d := range files {
 		if d.action == actionDiverge {
-			_, _ = fmt.Fprintf(stderr, "regatta init: %s already exists and differs from the bundled template.\n", d.path)
+			_, _ = fmt.Fprintf(stderr, "regatta init: %s already exists and differs from the bundled template.\n", filepath.ToSlash(d.path))
 			_, _ = fmt.Fprintf(stderr, "  To re-init: rm regatta.yaml .regatta/sample.diff\n")
 			_, _ = fmt.Fprintf(stderr, "  To overwrite: regatta init --force\n")
 			return 2
@@ -133,30 +133,34 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 
 	var written, skipped, overwritten []string
 	for _, d := range files {
+		// Operator-facing display: always forward-slash so prose
+		// matches docs/incidents.md references regardless of OS, and
+		// copy-paste from output back into prose stays stable.
+		display := filepath.ToSlash(d.path)
 		switch d.action {
 		case actionWrite:
 			if err := os.WriteFile(d.path, d.bytes, 0o600); err != nil {
-				_, _ = fmt.Fprintf(stderr, "regatta init: write %s: %v\n", d.path, err)
+				_, _ = fmt.Fprintf(stderr, "regatta init: write %s: %v\n", display, err)
 				return 1
 			}
 			if !*jsonOut {
-				_, _ = fmt.Fprintf(stdout, "+ wrote %s %s\n", padPath(d.path), d.blurb)
+				_, _ = fmt.Fprintf(stdout, "+ wrote %s %s\n", padPath(display), d.blurb)
 			}
-			written = append(written, d.path)
+			written = append(written, display)
 		case actionSkip:
 			if !*jsonOut {
-				_, _ = fmt.Fprintf(stdout, "= %s unchanged\n", d.path)
+				_, _ = fmt.Fprintf(stdout, "= %s unchanged\n", display)
 			}
-			skipped = append(skipped, d.path)
+			skipped = append(skipped, display)
 		case actionOverwrite:
 			if err := os.WriteFile(d.path, d.bytes, 0o600); err != nil {
-				_, _ = fmt.Fprintf(stderr, "regatta init: write %s: %v\n", d.path, err)
+				_, _ = fmt.Fprintf(stderr, "regatta init: write %s: %v\n", display, err)
 				return 1
 			}
 			if !*jsonOut {
-				_, _ = fmt.Fprintf(stdout, "! overwrote %s %s\n", padPath(d.path), d.blurb)
+				_, _ = fmt.Fprintf(stdout, "! overwrote %s %s\n", padPath(display), d.blurb)
 			}
-			overwritten = append(overwritten, d.path)
+			overwritten = append(overwritten, display)
 		}
 	}
 

@@ -1,3 +1,9 @@
+//go:build unix
+
+// PollOnce's lockfile contract is POSIX-only (see
+// lockfile/lockfile_test.go header). Excluded from Windows builds —
+// orchestrator runtime targets Linux + macOS only.
+
 package orchestrator_test
 
 import (

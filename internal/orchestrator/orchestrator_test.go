@@ -1,3 +1,10 @@
+//go:build unix
+
+// PollOnce relies on lockfile.Acquire, whose flock + PID-stamp
+// contract is POSIX-only (see lockfile/lockfile_test.go header).
+// The orchestrator runtime targets Linux + macOS per docs/design.md;
+// Windows is a build-only target via orchestrator_windows.go.
+
 package orchestrator
 
 import (
