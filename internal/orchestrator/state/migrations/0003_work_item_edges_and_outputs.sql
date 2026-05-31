@@ -16,7 +16,7 @@
 -- payloads (especially under the stub spawner). Idempotency is anchored
 -- by UNIQUE(work_item_id, attempt_no) instead.
 
-CREATE TABLE IF NOT EXISTS work_item_outputs (
+CREATE TABLE work_item_outputs (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     work_item_id    TEXT    NOT NULL REFERENCES work_items(id),
     attempt_no      INTEGER NOT NULL,
@@ -25,12 +25,12 @@ CREATE TABLE IF NOT EXISTS work_item_outputs (
     produced_at     INTEGER NOT NULL,
     UNIQUE(work_item_id, attempt_no)
 );
-CREATE INDEX IF NOT EXISTS idx_work_item_outputs_wi
+CREATE INDEX idx_work_item_outputs_wi
     ON work_item_outputs(work_item_id);
-CREATE INDEX IF NOT EXISTS idx_work_item_outputs_sha
+CREATE INDEX idx_work_item_outputs_sha
     ON work_item_outputs(content_sha);
 
-CREATE TABLE IF NOT EXISTS work_item_edges (
+CREATE TABLE work_item_edges (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     program_id      TEXT    NOT NULL,
     from_id         TEXT    NOT NULL REFERENCES work_items(id),
@@ -45,9 +45,9 @@ CREATE TABLE IF NOT EXISTS work_item_edges (
     updated_at      INTEGER NOT NULL,
     UNIQUE(program_id, from_id, to_id)
 );
-CREATE INDEX IF NOT EXISTS idx_work_item_edges_from
+CREATE INDEX idx_work_item_edges_from
     ON work_item_edges(from_id, fired);
-CREATE INDEX IF NOT EXISTS idx_work_item_edges_to
+CREATE INDEX idx_work_item_edges_to
     ON work_item_edges(to_id, fired);
 -- +goose StatementEnd
 

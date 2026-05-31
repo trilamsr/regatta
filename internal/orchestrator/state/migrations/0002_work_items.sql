@@ -6,7 +6,7 @@
 -- against agents to materialize pending rows on demand.
 -- per RFC-0001 §3.
 
-CREATE TABLE IF NOT EXISTS work_items (
+CREATE TABLE work_items (
     id                   TEXT    NOT NULL PRIMARY KEY,
     kind                 TEXT    NOT NULL,
     title                TEXT    NOT NULL,
@@ -21,8 +21,8 @@ CREATE TABLE IF NOT EXISTS work_items (
     updated_at           INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_work_items_status ON work_items(status);
-CREATE INDEX IF NOT EXISTS idx_work_items_parent ON work_items(parent_program_id);
+CREATE INDEX idx_work_items_status ON work_items(status);
+CREATE INDEX idx_work_items_parent ON work_items(parent_program_id);
 -- +goose StatementEnd
 
 -- +goose Down
