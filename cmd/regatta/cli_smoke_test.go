@@ -257,6 +257,12 @@ func TestCLI_VerifyRepoConfig_MissingFlag(t *testing.T) {
 
 func TestCLI_Serve_TickOnceStub(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "windows" {
+		// serve --tick-once acquires the orchestrator lockfile, whose
+		// flock + PID-stamp contract is POSIX-only. Runtime target is
+		// Linux + macOS per docs/design.md.
+		t.Skip("orchestrator lockfile contract is POSIX-only")
+	}
 	dir := t.TempDir()
 	itemsDir := filepath.Join(dir, ".regatta", "items")
 	if err := os.MkdirAll(itemsDir, 0o755); err != nil {

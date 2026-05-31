@@ -1,3 +1,10 @@
+//go:build unix
+
+// Adversarial scenarios drive PollOnce, whose lockfile contract is
+// POSIX-only (see lockfile/lockfile_test.go header). Excluded from
+// Windows builds — orchestrator runtime is Linux + macOS only per
+// docs/design.md.
+
 package orchestrator
 
 import (
