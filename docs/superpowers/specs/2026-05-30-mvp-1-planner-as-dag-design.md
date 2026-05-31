@@ -23,7 +23,7 @@ The original spec at `docs/engineer/specs/mvp-1-planner.md` assumed `work_items`
 | 3 | **Scheduler join** (not materialize): `ListSpawnable` = `work_items LEFT JOIN agents` query, reserves directly into agents in one tx | Eliminates orphan class by construction; no recover-sweep code |
 | 4 | **Tombstone + cascade-soft**: missing item → status=archived; running children finish naturally | Audit trail intact; mid-run agents not killed |
 | 5 | **Cascade snapshot**: child carries own `acceptance_json` at upsert | Parent archive doesn't invalidate in-flight validation |
-| 6 | **Sign-then-persist**: brief must pass `programs.LoadAndValidate` before children upsert | Clean invariant: rows in work_items are valid |
+| 6 | **Sign-then-persist**: brief must pass `program.LoadAndVerifyBrief` (new) before children upsert | Clean invariant: rows in work_items are valid |
 | 7 | **slog WARN events** for rejections (no `brief_rejections` table) | Aligns with audit-log deferral to MVP-3+; operator uses `journalctl \| grep` |
 | 8 | **DAG enforce in MVP-1**: blocked children wait until upstream `status=merged`; cycle detection at upsert | Closes issue #25 inline; avoids parallel-spawn merge conflicts |
 | 9 | **Tombstone keyed by source + `pollStartedAt`** (no meta tick table) | Reuses existing time-based pattern; no new write-hotspot |
@@ -111,14 +111,24 @@ Go API (split across `work_items_upsert.go` + `work_items_query.go`):
 - Cascade-archive children of any archived program
 
 ### 2.4 `BriefLoader` (`internal/program/brief_loader.go`)
-- Constructor takes `fs.FS` (for `fstest.MapFS` in tests), `Clock`, `*state.DB`, HMAC key
+- Constructor takes `fs.FS` (for `fstest.MapFS` in tests), `Clock`, `*state.DB`, brief keyring
 - `Sync(ctx, pollStartedAt time.Time) (loaded int, err error)`
 - Glob `*.json`; skip `*.tmp`
-- For each: `programs.LoadAndValidate(path, hmacKey)`:
-  - Error → `slog.Warn("brief.rejected", "path", p, "reason", err.Error())`; continue
-  - Success → for each `features[]`: `UpsertWorkItem(child, source=brief, last_seen_at=pollStartedAt)` with `parent_program_id` + `depends_on_features` + `acceptance_json` snapshot populated
+- For each: `program.LoadAndVerifyBrief(fsys, path, keyring)` — **new function** in `internal/program/brief_loader.go` that:
+  - Reads file via `fs.FS` interface
+  - Unmarshals into `ProgramBrief`
+  - Calls existing `ProgramBrief.Validate()` (`planner.go:73`)
+  - Calls existing `ProgramBrief.VerifySignature(keyring)` (`planner.go:221`)
+  - Returns `*ProgramBrief` + typed error
+- On error → `slog.Warn("brief.rejected", "path", p, "reason", err.Error())`; continue
+- On success → for each `features[]`: `UpsertWorkItem(child, source=brief, last_seen_at=pollStartedAt)` with `parent_program_id` + `depends_on_features` + `acceptance_json` snapshot populated
 - Then `TombstoneBySource(ctx, "brief", pollStartedAt)`
 - Tombstoned dep detection: any child whose `depends_on_features` references an archived ID → `slog.Warn("child.dependency_archived", ...)` + cascade-archive the child
+
+### ID conventions (`work_items.id` ↔ brief)
+- `work_items.id` for a child row = the planner-emitted feature ID (`F-...`) from `ProgramBrief.Features[].ID`
+- `work_items.parent_program_id` = the parent `WorkItem.ID` from the markdown catalog (e.g., `PROG-1`), **not** the planner's `m-...` brief manifest ID
+- `BriefLoader` resolves parent by reading `ProgramBrief.ProgramItemID` field (must be added to brief schema if not present; defaults to source markdown ID at plan time)
 
 ### 2.5 `planner.LoadPlannerPrompt` (mod `internal/program/planner.go`)
 - `LoadPlannerPrompt(path string, expectedSHA string) (string, error)`
@@ -128,19 +138,27 @@ Go API (split across `work_items_upsert.go` + `work_items_query.go`):
 
 ### 2.6 `runProgramPlan --write` (mod `cmd/regatta/main.go`)
 - New `--write` flag: writes signed brief to `<repo>/.regatta/programs/<program_id>.json` via temp+rename
-- Read `prompts.planner_sha` from `regatta.yaml`; pass to `LoadPlannerPrompt`
+- Read `prompts.planner_sha` from `regatta.yaml`; pass to `LoadPlannerPrompt`. **A new 3-line accessor on the config loader (`internal/config/validate/load.go`) is required** to surface this field; A10 owns it.
 - Target exists + different content → `ErrTargetExists` unless `--force`
 - Stdout remains default when `--write` absent
+- **No dependency on A7** (`LoadPlannerPrompt`): `--write` only needs file-write + temp+rename; existing `defaultPlannerPrompt` from `provider_anthropic.go:244` continues to work. A7 and A10 ship in parallel.
 
 ### 2.7 Flock (`internal/orchestrator/lockfile/`)
 - gofrs/flock wrapper; writes pid into lockfile content
-- `Acquire(path string) (*Lock, error)` — returns `ErrLockHeld` if active; reclaims if pid-not-running (`kill -0`)
+- `Acquire(path string) (*Lock, error)` — returns `ErrFlockHeld` if active; reclaims if pid-not-running (`kill -0`)
 - `(*Lock).Release()` removes file
+- **Lockfile path convention**: `<dbPath> + ".lock"` (e.g., `regatta.db.lock` for default `-db=regatta.db`; `.regatta/state.db.lock` when operator points `-db` at the standard path). PollOnce derives path from `o.dbPath`. Pinned to avoid drift from `cmd/regatta/main.go:232` `-db` default.
+- **Sentinel name** `ErrFlockHeld` (not `ErrLockHeld`) because `state.ErrLockHeld` already exists at `internal/orchestrator/state/state.go:62` for hotspot locks — different semantic, must not collide.
 
 ### 2.8 Scheduler rewire (mod `internal/orchestrator/scheduler/scheduler.go`)
 - Replace `adapter.List` reads with `state.ListSpawnable`
-- SQL: `SELECT w.* FROM work_items w LEFT JOIN agents a ON w.id = a.work_item_id WHERE w.status='planned' AND a.id IS NULL AND (w.depends_on_features='[]' OR NOT EXISTS (SELECT 1 FROM json_each(w.depends_on_features) WHERE value NOT IN (SELECT id FROM work_items WHERE status='merged')))`
-- Reserve + lock acquire in single tx; lock-fail → rollback reservation (item simply not in this tick's reserved set; retries next tick)
+- **Read SQL**: `SELECT w.* FROM work_items w LEFT JOIN agents a ON w.id = a.work_item_id WHERE w.status='planned' AND a.id IS NULL AND (w.depends_on_features='[]' OR NOT EXISTS (SELECT 1 FROM json_each(w.depends_on_features) WHERE value NOT IN (SELECT id FROM work_items WHERE status='merged')))`
+- **Reservation tx shape** (per row returned, inside one tx with `BEGIN IMMEDIATE`):
+  1. `INSERT INTO agents (work_item_id, lane, state, created_at, updated_at) VALUES (?, ?, 'pending', ?, ?)` — materializes the pending row that downstream `ScheduleOnce` requires
+  2. Transition agent `pending → spawning` via existing `state.TransitionAgent`
+  3. Acquire hotspot locks via existing `state.TryAcquireLocks`
+  4. If lock acquire fails → tx rollback (no agents row remains); item retries next tick
+- This makes `Scheduler.Tick` the materialization point. `UpsertPending` is **no longer called from PollOnce**; it remains in the codebase for tests and may be deleted in a follow-up once all callers migrate.
 
 ### 2.9 Orchestrator wire (mod `internal/orchestrator/orchestrator.go`)
 - `PollOnce(ctx)`:
@@ -155,6 +173,8 @@ Go API (split across `work_items_upsert.go` + `work_items_query.go`):
 - `testdata/program/PROG-1.md` (3 independent acceptance criteria, no inter-deps)
 - `testdata/program/PROG-1.brief.golden.json`
 - `internal/program/end_to_end_test.go` — tmpdir, plan --write, serve --tick-once, assert 3 work_items + 3 running agents
+- **Prerequisite**: stub spawner (`internal/orchestrator/spawner/spawner.go`) returns synchronously and immediately. No sleep/poll loop needed in the test. `--tick-once` (`cmd/regatta/main.go:288-301`) calls `PollOnce → ScheduleOnce → ReapTerminal` exactly once; reservation + spawn + transition to `AgentRunning` complete in single pass.
+- **WARN-event assertion** in DoD §6 #5 means: zero events at `slog.LevelWarn` or higher during a successful happy-path run. INFO-level lifecycle events (if any) do not count.
 
 ## §3 Data flow + error handling
 
@@ -172,7 +192,7 @@ Go API (split across `work_items_upsert.go` + `work_items_query.go`):
 ### Test seams
 - `BriefLoader` constructor takes `fs.FS` — production: `os.DirFS(repoRoot)`; tests: `fstest.MapFS`
 - `Clock` interface in `internal/orchestrator/clock/` — production: `SystemClock`; tests: `FakeClock`
-- Typed error sentinels in `internal/orchestrator/errors.go` — `ErrBriefSHAMismatch`, `ErrHMACInvalid`, `ErrTargetExists`, `ErrLockHeld`, `ErrSchemaTooNew`, `ErrCycleDetected`
+- Typed error sentinels in `internal/orchestrator/errors.go` — `ErrBriefSHAMismatch`, `ErrHMACInvalid`, `ErrTargetExists`, `ErrFlockHeld`, `ErrSchemaTooNew`, `ErrCycleDetected` (note: `state.ErrLockHeld` already exists for hotspot locks; flock variant uses distinct name to avoid collision)
 
 ## §4 Testing strategy
 
@@ -193,12 +213,18 @@ Go API (split across `work_items_upsert.go` + `work_items_query.go`):
 
 **BriefLoader.Sync** (uses `fstest.MapFS`)
 - Signed brief → 3 children with acceptance snapshot
-- Tampered brief → 0 children + 1 captured WARN log; `errors.Is(err, ErrHMACInvalid)`
+- Tampered brief → 0 children + 1 captured WARN log; underlying error wraps the existing `ProgramBrief.VerifySignature` failure mode
 - Brief deleted between ticks → children tombstoned
 - Tombstoned dep → auto-tombstone child + WARN log
-- HMAC key rotation: old-key briefs reject + new-key briefs accept in same tick
+- HMAC key rotation: old-key briefs reject + new-key briefs accept in same tick (uses brief keyring with multiple keys)
 - Crash between sign and persist → reopen DB, assert zero partial child rows
 - `*.tmp` files skipped
+
+**LoadAndVerifyBrief** (new function tests)
+- Valid file + correct keyring → `*ProgramBrief` returned, no error
+- Invalid HMAC → typed error wrapping `ErrHMACInvalid`
+- Malformed JSON → typed parse error (not panic)
+- Empty keyring → fail-loud error
 
 **planner.LoadPlannerPrompt**
 - All 4 paths; `errors.Is(err, ErrBriefSHAMismatch)` for sha mismatch
@@ -234,9 +260,9 @@ Go API (split across `work_items_upsert.go` + `work_items_query.go`):
 - v1 DB → v2: `work_items` table exists, version=2
 - Downgrade-resistance: v2 DB opened by simulated v1 binary → `errors.Is(err, ErrSchemaTooNew)`
 
-### Property + fuzz
-- DAG join property test: random DAGs n≤8, 1000 cases, `rapid` or `testing/quick`. Assert `ListSpawnable` returns exactly the topological-ready set.
-- `BriefLoader.Parse` fuzz target: malformed YAML/markdown/JSON shouldn't panic; either parse cleanly or return typed error.
+### Property test
+- DAG join property test: random DAGs n≤8, 200 cases, `rapid` or `testing/quick`. Assert `ListSpawnable` returns exactly the topological-ready set.
+- (Fuzz target on `LoadAndVerifyBrief` deferred to MVP-2 follow-up; not required for MVP-1 acceptance.)
 
 ### Observability
 - Captured `slog` handler in tests asserts WARN events fire at every reject/tombstone/cascade path enumerated in §6 checklist.
@@ -291,12 +317,12 @@ Total agents counting A0: **12**, 7 waves.
 |---|---|---|
 | 12 | `internal/orchestrator/scheduler/scheduler.go` + test | A8 |
 
-### Wave 5 — Orchestrator wire + CLI
+### Wave 5 — Orchestrator wire + CLI (parallel)
 
 | # | Path | Owner |
 |---|---|---|
 | 13 | `internal/orchestrator/orchestrator.go` + adversarial test | A9 |
-| 14 | `cmd/regatta/main.go` (`runProgramPlan --write`) + test | A10 (after A7) |
+| 14 | `cmd/regatta/main.go` (`runProgramPlan --write`) + `internal/config/validate/load.go` (3-line `prompts.planner_sha` accessor) + test | A10 (parallel with A9; **no dependency on A7** — uses existing `defaultPlannerPrompt`) |
 
 ### Wave 6 — E2E + docs (parallel)
 
@@ -320,10 +346,10 @@ Total agents counting A0: **12**, 7 waves.
 1. Wave's tests + adversarial cases green: `go test -race ./...`
 2. `make ci-check` exit 0 (lint + vet + build)
 3. New files include paired `_test.go` (TDD evidence)
-4. Spec at `docs/engineer/specs/mvp-1-planner.md` reconciled before final wave merges
+4. Old spec `docs/engineer/specs/mvp-1-planner.md` deleted in Wave 6 (this new spec replaces it; header already declares supersession)
 
 ### Series-complete DoD (after Wave 6)
-5. Acceptance test passes: `regatta program plan --write` then `regatta serve --tick-once` → exactly 3 `work_items` rows with `parent_program_id=PROG-1`, exactly 3 `agents` rows status=`running`, zero slog WARN events
+5. Acceptance test passes: `regatta program plan --write` then `regatta serve --tick-once` → exactly 3 `work_items` rows with `parent_program_id=PROG-1`, exactly 3 `agents` rows state=`running`, zero events at `slog.LevelWarn` or higher during the happy-path run
 6. CHANGELOG.md flipped to next dated section with MVP-1 entry
 
 ### Release readiness (separate gate)
@@ -338,25 +364,23 @@ Total agents counting A0: **12**, 7 waves.
 
 **A (target)** — *production-trustable*
 - B +
-- Typed error sentinels for all new boundary errors. Verify: `grep -r 'errors.New' internal/orchestrator/ internal/program/` returns only the sentinel file
+- Typed error sentinels for all new boundary errors. Verify: `grep -rn 'errors.New(' internal/orchestrator/ internal/program/` returns only `internal/orchestrator/errors.go`
 - Structured slog WARN events at all paths enumerated in `docs/engineer/mvp-1-dod-checklist.md`:
   - `brief.rejected` (HMAC fail, sha mismatch, parse error)
   - `brief.tombstoned` (file disappeared)
   - `adapter.tombstoned` (item disappeared)
   - `child.cascade_archived` (parent archived)
   - `child.dependency_archived` (depends_on target tombstoned)
-  - `parent.criteria_changed` (snapshot divergence detected)
 - Adversarial tests green: brief disappears mid-poll, AdapterSync fail-fast, stale flock reclaim, HMAC rotation, tombstoned-dep auto-archive
-- DAG join property test: 1000 random DAGs n≤8, reserved set == topological-ready set
+- DAG join property test: 200 random DAGs n≤8, reserved set == topological-ready set
 - Operator docs: program plan walkthrough + flock troubleshooting + slog event reference
 - Per-package coverage: `internal/orchestrator/state` ≥90%, `internal/program` ≥85%, `cmd/regatta` ≥70%
 
-**A+ (exceptional, stretch)** — *qualitatively different*
+**A+ (exceptional, stretch)** — *qualitatively different bars*
 - A +
-- Fuzz target on `BriefLoader.Parse` runs 5min in CI with zero panics
-- Mutation testing on migration runner downgrade-blocking code: commenting out version-check fails downgrade-resistance test
-- `repo-consistency-loop` skill across 9 lenses, zero unresolved findings
-- Operator UX walkthrough in `docs/operator/quickstart.md`: scripted "diagnose a rejected brief" using only `journalctl | grep`
+- Mutation testing on migration runner downgrade-blocking code: commenting out version-check fails downgrade-resistance test (proves the test actually tests the guard, not just exists)
+- Mean-time-to-diagnose-a-rejected-brief ≤ 60 seconds using only `journalctl | grep` — operator runbook scripted in `docs/operator/quickstart.md` as numbered steps, externally timed
+- Operator recovery procedure for a corrupted `.regatta/state.db` documented + tested: `regatta init --force` + brief re-plan restores spawning capability without manual sqlite surgery
 
 ### Risks
 
@@ -368,11 +392,12 @@ Total agents counting A0: **12**, 7 waves.
 | 4 | flock cross-platform (no Windows) | Accepted gap; darwin+linux only |
 | 5 | e2e flake | `--tick-once` synchronous; retry-3-times gate before declaring real flake |
 | 6 | HMAC key rotation UX | Manual re-run plan; MVP-2 follow-up |
-| 7 | `acceptance_json` snapshot staleness | On parent re-upsert with changed criteria, emit `parent.criteria_changed` WARN |
-| 8 | slog as only rejection record | Operator docs note log shipping required for retention; MVP-3 audit table closes |
-| 9 | Clock skew in stale-PID reclaim | pid-in-lockfile + `kill -0` (not mtime); same-host assumption documented |
-| 10 | Test pollution from leftover lockfile | `t.Cleanup` in every flock test; CI clears `/tmp/regatta-*` before each job |
-| 11 | Wave 0 errors not adopted by downstream waves | PR review: `grep errors.New` outside sentinel file blocks merge |
+| 7 | slog as only rejection record | Operator docs note log shipping required for retention; MVP-3 audit table closes |
+| 8 | Clock skew in stale-PID reclaim | pid-in-lockfile + `kill -0` (not mtime); same-host assumption documented |
+| 9 | Test pollution from leftover lockfile | `t.Cleanup` in every flock test; CI clears `/tmp/regatta-*` before each job |
+| 10 | Wave 0 errors not adopted by downstream waves | PR review: `grep errors.New` outside sentinel file blocks merge |
+| 11 | `prompts.planner_sha` not surfaced by config loader | A10 owns 3-line accessor in `internal/config/validate/load.go`; checklist item in DoD |
+| 12 | `acceptance_json` snapshot staleness (parent criteria edited post-spawn) | **Deferred to MVP-2**: speculative until criteria actually change in operator workflows; revisit when first reported |
 
 ## Out of scope (deferred to MVP-2+)
 
