@@ -11,7 +11,7 @@ go-check:  ## Build and test every Go package with the race detector.
 	go test -race ./...
 
 property-test:  ## Run rapid property tests with spec-mandated check count (200).
-	go test -race -run TestListSpawnable_PropertyTopologicalReady ./internal/orchestrator/state/... -rapid.checks=200
+	go test -race -run 'TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty' ./internal/orchestrator/state/... -rapid.checks=200
 
 bench:  ## Run benchmark corpus (scheduler.Tick, CycleCheck, ListSpawnable, BriefLoader.Sync, schemas.Verify, canon). ~30s total at -benchtime=3x.
 	go test -run=^$$ -bench=. -benchmem -benchtime=3x \
