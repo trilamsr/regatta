@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","session_id":"claude-2","model":"claude-sonnet-4-7","tools":[],"permissionMode":"default","cwd":"/tmp/work"}
+{"type":"result","subtype":"error_during_execution","is_error":true,"duration_ms":500,"num_turns":0,"session_id":"claude-2","total_cost_usd":0.0,"usage":{"input_tokens":12,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"result":"tool execution failed: permission denied"}
