@@ -29,6 +29,7 @@ const (
 	subcmdValidateConfig   = "validate-config"
 	subcmdInit             = "init"
 	subcmdVerifyRepoConfig = "verify-repo-config"
+	subcmdApproval         = "approval"
 )
 
 // subcommand binds a CLI verb to its run function. The table is the
@@ -48,6 +49,7 @@ var subcommands = []subcommand{
 	{subcmdServe, runServe},
 	{subcmdValidateConfig, runValidateConfig},
 	{subcmdInit, runInit},
+	{subcmdApproval, runApproval},
 }
 
 func main() {
@@ -83,6 +85,8 @@ func usage(w io.Writer) {
   regatta serve                                       Run the orchestrator daemon (skeleton)
   regatta program plan <work-item.json>               One-shot decompose into signed ProgramBrief
   regatta program verify-handoff <path>               Validate a handoff.json (schema + optional HMAC)
+  regatta approval decide --token T --decision D ...  Record an approval-gate decision from a signed token
+  regatta approval list [--mine ID] [--format F]      List pending approvals (table | json)
   regatta init                                        Scaffold regatta.yaml + run L0 demo
   regatta version                                     Print build info
   regatta help                                        This message
