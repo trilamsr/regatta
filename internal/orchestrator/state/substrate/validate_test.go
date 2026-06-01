@@ -7,17 +7,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// TestSubstrate_KindPayloadValidation drives the per-kind typed
-// payload validators registered by validate.go's init(). For each of
-// T-S1's 6 kinds: pass a malformed payload, expect ErrInvalidPayload;
-// pass a well-formed payload, expect nil. Per the plan adversarial-
-// review note (§adversarial item 3), this table-driven test ALSO
-// asserts defaultReducer(kind) returns the spec §4 strategy — pinning
-// validator AND reducer per kind in a single sweep.
-//
-// KindGateVerdict is registered by T-S2 (gate_verdict_payload.go) and
-// tested in T-S2's package. This test asserts the dispatch table
-// rejects an UNKNOWN kind ("totally-bogus") with ErrInvalidPayload.
+// TestSubstrate_KindPayloadValidation drives per-kind validators + asserts defaultReducer(kind) returns the spec §4 strategy.
 func TestSubstrate_KindPayloadValidation(t *testing.T) {
 	cases := []struct {
 		name         string

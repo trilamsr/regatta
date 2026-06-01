@@ -8,18 +8,7 @@ import (
 	"testing"
 )
 
-// TestSubstrate_NoUpdateDeleteInSubstratePackage pins the append-only
-// invariant: no UPDATE or DELETE SQL appears in any production .go
-// file in the substrate package. Spec §9 B-tier.
-//
-// The grep is a substring match against word-boundary UPDATE|DELETE.
-// String-literal context (e.g. SQL inside backticks) is the load-bearing
-// case the test catches; comments in production code that happen to
-// mention the words are caught too — which is correct because reviewer
-// nudges towards "use Append + Fold, never mutate" should land in PR
-// review, not as a substring in shipped code. Test files are excluded
-// — they may legitimately exercise sqlite-level UPDATE/DELETE for
-// adversarial scenarios.
+// TestSubstrate_NoUpdateDeleteInSubstratePackage pins append-only invariant: no UPDATE|DELETE in non-test substrate .go files per spec §9 B-tier.
 func TestSubstrate_NoUpdateDeleteInSubstratePackage(t *testing.T) {
 	pattern := regexp.MustCompile(`\b(UPDATE|DELETE)\b`)
 	root := "." // current package directory

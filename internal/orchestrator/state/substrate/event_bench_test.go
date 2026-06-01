@@ -7,16 +7,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// BenchmarkAppendEvent_HMACAndCanonOnly — Task 0 perf gate. Spec §7
-// target: ≤ 500 ns/op for the HMAC + canonical-JSON portion alone
-// (excludes sqlite INSERT). Run with:
-//
-//	go test -bench BenchmarkAppendEvent_HMACAndCanonOnly -benchmem -count=10 \
-//	    ./internal/orchestrator/state/substrate/
-//
-// Then `benchstat` the output. If above target, escalate before opening
-// PR — likely demotes the lru-cached canonical-JSON encoder follow-up
-// from optimization to baseline.
+// BenchmarkAppendEvent_HMACAndCanonOnly is Task 0 perf gate per spec §7 (target ≤ 500 ns/op).
 func BenchmarkAppendEvent_HMACAndCanonOnly(b *testing.B) {
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	e := substrate.Event{

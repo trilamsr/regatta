@@ -11,14 +11,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// TestMigration0005_SubstrateAppliesAndCreatesSchema pins the
-// substrate_events DDL shape per spec §2.1: 19 columns, 5 indexes,
-// 1 unique index, supersedes FK, schema version bumped.
-//
-// Note: spec calls this migration 0006 (assumes W6 T3's 0005 lands
-// first); shipped as 0005 because W6 T3 (#209) is unmerged at dispatch
-// and a 0005-hole breaks goose's monotonic apply. Rebases to 0006 when
-// #209 lands.
+// TestMigration0005_SubstrateAppliesAndCreatesSchema pins the substrate_events DDL shape per spec §2.1.
 func TestMigration0005_SubstrateAppliesAndCreatesSchema(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "subs.db")
 	raw, err := sql.Open("sqlite", state.DSN(dbPath))

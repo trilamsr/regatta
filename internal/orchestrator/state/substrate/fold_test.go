@@ -10,10 +10,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// TestSubstrate_ClockRegressionRejected — calling AppendEvent with
-// WrittenAt < lastWrittenAt watermark must return ErrClockRegression.
-// Spec §8 I2 — the guard lives in the process-local mutex because
-// sqlite CHECK constraints don't see session state.
+// TestSubstrate_ClockRegressionRejected pins WrittenAt < watermark ⇒ ErrClockRegression per spec §8 I2.
 func TestSubstrate_ClockRegressionRejected(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
@@ -34,14 +31,7 @@ func TestSubstrate_ClockRegressionRejected(t *testing.T) {
 	}
 }
 
-// TestSubstrate_ConcurrentFoldReadSnapshot — writer appends while two
-// readers fold concurrently; reads see a consistent snapshot (sqlite
-// WAL). Spec §10 #2.
-//
-// Design: spawn two reader goroutines that loop Fold for a fixed
-// duration; the main goroutine appends events. Readers must never see
-// torn rows (each fold either contains an event or doesn't — never a
-// partial row).
+// TestSubstrate_ConcurrentFoldReadSnapshot pins WAL snapshot isolation: concurrent readers never see torn rows during appends per spec §10 #2.
 func TestSubstrate_ConcurrentFoldReadSnapshot(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
@@ -104,10 +94,7 @@ func TestSubstrate_ConcurrentFoldReadSnapshot(t *testing.T) {
 	}
 }
 
-// TestSubstrate_FoldOrdersByWrittenAtThenID — two events with the same
-// written_at must fold in a deterministic order keyed by ULID. Spec
-// §10 #16 (concurrent supersedes tiebreaker uses (written_at DESC, id
-// DESC); fold uses ASC ASC — same tiebreaker discipline).
+// TestSubstrate_FoldOrdersByWrittenAtThenID pins (written_at, id) tiebreaker for fold ordering per spec §10 #16.
 func TestSubstrate_FoldOrdersByWrittenAtThenID(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)

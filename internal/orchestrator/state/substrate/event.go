@@ -254,7 +254,7 @@ func cycleCheck(ctx context.Context, tx *sql.Tx, runID, newID, supersedes string
 	// sweep.
 	rows, err := tx.QueryContext(ctx,
 		`SELECT id, supersedes FROM substrate_events
-		 WHERE run_id = ? AND supersedes != ''`, runID)
+		 WHERE run_id = ? AND supersedes IS NOT NULL`, runID)
 	if err != nil {
 		return fmt.Errorf("substrate: cycle scan: %w", err)
 	}

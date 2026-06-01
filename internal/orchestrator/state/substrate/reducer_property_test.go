@@ -8,16 +8,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// TestSubstrate_DefaultReducerExhaustive — for every kind in AllKinds(),
-// DefaultReducer returns a strategy from the closed set
-// {lww, append, write-once} per spec §4. Rapid spreads the test
-// over generated input but the closed-set assertion is the property
-// the spec authority pins. Co-locates the "no kind escapes the
-// defaultReducer switch" invariant in a property-shaped check.
-//
-// Also satisfies the `make property-test` gate which passes
-// -rapid.checks=200 to every package under internal/orchestrator/state/...
-// — a package without a rapid-using test rejects the flag.
+// TestSubstrate_DefaultReducerExhaustive pins every kind's strategy to the closed set {lww, append, write-once} per spec §4.
 func TestSubstrate_DefaultReducerExhaustive(t *testing.T) {
 	allowed := map[substrate.ReducerStrategy]bool{
 		substrate.StrategyLWW:       true,
