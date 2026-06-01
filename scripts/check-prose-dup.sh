@@ -25,8 +25,9 @@ fail=0
 while IFS= read -r phrase; do
   [ -z "$phrase" ] && continue
   # Count files containing the phrase. Restrict to *.md and skip
-  # node_modules-style noise (none here, but cheap insurance).
-  hits=$(grep -rIl --include='*.md' -F "$phrase" "$root" 2>/dev/null || true)
+  # node_modules-style noise + transient agent worktrees under
+  # .claude/worktrees/ (these would falsely double-count every seed).
+  hits=$(grep -rIl --include='*.md' --exclude-dir='.claude' --exclude-dir='node_modules' -F "$phrase" "$root" 2>/dev/null || true)
   count=$(echo -n "$hits" | grep -c . || true)
   if [ "$count" -gt 1 ]; then
     echo "check-prose-dup: duplicate phrase appears in $count files:" >&2
