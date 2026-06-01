@@ -157,6 +157,22 @@ import "list"
 	spend_cap_usd:           *50 | int & >=0
 	spend_cap_usd_per_day:   *200 | int & >=0
 	canary_rate:             *0.05 | float & >=0 & <=0.2
+	cost?:                   #CostGovernor
+}
+
+// #CostGovernor is the optional MVP-4 cost-governor block (spec §3.6).
+// Backwards-compatible: unset means MVP-2 byte-equal behaviour. Every
+// cap field is optional; the validator (internal/config/validate/cost.go)
+// rejects an empty block and the all-caps-zero trap.
+#CostGovernor: {
+	per_dag_usd?:               int & >=0
+	per_operator_usd?:          int & >=0
+	per_work_item_usd?:         int & >=0
+	period?:                    "1h" | "1d" | "7d" | "30d"
+	soft_pct:                   *80 | int & >=50 & <=99
+	reconcile_interval:         *"1h" | "5m" | "15m" | "30m" | "6h" | "24h"
+	drift_alert_threshold_pct:  *10 | int & >=0 & <=100
+	usage_api_key_env:          *"ANTHROPIC_ADMIN_KEY" | string
 }
 
 #Context: {
