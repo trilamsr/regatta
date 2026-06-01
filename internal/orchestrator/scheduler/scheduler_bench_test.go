@@ -39,9 +39,10 @@ func seedPlannedBench(b *testing.B, db *state.DB, id, lane string) {
 
 // BenchmarkTick measures the cost of a single scheduler.Tick over a
 // pool of independent planned work items (no deps, no edges). At N=1000
-// this exercises ListSpawnable + N×UpsertPending + N×TryAcquireLocks +
-// N×TransitionAgent for the first tick, then steady-state ListSpawnable
-// scans for subsequent ticks — the operator-visible Tick budget.
+// this exercises ListSpawnable + N reservation txs (each tx wraps
+// UpsertPendingTx + TryAcquireLocksTx + TransitionAgentTx as one
+// commit per issue #88), then steady-state ListSpawnable scans for
+// subsequent ticks — the operator-visible Tick budget.
 func BenchmarkTick(b *testing.B) {
 	sizes := []int{10, 100, 1000}
 	for _, n := range sizes {

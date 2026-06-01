@@ -23,24 +23,32 @@ type Lock struct {
 // individual acquire fails, the entire batch is rolled back and the
 // first offending error is returned.
 //
-// The function is a thin wrapper around TryAcquireLock that shares a
-// single transaction with all rows.
+// TryAcquireLocks owns its own tx. The scheduler reservation path
+// uses TryAcquireLocksTx via DB.WithTx so the lock writes commit
+// atomically with the sibling agent transition (issue #88).
 func (d *DB) TryAcquireLocks(ctx context.Context, names []string, agentID int64, ttl time.Duration) error {
 	if len(names) == 0 {
 		return nil
 	}
-	now := d.now().UTC()
-	tx, err := d.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("state: begin batch acquire tx: %w", err)
+	return d.WithTx(ctx, func(tx *sql.Tx) error {
+		return d.TryAcquireLocksTx(ctx, tx, names, agentID, ttl)
+	})
+}
+
+// TryAcquireLocksTx is the tx-aware variant of TryAcquireLocks. The
+// caller owns the tx lifecycle. ErrLockHeld surfaces unwrapped so
+// reservation closures can errors.Is and roll back the whole tx.
+func (d *DB) TryAcquireLocksTx(ctx context.Context, tx *sql.Tx, names []string, agentID int64, ttl time.Duration) error {
+	if len(names) == 0 {
+		return nil
 	}
-	defer func() { _ = tx.Rollback() }()
+	now := d.now().UTC()
 	for _, name := range names {
 		if err := acquireOne(ctx, tx, name, agentID, ttl, now); err != nil {
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func acquireOne(ctx context.Context, tx *sql.Tx, name string, agentID int64, ttl time.Duration, now time.Time) error {

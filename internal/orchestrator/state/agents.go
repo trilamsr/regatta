@@ -77,13 +77,28 @@ type AgentMutation struct {
 
 // UpsertPending inserts a pending agent for workItemID if none exists,
 // or returns the existing row. The function is idempotent.
+//
+// UpsertPending owns its own tx. Callers composing the upsert with
+// other writes (e.g. scheduler reservation: upsert + lock + transition)
+// should use UpsertPendingTx via DB.WithTx so all three commit atomically.
 func (d *DB) UpsertPending(ctx context.Context, workItemID, lane string) (*Agent, error) {
+	var out *Agent
+	err := d.WithTx(ctx, func(tx *sql.Tx) error {
+		a, err := d.UpsertPendingTx(ctx, tx, workItemID, lane)
+		if err != nil {
+			return err
+		}
+		out = a
+		return nil
+	})
+	return out, err
+}
+
+// UpsertPendingTx is the tx-aware variant of UpsertPending. The caller
+// owns the tx lifecycle (typically via DB.WithTx); the returned Agent
+// is observable only after the enclosing tx commits.
+func (d *DB) UpsertPendingTx(ctx context.Context, tx *sql.Tx, workItemID, lane string) (*Agent, error) {
 	now := d.now().UTC().Unix()
-	tx, err := d.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("state: begin upsert tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
 
 	var a Agent
 	row := tx.QueryRowContext(ctx,
@@ -99,7 +114,7 @@ func (d *DB) UpsertPending(ctx context.Context, workItemID, lane string) (*Agent
 				return nil, fmt.Errorf("state: update lane: %w", err)
 			}
 		}
-		return &a, tx.Commit()
+		return &a, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, fmt.Errorf("state: select agent: %w", err)
 	}
@@ -114,9 +129,6 @@ func (d *DB) UpsertPending(ctx context.Context, workItemID, lane string) (*Agent
 	id, err := res.LastInsertId()
 	if err != nil {
 		return nil, fmt.Errorf("state: last insert id: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("state: commit upsert: %w", err)
 	}
 	return &Agent{
 		ID:         id,
@@ -209,13 +221,27 @@ func (d *DB) CountAgentsByLane(ctx context.Context, states ...AgentState) (map[s
 // TransitionAgent moves an agent from its current state to next,
 // applying any field overrides in mut. Returns ErrInvalidTransition if
 // the edge is not permitted.
+//
+// TransitionAgent owns its own tx; compose with TransitionAgentTx
+// via DB.WithTx when the transition must be atomic with sibling writes.
 func (d *DB) TransitionAgent(ctx context.Context, id int64, next AgentState, mut AgentMutation) (*Agent, error) {
-	tx, err := d.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("state: begin transition tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
+	var out *Agent
+	err := d.WithTx(ctx, func(tx *sql.Tx) error {
+		a, err := d.TransitionAgentTx(ctx, tx, id, next, mut)
+		if err != nil {
+			return err
+		}
+		out = a
+		return nil
+	})
+	return out, err
+}
 
+// TransitionAgentTx is the tx-aware variant of TransitionAgent. The
+// caller owns the tx lifecycle. ErrInvalidTransition surfaces
+// unwrapped so reservation closures can errors.Is and return early
+// without committing sibling writes.
+func (d *DB) TransitionAgentTx(ctx context.Context, tx *sql.Tx, id int64, next AgentState, mut AgentMutation) (*Agent, error) {
 	a, err := txGetAgentForUpdate(ctx, tx, id)
 	if err != nil {
 		return nil, err
@@ -248,9 +274,6 @@ func (d *DB) TransitionAgent(ctx context.Context, id int64, next AgentState, mut
 		 WHERE id = ?`,
 		string(a.State), a.PID, a.SessionID, a.PRSHA, a.RejectionCount, a.UpdatedAt.Unix(), a.ID); err != nil {
 		return nil, fmt.Errorf("state: update agent: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("state: commit transition: %w", err)
 	}
 	return a, nil
 }

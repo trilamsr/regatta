@@ -60,10 +60,12 @@ type DB struct {
 	now func() time.Time
 }
 
-// DSN returns the standard modernc.org/sqlite DSN: 5s busy_timeout +
-// foreign_keys on. Use this so the pragmas stay in lockstep.
+// DSN returns the standard modernc.org/sqlite DSN: 5s busy_timeout,
+// foreign_keys on, and _txlock=immediate so every BeginTx (including
+// WithTx) takes the writer lock at BEGIN-time rather than at
+// first-write. See WithTx for the full rationale.
 func DSN(path string) string {
-	return fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", path)
+	return fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate", path)
 }
 
 // Open opens (or creates) the sqlite DB at dsn, applies pending
@@ -101,4 +103,50 @@ func (d *DB) Close() error { return d.sql.Close() }
 
 // SQL exposes the underlying *sql.DB for raw transactions. Use sparingly.
 func (d *DB) SQL() *sql.DB { return d.sql }
+
+// WithTx runs fn inside a single sqlite transaction and commits on
+// nil error or rolls back on any non-nil error or panic.
+//
+// Why BEGIN IMMEDIATE: the default DEFERRED mode acquires the writer
+// lock lazily at first-write; a tx that reads then writes can hit
+// SQLITE_BUSY at the upgrade boundary if another writer arrived
+// between the read and the write. IMMEDIATE acquires the writer lock
+// at BEGIN, where busy_timeout retries are designed to absorb
+// contention. The single-connection pool (Open caps MaxOpenConns at
+// 1) already serializes writers at the process level; pinning
+// IMMEDIATE keeps that invariant load-bearing at the SQL layer too,
+// so a future pool resize or read-only secondary connection cannot
+// silently re-introduce upgrade contention. The mode is wired
+// globally via _txlock=immediate in DSN — see DSN.
+//
+// Sentinel errors returned by fn pass through unwrapped so callers
+// may errors.Is them — e.g. the scheduler's reservation closure
+// returns state.ErrLockHeld from TryAcquireLocksTx and the outer
+// caller matches on it to log+continue rather than fail the tick.
+//
+// A panic inside fn propagates through the deferred Rollback, so a
+// process crashing mid-tx leaves no half-built rows behind. WithTx
+// does not recover the panic; the goroutine continues to unwind.
+//
+// WithTx is the single transaction primitive new code should reach
+// for. Callers composing multiple mutations into one atomic unit
+// (the scheduler reservation tx — UpsertPending + TryAcquireLocks +
+// TransitionAgent — is the canonical case, issue #88) MUST use
+// WithTx so the IMMEDIATE-mode and rollback discipline stay in one
+// place. Existing single-method BeginTx call sites in package state
+// predate this helper and remain correct.
+func (d *DB) WithTx(ctx context.Context, fn func(*sql.Tx) error) error {
+	tx, err := d.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("state: begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("state: commit tx: %w", err)
+	}
+	return nil
+}
 
