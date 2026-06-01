@@ -139,8 +139,8 @@ func seedFanoutWithDefault(b *testing.B, db *state.DB, n int) {
 // BenchmarkTickEvalEdges times the #98 hot path — evalPendingEdges
 // over N merged from_ids each with 2 non-default predicated edges +
 // 1 default. The post-loop ListEdgesFrom (introduced by 7dbcbab to
-// survive partial-tick crashes; PR #112) runs once per from_id, so
-// per-tick cost scales O(N) in the merged-fanout count.
+// survive partial-tick crashes) runs once per from_id, so per-tick
+// cost scales O(N) in the merged-fanout count.
 //
 // Bench captures total Tick latency, not just evalPendingEdges,
 // because operators care about the full poll-cycle budget. After tick
@@ -150,12 +150,11 @@ func seedFanoutWithDefault(b *testing.B, db *state.DB, n int) {
 // regression for small b.N but matches what a long-running
 // orchestrator sees in practice.
 //
-// Baseline (pre-#98, commit 66816c9, Apple M1 Max, benchtime=3x,
-// count=5) is documented in PR #119's closing comment so future
-// drift detection has a single reference point. If a future
-// scheduler change pushes the regression past 5% vs that baseline,
-// switch to the CountNonDefaultEdgeStates aggregate query (issue
-// #119 alternative H2) per the issue's decision rule.
+// Baseline is pre-#98 commit 66816c9 on Apple M1 Max at
+// `-benchtime=5x -count=10`. If a future scheduler change pushes the
+// alloc-proxy regression past 5% vs that baseline, switch to the
+// CountNonDefaultEdgeStates aggregate query (the H2 alternative
+// tracked in #187) per issue #119's decision rule.
 func BenchmarkTickEvalEdges(b *testing.B) {
 	sizes := []int{10, 100, 1000}
 	for _, n := range sizes {
