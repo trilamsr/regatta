@@ -8,7 +8,7 @@ require (
 	github.com/pressly/goose/v3 v3.27.1
 	golang.org/x/text v0.37.0
 	modernc.org/sqlite v1.50.1
-	pgregory.net/rapid v1.1.0
+	pgregory.net/rapid v1.3.0
 )
 
 require (
