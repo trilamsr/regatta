@@ -18,6 +18,9 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
@@ -58,12 +61,19 @@ type MarkdownCatalogConfig struct {
 	// Logger receives printf-style diagnostics for items skipped due
 	// to parse errors. Nil is silent.
 	Logger func(format string, args ...any)
+
+	// Tracer is the OTel tracer this component uses to open spans.
+	// Nil falls back to otel.Tracer("adapter/markdown") which resolves
+	// to the global provider — noop until obs/otel.Setup runs. Per W6
+	// spec §3.3 + feedback_spec_pattern_authority.
+	Tracer trace.Tracer
 }
 
 type markdownCatalog struct {
-	cfg  MarkdownCatalogConfig
-	logf func(format string, args ...any)
-	mu   sync.Mutex
+	cfg    MarkdownCatalogConfig
+	logf   func(format string, args ...any)
+	tracer trace.Tracer
+	mu     sync.Mutex
 }
 
 // NewMarkdownCatalog returns a schemas.SpecAdapter backed by
@@ -84,7 +94,11 @@ func NewMarkdownCatalog(cfg MarkdownCatalogConfig) (schemas.SpecAdapter, error) 
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	return &markdownCatalog{cfg: cfg, logf: logf}, nil
+	tracer := cfg.Tracer
+	if tracer == nil {
+		tracer = otel.Tracer("adapter/markdown")
+	}
+	return &markdownCatalog{cfg: cfg, logf: logf, tracer: tracer}, nil
 }
 
 func (m *markdownCatalog) itemsDir() string {
@@ -95,6 +109,10 @@ func (m *markdownCatalog) itemsDir() string {
 // file. Errors on individual files surface as the function error; the
 // orchestrator treats that as a transient adapter failure.
 func (m *markdownCatalog) List(ctx context.Context) ([]schemas.WorkItem, error) {
+	// W6 spec §8 T5: open a span at the main entry function so the
+	// adapter's filesystem-scan latency shows up in the trace tree.
+	ctx, span := m.tracer.Start(ctx, "adapter.markdown.list")
+	defer span.End()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	dir := m.itemsDir()
