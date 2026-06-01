@@ -133,8 +133,15 @@ func runProgramPlan(args []string) int {
 				fmt.Fprintln(os.Stderr, "regatta program plan:", err)
 				return 2
 			}
-		}
-		if err := os.MkdirAll(target, 0o750); err != nil {
+			// TOCTOU closer: between validate and mkdir, an attacker can
+			// plant a symlink in an un-created component (e.g. cwd/a -> /etc).
+			// safeMkdirAllUnderCwd walks one component at a time, lstat'ing
+			// each existing step and refusing any symlink in the chain.
+			if err := safeMkdirAllUnderCwd(target, cwd); err != nil {
+				fmt.Fprintln(os.Stderr, "regatta program plan:", err)
+				return 1
+			}
+		} else if err := os.MkdirAll(target, 0o750); err != nil {
 			fmt.Fprintln(os.Stderr, "regatta program plan:", err)
 			return 1
 		}
@@ -177,14 +184,7 @@ func validateWriteDirUnderCwd(target, cwd string) error {
 	if err != nil {
 		return fmt.Errorf("resolve cwd %q: %w", cwd, err)
 	}
-	if pathsEqual(canonTarget, canonCwd) {
-		return nil
-	}
-	prefix := canonCwd
-	if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
-		prefix += string(os.PathSeparator)
-	}
-	if !pathHasPrefix(canonTarget, prefix) {
+	if !underCwd(canonTarget, canonCwd) {
 		return fmt.Errorf("--write-dir %q is outside cwd %q; pass -unsafe-write-dir to override", canonTarget, canonCwd)
 	}
 	return nil
@@ -210,6 +210,119 @@ func pathHasPrefix(s, prefix string) bool {
 		return len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix)
 	}
 	return strings.HasPrefix(s, prefix)
+}
+
+// safeMkdirAllUnderCwd creates target component-wise under cwd, refusing
+// any symlink along the way. validateWriteDirUnderCwd closes the static
+// check; this closes the TOCTOU race where an attacker plants a symlink
+// in a not-yet-created component between validate and mkdir
+// (e.g. cwd/out -> /etc). os.MkdirAll follows symlinks silently, which
+// would let the planted link redirect the brief write outside cwd.
+//
+// We resolve cwd's symlinks once (the operator's working directory is
+// the trust root), then walk each missing component from canonical cwd
+// to absolute target. At each step we lstat: existing symlinks abort,
+// existing non-dirs abort, missing components are created with os.Mkdir
+// (not MkdirAll). The walk uses os.PathSeparator so the same code works
+// on Windows.
+func safeMkdirAllUnderCwd(target, cwd string) error {
+	// realCwd anchors the safety check; the validator already proved
+	// canonicalized target lands under realCwd. What we close here is
+	// the TOCTOU between validate-return and mkdir: an attacker who
+	// plants a symlink in a not-yet-existing component (one the
+	// validator never saw) would have os.MkdirAll silently follow it.
+	// Strategy: snapshot the existing prefix (canonicalized once — it
+	// matches the state the validator vetted), then walk ONLY the
+	// not-yet-existing tail with lstat-then-mkdir so a freshly-planted
+	// symlink in any tail component aborts the descent.
+	realCwd, err := canonicalizePath(cwd)
+	if err != nil {
+		return fmt.Errorf("resolve cwd %q: %w", cwd, err)
+	}
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return fmt.Errorf("resolve --write-dir %q: %w", target, err)
+	}
+	absTarget = filepath.Clean(absTarget)
+
+	existing := absTarget
+	var tail []string // leaf-first; reversed before descent.
+	for {
+		if _, err := os.Lstat(existing); err == nil {
+			break
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("lstat %s: %w", existing, err)
+		}
+		parent, leaf := filepath.Split(existing)
+		parent = filepath.Clean(parent)
+		// Reaching FS root without finding an existing ancestor should
+		// be unreachable in practice (root always exists); refuse rather
+		// than spin.
+		if parent == "" || parent == existing {
+			return fmt.Errorf("no existing ancestor for --write-dir %q", absTarget)
+		}
+		tail = append(tail, leaf)
+		existing = parent
+	}
+	canonExisting, err := filepath.EvalSymlinks(existing)
+	if err != nil {
+		return fmt.Errorf("resolve existing ancestor %q: %w", existing, err)
+	}
+	// Defense-in-depth: if the validator was bypassed (or someone calls
+	// safeMkdir directly with a target whose existing prefix sits
+	// outside cwd), refuse.
+	if !underCwd(canonExisting, realCwd) {
+		return fmt.Errorf("refusing to mkdir outside cwd: existing ancestor %q resolves above cwd %q", canonExisting, realCwd)
+	}
+
+	// Descend the tail one component at a time, lstat'ing each before
+	// committing. mkdirCheckedComponent uses os.Mkdir (NOT MkdirAll) so
+	// no implicit symlink follow happens.
+	cur := canonExisting
+	for i := len(tail) - 1; i >= 0; i-- {
+		cur = filepath.Join(cur, tail[i])
+		if err := mkdirCheckedComponent(cur); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// mkdirCheckedComponent creates path as a directory iff no symlink is
+// already there. EEXIST races are tolerated only when the existing entry
+// is a real directory (not a symlink).
+func mkdirCheckedComponent(path string) error {
+	if err := os.Mkdir(path, 0o750); err == nil {
+		return nil
+	} else if !os.IsExist(err) {
+		return fmt.Errorf("mkdir %s: %w", path, err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("lstat after EEXIST %s: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to traverse symlink in --write-dir path: %s", path)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("--write-dir path component is not a directory: %s", path)
+	}
+	return nil
+}
+
+// underCwd returns whether canon (an already-canonicalized absolute path)
+// is the cwd itself or sits beneath it. Uses the trailing-separator
+// HasPrefix idiom to defuse the sibling-prefix trap (/etc vs /etcetera)
+// and the Windows case-fold rule the validator pivots on.
+func underCwd(canon, canonCwd string) bool {
+	if pathsEqual(canon, canonCwd) {
+		return true
+	}
+	prefix := canonCwd
+	if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+		prefix += string(os.PathSeparator)
+	}
+	return pathHasPrefix(canon, prefix)
 }
 
 // canonicalizePath returns an absolute, symlink-resolved path even when

@@ -212,10 +212,7 @@ func TestOutputsSchemaResolverFor(t *testing.T) {
 	}
 }
 
-// TestValidateWriteDirUnderCwd covers the defense-in-depth path validator
-// for --write-dir. Targets outside cwd must be rejected; the sibling-prefix
-// trap (/etc vs /etcetera) must NOT false-match; relative paths and ".."
-// traversals must resolve before the prefix check.
+// TestValidateWriteDirUnderCwd: targets outside cwd are rejected; prefix trap and ".." traversal are defused.
 func TestValidateWriteDirUnderCwd(t *testing.T) {
 	cwd := t.TempDir()
 	sibling := t.TempDir() // independent tempdir; outside cwd by construction.
@@ -254,10 +251,7 @@ func TestValidateWriteDirUnderCwd(t *testing.T) {
 	}
 }
 
-// TestValidateWriteDirSymlinkEscape pins the symlink-resolution branch:
-// a symlink placed under cwd that points outside must NOT slip the check.
-// Without EvalSymlinks, an attacker could plant /cwd/back -> /etc and
-// pass --write-dir ./back.
+// TestValidateWriteDirSymlinkEscape: a symlink under cwd pointing outside must not slip the check.
 func TestValidateWriteDirSymlinkEscape(t *testing.T) {
 	cwd := t.TempDir()
 	outside := t.TempDir()
@@ -270,9 +264,7 @@ func TestValidateWriteDirSymlinkEscape(t *testing.T) {
 	}
 }
 
-// TestValidateWriteDirSiblingPrefixTrap pins the /etc vs /etcetera trap:
-// a naive HasPrefix without trailing-separator normalization would accept
-// /etcetera when cwd is /etc.
+// TestValidateWriteDirSiblingPrefixTrap: /etc vs /etcetera must not false-match without trailing-sep normalization.
 func TestValidateWriteDirSiblingPrefixTrap(t *testing.T) {
 	// Build two sibling dirs under a shared parent so one is a string
 	// prefix of the other but neither contains the other.
@@ -289,9 +281,7 @@ func TestValidateWriteDirSiblingPrefixTrap(t *testing.T) {
 	}
 }
 
-// TestRunProgramPlan_WriteRejectsOutsideCwd drives the end-to-end CLI
-// surface: a --write-dir pointing outside cwd exits non-zero without
-// the opt-out flag.
+// TestRunProgramPlan_WriteRejectsOutsideCwd: --write-dir outside cwd exits non-zero without the opt-out flag.
 func TestRunProgramPlan_WriteRejectsOutsideCwd(t *testing.T) {
 	t.Setenv("HMAC_KEY", "test-key-32-bytes-aaaaaaaaaaaaaaa")
 
@@ -321,9 +311,7 @@ func TestRunProgramPlan_WriteRejectsOutsideCwd(t *testing.T) {
 	}
 }
 
-// TestRunProgramPlan_WriteUnsafeOptOutAllowsOutsideCwd verifies the
-// escape hatch: with --unsafe-write-dir set, the same outside path is
-// accepted.
+// TestRunProgramPlan_WriteUnsafeOptOutAllowsOutsideCwd: --unsafe-write-dir admits an otherwise-rejected outside path.
 func TestRunProgramPlan_WriteUnsafeOptOutAllowsOutsideCwd(t *testing.T) {
 	t.Setenv("HMAC_KEY", "test-key-32-bytes-aaaaaaaaaaaaaaa")
 
@@ -362,6 +350,57 @@ func TestRunProgramPlan_WriteUnsafeOptOutAllowsOutsideCwd(t *testing.T) {
 	}
 	if briefs != 1 {
 		t.Fatalf("want exactly one brief in %s; got %d", outside, briefs)
+	}
+}
+
+// TestSafeMkdir_RefusesSymlinkInPath: a symlink planted post-validate in --write-dir's tail must abort mkdir.
+func TestSafeMkdir_RefusesSymlinkInPath(t *testing.T) {
+	cwd := t.TempDir()
+	outside := t.TempDir()
+
+	// Simulate the post-validate plant: an attacker creates cwd/redir as
+	// a symlink to /outside. The target "cwd/redir/brief" would, under
+	// naive os.MkdirAll, materialize at /outside/brief.
+	planted := filepath.Join(cwd, "redir")
+	if err := os.Symlink(outside, planted); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	target := filepath.Join(planted, "brief")
+
+	err := safeMkdirAllUnderCwd(target, cwd)
+	if err == nil {
+		t.Fatalf("safeMkdirAllUnderCwd allowed symlinked component: target=%q cwd=%q", target, cwd)
+	}
+	// And confirm the destination outside cwd was NOT created — this is
+	// the only invariant operators actually care about. Whether the
+	// rejection arms via "symlink" wording or "outside cwd" wording is
+	// an implementation detail; the leak check is what matters.
+	if _, statErr := os.Stat(filepath.Join(outside, "brief")); statErr == nil {
+		t.Fatalf("safeMkdir leaked: %s/brief exists", outside)
+	}
+}
+
+// TestSafeMkdir_CreatesNestedUnderCwd: multi-level descent with no symlinks materializes the full chain.
+func TestSafeMkdir_CreatesNestedUnderCwd(t *testing.T) {
+	cwd := t.TempDir()
+	target := filepath.Join(cwd, "a", "b", "c")
+	if err := safeMkdirAllUnderCwd(target, cwd); err != nil {
+		t.Fatalf("safeMkdirAllUnderCwd: %v", err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("stat created target: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("created target is not a directory: %v", info.Mode())
+	}
+}
+
+// TestSafeMkdir_TargetEqualsCwd: target == cwd is a no-op (no mkdir, no error).
+func TestSafeMkdir_TargetEqualsCwd(t *testing.T) {
+	cwd := t.TempDir()
+	if err := safeMkdirAllUnderCwd(cwd, cwd); err != nil {
+		t.Fatalf("safeMkdirAllUnderCwd(cwd,cwd): %v", err)
 	}
 }
 
