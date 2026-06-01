@@ -15,10 +15,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// TestCycleCheck_PropertyRandomDAG asserts CycleCheck never falsely
-// flags a strictly-acyclic graph: edges flow from higher-index to
-// lower-index, so no cycle can exist by construction. For every
-// node we treat as candidate, CycleCheck must succeed.
+// TestCycleCheck_PropertyRandomDAG: random acyclic graphs never trigger ErrCycleDetected.
 func TestCycleCheck_PropertyRandomDAG(t *testing.T) {
 	tmp := t.TempDir()
 	var checkID atomic.Int64
@@ -66,12 +63,7 @@ func TestCycleCheck_PropertyRandomDAG(t *testing.T) {
 	})
 }
 
-// TestCycleCheck_PropertyPlantedCycle asserts CycleCheck detects any
-// directly-planted back-edge. We build the acyclic DAG as above, then
-// pick two nodes i<j and ADD an edge from i→j (i.e. i depends on j).
-// Since j already transitively reaches i (or could), the augmented
-// graph contains a cycle through {i, j}. CycleCheck on i with the
-// extra dep must return ErrCycleDetected.
+// TestCycleCheck_PropertyPlantedCycle: linear chain + planted back-edge always trips ErrCycleDetected.
 func TestCycleCheck_PropertyPlantedCycle(t *testing.T) {
 	tmp := t.TempDir()
 	var checkID atomic.Int64

@@ -128,10 +128,7 @@ func seedLargeDAG(b *testing.B, db *state.DB, nodes, edgesPerNode int) state.Wor
 	}
 }
 
-// BenchmarkCycleCheck_LargeGraph is the issue #90 acceptance fixture:
-// 10k work_items, ~50k dependency edges, candidate forced to touch
-// every node. Captures the worst-case cost CycleCheck pays during a
-// large AdapterSync.
+// BenchmarkCycleCheck_LargeGraph: 10k items, ~50k edges (issue #90 acceptance fixture).
 func BenchmarkCycleCheck_LargeGraph(b *testing.B) {
 	db := newBenchDB(b)
 	cand := seedLargeDAG(b, db, 10_000, 5)
