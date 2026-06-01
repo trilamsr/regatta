@@ -35,14 +35,14 @@ const (
 	// Scheduler edge evaluation. Names match the literals already
 	// present in internal/orchestrator/scheduler/scheduler.go so
 	// Task B is a mechanical literal→constant swap.
-	EventEdgeFired                    EventName = "edge.fired"
-	EventEdgeSkipped                  EventName = "edge.skipped"
-	EventEdgeDefaultFallback          EventName = "edge.default_fallback"
-	EventEdgeEvalError                EventName = "edge.eval_error"
-	EventEdgeMarkFailed               EventName = "edge.mark_failed"
-	EventEdgeEvalSkippedNoJournal     EventName = "edge.eval_skipped_no_journal"
-	EventEdgeJournalLoadFailed        EventName = "edge.journal_load_failed"
-	EventEdgeMultipleDefaultsPerFrom  EventName = "edge.multiple_defaults_per_from"
+	EventEdgeFired                   EventName = "edge.fired"
+	EventEdgeSkipped                 EventName = "edge.skipped"
+	EventEdgeDefaultFallback         EventName = "edge.default_fallback"
+	EventEdgeEvalError               EventName = "edge.eval_error"
+	EventEdgeMarkFailed              EventName = "edge.mark_failed"
+	EventEdgeEvalSkippedNoJournal    EventName = "edge.eval_skipped_no_journal"
+	EventEdgeJournalLoadFailed       EventName = "edge.journal_load_failed"
+	EventEdgeMultipleDefaultsPerFrom EventName = "edge.multiple_defaults_per_from"
 
 	// Scheduler materialization (new event per spec §5.2 — storage
 	// write failure after an edge fires).
@@ -66,10 +66,10 @@ const (
 	// Brief loader (spec §5.7). brief.rejected is already emitted
 	// by internal/program/brief_loader.go and stays load-bearing
 	// for the rejection-bookkeeping test corpus.
-	EventBriefLoaded             EventName = "brief.loaded"
-	EventBriefRejected           EventName = "brief.rejected"
-	EventBriefMaterialiseFailed  EventName = "brief.materialise_failed"
-	EventBriefEdgesMaterialised  EventName = "brief.edges_materialised"
+	EventBriefLoaded            EventName = "brief.loaded"
+	EventBriefRejected          EventName = "brief.rejected"
+	EventBriefMaterialiseFailed EventName = "brief.materialise_failed"
+	EventBriefEdgesMaterialised EventName = "brief.edges_materialised"
 
 	// Adapter sync (spec §5.8).
 	EventAdapterSyncSynced EventName = "adaptersync.synced"
@@ -85,6 +85,14 @@ const (
 	EventApprovalRequested EventName = "approval.requested"
 	EventApprovalNotified  EventName = "approval.notified"
 	EventApprovalDecided   EventName = "approval.decided"
+
+	// Approval-gate reaper sweep events (spec §3.3 / §5.9). Emitted
+	// per-row when a pending approval crosses its timeout_at. The
+	// dotted `policy` attribute identifies which on_timeout branch
+	// fired (fail | auto_approve | escalate).
+	EventApprovalTimedOut     EventName = "approval.timed_out"
+	EventApprovalAutoApproved EventName = "approval.auto_approved"
+	EventApprovalEscalated    EventName = "approval.escalated"
 )
 
 // Attribute keys. The set is intentionally small — anything not on
@@ -132,6 +140,14 @@ const (
 	// recordEvent helper also writes to approval_events.payload_json,
 	// so byte-equality between slog and DB is a single string compare.
 	KeyAuditPayload AttrKey = "audit_payload"
+
+	// Approval-gate reaper sweep attributes (spec §3.3 / §5.9).
+	// KeyPolicy carries the on_timeout branch that fired; the chain-
+	// index keys ride along on escalation events so an operator can
+	// reconstruct which tier became active without re-fetching the row.
+	KeyPolicy          AttrKey = "policy"
+	KeyPriorChainIndex AttrKey = "prior_chain_index"
+	KeyNewChainIndex   AttrKey = "new_chain_index"
 )
 
 // AllEventNames enumerates every EventName constant declared above.
@@ -168,6 +184,9 @@ func AllEventNames() []EventName {
 		EventApprovalRequested,
 		EventApprovalNotified,
 		EventApprovalDecided,
+		EventApprovalTimedOut,
+		EventApprovalAutoApproved,
+		EventApprovalEscalated,
 	}
 }
 
@@ -196,5 +215,8 @@ func AllAttrKeys() []AttrKey {
 		KeyReviewerID,
 		KeyDecision,
 		KeyAuditPayload,
+		KeyPolicy,
+		KeyPriorChainIndex,
+		KeyNewChainIndex,
 	}
 }
