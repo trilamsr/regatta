@@ -237,6 +237,34 @@ func TestVerify_HMACBeforeJSONUnmarshal(t *testing.T) {
 	}
 }
 
+// TestApprovalToken_FixedWireRegression pins the exact byte output of the
+// HMAC primitive feeding VerifyToken. If the underlying MAC algorithm
+// drifts (key ordering, length-prefix scheme, hash choice), this fixture
+// fails and forces a conscious migration. Locks the seam during the
+// macSum/tokenMAC unification (issue #131).
+func TestApprovalToken_FixedWireRegression(t *testing.T) {
+	t.Parallel()
+	// Pinned: key=32×0xAB, kid=k1, jti=base64url(16×0x42), window=2000000000.
+	const wantWire = "m342scR3QpsgbcN_aRvEJJ3u9fDOFurwfSPzdD1u34I.eyJhaWQiOiJhaWQtMSIsImp0aSI6IlFrSkNRa0pDUWtKQ1FrSkNRa0pDUWciLCJraWQiOiJrMSIsInJldmlld2VyIjoiYWxpY2UiLCJ3aSI6IndpLTEiLCJ3aW5kb3ciOjIwMDAwMDAwMDB9"
+	kr := newTestKeyring()
+	pinned := bytes.Repeat([]byte{0x42}, 16)
+	gotWire, _, err := MintToken(kr, "k1", TokenPayload{
+		KID: "k1", WI: "wi-1", AID: "aid-1", Reviewer: "alice", Window: 2000000000,
+	}, &fixedReader{src: pinned})
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+	if gotWire != wantWire {
+		t.Fatalf("wire drift:\n got=%s\nwant=%s", gotWire, wantWire)
+	}
+	// Verify the pinned wire round-trips under the same key — guards against
+	// a future change that breaks mint and verify in symmetric but incorrect ways.
+	verifyAt := time.Unix(1999999999, 0)
+	if _, err := VerifyToken(kr, wantWire, "alice", verifyAt); err != nil {
+		t.Fatalf("verify pinned wire: %v", err)
+	}
+}
+
 // TestExtractKID_TypedSentinels pins each kid-scan failure mode to its typed sentinel.
 func TestExtractKID_TypedSentinels(t *testing.T) {
 	t.Parallel()
