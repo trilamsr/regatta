@@ -24,6 +24,15 @@ import (
 // as the canonical single-use violation; see spec §4.3.
 var ErrTokenReplay = errors.New("state: approval token already consumed")
 
+// ApprovalStatus values for the `approvals.status` denorm column.
+// Source of truth is fold(approval_events); see spec §4.1.
+const (
+	ApprovalStatusPending  = "pending"
+	ApprovalStatusApproved = "approved"
+	ApprovalStatusRejected = "rejected"
+	ApprovalStatusTimedOut = "timed_out"
+)
+
 // ReviewerSet is the snapshot persisted in approvals.reviewer_set_snapshot_json
 // at request-time. Snapshotting (rather than re-resolving at decide-time)
 // keeps the decision attributable to the policy that was in force when
@@ -100,7 +109,7 @@ func (d *DB) CreateApproval(ctx context.Context, a Approval) error {
 	now := d.now().UTC().Unix()
 	status := a.Status
 	if status == "" {
-		status = "pending"
+		status = ApprovalStatusPending
 	}
 	onTimeout := a.OnTimeout
 	if onTimeout == "" {
@@ -221,7 +230,8 @@ func (d *DB) ListApprovalEvents(ctx context.Context, approvalID string) ([]Appro
 // oldest waiting decision first.
 func (d *DB) ListPendingApprovals(ctx context.Context) ([]Approval, error) {
 	rows, err := d.sql.QueryContext(ctx,
-		selectApprovalCols+` FROM approvals WHERE status = 'pending' ORDER BY created_at ASC, id ASC`)
+		selectApprovalCols+` FROM approvals WHERE status = ? ORDER BY created_at ASC, id ASC`,
+		ApprovalStatusPending)
 	if err != nil {
 		return nil, fmt.Errorf("state: list pending approvals: %w", err)
 	}
@@ -236,9 +246,9 @@ func (d *DB) ListPendingApprovals(ctx context.Context) ([]Approval, error) {
 func (d *DB) ListApprovalsTimedOutBefore(ctx context.Context, t time.Time) ([]Approval, error) {
 	rows, err := d.sql.QueryContext(ctx,
 		selectApprovalCols+` FROM approvals
-		WHERE status = 'pending' AND timeout_at < ?
+		WHERE status = ? AND timeout_at < ?
 		ORDER BY timeout_at ASC, id ASC`,
-		t.UTC().Unix())
+		ApprovalStatusPending, t.UTC().Unix())
 	if err != nil {
 		return nil, fmt.Errorf("state: list approvals timed out: %w", err)
 	}
