@@ -143,3 +143,63 @@ func TestHandler_WithGroupRecordsCaptured(t *testing.T) {
 		t.Fatalf("Message=%q; want evt", recs[0].Message)
 	}
 }
+
+// countAttrs walks every Attr on a Record and returns the count. Used
+// to detect leakage when a caller AddAttrs'd a Record returned from
+// FindEvent / Records — per slog docs, Record copies share state and
+// AddAttrs on a shared copy can corrupt the stored record's attrs.
+func countAttrs(r slog.Record) int {
+	n := 0
+	r.Attrs(func(slog.Attr) bool { n++; return true })
+	return n
+}
+
+func TestHandler_FindEventReturnsCloneAttrMutationDoesNotLeak(t *testing.T) {
+	h := obstest.New()
+	slog.New(h).Info(string(obs.EventTickStarted), "k", "v")
+
+	rec, ok := h.FindEvent(obs.EventTickStarted)
+	if !ok {
+		t.Fatalf("FindEvent(%q) not found", obs.EventTickStarted)
+	}
+	before := countAttrs(rec)
+
+	// Mutate the returned record. If FindEvent leaked the stored
+	// Record's attr backing, AddAttrs here would mutate h.records[0].
+	for i := 0; i < 16; i++ {
+		rec.AddAttrs(slog.String("injected", "leak"))
+	}
+
+	stored := h.Records()[0]
+	if got := countAttrs(stored); got != before {
+		t.Fatalf("stored attrs mutated: got=%d want=%d (FindEvent leaked state)", got, before)
+	}
+	stored.Attrs(func(a slog.Attr) bool {
+		if a.Key == "injected" {
+			t.Fatalf("stored record saw injected attr; FindEvent shared state")
+		}
+		return true
+	})
+}
+
+func TestHandler_RecordsReturnsClonesAttrMutationDoesNotLeak(t *testing.T) {
+	h := obstest.New()
+	slog.New(h).Info("evt", "k", "v")
+
+	snap := h.Records()
+	before := countAttrs(snap[0])
+	for i := 0; i < 16; i++ {
+		snap[0].AddAttrs(slog.String("injected", "leak"))
+	}
+
+	stored := h.Records()[0]
+	if got := countAttrs(stored); got != before {
+		t.Fatalf("stored attrs mutated: got=%d want=%d (Records leaked state)", got, before)
+	}
+	stored.Attrs(func(a slog.Attr) bool {
+		if a.Key == "injected" {
+			t.Fatalf("stored record saw injected attr; Records shared state")
+		}
+		return true
+	})
+}

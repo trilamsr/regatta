@@ -4,6 +4,12 @@
 // Handler is the slog.Handler that captures every emitted record so
 // callers can pin which obs events a component produced. Spec
 // docs/superpowers/specs/2026-05-31-obs-101-slog-wiring.md §6.1.
+//
+// Test-only package: importing from non-test code is a bug. Repo
+// convention (matches internal/testutil/*) keeps the file as a
+// regular .go so cross-package *_test.go files can import it; a
+// _test.go suffix would hide the symbol from those importers and
+// build-tag gating would be heavier than the threat warrants.
 package obstest
 
 import (
@@ -45,13 +51,16 @@ func (h *Handler) WithAttrs([]slog.Attr) slog.Handler { return h }
 // WithGroup — see WithAttrs.
 func (h *Handler) WithGroup(string) slog.Handler { return h }
 
-// Records returns a snapshot copy so callers iterating the slice
-// cannot race with further Handle invocations.
+// Records returns a snapshot of cloned records. Per slog.Record's
+// "copies share state" contract, cloning each element severs the
+// attr-backing tie so caller mutations cannot reach back into h.records.
 func (h *Handler) Records() []slog.Record {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	out := make([]slog.Record, len(h.records))
-	copy(out, h.records)
+	for i, r := range h.records {
+		out[i] = r.Clone()
+	}
 	return out
 }
 
@@ -76,7 +85,7 @@ func (h *Handler) FindEvent(name obs.EventName) (slog.Record, bool) {
 	defer h.mu.Unlock()
 	for _, r := range h.records {
 		if r.Message == string(name) {
-			return r, true
+			return r.Clone(), true
 		}
 	}
 	return slog.Record{}, false
