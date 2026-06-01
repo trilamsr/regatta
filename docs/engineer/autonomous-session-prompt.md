@@ -16,17 +16,21 @@ BOOT
 4. Read MEMORY.md + AGENTS.md (auto-loaded). Recover docs/superpowers/ per AGENTS.md recipe if needed.
 
 PRIORITY (top-down, skip if blocked)
-1. #114 approval-gates remaining waves — Wave 1 + 2 + much of 3 already shipped (see "Already shipped" below). Remaining: Wave 3 A4 (scheduler integration — extend tick w/ gate-pass per spec §3.1), Wave 4 (e2e + ops runbook), Wave 5 (operator doc + property tests). Spec at docs/superpowers/specs/2026-05-31-mvp-approval-gates.md (gitignored — recover via AGENTS.md recipe or rebuild from #114 body).
-2. Open follow-up issues #115-#148 by load-bearing weight — many are A+ tier rubric checkboxes from earlier waves (mutation testing, fuzz, key-rotation drill, etc.). Triage via `gh issue list --state open` and pick highest UX impact per feedback_decision_priority.
-3. MVP-3 next-level — design brief written at docs/superpowers/briefs/2026-05-31-mvp-3-next-level.md (gitignored). Top-3 wedges: W6 OTel + GenAI semconv observability backbone, W7 operator web UI, W8 OPA RBAC + multi-tenant. W6 unblocks W7+W9+W10+W12; spawn design subagent on W6 spec FIRST. Brief §8 carries a ready-to-paste design-subagent bootstrap prompt.
-4. #99-#100 spawner determinism + reconciler (MVP-2 followups, load-bearing for approval-gates Wave 3 A4 scheduler integration)
+1. MVP-3 W6 OTel observability backbone — umbrella #159. Wave 1 partial shipped (T1 #172 + T2 #169). Remaining: T5 Config.Tracer injection across 8 components (depends on T1 merged; A4 #168 already landed so scheduler.go is settled). Wave 2 = T3 migration 0005 trace_id columns + T4 spawner stream-json GenAI semconv parser. Wave 3 = T6 docker-compose Jaeger E2E + T7 operator observability doc. Spec at docs/superpowers/specs/2026-05-31-mvp-3-w6-otel-backbone.md (gitignored — recover via AGENTS.md recipe or rebuild from #159 body).
+2. #114 approval-gates closeout — Wave 5 E2E test dispatched. When merged + #114 umbrella closeable, comment "Closes #114" on the E2E PR or close #114 manually. Spec at docs/superpowers/specs/2026-05-31-mvp-approval-gates.md.
+3. Open follow-up issues (~50) by load-bearing weight — A+ tier rubric checkboxes from earlier waves (mutation testing, fuzz, key-rotation drill, etc.). Spawn a triage subagent (≤5 trivial PRs/session cap) to sweep. Per feedback_session_2026_05_31_lessons.
+4. MVP-3 next-level — brief at docs/superpowers/briefs/2026-05-31-mvp-3-next-level.md. After W6 lands: W7 operator web UI (rank #2; Temporal-UI pattern via Go embed.FS + htmx; scope-disciplined to approval flow + read-only DAG + cost panel). W8 OPA RBAC + multi-tenant (rank #3).
 
-Already shipped (do NOT redo):
-- #98 scheduler default-fallback bug — merged PR #112 (commit 7dbcbab)
-- #101 observability sweep — merged PR #113 (commit ab9f978)
-- #114 approval-gates Wave 1 — merged PRs #123 (HMAC token), #126 (migration + state ops), #127 (notifier interface + stub)
-- #114 approval-gates Wave 2 — merged PRs #143 (reaper + escalation), #144 (gate handler + fold + config)
-- #114 approval-gates Wave 3 partial — A5 (CLI decide/list) + A7 (config loader + CUE bump) dispatched, may have merged; check `gh pr list --state merged --search "Wave 3"`
+Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -40`:
+- #98 #101 #115 #116 (Wave 0 prereqs)
+- #114 approval-gates Wave 1 — #123 #126 #127
+- #114 approval-gates Wave 2 — #143 #144
+- #114 approval-gates Wave 3 — #154 #155 #168 (A4 scheduler integration)
+- #114 approval-gates Wave 5 docs — #161 (operator runbook)
+- #114 Wave 5 E2E — possibly merged this session; check via `gh pr list --state merged --search "Wave 5 E2E"`
+- #159 MVP-3 W6 T1 — #172 (OTel SDK setup)
+- #159 MVP-3 W6 T2 — #169 (slog→OTel logs bridge)
+- Cleanup + sweep: #160 (cel-go) #163 (single-NewReaper) #164 (kid sentinels) #166 (state dedupe) #170 (program-plan test) #177 (Kahn cycle-check)
 
 WORKFLOW per item
 1. Spawn design subagent → spec (w/ grade rubric per feedback_grade_rubric)
@@ -52,7 +56,8 @@ WHEN BLOCKED
 - File [followup] issue + pick next priority. Never pause for user input.
 
 STOP CRITERIA (any one)
-- Approval-gates Wave 5 merged (full HITL flow shippable) OR MVP-3 W6 (OTel backbone) Wave 1 merged + Wave 2 dispatched
+- MVP-3 W6 Wave 1 merged (T1+T2+T5) + Wave 2 dispatched + #114 umbrella closed
+- OR MVP-3 W7 (operator web UI) design spec drafted + reviewed
 - OR 3 critical PRs shipped this session
 - OR genuinely irreversible step required (tag signing, secret rotation, branch-protection downgrade)
 - OR context budget tight + Wave-mid (don't leave half-applied state)
