@@ -93,7 +93,7 @@ func runServe(args []string) int {
 		return 2
 	}
 
-	set, err := buildSpawner(*spawnerName, *repoRoot, *claudeBin, *baseRef)
+	set, err := buildSpawner(*spawnerName, *repoRoot, *claudeBin, *baseRef, slogger)
 	if err != nil {
 		logger.Printf("spawner: %v", err)
 		return 2
@@ -104,12 +104,26 @@ func runServe(args []string) int {
 		logger.Printf("mkdir briefs dir: %v", err)
 		return 2
 	}
-	syncer := adaptersync.New(ad, db)
+	syncer, err := adaptersync.New(adaptersync.Config{Adapter: ad, DB: db, Logger: slogger})
+	if err != nil {
+		logger.Printf("adaptersync: %v", err)
+		return 2
+	}
 	// Shared evaluator: BriefLoader materialises edges (and could warm
 	// the compile cache); Scheduler.Tick step-0 Evals through the same
 	// instance so cached cel.Program survives across ticks.
 	evaluator := program.NewEdgeEvaluator()
-	loader := program.NewBriefLoader(os.DirFS(briefsDir), db, loadBriefKeyring(), evaluator)
+	loader, err := program.NewBriefLoader(program.BriefLoaderConfig{
+		FS:        os.DirFS(briefsDir),
+		DB:        db,
+		Keyring:   loadBriefKeyring(),
+		Evaluator: evaluator,
+		Logger:    slogger,
+	})
+	if err != nil {
+		logger.Printf("brief loader: %v", err)
+		return 2
+	}
 	sched := scheduler.New(db, scheduler.Config{
 		LaneCaps:       map[string]int(laneCaps),
 		LockTTL:        *lockTTL,
@@ -208,10 +222,16 @@ type spawnerSet struct {
 }
 
 // buildSpawner returns the spawnerSet selected by the -spawner flag.
-func buildSpawner(name, repoRoot, claudeBin, baseRef string) (spawnerSet, error) {
+//
+// The logger parameter is consumed only by the stub branch: the stub
+// emits spawn.* structured events through it (spec §5.3). ClaudeSpawner
+// currently has no slog callsites — its observability lands when real
+// stdout/stderr-stream capture ships (#27, #45), at which point the
+// logger will thread through ClaudeSpawnerConfig the same way.
+func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger) (spawnerSet, error) {
 	switch name {
 	case "", "stub":
-		return spawnerSet{Spawner: spawner.NewStub()}, nil
+		return spawnerSet{Spawner: spawner.New(spawner.Config{Logger: logger})}, nil
 	case "claude":
 		wm, err := spawner.NewWorktreeManager(spawner.WorktreeManagerConfig{RepoRoot: repoRoot})
 		if err != nil {

@@ -33,7 +33,7 @@ func TestSpawner_Spawn_EmitsStartedAndCompleted(t *testing.T) {
 	h := obstest.New()
 	logger := slog.New(h)
 
-	sp := NewStubWithDB(db).WithLogger(logger)
+	sp := New(Config{DB: db, Logger: logger})
 
 	if _, err := sp.Spawn(ctx, Request{AgentID: 7, WorkItemID: "F-1", Lane: "server"}); err != nil {
 		t.Fatalf("Spawn: %v", err)
@@ -77,7 +77,7 @@ func TestSpawner_SpawnFailed_EmitsErr(t *testing.T) {
 	h := obstest.New()
 	logger := slog.New(h)
 
-	sp := NewStubWithDB(db).WithLogger(logger)
+	sp := New(Config{DB: db, Logger: logger})
 
 	if _, err := sp.Spawn(ctx, Request{AgentID: 9, WorkItemID: "F-1", Lane: "server"}); err != nil {
 		t.Fatalf("Spawn: %v", err)
@@ -103,7 +103,7 @@ func TestSpawner_SpawnFailed_EmitsErr(t *testing.T) {
 // TestSpawner_NilLogger_UsesDefault guards the slog.Default() fallback (spec §4.1).
 func TestSpawner_NilLogger_UsesDefault(t *testing.T) {
 	ctx := context.Background()
-	sp := NewStub()
+	sp := New(Config{})
 	if _, err := sp.Spawn(ctx, Request{AgentID: 1, WorkItemID: "WI", Lane: "server"}); err != nil {
 		t.Fatalf("Spawn with nil logger panicked or errored: %v", err)
 	}
