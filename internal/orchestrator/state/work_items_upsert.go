@@ -51,15 +51,17 @@ func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemS
 			return fmt.Errorf("state: update work_item: %w", err)
 		}
 	case errors.Is(err, sql.ErrNoRows):
+		var traceID string
+		PersistTraceIDFromContext(ctx, &traceID)
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO work_items (
 				id, kind, title, lane, status,
 				parent_program_id, depends_on_features, acceptance_json,
-				source, last_seen_at, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				source, last_seen_at, created_at, updated_at, trace_id
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			item.ID, string(item.Kind), item.Title, item.Lane, string(item.Status),
 			nullable(item.ParentProgramID), depsJSON, accept,
-			string(source), now, now, now,
+			string(source), now, now, now, traceID,
 		); err != nil {
 			return fmt.Errorf("state: insert work_item: %w", err)
 		}
