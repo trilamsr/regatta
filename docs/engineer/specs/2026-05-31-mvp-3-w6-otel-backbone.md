@@ -23,7 +23,7 @@ Brief §2 names the pain: "slog is print-debugging — no OTel traces, no GenAI 
 ### In scope (this wedge / MVP-3 W6)
 
 1. New package `internal/obs/otel/` parallel to the existing `internal/obs/`. Owns OTel SDK bootstrap, exporter wiring, shutdown plumbing, and the slog→OTel bridge handler.
-2. OTel Go SDK adopted verbatim (`go.opentelemetry.io/otel` v1, `go.opentelemetry.io/otel/sdk` v1, `go.opentelemetry.io/contrib/bridges/otelslog`, `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc`, `go.opentelemetry.io/otel/exporters/stdout/stdouttrace`, `go.opentelemetry.io/otel/semconv/v1.40.0`, `go.opentelemetry.io/otel/log/global`, `go.opentelemetry.io/otel/sdk/log`). No bespoke tracing primitive. Per brief §4 W6 prior-art and `feedback_research_design_principles`.
+2. OTel Go SDK adopted verbatim (`go.opentelemetry.io/otel` v1, `go.opentelemetry.io/otel/sdk` v1, `go.opentelemetry.io/contrib/bridges/otelslog`, `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc`, `go.opentelemetry.io/otel/exporters/stdout/stdouttrace`, `go.opentelemetry.io/otel/semconv/v1.41.0`, `go.opentelemetry.io/otel/log/global`, `go.opentelemetry.io/otel/sdk/log`). No bespoke tracing primitive. Per brief §4 W6 prior-art and `feedback_research_design_principles`. (Bumped from v1.40.0 → v1.41.0 in T1 #172 to match SDK v1.44.0's bundled detector schema URL; no breaking GenAI attribute renames between versions.)
 3. **Mandated injection pattern** (`feedback_spec_pattern_authority`): every component constructor that today takes `Config.Logger *slog.Logger` ALSO takes `Config.Tracer trace.Tracer`. Nil falls back to `otel.Tracer(<component-name>)` (global provider, which defaults to noop when no SDK is initialized — zero cost). Mirrors the `Config.Logger` normalization that landed in PR #115. Implementer MAY NOT pick `WithTracer(...)`, constructor overloads, or a package-level singleton. Deviation requires re-spawning the design subagent.
 4. **slog→OTel logs bridge** via `otelslog.NewHandler(<component-name>, otelslog.WithLoggerProvider(provider))`. The existing `Config.Logger` keeps emitting via the same `obs.EventXxx` constants; the bridge handler forwards every record to the OTel LoggerProvider in addition to the existing local sink (multi-handler fan-out). Preserves byte-equal local stderr stream so existing `*_obs_test.go` capture handlers still pass.
 5. **Span hierarchy** propagated through `context.Context`:
@@ -487,7 +487,7 @@ go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.x
 go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc     v0.x
 go.opentelemetry.io/otel/exporters/stdout/stdouttrace           v1.x
 go.opentelemetry.io/otel/exporters/stdout/stdoutlog             v0.x
-go.opentelemetry.io/otel/semconv/v1.40.0                        v1.40.0  (cite the schema URL exactly)
+go.opentelemetry.io/otel/semconv/v1.41.0                        v1.41.0  (cite the schema URL exactly)
 go.opentelemetry.io/contrib/bridges/otelslog                    v0.19.0+
 ```
 
