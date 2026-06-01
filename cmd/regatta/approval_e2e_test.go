@@ -101,7 +101,6 @@ type e2eHarness struct {
 	clock    func() time.Time
 	notifier *e2eCaptureNotifier
 	sched    *scheduler.Scheduler
-	reaper   *approval.Reaper
 	gateCfg  approval.Config
 	keyring  canon.MapKeyring
 	keyID    string
@@ -156,10 +155,9 @@ func newE2EHarness(t *testing.T, workItemLane string) *e2eHarness {
 		Logger:       slog.New(slog.NewTextHandler(discardWriter{}, nil)),
 	})
 
-	reaper, err := approval.NewReaper(db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), clock)
-	if err != nil {
-		t.Fatalf("NewReaper: %v", err)
-	}
+	// Reaper is constructed per-sub-test (TimeoutPath builds its own with a
+	// future-clock); harness does not own one because HappyPath + RejectPath
+	// never sweep.
 
 	h := &e2eHarness{
 		t:        t,
@@ -169,7 +167,6 @@ func newE2EHarness(t *testing.T, workItemLane string) *e2eHarness {
 		clock:    clock,
 		notifier: notifier,
 		sched:    sched,
-		reaper:   reaper,
 		gateCfg:  gateCfg,
 		keyring:  kr,
 		keyID:    keyID,
@@ -364,7 +361,10 @@ func TestE2E_ApprovalGateLifecycle(t *testing.T) {
 			t.Fatalf("Tick#1: %v", err)
 		}
 		req := h.notifier.lastRequest(t)
-		token := req.Tokens["alice"]
+		token, ok := req.Tokens["alice"]
+		if !ok {
+			t.Fatalf("notifier did not mint token for alice")
+		}
 
 		code, stderr := h.decideViaCLI(token, "deny", "alice")
 		if code != 0 {
