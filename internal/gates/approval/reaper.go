@@ -43,8 +43,8 @@ const (
 	kindTokenConsumed = "token_consumed"
 )
 
-// ErrReaperClockRequired is returned by NewReaperOrError when the
-// supplied clock is nil. Falling back to time.Now would make Sweep
+// ErrReaperClockRequired is returned by NewReaper when the supplied
+// clock is nil. Falling back to time.Now would make Sweep
 // nondeterministic across tests and across operator clock changes;
 // the spec §3.3 / §5.9 contract pins constructor-injected clocks.
 var ErrReaperClockRequired = errors.New("approval: reaper requires a non-nil clock")
@@ -83,36 +83,17 @@ type Reaper struct {
 
 // NewReaper builds a Reaper. A nil log defaults to slog.Default so
 // callers in tests can pass slog.New(handler) without a separate ctor.
-// A nil clock panics: see NewReaperOrError for the typed-error variant
-// the constructor-validation test relies on.
-func NewReaper(db *state.DB, log *slog.Logger, clock func() time.Time) *Reaper {
-	r := NewReaperOrError(db, log, clock)
-	if r.err != nil {
-		panic(r.err)
-	}
-	return r.r
-}
-
-// reaperResult lets NewReaperOrError surface the nil-clock branch as a
-// typed error to the test that asserts the contract without forcing
-// production callsites through a returned error they would only check
-// at startup.
-type reaperResult struct {
-	r   *Reaper
-	err error
-}
-
-// NewReaperOrError is the typed-error sibling of NewReaper. Production
-// wiring uses NewReaper; the constructor-validation test uses this
-// variant to assert ErrReaperClockRequired without panic recovery.
-func NewReaperOrError(db *state.DB, log *slog.Logger, clock func() time.Time) reaperResult {
+// A nil clock returns ErrReaperClockRequired — see spec §3.3 / §5.9:
+// production wiring must thread an explicit clock so Sweep is
+// deterministic across tests and operator clock changes.
+func NewReaper(db *state.DB, log *slog.Logger, clock func() time.Time) (*Reaper, error) {
 	if clock == nil {
-		return reaperResult{err: ErrReaperClockRequired}
+		return nil, ErrReaperClockRequired
 	}
 	if log == nil {
 		log = slog.Default()
 	}
-	return reaperResult{r: &Reaper{db: db, log: log, clock: clock}}
+	return &Reaper{db: db, log: log, clock: clock}, nil
 }
 
 // Sweep loads every pending approval whose timeout_at is strictly
