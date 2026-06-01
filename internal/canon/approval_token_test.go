@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // testKey is a deterministic 32-byte HMAC key for round-trip tests.
@@ -177,7 +179,10 @@ func TestApprovalToken_ReviewerMismatch(t *testing.T) {
 // post-HMAC path.
 func craftSignedWire(t *testing.T, key []byte, kid string, payloadBytes []byte) string {
 	t.Helper()
-	mac := tokenMAC(key, kid, payloadBytes)
+	mac, err := schemas.MacSum(key, kid, payloadBytes)
+	if err != nil {
+		t.Fatalf("macsum: %v", err)
+	}
 	return base64.RawURLEncoding.EncodeToString(mac) + "." + base64.RawURLEncoding.EncodeToString(payloadBytes)
 }
 
@@ -237,11 +242,7 @@ func TestVerify_HMACBeforeJSONUnmarshal(t *testing.T) {
 	}
 }
 
-// TestApprovalToken_FixedWireRegression pins the exact byte output of the
-// HMAC primitive feeding VerifyToken. If the underlying MAC algorithm
-// drifts (key ordering, length-prefix scheme, hash choice), this fixture
-// fails and forces a conscious migration. Locks the seam during the
-// macSum/tokenMAC unification (issue #131).
+// TestApprovalToken_FixedWireRegression pins the exact wire bytes MintToken emits for a fixed input (issue #131).
 func TestApprovalToken_FixedWireRegression(t *testing.T) {
 	t.Parallel()
 	// Pinned: key=32×0xAB, kid=k1, jti=base64url(16×0x42), window=2000000000.

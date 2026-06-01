@@ -2,9 +2,7 @@ package canon
 
 import (
 	"crypto/hmac"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // Approval-token mint + verify. Wire format (spec §5.2):
@@ -20,13 +20,9 @@ import (
 // The payload is wire-detached from its signature: cleaner shape for
 // callback URLs than the schemas.Sign/Verify embedded-signature dance.
 //
-// HMAC primitive: byte-equivalent to contracts/schemas.macSum
-// (length-prefixed key_id || canonical body, HMAC-SHA256). Reimplemented
-// here rather than imported because macSum is package-private to
-// contracts/schemas and approval-gate Wave-1 keeps file scope disjoint
-// across parallel implementers. Drift between the two sites is guarded
-// by an equivalence fixture test landed alongside the schemas seam in
-// Wave 2.
+// HMAC primitive: shares contracts/schemas.MacSum (length-prefixed
+// key_id || canonical body, HMAC-SHA256). Single primitive eliminates
+// drift between mint/verify here and Sign/Verify in contracts/schemas.
 
 // ErrTokenInvalid signals a malformed wire envelope: missing/extra `.`,
 // non-base64url halves, or anything that fails before HMAC compare.
@@ -111,7 +107,10 @@ func MintToken(kr Keyring, kid string, p TokenPayload, jtiRand io.Reader) (strin
 	if err != nil {
 		return "", "", err
 	}
-	mac := tokenMAC(key, kid, body)
+	mac, err := schemas.MacSum(key, kid, body)
+	if err != nil {
+		return "", "", fmt.Errorf("canon: macsum: %w", err)
+	}
 	wire := base64.RawURLEncoding.EncodeToString(mac) + "." + base64.RawURLEncoding.EncodeToString(body)
 	return wire, jti, nil
 }
@@ -149,7 +148,11 @@ func VerifyToken(kr Keyring, wire string, expectReviewer string, now time.Time) 
 	if err != nil {
 		return zero, err
 	}
-	computed := tokenMAC(key, kid, body)
+	computed, err := schemas.MacSum(key, kid, body)
+	if err != nil {
+		// Oversized kid caught by MacSum; surface as malformed framing.
+		return zero, fmt.Errorf("%w: macsum: %w", ErrTokenInvalid, err)
+	}
 	if !hmac.Equal(computed, sig) {
 		return zero, ErrUnverifiable
 	}
@@ -184,28 +187,6 @@ func canonicaliseTokenPayload(p TokenPayload) ([]byte, error) {
 	return CanonicaliseJSON(raw)
 }
 
-// tokenMAC is byte-equivalent to contracts/schemas.macSum: the keyID is
-// length-prefixed (uint32 BE) and fed into HMAC ahead of the body so
-// that two keyring entries sharing identical key bytes under different
-// kids cannot cross-verify.
-const maxKeyIDLen = 1 << 20
-
-func tokenMAC(key []byte, kid string, body []byte) []byte {
-	// kid bound by maxKeyIDLen; longer kids cannot be minted because the
-	// canonical prefix scan would already have failed framing.
-	if len(kid) > maxKeyIDLen {
-		// Caller-side invariant; return a zero MAC so hmac.Equal fails.
-		return make([]byte, sha256.Size)
-	}
-	h := hmac.New(sha256.New, key)
-	var lp [4]byte
-	binary.BigEndian.PutUint32(lp[:], uint32(len(kid))) // #nosec G115 — bounded by maxKeyIDLen.
-	h.Write(lp[:])
-	h.Write([]byte(kid))
-	h.Write(body)
-	return h.Sum(nil)
-}
-
 // extractKIDFromCanonical pulls the kid value from canonical-JSON body
 // without a full json.Unmarshal: that is the post-HMAC step. canon
 // sorts object keys lex (aid, jti, kid, reviewer, wi, window) so the
@@ -235,10 +216,9 @@ func extractKIDFromCanonical(body []byte) (string, error) {
 		}
 		if c == '\\' {
 			// Reject escapes inside kid: a kid containing backslash
-			// would not round-trip identically between schemas.macSum
-			// and tokenMAC because kids are bytewise-fed. Operators
-			// must use the alnum + _:.- charset (same as
-			// approval_events.actor CHECK).
+			// would not round-trip identically because MacSum feeds
+			// the kid bytewise. Operators must use the alnum + _:.-
+			// charset (same as approval_events.actor CHECK).
 			return "", ErrKIDEscape
 		}
 		if c < 0x20 {
