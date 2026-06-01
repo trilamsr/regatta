@@ -237,9 +237,7 @@ func TestVerify_HMACBeforeJSONUnmarshal(t *testing.T) {
 	}
 }
 
-// TestExtractKID_TypedSentinels pins each kid-scan failure mode to its
-// typed sentinel so callers can errors.Is-discriminate without parsing
-// strings. Spec §7 A-tier: no errors.New outside the var (...) block.
+// TestExtractKID_TypedSentinels pins each kid-scan failure mode to its typed sentinel.
 func TestExtractKID_TypedSentinels(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
