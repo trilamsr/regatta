@@ -77,7 +77,7 @@ import "list"
 
 #Gate: {
 	id:                string & =~ "^[a-z0-9_-]+$"
-	type:              "deterministic" | "ai"
+	type:              "deterministic" | "ai" | "approval_gate"
 
 	if type == "deterministic" {
 		command:    string & =~ ".+"
@@ -89,6 +89,59 @@ import "list"
 		severity_block:      [...string] & list.MinItems(1)
 		rigorous_label?:     string
 	}
+	if type == "approval_gate" {
+		// See spec §5.3 (YAML shape) + §5.5 (invariants V1-V11). The
+		// invariants that CUE cannot cross-reference (V3 window<=timeout,
+		// V5 auto_approve⇒low, V7 quorum<=|set|, V9 escalate⇒chain) are
+		// enforced by the Go-side validator in internal/config; CUE
+		// catches the field-shape ones (enums, regex, presence) so an
+		// `cue vet regatta.yaml` rejects them without Go in the loop.
+
+		// V11 — name shape mirrors A2's gateNameRE in
+		// internal/gates/approval/config.go.
+		name:               string & =~ "^[a-zA-Z0-9_-]{1,64}$"
+		// V6 — risk class enum.
+		risk_class:         "low" | "medium" | "high"
+		// V8 — timeout policy enum.
+		on_timeout:         "fail" | "auto_approve" | "escalate"
+		reviewers:          *[] | [...string & =~ "^[a-zA-Z0-9_:.-]{1,128}$"]
+		roles?:             [...string]
+		// Quorum lower bound. Upper bound is per-config (cannot exceed
+		// |reviewers∪roles|) and lives in the Go validator (V7).
+		quorum:             int & >=1
+		prevent_self_review?: *false | bool
+		// Durations are YAML strings parsed by time.ParseDuration.
+		// CUE regex pins the surface syntax so a typo like "24hours"
+		// fails at the schema layer.
+		timeout:            string & =~ "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+		decision_window:    string & =~ "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+		// V9 — escalate requires a non-empty chain. The reverse
+		// (chain present ⇒ on_timeout=escalate) is NOT enforced;
+		// operators may staff a chain for future toggles.
+		if on_timeout == "escalate" {
+			escalation_chain: [...#ApprovalTier] & list.MinItems(1)
+		}
+		if on_timeout != "escalate" {
+			escalation_chain?: [...#ApprovalTier]
+		}
+		// V5 — auto_approve foot-gun: requires risk_class=low.
+		if on_timeout == "auto_approve" {
+			risk_class: "low"
+		}
+		predicate_cel?:     string
+	}
+}
+
+// #ApprovalTier is one rung of an escalation chain. Same duration
+// regex + quorum lower bound as the top-level gate; cross-field
+// invariants (window<=timeout) live in Go.
+#ApprovalTier: {
+	reviewers:          *[] | [...string & =~ "^[a-zA-Z0-9_:.-]{1,128}$"]
+	roles?:             [...string]
+	quorum:             int & >=1
+	prevent_self_review?: *false | bool
+	timeout:            string & =~ "^[0-9]+(ns|us|µs|ms|s|m|h)$"
+	decision_window:    string & =~ "^[0-9]+(ns|us|µs|ms|s|m|h)$"
 }
 
 #Lane: {
