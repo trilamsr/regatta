@@ -3,6 +3,7 @@ package approval
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"reflect"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+
+	"pgregory.net/rapid"
 )
 
 // Spec §5.7: a single recordEvent helper writes BOTH the slog record
@@ -118,7 +121,74 @@ func TestAudit_SlogMatchesRow(t *testing.T) {
 	if row.Kind != EventKindRequested {
 		t.Errorf("row.Kind=%q; want %q", row.Kind, EventKindRequested)
 	}
-	if row.Actor != "orchestrator" {
-		t.Errorf("row.Actor=%q; want %q", row.Actor, "orchestrator")
+	if row.Actor != ActorOrchestrator {
+		t.Errorf("row.Actor=%q; want %q", row.Actor, ActorOrchestrator)
 	}
+}
+
+// Spec §7 A+ — byte-equality across a representative sequence (200
+// random attribute payloads). Drift here would mean the recordEvent
+// helper silently encoded different bytes to slog vs the row; this is
+// the single regression test that backstops the §5.7 "single helper"
+// claim across the full input space.
+func TestAudit_SlogMatchesRow_Property(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+		db := auditTestDB(t, now)
+		ctx := context.Background()
+		approvalID := fmt.Sprintf("a-%012d", rapid.IntRange(0, 1<<30).Draw(rt, "aid"))
+		if err := db.UpsertWorkItem(ctx, state.WorkItem{
+			ID: "wi-prop", Kind: state.KindFeature, Title: "x", Lane: "server",
+			Status: state.WorkStatusPlanned,
+		}, state.SourceAdapter, now); err != nil {
+			rt.Fatalf("UpsertWorkItem: %v", err)
+		}
+		if err := db.CreateApproval(ctx, state.Approval{
+			ID: approvalID, WorkItemID: "wi-prop", GateName: "g",
+			RequestedAt: now, RequestedBy: "owner",
+			ReviewerSetSnapshot: state.ReviewerSet{Reviewers: []string{"a"}, Quorum: 1},
+			Quorum:              1, TimeoutAt: now.Add(time.Hour), OnTimeout: "fail",
+		}); err != nil {
+			rt.Fatalf("CreateApproval: %v", err)
+		}
+
+		// Random payload shape: string, int, bool, nested object.
+		attrs := map[string]any{
+			"k_str":  rapid.StringMatching(`[a-z]{0,10}`).Draw(rt, "k_str"),
+			"k_int":  rapid.IntRange(-1000, 1000).Draw(rt, "k_int"),
+			"k_bool": rapid.Bool().Draw(rt, "k_bool"),
+		}
+
+		capH := &captureHandler{}
+		if err := recordEvent(ctx, recordEventOpts{
+			DB:         db,
+			Logger:     slog.New(capH),
+			ApprovalID: approvalID,
+			Event:      obs.EventApprovalDecided,
+			Kind:       EventKindDecided,
+			Actor:      "alice",
+			Now:        now,
+			Attrs:      attrs,
+		}); err != nil {
+			rt.Fatalf("recordEvent: %v", err)
+		}
+		events, _ := db.ListApprovalEvents(ctx, approvalID)
+		if len(events) != 1 {
+			rt.Fatalf("len(events)=%d; want 1", len(events))
+		}
+		rec, ok := capH.findEvent(obs.EventApprovalDecided)
+		if !ok {
+			rt.Fatalf("slog event missing")
+		}
+		v, _ := attrValue(rec, "audit_payload")
+		if string(events[0].Payload) != v.String() {
+			rt.Fatalf("payload drift:\n  row=%s\n slog=%s", string(events[0].Payload), v.String())
+		}
+		var fromRow, fromSlog map[string]any
+		_ = json.Unmarshal(events[0].Payload, &fromRow)
+		_ = json.Unmarshal([]byte(v.String()), &fromSlog)
+		if !reflect.DeepEqual(fromRow, fromSlog) {
+			rt.Fatalf("decoded mismatch: row=%v slog=%v", fromRow, fromSlog)
+		}
+	})
 }
