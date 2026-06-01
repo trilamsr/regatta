@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
@@ -68,6 +69,16 @@ status: planned
 func TestRunProgramPlan_WriteCreatesFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HMAC_KEY", "test-key-32-bytes-aaaaaaaaaaaaaaa")
+
+	// --write-dir must live under cwd, so chdir into the fixture root.
+	prev, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(prev) })
 
 	itemPath := filepath.Join(dir, "PROG-1.md")
 	if err := os.WriteFile(itemPath, []byte(programMarkdown), 0o600); err != nil {
@@ -199,4 +210,205 @@ func TestOutputsSchemaResolverFor(t *testing.T) {
 	if _, ok := resolver("F-NOPE"); ok {
 		t.Fatalf("unknown feature: resolver returned ok=true")
 	}
+}
+
+// TestValidateWriteDirUnderCwd: targets outside cwd are rejected; prefix trap and ".." traversal are defused.
+func TestValidateWriteDirUnderCwd(t *testing.T) {
+	cwd := t.TempDir()
+	sibling := t.TempDir() // independent tempdir; outside cwd by construction.
+
+	cases := []struct {
+		name    string
+		target  string
+		wantErr bool
+	}{
+		{"under cwd absolute", filepath.Join(cwd, "out"), false},
+		{"cwd itself", cwd, false},
+		{"nested deep", filepath.Join(cwd, "a", "b", "c"), false},
+		{"trailing slash under cwd", filepath.Join(cwd, "out") + string(os.PathSeparator), false},
+		{"sibling tempdir outside cwd", sibling, true},
+		{"absolute /etc style", "/etc", true},
+		{"parent escape via ..", filepath.Join(cwd, "..", filepath.Base(sibling)), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateWriteDirUnderCwd(tc.target, cwd)
+			if tc.wantErr && err == nil {
+				t.Fatalf("target=%q cwd=%q: want error, got nil", tc.target, cwd)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("target=%q cwd=%q: want nil, got %v", tc.target, cwd, err)
+			}
+			if tc.wantErr && err != nil {
+				// Error must name both the offending path and the cwd so
+				// operators can act on the message without running pwd.
+				msg := err.Error()
+				if !containsAll(msg, tc.target, cwd) {
+					t.Fatalf("error %q must name target %q AND cwd %q", msg, tc.target, cwd)
+				}
+			}
+		})
+	}
+}
+
+// TestValidateWriteDirSymlinkEscape: a symlink under cwd pointing outside must not slip the check.
+func TestValidateWriteDirSymlinkEscape(t *testing.T) {
+	cwd := t.TempDir()
+	outside := t.TempDir()
+	link := filepath.Join(cwd, "escape")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	if err := validateWriteDirUnderCwd(link, cwd); err == nil {
+		t.Fatalf("symlink %q -> %q must be rejected against cwd %q", link, outside, cwd)
+	}
+}
+
+// TestValidateWriteDirSiblingPrefixTrap: /etc vs /etcetera must not false-match without trailing-sep normalization.
+func TestValidateWriteDirSiblingPrefixTrap(t *testing.T) {
+	// Build two sibling dirs under a shared parent so one is a string
+	// prefix of the other but neither contains the other.
+	parent := t.TempDir()
+	cwd := filepath.Join(parent, "etc")
+	trap := filepath.Join(parent, "etcetera")
+	for _, d := range []string{cwd, trap} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := validateWriteDirUnderCwd(trap, cwd); err == nil {
+		t.Fatalf("sibling prefix %q must be rejected against cwd %q", trap, cwd)
+	}
+}
+
+// TestRunProgramPlan_WriteRejectsOutsideCwd: --write-dir outside cwd exits non-zero without the opt-out flag.
+func TestRunProgramPlan_WriteRejectsOutsideCwd(t *testing.T) {
+	t.Setenv("HMAC_KEY", "test-key-32-bytes-aaaaaaaaaaaaaaa")
+
+	// Operator working directory: where the cmd is invoked from.
+	work := t.TempDir()
+	// Sibling outside cwd: the rejected target.
+	outside := t.TempDir()
+
+	prev, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(prev) })
+
+	itemPath := filepath.Join(work, "PROG-1.md")
+	if err := os.WriteFile(itemPath, []byte(programMarkdown), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	args := []string{"-hmac-key-env=HMAC_KEY", "-planner=stub", "-write",
+		"-write-dir=" + outside, itemPath}
+	if rc := runProgramPlan(args); rc == 0 {
+		t.Fatalf("expected non-zero rc for outside-cwd --write-dir; got 0")
+	}
+}
+
+// TestRunProgramPlan_WriteUnsafeOptOutAllowsOutsideCwd: --unsafe-write-dir admits an otherwise-rejected outside path.
+func TestRunProgramPlan_WriteUnsafeOptOutAllowsOutsideCwd(t *testing.T) {
+	t.Setenv("HMAC_KEY", "test-key-32-bytes-aaaaaaaaaaaaaaa")
+
+	work := t.TempDir()
+	outside := t.TempDir()
+
+	prev, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(prev) })
+
+	itemPath := filepath.Join(work, "PROG-1.md")
+	if err := os.WriteFile(itemPath, []byte(programMarkdown), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	args := []string{"-hmac-key-env=HMAC_KEY", "-planner=stub", "-write",
+		"-write-dir=" + outside, "-unsafe-write-dir", itemPath}
+	if rc := runProgramPlan(args); rc != 0 {
+		t.Fatalf("expected rc=0 with --unsafe-write-dir; got %d", rc)
+	}
+	// Confirm a brief actually landed in the outside dir.
+	entries, err := os.ReadDir(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var briefs int
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".json" {
+			briefs++
+		}
+	}
+	if briefs != 1 {
+		t.Fatalf("want exactly one brief in %s; got %d", outside, briefs)
+	}
+}
+
+// TestSafeMkdir_RefusesSymlinkInPath: a symlink planted post-validate in --write-dir's tail must abort mkdir.
+func TestSafeMkdir_RefusesSymlinkInPath(t *testing.T) {
+	cwd := t.TempDir()
+	outside := t.TempDir()
+
+	// Simulate the post-validate plant: an attacker creates cwd/redir as
+	// a symlink to /outside. The target "cwd/redir/brief" would, under
+	// naive os.MkdirAll, materialize at /outside/brief.
+	planted := filepath.Join(cwd, "redir")
+	if err := os.Symlink(outside, planted); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	target := filepath.Join(planted, "brief")
+
+	err := safeMkdirAllUnderCwd(target, cwd)
+	if err == nil {
+		t.Fatalf("safeMkdirAllUnderCwd allowed symlinked component: target=%q cwd=%q", target, cwd)
+	}
+	// And confirm the destination outside cwd was NOT created — this is
+	// the only invariant operators actually care about. Whether the
+	// rejection arms via "symlink" wording or "outside cwd" wording is
+	// an implementation detail; the leak check is what matters.
+	if _, statErr := os.Stat(filepath.Join(outside, "brief")); statErr == nil {
+		t.Fatalf("safeMkdir leaked: %s/brief exists", outside)
+	}
+}
+
+// TestSafeMkdir_CreatesNestedUnderCwd: multi-level descent with no symlinks materializes the full chain.
+func TestSafeMkdir_CreatesNestedUnderCwd(t *testing.T) {
+	cwd := t.TempDir()
+	target := filepath.Join(cwd, "a", "b", "c")
+	if err := safeMkdirAllUnderCwd(target, cwd); err != nil {
+		t.Fatalf("safeMkdirAllUnderCwd: %v", err)
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		t.Fatalf("stat created target: %v", err)
+	}
+	if !info.IsDir() {
+		t.Fatalf("created target is not a directory: %v", info.Mode())
+	}
+}
+
+// TestSafeMkdir_TargetEqualsCwd: target == cwd is a no-op (no mkdir, no error).
+func TestSafeMkdir_TargetEqualsCwd(t *testing.T) {
+	cwd := t.TempDir()
+	if err := safeMkdirAllUnderCwd(cwd, cwd); err != nil {
+		t.Fatalf("safeMkdirAllUnderCwd(cwd,cwd): %v", err)
+	}
+}
+
+func containsAll(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if !strings.Contains(s, sub) {
+			return false
+		}
+	}
+	return true
 }
