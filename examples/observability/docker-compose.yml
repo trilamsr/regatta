@@ -1,0 +1,25 @@
+# MVP-3 W6 T6 — dev observability fixture (Jaeger all-in-one + OTLP collector)
+#
+# Scaffold only. T6 implementer wires the e2e_test.go fixture against this.
+# Operator usage: `docker compose -f examples/observability/docker-compose.yml up -d`
+# then set `OTEL_EXPORTER_OTLP_ENDPOINT=localhost:4317` and run regatta.
+# Jaeger UI: http://localhost:16686
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.62
+    container_name: regatta-jaeger
+    restart: unless-stopped
+    ports:
+      - "4317:4317"   # OTLP gRPC ingest
+      - "4318:4318"   # OTLP HTTP ingest
+      - "16686:16686" # Jaeger UI
+      - "14250:14250" # gRPC collector
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      LOG_LEVEL: "info"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:16686/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
