@@ -74,6 +74,10 @@ const (
 	// Adapter sync (spec §5.8).
 	EventAdapterSyncSynced EventName = "adaptersync.synced"
 	EventAdapterSyncFailed EventName = "adaptersync.failed"
+
+	// Approval gates — stub notifier audit emission. Real channel
+	// emissions (slack/pagerduty/email) land alongside their adapters.
+	EventApprovalNotifyStub EventName = "approval.notify_stub"
 )
 
 // Attribute keys. The set is intentionally small — anything not on
@@ -107,6 +111,10 @@ const (
 
 	// Orchestrator tick.completed payload (spec §3.2 JSON example).
 	KeyWorkItemsEvaluated AttrKey = "work_items_evaluated"
+
+	// Approval gate notification keys (spec §5.8).
+	KeyApprovalID    AttrKey = "approval_id"
+	KeyReviewerCount AttrKey = "reviewer_count"
 )
 
 // AllEventNames enumerates every EventName constant declared above.
@@ -139,6 +147,7 @@ func AllEventNames() []EventName {
 		EventBriefEdgesMaterialised,
 		EventAdapterSyncSynced,
 		EventAdapterSyncFailed,
+		EventApprovalNotifyStub,
 	}
 }
 
@@ -162,5 +171,7 @@ func AllAttrKeys() []AttrKey {
 		KeyReason,
 		KeyErr,
 		KeyWorkItemsEvaluated,
+		KeyApprovalID,
+		KeyReviewerCount,
 	}
 }

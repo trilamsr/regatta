@@ -20,35 +20,47 @@ type SpecAdapter interface {
 	List(ctx context.Context) ([]schemas.WorkItem, error)
 }
 
+// Config holds dependencies for a Syncer. Mirrors the Config.Logger
+// DI pattern used by orchestrator, scheduler, and reaper so all
+// components share one injection shape.
+type Config struct {
+	// Adapter mirrors the orchestrator's read surface. Required.
+	Adapter SpecAdapter
+
+	// DB is the universal state store. Required.
+	DB *state.DB
+
+	// Logger is the structured-event sink for adapter-skip
+	// diagnostics. Nil falls back to slog.Default() so embedded
+	// callers still get output without panicking (spec §4.1 + §5.8).
+	Logger *slog.Logger
+}
+
 // Syncer pairs an adapter with the state DB. Timestamps are passed
 // to Sync rather than held here, so concurrent producers sharing a
 // DB cannot race on a shared clock.
-//
-// log is the structured-event sink for adapter-skip diagnostics.
-// Injected via NewWithLogger; New defaults to slog.Default() so
-// embedded callers still get output without panicking (spec §4.1 +
-// §5.8). All package-level slog.* calls were retired in #101 task H.
 type Syncer struct {
 	adapter SpecAdapter
 	db      *state.DB
 	log     *slog.Logger
 }
 
-// New constructs a Syncer whose log sink is slog.Default(). Kept for
-// callsites that have not yet plumbed an explicit logger; production
-// wiring should prefer NewWithLogger so test capture handlers and
-// the off-host audit sink (#101 follow-up) can intercept records.
-func New(adapter SpecAdapter, db *state.DB) *Syncer {
-	return NewWithLogger(adapter, db, nil)
-}
-
-// NewWithLogger constructs a Syncer with an explicit structured log
-// sink. nil logger falls back to slog.Default() (spec §4.1).
-func NewWithLogger(adapter SpecAdapter, db *state.DB, logger *slog.Logger) *Syncer {
-	if logger == nil {
-		logger = slog.Default()
+// New constructs a Syncer from a Config. Returns an error if any
+// required field (Adapter, DB) is nil — surfacing misconfiguration at
+// boot instead of deferring a nil-deref panic to the first Sync call.
+// nil Logger falls back to slog.Default() (spec §4.1).
+func New(cfg Config) (*Syncer, error) {
+	if cfg.Adapter == nil {
+		return nil, fmt.Errorf("adaptersync: Config.Adapter is required")
 	}
-	return &Syncer{adapter: adapter, db: db, log: logger}
+	if cfg.DB == nil {
+		return nil, fmt.Errorf("adaptersync: Config.DB is required")
+	}
+	log := cfg.Logger
+	if log == nil {
+		log = slog.Default()
+	}
+	return &Syncer{adapter: cfg.Adapter, db: cfg.DB, log: log}, nil
 }
 
 // Sync upserts adapter items, tombstones rows the adapter no longer
