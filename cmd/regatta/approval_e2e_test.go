@@ -142,14 +142,29 @@ func newE2EHarness(t *testing.T, workItemLane string) *e2eHarness {
 	gate := approval.NewGate(db, notifier, kr, keyID, clock,
 		slog.New(slog.NewTextHandler(discardWriter{}, nil)))
 
+	h := &e2eHarness{
+		t:        t,
+		db:       db,
+		dsn:      dsn,
+		now:      t0,
+		clock:    clock,
+		notifier: notifier,
+		gateCfg:  gateCfg,
+		keyring:  kr,
+		keyID:    keyID,
+	}
+	// Resolver reads h.gateCfg at lookup time so a subtest may mutate the
+	// on_timeout policy / risk_class before the first Tick — keeps the YAML
+	// fixture canonical (fail policy) while still letting AutoApprove +
+	// Escalate variants reuse the harness wiring without forking it.
 	resolver := scheduler.GateResolver(func(wi state.WorkItem) (approval.Config, bool) {
-		if wi.Lane == gateCfg.Name {
-			return gateCfg, true
+		if wi.Lane == h.gateCfg.Name {
+			return h.gateCfg, true
 		}
 		return approval.Config{}, false
 	})
 
-	sched := scheduler.New(db, scheduler.Config{
+	h.sched = scheduler.New(db, scheduler.Config{
 		Gate:         gate,
 		GateResolver: resolver,
 		Logger:       slog.New(slog.NewTextHandler(discardWriter{}, nil)),
@@ -158,19 +173,6 @@ func newE2EHarness(t *testing.T, workItemLane string) *e2eHarness {
 	// Reaper is constructed per-sub-test (TimeoutPath builds its own with a
 	// future-clock); harness does not own one because HappyPath + RejectPath
 	// never sweep.
-
-	h := &e2eHarness{
-		t:        t,
-		db:       db,
-		dsn:      dsn,
-		now:      t0,
-		clock:    clock,
-		notifier: notifier,
-		sched:    sched,
-		gateCfg:  gateCfg,
-		keyring:  kr,
-		keyID:    keyID,
-	}
 	h.seedPlannedWorkItem("WI-E2E-1", workItemLane)
 	return h
 }
@@ -454,6 +456,65 @@ func TestE2E_ApprovalGateLifecycle(t *testing.T) {
 		}
 		if string(wi.Status) != workStatusRejectedStr {
 			t.Fatalf("wi.status=%q; want rejected", wi.Status)
+		}
+	})
+
+	// TimeoutPath_AutoApprove pins the issue #193 contract: on_timeout=
+	// auto_approve must take the spawn branch after the reaper sweep —
+	// Fold over the post-sweep event log MUST resolve to StatusApproved
+	// (ResultProceed). Prior bug: reaper wrote timed_out then approved;
+	// Fold's id-ASC first-terminal-wins short-circuit returned StatusTimedOut
+	// and the scheduler flipped the wi to rejected even though the denorm
+	// column said approved.
+	t.Run("TimeoutPath_AutoApprove", func(t *testing.T) {
+		h := newE2EHarness(t, "prod-deploy")
+		ctx := context.Background()
+		// auto_approve requires risk_class=low (config invariant V5); flip
+		// both before the first Tick so the gate row is created with the
+		// auto_approve policy embedded.
+		h.gateCfg.OnTimeout = approval.OnTimeoutAutoApprove
+		h.gateCfg.RiskClass = approval.RiskLow
+
+		if _, err := h.sched.Tick(ctx); err != nil {
+			t.Fatalf("Tick#1: %v", err)
+		}
+		ap, err := h.db.GetApprovalForWorkItem(ctx, "WI-E2E-1", h.gateCfg.Name)
+		if err != nil || ap == nil {
+			t.Fatalf("GetApprovalForWorkItem: ap=%v err=%v", ap, err)
+		}
+
+		afterTimeout := h.now.Add(h.gateCfg.Timeout + time.Minute)
+		futureClock := func() time.Time { return afterTimeout }
+		lateReaper, err := approval.NewReaper(h.db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), futureClock)
+		if err != nil {
+			t.Fatalf("NewReaper: %v", err)
+		}
+		if err := lateReaper.Sweep(ctx); err != nil {
+			t.Fatalf("Sweep: %v", err)
+		}
+
+		ap2, err := h.db.GetApproval(ctx, ap.ID)
+		if err != nil {
+			t.Fatalf("GetApproval: %v", err)
+		}
+		if ap2.Status != state.ApprovalStatusApproved {
+			t.Fatalf("post-sweep approval.status=%q; want approved", ap2.Status)
+		}
+
+		// Tick #2: scheduler observes Fold→approved (ResultProceed) → spawns wi.
+		ids, err := h.sched.Tick(ctx)
+		if err != nil {
+			t.Fatalf("Tick#2: %v", err)
+		}
+		if len(ids) != 1 {
+			t.Fatalf("Tick#2 reserved=%v; want 1 (auto_approve → spawn)", ids)
+		}
+		spawning, err := h.db.ListAgentsByState(ctx, state.AgentSpawning)
+		if err != nil {
+			t.Fatalf("ListAgentsByState: %v", err)
+		}
+		if len(spawning) != 1 || spawning[0].WorkItemID != "WI-E2E-1" {
+			t.Fatalf("spawning=%+v; want one agent for WI-E2E-1", spawning)
 		}
 	})
 }
