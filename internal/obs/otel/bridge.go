@@ -6,10 +6,17 @@
 // slog.Records (spec §3.2).
 //
 // When no OTel LoggerProvider is configured the upstream global is a
-// noop and the OTel leg is a zero-cost call; the primary leg always
-// fires. This file deliberately depends only on the OTel API surface
-// (no SDK init) so the slog→OTel bridge can be installed before or
-// after Setup runs without ordering hazards.
+// noop and the OTel leg costs one kind-translation per record; the
+// primary leg always fires.
+//
+// Boot ordering: otelslog.NewHandler captures the LoggerProvider at
+// construction time (either the explicit WithLoggerProvider value or
+// the global at the moment NewHandler runs). Callers that intend the
+// bridge to use the SDK provider installed by Setup MUST construct the
+// bridge AFTER Setup returns — otherwise the bridge captures the noop
+// global and stays noop for the life of the process. The intended
+// cmd/regatta wiring is therefore: Setup → SetLoggerProvider →
+// NewBridgeHandler → slog.SetDefault.
 package otel
 
 import (
