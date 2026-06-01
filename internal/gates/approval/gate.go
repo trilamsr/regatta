@@ -125,7 +125,29 @@ func (g *Gate) Evaluate(ctx context.Context, wi state.WorkItem, cfg Config) (Res
 	if err != nil {
 		return ResultPause, fmt.Errorf("approval: list events: %w", err)
 	}
-	res := Fold(events, FoldConfig{
+	// Post-escalation gap (issue #194): reaper.sweepOne advances the
+	// snapshot + revokes prior tokens + appends `escalated`, but does
+	// not mint+notify the new tier. The gate is the single notifier-
+	// owning component, so it closes the gap here on the first post-
+	// escalation Evaluate. Idempotent: only fires while no `notified`
+	// event exists after the latest `escalated`.
+	if needsPostEscalationNotify(events) {
+		if err := g.notifyEscalatedTier(ctx, *existing, cfg, events); err != nil {
+			return ResultPause, err
+		}
+		// Re-read so the fold below sees the freshly-appended notified
+		// event and the upstream sliceFromLastEscalated drops the prior
+		// tier's `timed_out` + `decided` rows that the reaper left behind.
+		events, err = g.db.ListApprovalEvents(ctx, existing.ID)
+		if err != nil {
+			return ResultPause, fmt.Errorf("approval: re-list events: %w", err)
+		}
+	}
+	// Slice events from the last `escalated` so the fold's terminal-
+	// detect ignores the prior tier's `timed_out` and `decided` rows
+	// (they belong to a reviewer set the row has already moved past).
+	// Spec §3.3.1.1: escalation invalidates the prior tier's outcome.
+	res := Fold(sliceFromLastEscalated(events), FoldConfig{
 		ReviewerSet: existing.ReviewerSetSnapshot,
 		RequestedBy: existing.RequestedBy,
 	})
@@ -136,6 +158,136 @@ func (g *Gate) Evaluate(ctx context.Context, wi state.WorkItem, cfg Config) (Res
 		return ResultReject, nil
 	}
 	return ResultPause, nil
+}
+
+// needsPostEscalationNotify is true when the event log carries an
+// `escalated` row with no `notified` row after it. The reaper appends
+// `escalated` without minting+notifying for the new tier (spec
+// §3.3.1.3 contract is owned by the gate). Returns false for the
+// first-sighting path (no escalated events) and for the already-
+// notified post-escalation steady state.
+func needsPostEscalationNotify(events []state.ApprovalEvent) bool {
+	lastEscalated := -1
+	lastNotified := -1
+	for i, e := range events {
+		switch e.Kind {
+		case kindEscalated:
+			lastEscalated = i
+		case EventKindNotified:
+			lastNotified = i
+		}
+	}
+	return lastEscalated >= 0 && lastNotified < lastEscalated
+}
+
+// sliceFromLastEscalated returns the suffix of events starting at the
+// last `escalated` row. If none exists, returns events unchanged. The
+// suffix is what the fold over the current tier should consider —
+// prior-tier `timed_out` + `decided` rows belong to a snapshot the
+// row has already moved past.
+func sliceFromLastEscalated(events []state.ApprovalEvent) []state.ApprovalEvent {
+	idx := -1
+	for i, e := range events {
+		if e.Kind == kindEscalated {
+			idx = i
+		}
+	}
+	if idx < 0 {
+		return events
+	}
+	return events[idx+1:]
+}
+
+// notifyEscalatedTier mints fresh tokens for the current reviewer
+// snapshot (which the reaper advanced to the new tier) and calls
+// Notify. Appends a `notified` event so a subsequent Evaluate observes
+// the steady-state and does not re-notify. The DecisionWindow is
+// pulled from the active tier in the chain — the count of `escalated`
+// events in the log tells us which tier we are on.
+func (g *Gate) notifyEscalatedTier(ctx context.Context, a state.Approval, cfg Config, events []state.ApprovalEvent) error {
+	now := g.clock()
+	decisionWindow := tierDecisionWindow(a, cfg, events)
+	tokens, jtis, err := g.mintTierTokens(a.ReviewerSetSnapshot, a.ID, a.WorkItemID, decisionWindow, now)
+	if err != nil {
+		return err
+	}
+	req := Request{
+		ApprovalID:       a.ID,
+		WorkItemID:       a.WorkItemID,
+		GateName:         a.GateName,
+		Reviewers:        a.ReviewerSetSnapshot.Reviewers,
+		DecisionDeadline: now.Add(decisionWindow),
+		Tokens:           tokens,
+	}
+	receipt, err := g.notifier.Notify(ctx, req)
+	if err != nil {
+		return fmt.Errorf("approval: post-escalation notify: %w", err)
+	}
+	notifiedAttrs := map[string]any{
+		string(obs.KeyGateID):        a.GateName,
+		string(obs.KeyReviewerCount): len(receipt.DeliveredTo),
+		"channel":                    receipt.Channel,
+		"jti_count":                  len(jtis),
+		"post_escalation":            true,
+	}
+	return recordEvent(ctx, recordEventOpts{
+		DB:         g.db,
+		Logger:     g.log,
+		ApprovalID: a.ID,
+		Event:      obs.EventApprovalNotified,
+		Kind:       EventKindNotified,
+		Actor:      ActorOrchestrator,
+		Now:        now,
+		Attrs:      notifiedAttrs,
+	})
+}
+
+// tierDecisionWindow returns the DecisionWindow for the row's current
+// escalation tier (snapshot is already advanced on the row itself).
+// Tier index = count of `escalated` events. Falls back to cfg's window
+// when the chain is empty or the index runs past the chain — defensive
+// against a hand-edited DB cell or an old snapshot.
+func tierDecisionWindow(a state.Approval, cfg Config, events []state.ApprovalEvent) time.Duration {
+	tierIdx := 0
+	for _, e := range events {
+		if e.Kind == kindEscalated {
+			tierIdx++
+		}
+	}
+	if tierIdx > 0 && tierIdx-1 < len(a.EscalationChain) {
+		if dw := a.EscalationChain[tierIdx-1].DecisionWindow; dw > 0 {
+			return dw
+		}
+	}
+	return cfg.DecisionWindow
+}
+
+// mintTierTokens issues one signed token per reviewer in the supplied
+// snapshot. Lex-ordered loop so the audit trail + captureNotifier test
+// see a deterministic sequence — pure-bookkeeping decision, no
+// security impact. Used by both first-sighting and post-escalation
+// notify paths.
+func (g *Gate) mintTierTokens(snap state.ReviewerSet, approvalID, workItemID string, decisionWindow time.Duration, now time.Time) (map[string]string, []string, error) {
+	tokens := make(map[string]string, len(snap.Reviewers))
+	jtis := make([]string, 0, len(snap.Reviewers))
+	reviewers := append([]string(nil), snap.Reviewers...)
+	sort.Strings(reviewers)
+	windowEnd := now.Add(decisionWindow).Unix()
+	for _, reviewer := range reviewers {
+		payload := canon.TokenPayload{
+			WI:       workItemID,
+			AID:      approvalID,
+			Reviewer: reviewer,
+			Window:   windowEnd,
+		}
+		wire, jti, err := canon.MintToken(g.keyring, g.kid, payload, g.jtiRand)
+		if err != nil {
+			return nil, nil, fmt.Errorf("approval: mint token for %q: %w", reviewer, err)
+		}
+		tokens[reviewer] = wire
+		jtis = append(jtis, jti)
+	}
+	return tokens, jtis, nil
 }
 
 // createApprovalAndNotify performs the first-sighting sequence per
@@ -232,31 +384,13 @@ func (g *Gate) createApprovalAndNotify(ctx context.Context, wi state.WorkItem, c
 	return &approval, nil
 }
 
-// mintReviewerTokens issues one signed token per reviewer. Tokens are
-// minted in lex order so the audit trail and the captureNotifier test
-// see a deterministic sequence — pure-bookkeeping decision, no
-// security impact.
+// mintReviewerTokens issues one signed token per cfg-listed reviewer
+// on the first-sighting path. Thin wrapper over mintTierTokens so the
+// post-escalation mint and the first-sighting mint share one
+// canonical body.
 func (g *Gate) mintReviewerTokens(cfg Config, approvalID, workItemID string, now time.Time) (map[string]string, []string, error) {
-	tokens := make(map[string]string, len(cfg.Reviewers))
-	jtis := make([]string, 0, len(cfg.Reviewers))
-	reviewers := append([]string(nil), cfg.Reviewers...)
-	sort.Strings(reviewers)
-	windowEnd := now.Add(cfg.DecisionWindow).Unix()
-	for _, reviewer := range reviewers {
-		payload := canon.TokenPayload{
-			WI:       workItemID,
-			AID:      approvalID,
-			Reviewer: reviewer,
-			Window:   windowEnd,
-		}
-		wire, jti, err := canon.MintToken(g.keyring, g.kid, payload, g.jtiRand)
-		if err != nil {
-			return nil, nil, fmt.Errorf("approval: mint token for %q: %w", reviewer, err)
-		}
-		tokens[reviewer] = wire
-		jtis = append(jtis, jti)
-	}
-	return tokens, jtis, nil
+	snap := state.ReviewerSet{Reviewers: cfg.Reviewers}
+	return g.mintTierTokens(snap, approvalID, workItemID, cfg.DecisionWindow, now)
 }
 
 // newApprovalID mints the typed-prefix id per spec §5.1 ("a-<12 hex>").

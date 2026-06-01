@@ -374,6 +374,101 @@ func TestResult_String(t *testing.T) {
 	}
 }
 
+// TestGate_PostEscalationMintAndNotify pins issue #194 — first Evaluate post-escalate mints+notifies tier-1; third call is a no-op.
+func TestGate_PostEscalationMintAndNotify(t *testing.T) {
+	t0 := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
+	// Single mutable clock so the reaper sweep can advance past
+	// timeout_at while the gate still reads the same value on the
+	// post-escalate tick — keeps the audit timestamps deterministic.
+	clockT := t0
+	clock := func() time.Time { return clockT }
+	db := newGateTestDB(t, clock)
+	notifier := &captureNotifier{}
+	g := NewGate(db, notifier, testKeyring(), "k1", clock,
+		slog.New(slog.NewTextHandler(io.Discard, nil)))
+	cfg := testCfg()
+	cfg.OnTimeout = OnTimeoutEscalate
+	cfg.EscalationChain = []state.TierConfig{
+		{Reviewers: []string{"dave", "erin"}, Quorum: 1, Timeout: time.Hour, DecisionWindow: 30 * time.Minute},
+	}
+	wi := testWorkItem()
+	ctx := context.Background()
+	seedWorkItem(t, db, wi, t0)
+
+	// Tick #1 — first-sighting mint+notify for tier-0 (alice/bob/carol).
+	if _, err := g.Evaluate(ctx, wi, cfg); err != nil {
+		t.Fatalf("Evaluate#1: %v", err)
+	}
+	if len(notifier.requests) != 1 {
+		t.Fatalf("notifier.requests=%d after tick#1; want 1", len(notifier.requests))
+	}
+	tier0Tokens := make(map[string]string, len(notifier.requests[0].Tokens))
+	for k, v := range notifier.requests[0].Tokens {
+		tier0Tokens[k] = v
+	}
+
+	// Advance past timeout_at + run the real reaper. The reaper
+	// performs snapshot advance + token revocation + appends the
+	// `escalated` event but does NOT mint+notify for the new tier
+	// (issue #194 root cause). Production-identical sequence.
+	clockT = t0.Add(cfg.Timeout + time.Minute)
+	reaper, err := NewReaper(db, slog.New(slog.NewTextHandler(io.Discard, nil)), clock)
+	if err != nil {
+		t.Fatalf("NewReaper: %v", err)
+	}
+	if err := reaper.Sweep(ctx); err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+
+	// Tick #2 — gate observes pending row with `escalated` after the
+	// last `notified` event. MUST mint fresh tokens for {dave,erin} +
+	// append a fresh `notified` event + call Notify exactly once.
+	res, err := g.Evaluate(ctx, wi, cfg)
+	if err != nil {
+		t.Fatalf("Evaluate#2: %v", err)
+	}
+	if res != ResultPause {
+		t.Fatalf("Evaluate#2 res=%v; want ResultPause", res)
+	}
+	if len(notifier.requests) != 2 {
+		t.Fatalf("notifier.requests=%d after tick#2; want 2 (fresh post-escalate notify)", len(notifier.requests))
+	}
+	postEscReq := notifier.requests[1]
+	wantTier1 := map[string]bool{"dave": true, "erin": true}
+	for _, r := range postEscReq.Reviewers {
+		if !wantTier1[r] {
+			t.Errorf("post-escalate notify reviewer=%q not in tier-1 set", r)
+		}
+	}
+	if len(postEscReq.Reviewers) != 2 {
+		t.Errorf("post-escalate reviewers=%v; want 2 (dave+erin)", postEscReq.Reviewers)
+	}
+	if len(postEscReq.Tokens) != 2 {
+		t.Errorf("post-escalate tokens=%d; want 2 (one per tier-1 reviewer)", len(postEscReq.Tokens))
+	}
+	for reviewer, tok := range postEscReq.Tokens {
+		if tok == "" {
+			t.Errorf("post-escalate token for %q is empty", reviewer)
+		}
+		// Tier-1 tokens MUST differ from any tier-0 token — fresh mint
+		// is the whole point of the post-escalation notify path.
+		for _, t0tok := range tier0Tokens {
+			if tok == t0tok {
+				t.Errorf("post-escalate token for %q equals a tier-0 token; want fresh mint", reviewer)
+			}
+		}
+	}
+
+	// Tick #3 — fold sees `escalated` followed by `notified`; gate
+	// returns ResultPause without re-notifying. Idempotency contract.
+	if _, err := g.Evaluate(ctx, wi, cfg); err != nil {
+		t.Fatalf("Evaluate#3: %v", err)
+	}
+	if len(notifier.requests) != 2 {
+		t.Errorf("notifier.requests=%d after tick#3; want 2 (no third notify; idempotent)", len(notifier.requests))
+	}
+}
+
 // Gate refuses to evaluate when given an invalid keyring kid: token
 // mint surfaces ErrUnknownKeyID; the gate must propagate the typed
 // sentinel rather than papering over with a generic wrap.
