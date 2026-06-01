@@ -16,10 +16,15 @@ BOOT
 4. Read MEMORY.md + AGENTS.md (auto-loaded). Recover docs/superpowers/ per AGENTS.md recipe if needed.
 
 PRIORITY (top-down, skip if blocked)
-1. #98 scheduler default-fallback bug
-2. #101 observability sweep
-3. MVP-3 approval-gates wedge (see memory/wedge_approval_gates.md + wedge_roadmap_assessment.md)
-4. Other open follow-ups (#88-104) by load-bearing weight
+1. #114 approval-gates Wave 1 — umbrella issue body has locked design decisions (HMAC token format, atomic decide tx, escalation semantics, fold ordering, etc.). Spec exists locally at docs/superpowers/specs/2026-05-31-mvp-approval-gates.md but is gitignored — recover via AGENTS.md recipe OR rebuild from #114 body. Wave 1 = migration 0004 (approvals + approval_events) + state ops + HMAC token issue/verify (reuses contracts/schemas/sign.go:macSum) + notifier adapter stub interface. File-disjoint, 4 parallel implementers.
+2. #115 normalize logger-injection pattern to Config.Logger (#101 cleanup; mechanical ~15 call sites)
+3. #117 --log-format=text|json flag (A+ tier for #101; small, single-file)
+4. #99-#100 spawner determinism + reconciler (MVP-2 followups, load-bearing for approval-gates Wave 2)
+5. Other open follow-ups (#82-#118) by load-bearing weight
+
+Already shipped (do NOT redo):
+- #98 scheduler default-fallback bug — merged PR #112 (commit 7dbcbab)
+- #101 observability sweep — merged PR #113 (commit ab9f978)
 
 WORKFLOW per item
 1. Spawn design subagent → spec (w/ grade rubric per feedback_grade_rubric)
@@ -43,9 +48,10 @@ WHEN BLOCKED
 - File [followup] issue + pick next priority. Never pause for user input.
 
 STOP CRITERIA (any one)
-- MVP-3 Wave 0+1 merged + Wave 2 dispatched
-- OR 3 critical issues shipped (#98 + #101 + 1 MVP-3 wave)
+- Approval-gates Wave 1+2 merged + Wave 3 dispatched
+- OR 3 critical PRs shipped this session
 - OR genuinely irreversible step required (tag signing, secret rotation, branch-protection downgrade)
+- OR context budget tight + Wave-mid (don't leave half-applied state)
 
 Begin BOOT. After boot, pick highest priority + dispatch design subagent.
 ```
