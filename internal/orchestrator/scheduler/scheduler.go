@@ -146,16 +146,20 @@ type Config struct {
 type schedulerDB interface {
 	ListSpawnable(ctx context.Context) ([]state.WorkItem, error)
 	UpsertPending(ctx context.Context, workItemID, lane string) (*state.Agent, error)
+	UpsertPendingTx(ctx context.Context, tx *sql.Tx, workItemID, lane string) (*state.Agent, error)
 	ListAgentsByState(ctx context.Context, states ...state.AgentState) ([]state.Agent, error)
 	CountAgentsByLane(ctx context.Context, states ...state.AgentState) (map[string]int, error)
 	TransitionAgent(ctx context.Context, id int64, next state.AgentState, mut state.AgentMutation) (*state.Agent, error)
+	TransitionAgentTx(ctx context.Context, tx *sql.Tx, id int64, next state.AgentState, mut state.AgentMutation) (*state.Agent, error)
 	TryAcquireLocks(ctx context.Context, names []string, agentID int64, ttl time.Duration) error
+	TryAcquireLocksTx(ctx context.Context, tx *sql.Tx, names []string, agentID int64, ttl time.Duration) error
 	ReleaseAgentLocks(ctx context.Context, agentID int64) (int64, error)
 	ExpireStaleLocks(ctx context.Context, ttl time.Duration) (int64, error)
 	ListPendingEdgesFromMerged(ctx context.Context) ([]state.EdgeRow, error)
 	ListEdgesFrom(ctx context.Context, fromID string) ([]state.EdgeRow, error)
 	MarkEdgeFired(ctx context.Context, edgeID int64, fired, contentSHA string) error
 	GetLatestOutput(ctx context.Context, workItemID string) (state.OutputJournalEntry, error)
+	WithTx(ctx context.Context, fn func(*sql.Tx) error) error
 	// SQL escapes the seam for the gate-pass's raw-SQL CAS write that
 	// transitions a rejected work_item to status='rejected'. Spec §3.1
 	// step 0.5 spells this as state.TransitionWorkItem, but state has no
@@ -224,8 +228,8 @@ var activeStates = []state.AgentState{
 
 // Tick performs one scheduling pass. Reads work_items via
 // ListSpawnable (universal-queue source of truth per spec §2.8),
-// materializes a pending agents row for any work_item missing one,
-// then reserves lanes + hotspot locks as before.
+// applies the HITL approval gate-pass, then reserves lanes + hotspot
+// locks for each surviving work_item.
 //
 // Lock acquire is non-blocking; an agent whose hotspot is held by
 // another agent is left in pending and retried next tick.
@@ -235,7 +239,19 @@ var activeStates = []state.AgentState{
 // the injected logger and continue so one bad predicate cannot stall
 // the rest of the tick (spec §3.9). The eval pass writes to
 // work_item_edges only — ListSpawnable observes the updated fired
-// column on the next materializePending call.
+// column on the next reservation pass.
+//
+// Per-agent reservation runs as a single sqlite tx — UpsertPending +
+// TryAcquireLocks + TransitionAgent commit atomically or roll back as
+// a unit (issue #88). A crash mid-reservation leaves no orphan lock
+// rows and no agent stranded in spawning without locks; orphan-row
+// safety is preserved via two complementary mechanisms:
+//   - ListSpawnable filters `a.id IS NULL`, so once a work_item has
+//     any agent row the spawnable query stops re-emitting it.
+//   - ListAgentsByState(AgentPending) re-discovers any agent that
+//     was upserted as pending but never transitioned (lane-capped
+//     last tick, hotspot-blocked, or a future failure mode), letting
+//     the next tick retry the reservation tx.
 func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 	if s.cfg.Evaluator != nil {
 		if err := s.evalPendingEdges(ctx); err != nil {
@@ -260,83 +276,81 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 		return nil, fmt.Errorf("scheduler: apply approval gates: %w", err)
 	}
 
-	pending, err := s.materializePending(ctx, spawnable)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: materialize: %w", err)
-	}
-
 	occupancy, err := s.db.CountAgentsByLane(ctx, activeStates...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Each reservation below is 3 sequential txs — UpsertPending (in
-	// materializePending), TryAcquireLocks, TransitionAgent — not one.
-	// Orphan-row safety: an agent row that crashes between UpsertPending
-	// and TransitionAgent is still in `pending`, so the next Tick
-	// re-discovers it via ListAgentsByState(AgentPending) and retries
-	// the lock+transition without re-running ListSpawnable (the
-	// `a.id IS NULL` join filter would exclude it). MVP-2 may tighten
-	// this to a single tx; current split is intentional to keep the
-	// state-package surface small.
-	var reserved []int64
-	for _, a := range pending {
-		if !s.laneHasCapacity(a.Lane, occupancy) {
-			continue
+	reserved, attempted, err := s.reserveFromSpawnable(ctx, spawnable, occupancy)
+	if err != nil {
+		return reserved, err
+	}
+
+	rest, err := s.reserveOrphans(ctx, occupancy, attempted)
+	if err != nil {
+		return reserved, err
+	}
+	return append(reserved, rest...), nil
+}
+
+// reserveFromSpawnable walks the gate-pass-filtered spawnable slice
+// and, for each ready work_item, runs a single tx that upserts the
+// pending agent + acquires hotspot locks + transitions to spawning.
+// Lane-capped items still get their pending row materialized
+// (committed in a no-transition tx) so the next tick's reserveOrphans
+// pass picks them up once capacity frees.
+func (s *Scheduler) reserveFromSpawnable(ctx context.Context, spawnable []state.WorkItem, occupancy map[string]int) (reserved []int64, attempted map[int64]struct{}, err error) {
+	attempted = map[int64]struct{}{}
+	var failures int
+	for _, w := range spawnable {
+		if err := ctx.Err(); err != nil {
+			return reserved, attempted, err
 		}
-		locks := s.resolveLocks(a.WorkItemID)
-		if err := s.db.TryAcquireLocks(ctx, locks, a.ID, s.cfg.LockTTL); err != nil {
+		hasCap := s.laneHasCapacity(w.Lane, occupancy)
+		agentID, transitioned, err := s.reserveOne(ctx, w.ID, w.Lane, hasCap)
+		if err != nil {
 			if errors.Is(err, state.ErrLockHeld) {
+				// The full reservation tx rolled back, so the pending
+				// row is not yet materialized for this work_item.
+				// Re-upsert without locks so the row persists for the
+				// next tick (matching pre-refactor materialize behavior)
+				// — and the log's agent_id is a real persistent ID
+				// rather than the rolled-back rowid. Mark the agent as
+				// already-attempted so reserveOrphans does not re-try
+				// the same lock acquisition this same tick.
+				if a, upErr := s.db.UpsertPending(ctx, w.ID, w.Lane); upErr == nil {
+					agentID = a.ID
+					attempted[a.ID] = struct{}{}
+				} else {
+					s.log.Warn(string(obs.EventSchedulerMaterializeFailure),
+						string(obs.KeyWorkItemID), w.ID,
+						string(obs.KeyReason), "upsert_after_lock_held_failed",
+						string(obs.KeyErr), upErr.Error(),
+					)
+				}
 				s.log.Info("scheduler.agent_skipped_hotspot_locked",
-					string(obs.KeyAgentID), a.ID,
-					string(obs.KeyWorkItemID), a.WorkItemID,
+					string(obs.KeyAgentID), agentID,
+					string(obs.KeyWorkItemID), w.ID,
 					string(obs.KeyReason), "hotspot_locked",
 				)
 				continue
 			}
-			return reserved, fmt.Errorf("scheduler: acquire locks for agent %d: %w", a.ID, err)
-		}
-		if _, err := s.db.TransitionAgent(ctx, a.ID, state.AgentSpawning, state.AgentMutation{}); err != nil {
-			// Release the locks we just took so we don't deadlock the
-			// next tick.
-			if _, releaseErr := s.db.ReleaseAgentLocks(ctx, a.ID); releaseErr != nil {
-				s.log.Warn("scheduler.release_locks_after_transition_failure",
-					string(obs.KeyAgentID), a.ID,
-					string(obs.KeyErr), releaseErr.Error(),
-				)
-			}
-			return reserved, fmt.Errorf("scheduler: mark agent %d spawning: %w", a.ID, err)
-		}
-		occupancy[a.Lane]++
-		reserved = append(reserved, a.ID)
-	}
-	return reserved, nil
-}
-
-// materializePending UpsertPending-s one agents row per work_item in
-// the supplied spawnable slice (filtered upstream by Tick — the gate-
-// pass may have removed paused/rejected wi rows). Returns the union:
-// every existing pending agent + every newly-materialized one, in
-// db-natural order. Per spec §2.8 — Scheduler is the materialization
-// point so the orphan-row class is impossible by construction.
-//
-// Per-item UpsertPending failures are logged and skipped rather than
-// aborting the batch: a single bad row should not stall every other
-// pending agent. Context cancellation still propagates.
-func (s *Scheduler) materializePending(ctx context.Context, spawnable []state.WorkItem) ([]state.Agent, error) {
-	var failures int
-	for _, w := range spawnable {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		if _, err := s.db.UpsertPending(ctx, w.ID, w.Lane); err != nil {
+			// Per-item failure: log and skip rather than abort the
+			// batch so one bad row cannot stall the queue.
 			failures++
 			s.log.Warn(string(obs.EventSchedulerMaterializeFailure),
 				string(obs.KeyWorkItemID), w.ID,
-				string(obs.KeyReason), "upsert_pending_failed",
+				string(obs.KeyReason), "reserve_failed",
 				string(obs.KeyErr), err.Error(),
 			)
 			continue
+		}
+		if agentID != 0 {
+			attempted[agentID] = struct{}{}
+		}
+		if transitioned {
+			occupancy[w.Lane]++
+			reserved = append(reserved, agentID)
 		}
 	}
 	if failures > 0 {
@@ -346,11 +360,82 @@ func (s *Scheduler) materializePending(ctx context.Context, spawnable []state.Wo
 			"total", len(spawnable),
 		)
 	}
+	return reserved, attempted, nil
+}
+
+// reserveOrphans rediscovers AgentPending rows that reserveFromSpawnable
+// did not transition this tick — typically lane-capped items from a
+// prior tick, or any future class of pending agents (e.g. crashed
+// recovery requeue). Each gets a single-tx reservation (locks +
+// transition). The agent row already exists, so the tx omits the
+// upsert step.
+func (s *Scheduler) reserveOrphans(ctx context.Context, occupancy map[string]int, attempted map[int64]struct{}) ([]int64, error) {
 	pending, err := s.db.ListAgentsByState(ctx, state.AgentPending)
 	if err != nil {
 		return nil, fmt.Errorf("scheduler: list pending: %w", err)
 	}
-	return pending, nil
+	var reserved []int64
+	for _, a := range pending {
+		if _, seen := attempted[a.ID]; seen {
+			// reserveFromSpawnable already tried this agent this tick
+			// (lane-capped or lock-held). Skip the duplicate attempt
+			// so logs and lock-acquire churn stay one-per-agent-per-tick.
+			continue
+		}
+		if !s.laneHasCapacity(a.Lane, occupancy) {
+			continue
+		}
+		locks := s.resolveLocks(a.WorkItemID)
+		err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
+			if err := s.db.TryAcquireLocksTx(ctx, tx, locks, a.ID, s.cfg.LockTTL); err != nil {
+				return err
+			}
+			_, err := s.db.TransitionAgentTx(ctx, tx, a.ID, state.AgentSpawning, state.AgentMutation{})
+			return err
+		})
+		if err != nil {
+			if errors.Is(err, state.ErrLockHeld) {
+				s.log.Info("scheduler.agent_skipped_hotspot_locked",
+					string(obs.KeyAgentID), a.ID,
+					string(obs.KeyWorkItemID), a.WorkItemID,
+					string(obs.KeyReason), "hotspot_locked",
+				)
+				continue
+			}
+			return reserved, fmt.Errorf("scheduler: reserve orphan agent %d: %w", a.ID, err)
+		}
+		occupancy[a.Lane]++
+		reserved = append(reserved, a.ID)
+	}
+	return reserved, nil
+}
+
+// reserveOne wraps the per-work-item reservation in a single tx.
+// When hasCap is false the tx commits the upsert only — the row stays
+// pending and the next tick's reserveOrphans retries the
+// locks+transition portion. Returns transitioned=true only when the
+// agent left pending for spawning inside this tx.
+func (s *Scheduler) reserveOne(ctx context.Context, workItemID, lane string, hasCap bool) (agentID int64, transitioned bool, err error) {
+	locks := s.resolveLocks(workItemID)
+	err = s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		a, upErr := s.db.UpsertPendingTx(ctx, tx, workItemID, lane)
+		if upErr != nil {
+			return upErr
+		}
+		agentID = a.ID
+		if !hasCap {
+			return nil
+		}
+		if lockErr := s.db.TryAcquireLocksTx(ctx, tx, locks, a.ID, s.cfg.LockTTL); lockErr != nil {
+			return lockErr
+		}
+		if _, trErr := s.db.TransitionAgentTx(ctx, tx, a.ID, state.AgentSpawning, state.AgentMutation{}); trErr != nil {
+			return trErr
+		}
+		transitioned = true
+		return nil
+	})
+	return agentID, transitioned, err
 }
 
 // applyApprovalGates filters spawnable through the HITL gate-pass per

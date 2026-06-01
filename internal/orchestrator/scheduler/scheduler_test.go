@@ -80,7 +80,7 @@ func seedMerged(t *testing.T, db *state.DB, id string) {
 
 // seedPlanned upserts a planned feature work_item with the given id +
 // lane via the production UpsertWorkItem path so ListSpawnable picks
-// it up. Tests must exercise the work_items → materializePending →
+// it up. Tests must exercise the work_items → ListSpawnable →
 // reserve path rather than calling UpsertPending directly.
 func seedPlanned(t *testing.T, db *state.DB, id, lane string) {
 	t.Helper()
@@ -407,7 +407,7 @@ func TestTickStaleLockReclaimed(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed first item, run Tick to drive it through
-	// materializePending → reserve → acquire("shared") → spawning.
+	// reserveFromSpawnable → acquire("shared") → spawning.
 	seedPlanned(t, db, "WORK-1", "server")
 	sch := New(db, Config{
 		LockTTL: time.Minute,
