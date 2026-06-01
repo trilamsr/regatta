@@ -116,6 +116,14 @@ func NewCELDecider(expr string, db Beginner, key []byte, keyID, writtenBy, gateN
 	if iss != nil && iss.Err() != nil {
 		return nil, fmt.Errorf("cel_decider: compile: %w", iss.Err())
 	}
+	// Pin predicate output type at compile time so a wrong-shape
+	// predicate (e.g. one returning int or string) fails at plan-
+	// time rather than at first Decide. Mirrors the planner_v2
+	// gate that catches the same trap on conditional-DAG predicates.
+	if ast.OutputType() != cel.BoolType {
+		return nil, fmt.Errorf("cel_decider: predicate must return bool, got %s",
+			ast.OutputType().String())
+	}
 	prg, err := env.Program(ast, cel.CostLimit(10_000))
 	if err != nil {
 		return nil, fmt.Errorf("cel_decider: program: %w", err)

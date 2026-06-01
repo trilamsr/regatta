@@ -64,6 +64,20 @@ func TestCELDecider_CompileRejectsBadCEL(t *testing.T) {
 	}
 }
 
+// TestCELDecider_CompileRejectsNonBoolPredicate pins constructor-time predicate output-type check.
+func TestCELDecider_CompileRejectsNonBoolPredicate(t *testing.T) {
+	db := openDeciderDB(t)
+	// `outputs.score + 1` returns dyn (numeric add over dyn), not bool —
+	// caught at compile time, never at Decide.
+	_, err := program.NewCELDecider("outputs.score + 1", db, decTestKey, decTestKeyID, "celdecider", "g")
+	if err == nil {
+		t.Fatalf("NewCELDecider(non-bool): want compile error, got nil")
+	}
+	if !strings.Contains(err.Error(), "bool") {
+		t.Fatalf("NewCELDecider(non-bool): err=%v want bool-shaped", err)
+	}
+}
+
 // TestCELDecider_DecideEmitsSignedGateVerdict pins fold+eval+emit happy path with verifiable signature.
 func TestCELDecider_DecideEmitsSignedGateVerdict(t *testing.T) {
 	db := openDeciderDB(t)
