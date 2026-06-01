@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/obs"
+	"github.com/trilamsr/regatta/internal/obstest"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 )
 
@@ -340,11 +343,51 @@ func TestLoadPlannerPrompt_FallbackLogsMissing(t *testing.T) {
 		t.Fatalf("LoadPlannerPrompt: %v", err)
 	}
 	out := buf.String()
-	if !strings.Contains(out, "planner.prompt.fallback") {
-		t.Fatalf("expected fallback slog line, got:\n%s", out)
+	if !strings.Contains(out, string(obs.EventPlannerFallback)) {
+		t.Fatalf("expected %s slog line, got:\n%s", obs.EventPlannerFallback, out)
 	}
 	if !strings.Contains(out, "missing_file") {
 		t.Fatalf("expected reason=missing_file in log, got:\n%s", out)
+	}
+}
+
+// TestPromptLoader_LoggerInjected pins #118: fallback event routes through injected logger, not slog.Default.
+func TestPromptLoader_LoggerInjected(t *testing.T) {
+	// Sink the default logger so a leaked emission can't fool the assertion.
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	h := obstest.New()
+	loader := NewPromptLoader(PromptLoaderConfig{Logger: slog.New(h)})
+
+	missing := filepath.Join(t.TempDir(), "nope.md")
+	if _, err := loader.LoadPlannerPrompt(missing, ""); err != nil {
+		t.Fatalf("LoadPlannerPrompt: %v", err)
+	}
+
+	rec, ok := h.FindEvent(obs.EventPlannerFallback)
+	if !ok {
+		t.Fatalf("injected logger received no %s record; got %v", obs.EventPlannerFallback, h.Messages())
+	}
+	var sawReason bool
+	rec.Attrs(func(a slog.Attr) bool {
+		if a.Key == "reason" && a.Value.String() == "missing_file" {
+			sawReason = true
+		}
+		return true
+	})
+	if !sawReason {
+		t.Fatalf("%s missing reason=missing_file attr", obs.EventPlannerFallback)
+	}
+}
+
+// TestPromptLoader_NilLogger_UsesDefault guards the slog.Default() fallback so zero-value Config does not nil-deref.
+func TestPromptLoader_NilLogger_UsesDefault(t *testing.T) {
+	loader := NewPromptLoader(PromptLoaderConfig{})
+	missing := filepath.Join(t.TempDir(), "nope.md")
+	if _, err := loader.LoadPlannerPrompt(missing, ""); err != nil {
+		t.Fatalf("LoadPlannerPrompt with nil logger: %v", err)
 	}
 }
 

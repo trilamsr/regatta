@@ -93,6 +93,13 @@ const (
 	EventApprovalTimedOut     EventName = "approval.timed_out"
 	EventApprovalAutoApproved EventName = "approval.auto_approved"
 	EventApprovalEscalated    EventName = "approval.escalated"
+
+	// Planner — emitted when LoadPlannerPrompt falls back to the
+	// embedded default because the operator-configured prompt file is
+	// missing AND no SHA pin demands fail-closed (#118 follow-up to
+	// Task H). Carries reason= attr so dashboards can distinguish
+	// fallback causes if the matrix later grows.
+	EventPlannerFallback EventName = "planner.prompt_fallback"
 )
 
 // Attribute keys. The set is intentionally small — anything not on
@@ -187,6 +194,7 @@ func AllEventNames() []EventName {
 		EventApprovalTimedOut,
 		EventApprovalAutoApproved,
 		EventApprovalEscalated,
+		EventPlannerFallback,
 	}
 }
 
