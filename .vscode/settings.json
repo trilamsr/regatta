@@ -1,0 +1,8 @@
+{
+  "gopls": {
+    "directoryFilters": [
+      "-.claude/worktrees",
+      "-triage-"
+    ]
+  }
+}
