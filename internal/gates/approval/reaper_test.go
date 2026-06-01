@@ -126,7 +126,10 @@ func TestReaper_FailPolicy(t *testing.T) {
 	seedApproval(t, db, "a-001", "F-1", t0.Add(-time.Hour), timeoutAt, "fail", nil)
 
 	h := &captureHandler{}
-	r := NewReaper(db, slog.New(h), func() time.Time { return t0 })
+	r, err := NewReaper(db, slog.New(h), func() time.Time { return t0 })
+	if err != nil {
+		t.Fatalf("NewReaper: %v", err)
+	}
 
 	if err := r.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
@@ -163,7 +166,10 @@ func TestReaper_AutoApprovePolicy(t *testing.T) {
 	seedApproval(t, db, "a-002", "F-2", t0.Add(-time.Hour), timeoutAt, "auto_approve", nil)
 
 	h := &captureHandler{}
-	r := NewReaper(db, slog.New(h), func() time.Time { return t0 })
+	r, err := NewReaper(db, slog.New(h), func() time.Time { return t0 })
+	if err != nil {
+		t.Fatalf("NewReaper: %v", err)
+	}
 	if err := r.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
@@ -224,7 +230,10 @@ func TestReaper_EscalatePolicy_NoOverlap(t *testing.T) {
 	})
 
 	h := &captureHandler{}
-	r := NewReaper(db, slog.New(h), func() time.Time { return t0 })
+	r, err := NewReaper(db, slog.New(h), func() time.Time { return t0 })
+	if err != nil {
+		t.Fatalf("NewReaper: %v", err)
+	}
 	if err := r.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
@@ -333,7 +342,10 @@ func TestReaper_EscalatePolicy_OverlapReplaysVote(t *testing.T) {
 		Actor: "system", TokenJTI: "jti-bob-0",
 	})
 
-	r := NewReaper(db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), func() time.Time { return t0 })
+	r, err := NewReaper(db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), func() time.Time { return t0 })
+	if err != nil {
+		t.Fatalf("NewReaper: %v", err)
+	}
 	if err := r.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
@@ -390,7 +402,10 @@ func TestReaper_EscalatePolicy_OverlapImmediateTerminal(t *testing.T) {
 		TokenJTI: "jti-alice-0",
 	})
 
-	r := NewReaper(db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), func() time.Time { return t0 })
+	r, err := NewReaper(db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), func() time.Time { return t0 })
+	if err != nil {
+		t.Fatalf("NewReaper: %v", err)
+	}
 	if err := r.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
@@ -422,7 +437,7 @@ func TestReaper_AtomicityOnFailure(t *testing.T) {
 	// appended the timed_out event. sweepOne must roll back the tx —
 	// neither the timed_out event nor any status change survives.
 	wantErr := errors.New("injected fault for atomicity test")
-	r := newTestReaperWithMidTxAbort(db, t0, func(tx *sql.Tx) error {
+	r := newTestReaperWithMidTxAbort(t, db, t0, func(tx *sql.Tx) error {
 		return wantErr
 	})
 	err := r.Sweep(context.Background())
@@ -453,7 +468,10 @@ func TestReaper_RaceMultipleSweepsIdempotent(t *testing.T) {
 	timeoutAt := t0.Add(-time.Minute)
 	seedApproval(t, db, "a-006", "F-6", t0.Add(-time.Hour), timeoutAt, "fail", nil)
 
-	r := NewReaper(db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), func() time.Time { return t0 })
+	r, err := NewReaper(db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), func() time.Time { return t0 })
+	if err != nil {
+		t.Fatalf("NewReaper: %v", err)
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(2)
@@ -496,7 +514,10 @@ func TestReaper_ClockInjection(t *testing.T) {
 	seedReaperWorkItem(t, db, "F-7b", t0)
 	seedApproval(t, db, "a-future", "F-7b", t0.Add(-time.Hour), t0.Add(time.Second), "fail", nil)
 
-	r := NewReaper(db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), func() time.Time { return t0 })
+	r, err := NewReaper(db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), func() time.Time { return t0 })
+	if err != nil {
+		t.Fatalf("NewReaper: %v", err)
+	}
 	if err := r.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
@@ -518,12 +539,15 @@ func TestReaper_ClockInjection(t *testing.T) {
 
 // TestReaper_NilClockRejected — nil clock must surface as ErrReaperClockRequired, not fall back to time.Now.
 func TestReaper_NilClockRejected(t *testing.T) {
-	r := NewReaperOrError(nil, slog.Default(), nil)
-	if r.err == nil {
-		t.Fatalf("NewReaperOrError(nil clock): expected error; got nil")
+	r, err := NewReaper(nil, slog.Default(), nil)
+	if err == nil {
+		t.Fatalf("NewReaper(nil clock): expected error; got nil")
 	}
-	if !errors.Is(r.err, ErrReaperClockRequired) {
-		t.Errorf("err=%v; want ErrReaperClockRequired", r.err)
+	if !errors.Is(err, ErrReaperClockRequired) {
+		t.Errorf("err=%v; want ErrReaperClockRequired", err)
+	}
+	if r != nil {
+		t.Errorf("NewReaper(nil clock): expected nil reaper; got %v", r)
 	}
 }
 
@@ -531,8 +555,12 @@ func TestReaper_NilClockRejected(t *testing.T) {
 // abort right after the timed_out event is appended. Used by
 // TestReaper_AtomicityOnFailure to exercise the §3.2.1 rollback
 // contract — the assertion is that approvals.status stays pending.
-func newTestReaperWithMidTxAbort(db *state.DB, t0 time.Time, abort func(*sql.Tx) error) *Reaper {
-	r := NewReaper(db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), func() time.Time { return t0 })
+func newTestReaperWithMidTxAbort(t *testing.T, db *state.DB, t0 time.Time, abort func(*sql.Tx) error) *Reaper {
+	t.Helper()
+	r, err := NewReaper(db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), func() time.Time { return t0 })
+	if err != nil {
+		t.Fatalf("NewReaper: %v", err)
+	}
 	r.txHook = abort
 	return r
 }
