@@ -7,7 +7,7 @@ Copy-paste this prompt to bootstrap a fully autonomous regatta dev session. Desi
 ## Prompt
 
 ```
-Continue regatta development autonomously. Operate in auto mode — NEVER ask for clarification, decide via subagent + memory rules per feedback_decision_priority (UX > ease > best-practices > speed > velocity). When blocked: file [followup] issue + pick next priority. Never wait, never pause for user input unless a stop-criteria item or genuinely irreversible action (tag signing, secret rotation, branch-protection downgrade) is reached.
+Continue regatta development autonomously. Operate INDEFINITELY in auto mode — execute don't ask, ship don't explain, stop only when externally interrupted. Drive toward MVP-3 wave completion → MVP-4 wedges (W10 Sigstore / W11 blackboard / W12 billing per docs/engineer/briefs/2026-05-31-mvp-3-next-level.md) → Phase 2 P2.x adopt-when-needed triggers → Phase 3 P3.x conditional adoption. Never bottleneck on roadmap depth — pre-fetch next horizon per feedback_roadmap_pre_fetch when current wave drains. NEVER ask for clarification; decide via subagent + memory rules per feedback_decision_priority (UX > ease > best-practices > speed > velocity). When blocked: file [followup] issue + add to watch-triggers list + pick next priority. Pause only for genuinely irreversible action (tag signing, secret rotation, branch-protection downgrade).
 
 BOOT
 1. cd /Users/treedesk/Desktop/Projects/regatta && git fetch && git pull --ff-only main
@@ -50,18 +50,21 @@ RULES (memory-bound; do not re-derive)
 - **W9 substrate-choice locked = option C hybrid** (memory/wedge_roadmap_assessment §"Substrate + W9 substrate-choice locked 2026-06-01"): ship W9 against `DurableHistory` Go interface, default impl on substrate `events`, Temporal-backed impl gated behind refined P2.5 trigger (sqlite contention >5% OR ≥30 concurrent OR replay-recovery >60s — any one, two consecutive 24h windows). W9 ships AFTER W6/W7/W8 land; substrate ships BEFORE W7. Never re-litigate during implementer dispatch.
 - root-cause only, no workarounds
 - max parallel fan-out (memory/feedback_parallel_dispatch)
+- Cap parallel implementer subagents at 3-4 per feedback_session_limit_dispatch; shared API quota dies at 5+. Heavy-context sessions reduce cap to 2-3.
 - make pre-push-check before every push
+- Pre-fetch next-horizon brief when current wave drains (≤2 unblocked items remaining) per feedback_roadmap_pre_fetch
+- Audit dep-graph before parallel dispatch; sequence chained-output work; parallelize file-disjoint only per feedback_sequence_dependent_work
+- Default to deletion over addition; every PR answers "what got smaller?"; adversarial reviewer enforces ≥1 deletion proposal per feedback_deletion_default
 - no AI signatures in commits/PRs
 
 WHEN BLOCKED
 - File [followup] issue + pick next priority. Never pause for user input.
 
-STOP CRITERIA (any one)
-- MVP-3 W6 Wave 1 merged (T1+T2+T5) + Wave 2 dispatched + #114 umbrella closed
-- OR MVP-3 W7 (operator web UI) design spec drafted + reviewed
-- OR 3 critical PRs shipped this session
-- OR genuinely irreversible step required (tag signing, secret rotation, branch-protection downgrade)
-- OR context budget tight + Wave-mid (don't leave half-applied state)
+STOP CRITERIA — indefinite mode
+- Continue until externally interrupted (user signal) OR genuinely irreversible action required (tag signing, secret rotation, branch-protection downgrade, force-push to main)
+- Per-session soft-stop on context-budget pressure: if approaching context limit mid-wave, finish the current implementer-subagent batch + checkpoint progress in MEMORY.md/observation_record_event, then end-of-turn cleanly (no half-applied state)
+- Wave-finish checkpoints are NOT stop signals — immediately pre-fetch next horizon (per feedback_roadmap_pre_fetch) and dispatch next wave's design subagent
+- Watch-triggers list: blocked items file as [followup] GH issues with trigger conditions (e.g. "unblock when X merges") in PR body; loop back when trigger fires; never deadlock waiting
 
 Begin BOOT. After boot, pick highest priority + dispatch design subagent.
 ```
@@ -75,6 +78,8 @@ Begin BOOT. After boot, pick highest priority + dispatch design subagent.
 - **Stop criteria are concrete**: agent knows when to land vs continue.
 - **Escape valve named**: blocked → file issue → pick next. No deadlock on one item.
 - **Genuine irreversibility named explicitly**: tag signing, secrets, protection downgrade. Everything else proceeds.
+- **Indefinite by design**: STOP CRITERIA bounds the per-session soft-stop only; the prompt never says "we're done" because the roadmap is infinite. Pre-fetch keeps queue full.
+- **Latitude is bounded by quality gates, not by stop signals**: adversarial review + B/A/A+ rubric + deletion-default enforce quality regardless of how indefinite the session runs.
 
 ## When to update this prompt
 
