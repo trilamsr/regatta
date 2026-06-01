@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
 // testKey is a deterministic 32-byte HMAC key for round-trip tests.
@@ -177,7 +179,10 @@ func TestApprovalToken_ReviewerMismatch(t *testing.T) {
 // post-HMAC path.
 func craftSignedWire(t *testing.T, key []byte, kid string, payloadBytes []byte) string {
 	t.Helper()
-	mac := tokenMAC(key, kid, payloadBytes)
+	mac, err := schemas.MacSum(key, kid, payloadBytes)
+	if err != nil {
+		t.Fatalf("macsum: %v", err)
+	}
 	return base64.RawURLEncoding.EncodeToString(mac) + "." + base64.RawURLEncoding.EncodeToString(payloadBytes)
 }
 
@@ -234,6 +239,30 @@ func TestVerify_HMACBeforeJSONUnmarshal(t *testing.T) {
 	_, err := VerifyToken(kr, wire, "alice", time.Now())
 	if !errors.Is(err, ErrUnverifiable) {
 		t.Fatalf("want ErrUnverifiable (HMAC trips before JSON), got %v", err)
+	}
+}
+
+// TestApprovalToken_FixedWireRegression pins the exact wire bytes MintToken emits for a fixed input (issue #131).
+func TestApprovalToken_FixedWireRegression(t *testing.T) {
+	t.Parallel()
+	// Pinned: key=32×0xAB, kid=k1, jti=base64url(16×0x42), window=2000000000.
+	const wantWire = "m342scR3QpsgbcN_aRvEJJ3u9fDOFurwfSPzdD1u34I.eyJhaWQiOiJhaWQtMSIsImp0aSI6IlFrSkNRa0pDUWtKQ1FrSkNRa0pDUWciLCJraWQiOiJrMSIsInJldmlld2VyIjoiYWxpY2UiLCJ3aSI6IndpLTEiLCJ3aW5kb3ciOjIwMDAwMDAwMDB9"
+	kr := newTestKeyring()
+	pinned := bytes.Repeat([]byte{0x42}, 16)
+	gotWire, _, err := MintToken(kr, "k1", TokenPayload{
+		KID: "k1", WI: "wi-1", AID: "aid-1", Reviewer: "alice", Window: 2000000000,
+	}, &fixedReader{src: pinned})
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+	if gotWire != wantWire {
+		t.Fatalf("wire drift:\n got=%s\nwant=%s", gotWire, wantWire)
+	}
+	// Verify the pinned wire round-trips under the same key — guards against
+	// a future change that breaks mint and verify in symmetric but incorrect ways.
+	verifyAt := time.Unix(1999999999, 0)
+	if _, err := VerifyToken(kr, wantWire, "alice", verifyAt); err != nil {
+		t.Fatalf("verify pinned wire: %v", err)
 	}
 }
 
