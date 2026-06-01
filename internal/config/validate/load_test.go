@@ -250,6 +250,103 @@ func TestLoad_RepoOwnerInvalidChars_Errors(t *testing.T) {
 	}
 }
 
+func TestLoad_ApprovalGate_CanonicalYAML_Valid(t *testing.T) {
+	yaml := strings.Replace(minimalValid, `gates:
+  - id: spec_conformance
+    type: ai
+    model: claude-opus-4-7
+    severity_block: [fail]
+`, `gates:
+  - id: prod-deploy-approval
+    type: approval_gate
+    name: prod-deploy-approval
+    risk_class: high
+    reviewers: [alice, bob]
+    roles: [sre]
+    quorum: 2
+    prevent_self_review: true
+    timeout: 24h
+    decision_window: 4h
+    on_timeout: fail
+    escalation_chain:
+      - reviewers: [carol]
+        quorum: 1
+        timeout: 1h
+        decision_window: 30m
+`, 1)
+	if err := LoadBytes([]byte(yaml)); err != nil {
+		t.Fatalf("expected nil error for canonical approval_gate; got %v", err)
+	}
+}
+
+func TestLoad_ApprovalGate_BadRiskClass_Errors(t *testing.T) {
+	yaml := strings.Replace(minimalValid, `gates:
+  - id: spec_conformance
+    type: ai
+    model: claude-opus-4-7
+    severity_block: [fail]
+`, `gates:
+  - id: prod-deploy-approval
+    type: approval_gate
+    name: prod-deploy-approval
+    risk_class: ultra
+    reviewers: [alice]
+    quorum: 1
+    timeout: 1h
+    decision_window: 30m
+    on_timeout: fail
+`, 1)
+	if err := LoadBytes([]byte(yaml)); err == nil {
+		t.Fatal("expected error for risk_class=ultra (not in enum); got nil")
+	}
+}
+
+// TestLoad_ApprovalGate_AutoApproveHighRisk_Errors pins V5 at CUE (validate-config rejection path).
+func TestLoad_ApprovalGate_AutoApproveHighRisk_Errors(t *testing.T) {
+	yaml := strings.Replace(minimalValid, `gates:
+  - id: spec_conformance
+    type: ai
+    model: claude-opus-4-7
+    severity_block: [fail]
+`, `gates:
+  - id: prod-deploy-approval
+    type: approval_gate
+    name: prod-deploy-approval
+    risk_class: high
+    reviewers: [alice]
+    quorum: 1
+    timeout: 1h
+    decision_window: 30m
+    on_timeout: auto_approve
+`, 1)
+	if err := LoadBytes([]byte(yaml)); err == nil {
+		t.Fatal("expected V5 rejection (auto_approve requires low); got nil")
+	}
+}
+
+// TestLoad_ApprovalGate_EscalateNoChain_Errors pins V9 at CUE (escalate requires chain).
+func TestLoad_ApprovalGate_EscalateNoChain_Errors(t *testing.T) {
+	yaml := strings.Replace(minimalValid, `gates:
+  - id: spec_conformance
+    type: ai
+    model: claude-opus-4-7
+    severity_block: [fail]
+`, `gates:
+  - id: prod-deploy-approval
+    type: approval_gate
+    name: prod-deploy-approval
+    risk_class: high
+    reviewers: [alice]
+    quorum: 1
+    timeout: 1h
+    decision_window: 30m
+    on_timeout: escalate
+`, 1)
+	if err := LoadBytes([]byte(yaml)); err == nil {
+		t.Fatal("expected V9 rejection (escalate requires non-empty chain); got nil")
+	}
+}
+
 func TestLoad_DefaultsApply(t *testing.T) {
 	// Strip optional safety fields entirely; defaults from schema must
 	// apply (destructive_ops_deny defaults to [], agent_creds_scope to
