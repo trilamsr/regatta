@@ -47,6 +47,12 @@ func TestProbe_CountTokensClaudeCLI_DetectsCapability(t *testing.T) {
 		if p.Mode != estimate.ProbeModeClaudeCLI {
 			t.Fatalf("Mode=%v; want ProbeModeClaudeCLI", p.Mode)
 		}
+		// CLI mode MUST actually call the binary at CountTokens time;
+		// without this assertion the probe could detect the flag yet
+		// silently fall back to the heuristic (a latent over-count bug).
+		if got := p.CountTokens([]byte("hello")); got != 42 {
+			t.Fatalf("CLI CountTokens=%d; want 42 (stub-supplied)", got)
+		}
 	})
 
 	t.Run("missing_flag_falls_back", func(t *testing.T) {

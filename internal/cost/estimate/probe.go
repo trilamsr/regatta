@@ -1,9 +1,12 @@
 package estimate
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os/exec"
+	"strconv"
 	"time"
 )
 
@@ -32,23 +35,17 @@ func (m ProbeMode) String() string {
 
 // ProbeConfig holds the tunables. Zero values default to production settings.
 type ProbeConfig struct {
-	// Command is the claude binary path. Default: "claude".
-	Command string
-	// ProbeTimeout caps the capability detection call. Default: 2s.
-	ProbeTimeout time.Duration
+	Command      string        // claude binary path; default "claude"
+	ProbeTimeout time.Duration // capability-detection deadline; default 2s
 }
 
-// Probe is the result of one-time `claude --count-tokens` capability detection.
-// Mode tells the spawner which counter to use; CountTokens is the active
-// counter (CLI mode shells out, heuristic mode runs the safety-margin formula).
+// Probe is the resolved counter selected at process start. Mode picks the
+// CountTokens path; the safety fraction is non-zero only in heuristic mode
+// and encodes the spec §9 R11 mitigation as integer math to avoid float drift.
 type Probe struct {
 	Mode    ProbeMode
 	Command string
 
-	// safetyNumerator + safetyDenominator encode the heuristic-fallback
-	// margin without floating-point drift. 3/2 = 1.5× per R11 mitigation
-	// (spec §9 R11 documents "25% safety margin" but the named-test
-	// `TestProbe_HeuristicFallbackAddsSafetyMargin` requires ≥ 50%).
 	safetyNumerator   int64
 	safetyDenominator int64
 }
@@ -76,48 +73,63 @@ func NewProbe(cfg ProbeConfig) (Probe, error) {
 	return p, nil
 }
 
-// CountTokens returns the active counter's token count for `b`. Heuristic mode
-// applies the safety margin; CLI mode shells out per call (TODO: future wedge
-// can cache or batch — out of scope here per spec §10).
+// CountTokens returns the active counter's token count for `b`. CLI mode shells
+// out per call; on shell-out error the call falls through to the heuristic
+// counter so a transient claude failure never crashes the gate.
 func (p Probe) CountTokens(b []byte) int64 {
-	raw := int64(len(b) / 4)
 	if p.Mode == ProbeModeClaudeCLI {
 		if n, err := countTokensViaCLI(p.Command, b); err == nil {
 			return n
 		}
-		// Fallback to heuristic on CLI failure; bracketed in the same
-		// safety-margin formula because the operator's environment is
-		// effectively in heuristic mode for this call.
 	}
+	raw := int64(len(b) / 4)
 	if p.safetyDenominator == 0 {
 		return raw
 	}
 	return raw * p.safetyNumerator / p.safetyDenominator
 }
 
-// hasCountTokensFlag invokes the binary with `--count-tokens` and a tiny stdin
-// payload. The probe returns true iff exit-code is zero. False on every other
-// outcome (missing binary, exec error, non-zero exit, timeout). The stub
-// binary in TestProbe_CountTokensClaudeCLI_DetectsCapability "supports_flag"
-// branch pins the success path; the other two branches pin the failure paths.
+// hasCountTokensFlag returns true iff the binary exits 0 for `--count-tokens`.
+// Every other outcome (missing binary, exec error, non-zero exit, timeout) is
+// false, which routes the probe to ProbeModeHeuristic.
 func hasCountTokensFlag(command string, timeout time.Duration) bool {
 	if command == "" {
 		return false
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	// Pass --count-tokens AND a no-op help/echo idiom the operator's claude
-	// will not parse as a prompt. The stub script keys off the flag's
-	// presence in argv; the real claude CLI exits 0 when the flag is
-	// recognized even without a prompt.
+	// #nosec G204 -- command comes from operator-controlled ProbeConfig
+	// (same trust model as internal/orchestrator/spawner/claude.go).
 	cmd := exec.CommandContext(ctx, command, "--count-tokens")
 	return cmd.Run() == nil
 }
 
-// countTokensViaCLI is a placeholder for the real `claude --count-tokens
-// <stdin>` invocation. The capability detection lands in Wave 1 T2; the
-// counter wiring lands in Wave 2 T3 alongside the spawner integration
-// (probe-vs-stream-json reconciliation is out of scope here per §3.3).
-func countTokensViaCLI(_ string, _ []byte) (int64, error) {
-	return 0, errors.New("not implemented")
+// countTokensViaCLI invokes `<claude> --count-tokens` with the prompt on stdin.
+// Accepts two output shapes: plain integer ("42\n") and JSON
+// ({"input_tokens": 42}). Anything else surfaces an error and the caller falls
+// through to the heuristic counter.
+func countTokensViaCLI(command string, prompt []byte) (int64, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	// #nosec G204 -- command captured from operator-controlled ProbeConfig.
+	cmd := exec.CommandContext(ctx, command, "--count-tokens")
+	cmd.Stdin = bytes.NewReader(prompt)
+	out, err := cmd.Output()
+	if err != nil {
+		return 0, err
+	}
+	trimmed := bytes.TrimSpace(out)
+	if len(trimmed) == 0 {
+		return 0, errors.New("probe: empty --count-tokens stdout")
+	}
+	if trimmed[0] == '{' {
+		var c struct {
+			InputTokens int64 `json:"input_tokens"`
+		}
+		if err := json.Unmarshal(trimmed, &c); err != nil {
+			return 0, err
+		}
+		return c.InputTokens, nil
+	}
+	return strconv.ParseInt(string(trimmed), 10, 64)
 }
