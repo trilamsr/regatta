@@ -72,8 +72,7 @@ func BenchmarkTick(b *testing.B) {
 	}
 }
 
-// BenchmarkTickEvalEdges fixture and background
-// ----------------------------------------------
+// BenchmarkTickEvalEdges fixture and background.
 //
 // Why this bench exists: PR closing #98 swapped a tick-local
 // `nonDefaultAllFalse` accumulator for a post-loop ListEdgesFrom
