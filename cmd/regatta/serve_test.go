@@ -5,11 +5,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -181,6 +184,104 @@ func canonicalApprovalGateConfig() config.ApprovalGateConfig {
 			DecisionWindow: 30 * time.Minute,
 		}},
 	}
+}
+
+// TestNewLogHandler_SelectsHandlerByFormat pins format→handler type.
+func TestNewLogHandler_SelectsHandlerByFormat(t *testing.T) {
+	for _, format := range []string{"text", "json"} {
+		t.Run(format, func(t *testing.T) {
+			h, err := newLogHandler(format, io.Discard)
+			if err != nil {
+				t.Fatalf("newLogHandler(%q): %v", format, err)
+			}
+			switch format {
+			case "text":
+				if _, ok := h.(*slog.TextHandler); !ok {
+					t.Errorf("format=%q: got %T, want *slog.TextHandler", format, h)
+				}
+			case "json":
+				if _, ok := h.(*slog.JSONHandler); !ok {
+					t.Errorf("format=%q: got %T, want *slog.JSONHandler", format, h)
+				}
+			}
+		})
+	}
+}
+
+// TestNewLogHandler_InvalidValueErrorsClearly pins error names bad value + valid options.
+func TestNewLogHandler_InvalidValueErrorsClearly(t *testing.T) {
+	_, err := newLogHandler("xml", io.Discard)
+	if err == nil {
+		t.Fatal("newLogHandler(\"xml\"): err is nil; want non-nil")
+	}
+	msg := err.Error()
+	// A-tier: error names the bad value AND the valid options so an
+	// operator can fix their command line without grepping source.
+	if !strings.Contains(msg, "xml") {
+		t.Errorf("error %q missing bad value %q", msg, "xml")
+	}
+	if !strings.Contains(msg, "text") || !strings.Contains(msg, "json") {
+		t.Errorf("error %q missing valid options text|json", msg)
+	}
+}
+
+// TestLogFormatFlag_RejectsInvalidValue pins flag-Set validation surface.
+func TestLogFormatFlag_RejectsInvalidValue(t *testing.T) {
+	var f logFormatFlag
+	if err := f.Set("text"); err != nil {
+		t.Errorf("Set(\"text\"): %v", err)
+	}
+	if err := f.Set("json"); err != nil {
+		t.Errorf("Set(\"json\"): %v", err)
+	}
+	err := f.Set("xml")
+	if err == nil {
+		t.Fatal("Set(\"xml\"): err is nil; want non-nil")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "xml") || !strings.Contains(msg, "text") || !strings.Contains(msg, "json") {
+		t.Errorf("error %q must name bad value + valid options", msg)
+	}
+}
+
+// TestNewLogHandler_OutputFormatMatches pins per-format wire-output shape.
+func TestNewLogHandler_OutputFormatMatches(t *testing.T) {
+	t.Run("json emits one parseable record per line", func(t *testing.T) {
+		var buf bytes.Buffer
+		h, err := newLogHandler("json", &buf)
+		if err != nil {
+			t.Fatalf("newLogHandler: %v", err)
+		}
+		slog.New(h).Info("tick.started", "feature", "F-1")
+		out := strings.TrimRight(buf.String(), "\n")
+		if out == "" {
+			t.Fatal("json output empty")
+		}
+		var rec map[string]any
+		if err := json.Unmarshal([]byte(out), &rec); err != nil {
+			t.Fatalf("json output %q not parseable: %v", out, err)
+		}
+		if rec["msg"] != "tick.started" || rec["feature"] != "F-1" {
+			t.Errorf("json record missing fields: %v", rec)
+		}
+	})
+	t.Run("text emits human-readable key=value pairs", func(t *testing.T) {
+		var buf bytes.Buffer
+		h, err := newLogHandler("text", &buf)
+		if err != nil {
+			t.Fatalf("newLogHandler: %v", err)
+		}
+		slog.New(h).Info("tick.started", "feature", "F-1")
+		out := buf.String()
+		// slog.TextHandler renders msg=tick.started feature=F-1; a
+		// leading '{' would mean the json handler was selected instead.
+		if !strings.Contains(out, "msg=tick.started") || !strings.Contains(out, "feature=F-1") {
+			t.Errorf("text output missing key=value markers: %q", out)
+		}
+		if strings.HasPrefix(strings.TrimSpace(out), "{") {
+			t.Errorf("text output looks like json: %q", out)
+		}
+	})
 }
 
 func openSchedulerTestDB(t *testing.T) *state.DB {
