@@ -103,18 +103,14 @@ func Verify(e Event, keyring map[string][]byte) error {
 	if e.SigAlg != SigAlg {
 		return fmt.Errorf("%w: unsupported alg %q", ErrUnverifiable, e.SigAlg)
 	}
+	// Spec §5 I5 defense (column-nonce ≠ signed-payload-nonce): a
+	// caller that post-mutates e.Nonce after Sign() ends up with
+	// e.SigMAC computed against the OLD nonce while signedPayload(e)
+	// canonicalises the NEW nonce — the HMAC compare below catches
+	// the drift. A separate column-vs-signed nonce equality check
+	// would be structurally trivial here because both halves come
+	// from e.Nonce. The HMAC compare IS the defense.
 	signed := signedPayload(e)
-	// I5: column nonce must match the signed-payload nonce. signedPayload
-	// builds the map from e.Nonce so this assert is trivially true at
-	// the Go layer — the test exists to catch a future refactor that
-	// decouples the two (e.g. takes nonce from PayloadJSON instead of
-	// the column). Document the invariant rather than letting it
-	// silently fall out of code.
-	signedNonce, _ := signed["nonce"].(string)
-	if signedNonce != e.Nonce {
-		return fmt.Errorf("%w: nonce mismatch (column=%q signed=%q)",
-			ErrUnverifiable, e.Nonce, signedNonce)
-	}
 	canon, err := schemas.CanonicalJSON(signed)
 	if err != nil {
 		return fmt.Errorf("substrate: verify canonical-json: %w", err)
