@@ -171,7 +171,14 @@ when **every** box is checked:
       `contracts/schemas/`
 - [ ] Has independent PR-reviewable test fixtures
 - [ ] Grade rubric: B / A / A+ criteria distinct and
-      tool-checkable (per the project's grade-rubric guidance)
+      tool-checkable (per the project's grade-rubric guidance).
+      When a rubric box says "returns typed sentinel X", state
+      explicitly whether the sentinel is returned **bare**
+      (`return ErrX`) or **wrapped** (`fmt.Errorf("ctx: %w", ErrX)`)
+      and give the chosen reason — bare is simpler; wrap adds
+      operator-readable log context. Both forms satisfy `errors.Is`,
+      so the choice is intent-driven and reviewers verify the
+      implementation matches the stated form.
 - [ ] Trigger metric defined (when does adoption begin?)
 - [ ] An adversarial review subagent has hunted edge cases
 
