@@ -59,8 +59,9 @@ type Config struct {
 	// `service.name`. Defaults to "regatta" when empty.
 	ServiceName string
 
-	// ServiceVersion is emitted as `service.version`. Empty values are
-	// dropped from the resource so the SDK's own default fills in.
+	// ServiceVersion is emitted as `service.version` when non-empty.
+	// The SDK does not default this attribute, so leaving it blank
+	// simply omits the key from the resource set.
 	ServiceVersion string
 
 	// TenantID is emitted as `regatta.tenant_id`. Defaults to
@@ -97,6 +98,11 @@ type ShutdownFunc func(context.Context) error
 //
 // Returns a ShutdownFunc the caller stores for clean process exit; the
 // closure is safe to call from a signal handler.
+//
+// Setup is intended to be called exactly once per process (cmd/regatta
+// boot). Repeated calls without shutting the previous provider down
+// first leak the prior batcher goroutines; the brief §3.1 mandates one
+// init seam to make this contract obvious.
 func Setup(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 	cfg = withDefaults(cfg)
 
@@ -184,6 +190,10 @@ func buildExporters(ctx context.Context, cfg Config) (sdktrace.SpanExporter, log
 		}
 		le, err := stdoutlog.New(stdoutlog.WithWriter(cfg.StdoutDest))
 		if err != nil {
+			// Partial-init: trace exporter succeeded, log exporter
+			// failed. Shut the trace exporter down so its background
+			// goroutine does not leak past the failed Setup.
+			_ = te.Shutdown(ctx)
 			return nil, nil, fmt.Errorf("%w: %w", ErrLogExporter, err)
 		}
 		return te, le, nil
@@ -195,6 +205,7 @@ func buildExporters(ctx context.Context, cfg Config) (sdktrace.SpanExporter, log
 	}
 	le, err := otlploggrpc.New(ctx)
 	if err != nil {
+		_ = te.Shutdown(ctx)
 		return nil, nil, fmt.Errorf("%w: %w", ErrLogExporter, err)
 	}
 	return te, le, nil
