@@ -7,16 +7,17 @@ Copy-paste this prompt to bootstrap a fully autonomous regatta dev session. Desi
 ## Prompt
 
 ```
-Continue regatta development autonomously.
+Continue regatta development autonomously. Operate in auto mode — NEVER ask for clarification, decide via subagent + memory rules per feedback_decision_priority (UX > ease > best-practices > speed > velocity). When blocked: file [followup] issue + pick next priority. Never wait, never pause for user input unless a stop-criteria item or genuinely irreversible action (tag signing, secret rotation, branch-protection downgrade) is reached.
 
 BOOT
 1. cd /Users/treedesk/Desktop/Projects/regatta && git fetch && git pull --ff-only main
-2. make check && make cleanup-branches
-3. gh pr list --state open  (expect 0)
-4. Read MEMORY.md + AGENTS.md (auto-loaded). Recover docs/superpowers/ per AGENTS.md recipe if needed.
+2. make check && bash scripts/cleanup-merged-branches.sh
+3. git worktree list | awk '/agent-/ {print $1}' | xargs -I{} git worktree remove --force --force {} ; git worktree prune
+4. gh pr list --state open  (note current state; in-flight PRs are normal)
+5. Read MEMORY.md + AGENTS.md (auto-loaded). Recover docs/superpowers/ per AGENTS.md recipe if needed.
 
 PRIORITY (top-down, skip if blocked)
-1. MVP-3 W6 OTel observability backbone — umbrella #159. Wave 1 partial shipped (T1 #172 + T2 #169). Remaining: T5 Config.Tracer injection across 8 components (depends on T1 merged; A4 #168 already landed so scheduler.go is settled). Wave 2 = T3 migration 0005 trace_id columns + T4 spawner stream-json GenAI semconv parser. Wave 3 = T6 docker-compose Jaeger E2E + T7 operator observability doc. Spec at docs/superpowers/specs/2026-05-31-mvp-3-w6-otel-backbone.md (gitignored — recover via AGENTS.md recipe or rebuild from #159 body).
+1. MVP-3 W6 OTel observability backbone — umbrella #159. Wave 1 partial shipped (T1 #172 + T2 #169). Remaining: T5 Config.Tracer injection across 8 components (depends on T1 merged; A4 #168 already landed so scheduler.go is settled). Wave 2 = T3 migration 0005 trace_id columns + T4 spawner stream-json GenAI semconv parser. Wave 3 = T6 docker-compose Jaeger E2E (scaffold pre-positioned at examples/observability/docker-compose.yml via #184) + T7 operator observability doc. Spec at `docs/superpowers/specs/2026-05-31-mvp-3-w6-otel-backbone.md` (gitignored — recover via AGENTS.md recipe or rebuild from #159 body). **Pre-written dispatch prompts for T3+T4+T5 at `docs/superpowers/dispatch/2026-05-31-mvp-3-w6-wave1-finish.md`** (gitignored; recover by rebuild from spec §5 task table). Paste straight into 3 parallel `Agent(isolation: worktree)` calls; cap at 3-4 parallel per `feedback_session_limit_dispatch`.
 2. #114 approval-gates closeout — Wave 5 E2E test dispatched. When merged + #114 umbrella closeable, comment "Closes #114" on the E2E PR or close #114 manually. Spec at docs/superpowers/specs/2026-05-31-mvp-approval-gates.md.
 3. Open follow-up issues (~50) by load-bearing weight — A+ tier rubric checkboxes from earlier waves (mutation testing, fuzz, key-rotation drill, etc.). Spawn a triage subagent (≤5 trivial PRs/session cap) to sweep. Per feedback_session_2026_05_31_lessons.
 4. MVP-3 next-level — brief at docs/superpowers/briefs/2026-05-31-mvp-3-next-level.md. After W6 lands: W7 operator web UI (rank #2; Temporal-UI pattern via Go embed.FS + htmx; scope-disciplined to approval flow + read-only DAG + cost panel). W8 OPA RBAC + multi-tenant (rank #3).
