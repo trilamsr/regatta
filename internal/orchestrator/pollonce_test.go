@@ -58,15 +58,21 @@ func newPollOnceHarness(t *testing.T, ad adaptersync.SpecAdapter) (*orchestrator
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	syncer := adaptersync.New(ad, db)
-	loader := program.NewBriefLoader(fstest.MapFS{}, db, map[string][]byte{}, nil)
+	syncer, err := adaptersync.New(adaptersync.Config{Adapter: ad, DB: db})
+	if err != nil {
+		t.Fatalf("adaptersync.New: %v", err)
+	}
+	loader, err := program.NewBriefLoader(program.BriefLoaderConfig{FS: fstest.MapFS{}, DB: db, Keyring: map[string][]byte{}})
+	if err != nil {
+		t.Fatalf("NewBriefLoader: %v", err)
+	}
 	sched := scheduler.New(db, scheduler.Config{})
 	o := orchestrator.New(orchestrator.Config{
 		AdapterSync: syncer,
 		BriefLoader: loader,
 		DB:          db,
 		Scheduler:   sched,
-		Spawner:     spawner.NewStub(),
+		Spawner:     spawner.New(spawner.Config{}),
 		DBPath:      dbPath,
 	})
 	return o, db, dbPath
