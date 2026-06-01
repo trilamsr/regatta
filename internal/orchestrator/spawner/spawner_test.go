@@ -111,6 +111,56 @@ func TestSpawner_WritesJournalBeforeMerge(t *testing.T) {
 	}
 }
 
+// TestSpawnerComplete_InjectedClockStampsJournal pins #100: Complete routes every time.Now() through Config.Clock.
+func TestSpawnerComplete_InjectedClockStampsJournal(t *testing.T) {
+	ctx := context.Background()
+	db := openSpawnerTestDB(t)
+	seedPlannedWI(t, db, "F-1")
+
+	fixed := time.Unix(1_700_000_000, 0).UTC()
+	sp := New(Config{DB: db, Clock: func() time.Time { return fixed }})
+
+	if _, err := sp.Spawn(ctx, Request{AgentID: 1, WorkItemID: "F-1", Lane: "server"}); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if err := sp.Complete(ctx, "F-1", json.RawMessage(`{"completed":true}`)); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+
+	entry, err := db.GetLatestOutput(ctx, "F-1")
+	if err != nil {
+		t.Fatalf("GetLatestOutput: %v", err)
+	}
+	if !entry.ProducedAt.Equal(fixed) {
+		t.Fatalf("produced_at=%s, want %s (injected clock not threaded through Complete)", entry.ProducedAt, fixed)
+	}
+}
+
+// TestSpawnerComplete_NilClockFallsBackToTimeNow guards spec §4.1: omitted Config.Clock defaults to time.Now.
+func TestSpawnerComplete_NilClockFallsBackToTimeNow(t *testing.T) {
+	ctx := context.Background()
+	db := openSpawnerTestDB(t)
+	seedPlannedWI(t, db, "F-1")
+
+	before := time.Now().UTC().Add(-time.Second)
+	sp := New(Config{DB: db}) // Clock omitted
+	if _, err := sp.Spawn(ctx, Request{AgentID: 1, WorkItemID: "F-1", Lane: "server"}); err != nil {
+		t.Fatalf("Spawn: %v", err)
+	}
+	if err := sp.Complete(ctx, "F-1", json.RawMessage(`{"completed":true}`)); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	after := time.Now().UTC().Add(time.Second)
+
+	entry, err := db.GetLatestOutput(ctx, "F-1")
+	if err != nil {
+		t.Fatalf("GetLatestOutput: %v", err)
+	}
+	if entry.ProducedAt.Before(before) || entry.ProducedAt.After(after) {
+		t.Fatalf("produced_at=%s outside [%s,%s] — nil clock did not fall back to time.Now", entry.ProducedAt, before, after)
+	}
+}
+
 // TestSpawnerComplete_AtomicJournalAndMerge mutation-verifies the
 // order: if AppendOutput fails the transition must NOT happen.
 // Without journal-first ordering a scheduler tick could see

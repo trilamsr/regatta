@@ -60,6 +60,13 @@ type Config struct {
 	// back to slog.Default() so embedded callers still get output
 	// without panicking (spec §4.1).
 	Logger *slog.Logger
+
+	// Clock is the time source Complete consumes for journal stamps and
+	// duration accounting. Mirrors the func()-clock injection used by
+	// state.OpenWithClock and gates/approval — the seam tests need to
+	// pin deterministic timestamps (#100). Nil falls back to time.Now so
+	// production callers stay zero-config.
+	Clock func() time.Time
 }
 
 // Stub records every Spawn call and returns a synthetic
@@ -71,6 +78,7 @@ type Stub struct {
 	calls []Request
 	db    *state.DB
 	log   *slog.Logger
+	clock func() time.Time
 }
 
 // New constructs a Stub from a Config. Mirrors orchestrator/scheduler/
@@ -80,7 +88,11 @@ func New(cfg Config) *Stub {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Stub{db: cfg.DB, log: log}
+	clock := cfg.Clock
+	if clock == nil {
+		clock = time.Now
+	}
+	return &Stub{db: cfg.DB, log: log, clock: clock}
 }
 
 // Spawn returns a deterministic synthetic Result. PID is a negative
@@ -127,11 +139,11 @@ func (s *Stub) Calls() []Request {
 // observes status!=merged and the orchestrator's reconciliation
 // path retries.
 func (s *Stub) Complete(ctx context.Context, workItemID string, payload json.RawMessage) error {
-	start := time.Now()
+	start := s.clock()
 	emitFailed := func(err error) error {
 		s.log.Warn(string(obs.EventSpawnFailed),
 			string(obs.KeyWorkItemID), workItemID,
-			string(obs.KeyDurationMs), time.Since(start).Milliseconds(),
+			string(obs.KeyDurationMs), s.clock().Sub(start).Milliseconds(),
 			string(obs.KeyErr), err.Error(),
 		)
 		return err
@@ -139,7 +151,7 @@ func (s *Stub) Complete(ctx context.Context, workItemID string, payload json.Raw
 	if s.db == nil {
 		return emitFailed(fmt.Errorf("spawner: stub built without DB cannot Complete"))
 	}
-	if _, err := s.db.AppendOutputAt(ctx, workItemID, payload, time.Now()); err != nil {
+	if _, err := s.db.AppendOutputAt(ctx, workItemID, payload, s.clock()); err != nil {
 		return emitFailed(fmt.Errorf("spawner: append output: %w", err))
 	}
 	wi, err := s.db.GetWorkItem(ctx, workItemID)
@@ -147,12 +159,12 @@ func (s *Stub) Complete(ctx context.Context, workItemID string, payload json.Raw
 		return emitFailed(fmt.Errorf("spawner: load work_item: %w", err))
 	}
 	wi.Status = state.WorkStatusMerged
-	if err := s.db.UpsertWorkItem(ctx, wi, wi.Source, time.Now()); err != nil {
+	if err := s.db.UpsertWorkItem(ctx, wi, wi.Source, s.clock()); err != nil {
 		return emitFailed(fmt.Errorf("spawner: mark merged: %w", err))
 	}
 	s.log.Info(string(obs.EventSpawnCompleted),
 		string(obs.KeyWorkItemID), workItemID,
-		string(obs.KeyDurationMs), time.Since(start).Milliseconds(),
+		string(obs.KeyDurationMs), s.clock().Sub(start).Milliseconds(),
 	)
 	return nil
 }
