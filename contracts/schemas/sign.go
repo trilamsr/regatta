@@ -215,6 +215,9 @@ func VerifyWithAllowlist(payload map[string]any, keyring map[string][]byte, allo
 	return nil
 }
 
+// maxKeyIDLen caps keyID at uint32 range; a 4-GiB kid is never legitimate.
+const maxKeyIDLen = 1 << 20
+
 // MacSum binds (keyID, canonicalBody) into the HMAC input so that two
 // keyring entries sharing identical key bytes under different kids
 // cannot cross-verify. keyID is length-prefixed (uint32 BE) rather
@@ -223,9 +226,6 @@ func VerifyWithAllowlist(payload map[string]any, keyring map[string][]byte, allo
 //
 // Exported so internal/canon (approval-token mint+verify) can share
 // the exact same HMAC primitive instead of maintaining a duplicate.
-// maxKeyIDLen caps keyID at uint32 range; a 4-GiB kid is never legitimate.
-const maxKeyIDLen = 1 << 20
-
 func MacSum(key []byte, keyID string, canon []byte) ([]byte, error) {
 	if len(keyID) > maxKeyIDLen {
 		return nil, fmt.Errorf("schemas: keyID too long: %d bytes (max %d)", len(keyID), maxKeyIDLen)
