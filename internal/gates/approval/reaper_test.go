@@ -157,14 +157,7 @@ func TestReaper_FailPolicy(t *testing.T) {
 	}
 }
 
-// TestReaper_AutoApprovePolicy — issue #193: auto_approve must NOT write a
-// timed_out event. Fold iterates id-ASC + first terminal wins; if the
-// reaper writes timed_out then approved, Fold returns StatusTimedOut and
-// gate.Evaluate maps that to ResultReject — flipping a should-proceed
-// work_item to rejected. The fix (option A) is single-concern: don't
-// write events that lie. The denotation of timed_out is "no decision in
-// window"; auto_approve has a decision (system:timeout-default approve),
-// so only the approved event matches the truth of what happened.
+// TestReaper_AutoApprovePolicy — issue #193: auto_approve writes only approved (no timed_out) so Fold resolves Approved.
 func TestReaper_AutoApprovePolicy(t *testing.T) {
 	t0 := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 	db := reaperTestDB(t, t0)
