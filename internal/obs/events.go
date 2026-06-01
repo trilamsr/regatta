@@ -53,6 +53,12 @@ const (
 	EventSpawnCompleted EventName = "spawn.completed"
 	EventSpawnFailed    EventName = "spawn.failed"
 
+	// Orphan-journal reconciler (#99). spawn.reconciled fires once
+	// per converged work_item; spawn.reconcile_failed surfaces a
+	// per-row error so the sweep can keep going on one bad id.
+	EventSpawnReconciled      EventName = "spawn.reconciled"
+	EventSpawnReconcileFailed EventName = "spawn.reconcile_failed"
+
 	// Reaper lifecycle (spec §5.4).
 	EventReapCandidateDetected EventName = "reap.candidate_detected"
 	EventReapKilled            EventName = "reap.killed"
@@ -177,6 +183,8 @@ func AllEventNames() []EventName {
 		EventSpawnStarted,
 		EventSpawnCompleted,
 		EventSpawnFailed,
+		EventSpawnReconciled,
+		EventSpawnReconcileFailed,
 		EventReapCandidateDetected,
 		EventReapKilled,
 		EventReapSkipped,
