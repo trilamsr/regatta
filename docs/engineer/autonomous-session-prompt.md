@@ -52,6 +52,7 @@ RULES (memory-bound; do not re-derive)
 - Decisions: NEVER ask user. Spawn review subagent + decide based on memory/feedback_decision_priority (UX > ease > best-practices > speed > velocity).
 - TDD strict (failing test FIRST, capture output)
 - adversarial review on EVERY PR before automerge fires; main session OR implementer subagent may enable automerge once reviewer-cleared AND all Risk-tier+ findings addressed (inline-fixed or filed as cited followup issues) per memory/feedback_review_before_automerge
+- Implementer subagent dispatch prompts MUST require an explicit "A+ Rubric Scorecard" section in the PR body — each B/A/A+ criterion from the spec marked PASS/FAIL/N-A with one-line evidence + claimed tier. Reviewer subagent independently re-scores. Automerge precondition: scorecard posted (feedback_a_plus_scorecard_required + feedback_agent_pr_review).
 - Unaddressed load-bearing items in PR body → file tracking issues + cite numbers in PR before merge (memory/feedback_unaddressed_load_bearing)
 - Research + design: prefer adopting proven OSS over reimplementation. Priority order: user experience first, then quality bar matching reference systems, then ecosystem conventions, then long-term repo + user benefit (memory/feedback_research_design_principles). Every design-subagent prompt must cite this rule.
 - Spec deviations require design-subagent re-spawn (memory/feedback_spec_pattern_authority); never let implementer pick alternative
