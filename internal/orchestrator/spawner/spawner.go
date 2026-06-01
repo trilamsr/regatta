@@ -43,16 +43,28 @@ type Spawner interface {
 	Spawn(ctx context.Context, req Request) (Result, error)
 }
 
+// Config holds tunables and dependencies for a Stub spawner.
+// Mirrors the Config.Logger DI pattern used by orchestrator, scheduler,
+// and reaper so all components share one injection shape.
+type Config struct {
+	// DB enables Complete: when non-nil, terminal callback writes the
+	// outputs journal entry and flips the work_item to merged. The
+	// order is load-bearing — scheduler tick step-0 reads
+	// ListPendingEdgesFromMerged then GetLatestOutput, so the journal
+	// row must exist before the work_item is observed at status=merged
+	// (spec §3.9). Optional; nil makes Complete a no-op error.
+	DB *state.DB
+
+	// Logger is the structured-event sink for spawn.started /
+	// spawn.completed / spawn.failed emissions (spec §5.3). Nil falls
+	// back to slog.Default() so embedded callers still get output
+	// without panicking (spec §4.1).
+	Logger *slog.Logger
+}
+
 // Stub records every Spawn call and returns a synthetic
 // (pid, session-id) pair. Used by tests and by `regatta serve` until
 // the real spawner ships.
-//
-// An optional *state.DB enables Complete: when non-nil, terminal
-// callback writes the outputs journal entry and flips the work_item
-// to merged. The order is load-bearing — scheduler tick step-0
-// reads ListPendingEdgesFromMerged then GetLatestOutput, so the
-// journal row must exist before the work_item is observed at
-// status=merged (spec §3.9).
 type Stub struct {
 	mu    sync.Mutex
 	seq   atomic.Int64
@@ -61,39 +73,21 @@ type Stub struct {
 	log   *slog.Logger
 }
 
-// NewStub returns a ready-to-use stub spawner without DB wiring.
-// Complete is a no-op on a stub built this way.
-func NewStub() *Stub { return &Stub{} }
-
-// NewStubWithDB wires the stub to a *state.DB so Complete can journal
-// outputs + mark the work_item merged. The production ClaudeSpawner
-// will adopt this same Complete contract once real output capture
-// lands.
-func NewStubWithDB(db *state.DB) *Stub { return &Stub{db: db} }
-
-// WithLogger installs the structured-event sink for spawn.started /
-// spawn.completed / spawn.failed emissions (spec §5.3). Returns the
-// receiver for chained construction. A nil logger restores the
-// slog.Default() fallback applied by logger().
-func (s *Stub) WithLogger(l *slog.Logger) *Stub {
-	s.log = l
-	return s
-}
-
-// logger returns the injected logger or slog.Default() so nil-Config
-// consumers still get output without panicking (spec §4.1).
-func (s *Stub) logger() *slog.Logger {
-	if s.log != nil {
-		return s.log
+// New constructs a Stub from a Config. Mirrors orchestrator/scheduler/
+// reaper construction so callers see one injection shape.
+func New(cfg Config) *Stub {
+	log := cfg.Logger
+	if log == nil {
+		log = slog.Default()
 	}
-	return slog.Default()
+	return &Stub{db: cfg.DB, log: log}
 }
 
 // Spawn returns a deterministic synthetic Result. PID is a negative
 // counter (so it cannot collide with any real OS pid) and SessionID
 // embeds the work-item ID for easier debugging.
 func (s *Stub) Spawn(_ context.Context, req Request) (Result, error) {
-	s.logger().Info(string(obs.EventSpawnStarted),
+	s.log.Info(string(obs.EventSpawnStarted),
 		string(obs.KeyWorkItemID), req.WorkItemID,
 		string(obs.KeyAgentID), req.AgentID,
 		string(obs.KeyLane), req.Lane,
@@ -135,7 +129,7 @@ func (s *Stub) Calls() []Request {
 func (s *Stub) Complete(ctx context.Context, workItemID string, payload json.RawMessage) error {
 	start := time.Now()
 	emitFailed := func(err error) error {
-		s.logger().Warn(string(obs.EventSpawnFailed),
+		s.log.Warn(string(obs.EventSpawnFailed),
 			string(obs.KeyWorkItemID), workItemID,
 			string(obs.KeyDurationMs), time.Since(start).Milliseconds(),
 			string(obs.KeyErr), err.Error(),
@@ -156,7 +150,7 @@ func (s *Stub) Complete(ctx context.Context, workItemID string, payload json.Raw
 	if err := s.db.UpsertWorkItem(ctx, wi, wi.Source, time.Now()); err != nil {
 		return emitFailed(fmt.Errorf("spawner: mark merged: %w", err))
 	}
-	s.logger().Info(string(obs.EventSpawnCompleted),
+	s.log.Info(string(obs.EventSpawnCompleted),
 		string(obs.KeyWorkItemID), workItemID,
 		string(obs.KeyDurationMs), time.Since(start).Milliseconds(),
 	)

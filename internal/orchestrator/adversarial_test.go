@@ -103,12 +103,16 @@ func TestRunConcurrentWithRecoverIsRaceFree(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
+	syncer, err := adaptersync.New(adaptersync.Config{Adapter: ad, DB: db})
+	if err != nil {
+		t.Fatalf("adaptersync.New: %v", err)
+	}
 	o := New(Config{
-		AdapterSync:       adaptersync.New(ad, db),
+		AdapterSync:       syncer,
 		BriefLoader:       noopBriefLoader{},
 		DB:                db,
 		Scheduler:         scheduler.New(db, scheduler.Config{LockTTL: time.Hour}),
-		Spawner:           spawner.NewStub(),
+		Spawner:           spawner.New(spawner.Config{}),
 		DBPath:            dbPath,
 		PollInterval:      5 * time.Millisecond,
 		TickInterval:      5 * time.Millisecond,
@@ -181,15 +185,19 @@ func TestHeartbeatKeepsActiveLockAlive(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
+	syncer, err := adaptersync.New(adaptersync.Config{Adapter: ad, DB: db})
+	if err != nil {
+		t.Fatalf("adaptersync.New: %v", err)
+	}
 	o := New(Config{
-		AdapterSync: adaptersync.New(ad, db),
+		AdapterSync: syncer,
 		BriefLoader: noopBriefLoader{},
 		DB:          db,
 		Scheduler: scheduler.New(db, scheduler.Config{
 			LockTTL:  time.Minute,
 			Hotspots: func(string) []string { return []string{"hotspot"} },
 		}),
-		Spawner:           spawner.NewStub(),
+		Spawner:           spawner.New(spawner.Config{}),
 		DBPath:            dbPath,
 		PollInterval:      time.Minute,
 		TickInterval:      time.Minute,

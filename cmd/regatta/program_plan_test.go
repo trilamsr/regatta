@@ -1,15 +1,20 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/orchestrator"
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/program"
 )
 
@@ -205,7 +210,21 @@ func keysOf(m map[string][]byte) []string {
 // features, absence otherwise. Without this, scheduler.Config.OutputsSchemas
 // silently returns nil and predicates evaluate against an empty env.
 func TestOutputsSchemaResolverFor(t *testing.T) {
-	loader := program.NewBriefLoader(nil, nil, map[string][]byte{"k1": []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")}, program.NewEdgeEvaluator())
+	db, err := state.Open(context.Background(), state.DSN(filepath.Join(t.TempDir(), "rsv.db")))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	loader, err := program.NewBriefLoader(program.BriefLoaderConfig{
+		FS:        fstest.MapFS{},
+		DB:        db,
+		Keyring:   map[string][]byte{"k1": []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")},
+		Evaluator: program.NewEdgeEvaluator(),
+	})
+	if err != nil {
+		t.Fatalf("NewBriefLoader: %v", err)
+	}
 	resolver := outputsSchemaResolverFor(loader)
 	if _, ok := resolver("F-NOPE"); ok {
 		t.Fatalf("unknown feature: resolver returned ok=true")
