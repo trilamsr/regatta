@@ -13,7 +13,6 @@ import (
 
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // traceCtx returns ctx wrapped in a fresh in-memory span so insert
@@ -39,10 +38,7 @@ func traceCtx(t *testing.T) (context.Context, func(), string) {
 	return ctx, cleanup, wantHex
 }
 
-// TestMigration0005_AddsTraceIDColumns pins the schema effect of
-// migration 0005: both work_items and approval_events grow a
-// trace_id TEXT NOT NULL DEFAULT '' column, and both partial indexes
-// exist. Schema-version bumps to 5.
+// TestMigration0005_AddsTraceIDColumns pins schema-v5 + both trace_id columns + both partial indexes.
 func TestMigration0005_AddsTraceIDColumns(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
@@ -80,9 +76,7 @@ func TestMigration0005_AddsTraceIDColumns(t *testing.T) {
 	}
 }
 
-// TestWorkItemInsert_PersistsTraceIDFromContext: insert from within an
-// active span populates work_items.trace_id with the active TraceID hex.
-// Spec §3.5 + §7 A4.
+// TestWorkItemInsert_PersistsTraceIDFromContext pins spec §3.5 + §7 A4 for the work_items insert path.
 func TestWorkItemInsert_PersistsTraceIDFromContext(t *testing.T) {
 	t0 := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
@@ -107,10 +101,7 @@ func TestWorkItemInsert_PersistsTraceIDFromContext(t *testing.T) {
 	}
 }
 
-// TestApprovalEvent_PersistsTraceIDFromContext: same invariant for
-// approval_events. CreateApproval seeds the parent row; the event
-// row is the one that carries the trace_id (matches §3.5 schema —
-// trace_id sits on approval_events, the audit log, not on approvals).
+// TestApprovalEvent_PersistsTraceIDFromContext pins spec §3.5 + §7 A4 for the approval_events insert path.
 func TestApprovalEvent_PersistsTraceIDFromContext(t *testing.T) {
 	t0 := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
@@ -143,10 +134,7 @@ func TestApprovalEvent_PersistsTraceIDFromContext(t *testing.T) {
 	}
 }
 
-// TestNoActiveSpan_PersistsEmptyTraceID: insert outside any span sets
-// trace_id to '' — pinning legacy-path nondisruption (operators
-// running without OTel get the same byte-level behaviour as MVP-2,
-// rubric §7 B2).
+// TestNoActiveSpan_PersistsEmptyTraceID pins legacy-path nondisruption (rubric §7 B2): no span → trace_id=''.
 func TestNoActiveSpan_PersistsEmptyTraceID(t *testing.T) {
 	t0 := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
@@ -191,10 +179,7 @@ func TestNoActiveSpan_PersistsEmptyTraceID(t *testing.T) {
 	}
 }
 
-// TestMigration0005_BackwardCompatible: a fixture DB carrying MVP-2 rows
-// (inserted at schema version 4 before 0005 ran) gets trace_id='' on
-// migration, and downstream reads succeed. Single-tenant deploys must
-// be non-disrupted by the bump.
+// TestMigration0005_BackwardCompatible pins v4 → v5 upgrade: legacy rows get trace_id='' and stay readable.
 func TestMigration0005_BackwardCompatible(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "legacy.db")
 	dsn := DSN(dbPath)
@@ -338,7 +323,3 @@ func mustExec(t *testing.T, db *sql.DB, q string, args ...any) {
 	}
 }
 
-// Compile-time guard: trace package import is load-bearing — without
-// it the OTel SpanContext used by PersistTraceIDFromContext would not
-// compile. Reference its TraceState type to keep the symbol live.
-var _ = trace.TraceState{}

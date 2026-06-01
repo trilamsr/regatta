@@ -368,11 +368,13 @@ func insertEvent(ctx context.Context, tx *sql.Tx, approvalID string, ts time.Tim
 	if payload == "" {
 		payload = "{}"
 	}
+	var traceID string
+	state.PersistTraceIDFromContext(ctx, &traceID)
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO approval_events (
-			approval_id, ts, kind, actor, payload_json, token_jti
-		) VALUES (?, ?, ?, ?, ?, ?)`,
-		approvalID, ts.UTC().Unix(), kind, actor, payload, jti)
+			approval_id, ts, kind, actor, payload_json, token_jti, trace_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		approvalID, ts.UTC().Unix(), kind, actor, payload, jti, traceID)
 	return err
 }
 

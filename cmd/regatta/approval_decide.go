@@ -346,12 +346,14 @@ func insertApprovalEvent(ctx context.Context, tx *sql.Tx, ev state.ApprovalEvent
 	if len(payload) == 0 {
 		payload = json.RawMessage(`{}`)
 	}
+	var traceID string
+	state.PersistTraceIDFromContext(ctx, &traceID)
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO approval_events (
-			approval_id, ts, kind, actor, payload_json, token_jti
-		) VALUES (?, ?, ?, ?, ?, ?)`,
+			approval_id, ts, kind, actor, payload_json, token_jti, trace_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		ev.ApprovalID, ev.Ts.UTC().Unix(), ev.Kind, ev.Actor,
-		string(payload), ev.TokenJTI,
+		string(payload), ev.TokenJTI, traceID,
 	)
 	if err != nil {
 		if isUniqueTokenConsumeTx(err) {
