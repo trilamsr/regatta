@@ -67,10 +67,7 @@ func newRequest() Request {
 	}
 }
 
-// TestStubNotifier_RecordsAuditAttrs asserts the audit-trail invariant
-// from spec §5.8: even the stub notifier emits a typed event with the
-// minimum attrs an operator needs to correlate a notification with a
-// pending approval row.
+// Spec §5.8 audit-trail invariant: stub still emits typed event + correlation attrs.
 func TestStubNotifier_RecordsAuditAttrs(t *testing.T) {
 	h := &captureHandler{}
 	n := NewStubNotifier(slog.New(h))
@@ -142,9 +139,7 @@ func TestRegistry_GetUnknown(t *testing.T) {
 	}
 }
 
-// TestRegistry_FailClosed encodes the spec §5.8 invariant that an
-// unregistered notifier kind in config MUST fail rather than silently
-// falling through to the stub. Build wraps Get with that contract.
+// Spec §5.8 fail-closed: unknown kind must error, never silently default to stub.
 func TestRegistry_FailClosed(t *testing.T) {
 	reg := NewRegistry()
 	if _, err := Build(reg, "missing"); err == nil {
