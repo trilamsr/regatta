@@ -16,6 +16,7 @@ func TestMain_DispatchTableCoversAllCommands(t *testing.T) {
 		subcmdServe,
 		subcmdValidateConfig,
 		subcmdInit,
+		subcmdApproval,
 	}
 	if len(subcommands) != len(want) {
 		t.Fatalf("subcommand count: got %d want %d", len(subcommands), len(want))
