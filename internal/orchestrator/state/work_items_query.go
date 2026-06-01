@@ -11,7 +11,7 @@ import (
 
 // ErrCycleDetected fires when a CycleCheck would introduce a cycle
 // in work_items.depends_on_features.
-var ErrCycleDetected = errors.New("orchestrator: dependency cycle detected in work_items")
+var ErrCycleDetected = errors.New("state: dependency cycle detected in work_items")
 
 // selectWorkItemsCols is the canonical column list for unaliased
 // work_items SELECTs feeding scanWorkItems. Centralising the column

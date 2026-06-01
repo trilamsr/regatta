@@ -21,8 +21,9 @@ import (
 )
 
 // CurrentSchemaVersion is the latest forward-only migration this
-// binary knows; see migrations/.
-const CurrentSchemaVersion = 4
+// binary knows; see migrations/. Migrate() rejects DBs whose
+// goose_db_version exceeds this — see ErrSchemaTooNew.
+const CurrentSchemaVersion int64 = 4
 
 // AgentState mirrors the state-machine in docs/design.md §378.
 type AgentState string
@@ -87,10 +88,7 @@ func OpenWithClock(ctx context.Context, dsn string, now func() time.Time) (*DB, 
 		_ = raw.Close()
 		return nil, fmt.Errorf("state: ping sqlite: %w", err)
 	}
-	if _, err := raw.ExecContext(ctx, "PRAGMA foreign_keys=ON"); err != nil {
-		_ = raw.Close()
-		return nil, fmt.Errorf("state: enable foreign_keys: %w", err)
-	}
+	// foreign_keys enabled via DSN pragma above; no explicit Exec needed.
 	if err := Migrate(ctx, raw); err != nil {
 		_ = raw.Close()
 		return nil, err
