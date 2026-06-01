@@ -13,29 +13,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// TestSubstrate_SupersedesCycleProperty pins spec §10 #3 / §9 A-tier:
-// across synthetic supersedes graphs of varying shape, the cycle-check
-// contract holds — acyclic insertions succeed; a planted self-loop is
-// rejected with ErrSupersedesCycle.
-//
-// Strategy: rapid.Check enumerates a chain of N events whose
-// `supersedes` pointer references any strictly-earlier event in the
-// chain. Insertion in topological order satisfies the FK constraint
-// and the graph stays acyclic. After the acyclic phase, plant a final
-// self-loop and assert it is rejected by the Kahn's-sort path inside
-// AppendEvent (not by the FK).
-//
-// Multi-node back-edges aren't constructible through AppendEvent alone
-// because the FK (`supersedes REFERENCES substrate_events(id)`) forbids
-// referencing a row that hasn't been inserted yet. The self-loop is the
-// minimum-cycle adversarial form exercised here; T-S1's existing
-// SupersedesCycleRejected test pins the same shape but on a single
-// fixed-shape graph. The property test adds graph-shape diversity.
-//
-// Determinism: rapid seeds from the -rapid.seed flag (default value
-// reproducible per test name); CI reproducibility comes for free. Each
-// iteration uses a unique run_id (atomic counter) so (run_id,
-// written_by, nonce) collisions don't leak between iterations.
+// TestSubstrate_SupersedesCycleProperty pins spec §10 #3 / §9 A-tier: random acyclic chains succeed; planted self-loop ⇒ ErrSupersedesCycle.
 func TestSubstrate_SupersedesCycleProperty(t *testing.T) {
 	db := openMigratedDB(t)
 	var tag atomic.Int64

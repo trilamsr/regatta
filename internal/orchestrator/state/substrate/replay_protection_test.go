@@ -14,18 +14,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// TestSubstrate_ReplayProtectionProperty pins spec §5 / §10 #11: the
-// UNIQUE(run_id, written_by, nonce) index makes any second event with
-// an identical triple unwriteable.
-//
-// Strategy: pick a triple, write the first event, write a second event
-// with the same (run_id, written_by, nonce) but a fresh ID + payload
-// shape — assert ErrReplay. Quantify over the nonce + the WrittenBy
-// principal to span the collision surface.
-//
-// Reproducibility: rapid seeds from -rapid.seed (default deterministic
-// per test name). Each iteration uses a fresh run_id so events from
-// different iterations cannot collide.
+// TestSubstrate_ReplayProtectionProperty pins spec §5 / §10 #11: a second AppendEvent with identical (run_id, written_by, nonce) ⇒ ErrReplay.
 func TestSubstrate_ReplayProtectionProperty(t *testing.T) {
 	db := openMigratedDB(t)
 	var tag atomic.Int64

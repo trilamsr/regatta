@@ -5,9 +5,7 @@ import (
 	"testing"
 )
 
-// TestLintSubstrateQueries_RejectsUnscopedRead: an SQL string selecting
-// from substrate_events with no WHERE-clause kind filter must produce a
-// finding. Spec §6 mandates kind=? on every read.
+// TestLintSubstrateQueries_RejectsUnscopedRead pins spec §6: SELECT FROM substrate_events without `kind=?` ⇒ finding.
 func TestLintSubstrateQueries_RejectsUnscopedRead(t *testing.T) {
 	findings, err := runLinter(filepath.Join("testdata", "unscoped"))
 	if err != nil {
@@ -18,8 +16,7 @@ func TestLintSubstrateQueries_RejectsUnscopedRead(t *testing.T) {
 	}
 }
 
-// TestLintSubstrateQueries_AllowsKindScopedRead: an SQL string with
-// `kind = ?` in the WHERE clause and a `run_id = ?` filter passes lint.
+// TestLintSubstrateQueries_AllowsKindScopedRead pins spec §6: `kind=?` + `run_id=?` scope ⇒ clean.
 func TestLintSubstrateQueries_AllowsKindScopedRead(t *testing.T) {
 	findings, err := runLinter(filepath.Join("testdata", "kind_scoped"))
 	if err != nil {
@@ -30,9 +27,7 @@ func TestLintSubstrateQueries_AllowsKindScopedRead(t *testing.T) {
 	}
 }
 
-// TestLintSubstrateQueries_RequiresTenantOnCrossRunRead: a SELECT with
-// kind=? but no run_id=? (cross-run audit/billing read) must also carry
-// tenant_id=?. Spec §6.
+// TestLintSubstrateQueries_RequiresTenantOnCrossRunRead pins spec §6: cross-run reads without `tenant_id=?` ⇒ finding.
 func TestLintSubstrateQueries_RequiresTenantOnCrossRunRead(t *testing.T) {
 	findings, err := runLinter(filepath.Join("testdata", "cross_run_no_tenant"))
 	if err != nil {

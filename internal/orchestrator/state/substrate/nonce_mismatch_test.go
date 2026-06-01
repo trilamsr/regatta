@@ -7,28 +7,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// TestSubstrate_NonceMismatchRejected_Verifier is the A+-tier
-// adversarial form of spec §5 I5: an attacker who replays a signed
-// event payload but rotates the column-nonce (e.g. to dodge the
-// UNIQUE(run_id, written_by, nonce) index) must still fail Verify().
-//
-// Stricter than T-S1's TestSubstrate_NonceMismatchRejected: this test
-// reconstructs the verifier-side path directly — Sign, mutate, Verify
-// — without any AppendEvent dependency. Pinning the verifier in
-// isolation locks the I5 invariant against future refactors of the
-// signer that might inadvertently couple column-nonce to signed-nonce
-// in a way the round-trip test cannot catch.
-//
-// Stages exercised:
-//  1. Sign a baseline event (nonce=N1).
-//  2. Mutate e.Nonce to N2 (the attacker's freshly-minted column nonce).
-//  3. Verify must return ErrUnverifiable — the HMAC was computed over
-//     the signed-payload nonce N1, but the canonical-JSON now contains
-//     N2 ⇒ HMAC compare mismatches.
-//
-// If a future refactor introduces a column-vs-signed-nonce equality
-// check before HMAC, this test still catches a regression: the equality
-// check itself must trip the ErrUnverifiable sentinel.
+// TestSubstrate_NonceMismatchRejected_Verifier pins spec §5 I5 A+-tier: verifier-side column-nonce rotation post-Sign ⇒ ErrUnverifiable.
 func TestSubstrate_NonceMismatchRejected_Verifier(t *testing.T) {
 	t.Parallel()
 

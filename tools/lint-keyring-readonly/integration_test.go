@@ -9,17 +9,7 @@ import (
 	"testing"
 )
 
-// TestKeyringReadOnly_LintIntegrationCI runs the lint against the repo's
-// internal/ tree and asserts zero findings. Pins spec §9 A+-tier: the
-// CI gate fires on every PR, so a runtime KeyringSet sneaking into main
-// is impossible.
-//
-// The test invokes `go run` so the harness exercises exactly what CI
-// runs (no in-process shortcut). A flake here means either:
-//   - a new caller has a KeyringSet outside init/Setup (legitimate
-//     finding ⇒ fix the caller, not the test);
-//   - the lint allowlist needs a new encloser name (legitimate spec
-//     evolution ⇒ update allowedEnclosers + spec §5).
+// TestKeyringReadOnly_LintIntegrationCI pins spec §9 A+-tier: `go run ./tools/lint-keyring-readonly ./internal` exits 0 on main.
 func TestKeyringReadOnly_LintIntegrationCI(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration test skipped in -short mode")

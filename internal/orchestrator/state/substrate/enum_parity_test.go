@@ -10,13 +10,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// TestSubstrate_EventKindEnumMatchesSQLCheck pins spec §6 / §9 A-tier
-// N1: the Go EventKind constants and the SQL CHECK kind whitelist in
-// 0006_substrate.sql MUST match exactly.
-//
-// Drift here is the canonical "schema/Go enum out-of-sync" footgun: a
-// new kind ships in code but the CHECK rejects it (or vice versa), and
-// the failure surface is a runtime CHECK violation in production.
+// TestSubstrate_EventKindEnumMatchesSQLCheck pins spec §6 / §9 A-tier N1: Go EventKind constants ↔ SQL CHECK kind whitelist parity.
 func TestSubstrate_EventKindEnumMatchesSQLCheck(t *testing.T) {
 	t.Parallel()
 

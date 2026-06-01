@@ -5,9 +5,7 @@ import (
 	"testing"
 )
 
-// TestLintKeyringReadOnly_RejectsRuntimeKeyringSet pins spec §5
-// keyring-readonly defense. A KeyringSet-shaped call outside init() /
-// Setup() must trip the lint.
+// TestLintKeyringReadOnly_RejectsRuntimeKeyringSet pins spec §5: KeyringSet outside init/Setup ⇒ finding.
 func TestLintKeyringReadOnly_RejectsRuntimeKeyringSet(t *testing.T) {
 	findings, err := runLinter(filepath.Join("testdata", "runtime"))
 	if err != nil {
@@ -18,8 +16,7 @@ func TestLintKeyringReadOnly_RejectsRuntimeKeyringSet(t *testing.T) {
 	}
 }
 
-// Negative case: KeyringSet inside init() / Setup() is the legitimate
-// boot-time path and must NOT trip the lint.
+// TestLintKeyringReadOnly_AllowsInitAndSetup pins spec §5 negative case: KeyringSet inside boot path ⇒ clean.
 func TestLintKeyringReadOnly_AllowsInitAndSetup(t *testing.T) {
 	findings, err := runLinter(filepath.Join("testdata", "boot"))
 	if err != nil {
