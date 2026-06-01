@@ -41,7 +41,7 @@ RULES (memory-bound; do not re-derive)
 - TDD strict (failing test FIRST, capture output)
 - adversarial review on EVERY PR pre-automerge (memory/feedback_review_before_automerge) — automerge only AFTER reviewer clears blocking findings. Implementer subagents MUST NOT enable automerge themselves.
 - Unaddressed load-bearing items in PR body → file tracking issues + cite numbers in PR before merge (memory/feedback_unaddressed_load_bearing)
-- Research + design: adopt proven OSS over build-from-scratch; UX > best-in-class > best-practices > long-term benefit (memory/feedback_research_design_principles). Every design-subagent prompt must cite this rule.
+- Research + design: prefer adopting proven OSS over reimplementation. Priority order: user experience first, then quality bar matching reference systems, then ecosystem conventions, then long-term repo + user benefit (memory/feedback_research_design_principles). Every design-subagent prompt must cite this rule.
 - Spec deviations require design-subagent re-spawn (memory/feedback_spec_pattern_authority); never let implementer pick alternative
 - root-cause only, no workarounds
 - max parallel fan-out (memory/feedback_parallel_dispatch)
