@@ -1,41 +1,12 @@
 package l0
 
 import (
-	"context"
 	"log/slog"
-	"sync"
 	"testing"
 
 	"github.com/trilamsr/regatta/internal/obs"
+	"github.com/trilamsr/regatta/internal/obstest"
 )
-
-// captureHandler — minimal inline slog.Handler so Task D doesn't
-// block on the shared internal/obstest helper (not yet landed).
-type captureHandler struct {
-	mu      sync.Mutex
-	records []slog.Record
-}
-
-func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
-func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.records = append(h.records, r.Clone())
-	return nil
-}
-func (h *captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
-func (h *captureHandler) WithGroup(string) slog.Handler     { return h }
-
-func (h *captureHandler) findEvent(name obs.EventName) (slog.Record, bool) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for _, r := range h.records {
-		if r.Message == string(name) {
-			return r, true
-		}
-	}
-	return slog.Record{}, false
-}
 
 func attrValue(r slog.Record, key string) (slog.Value, bool) {
 	var out slog.Value
@@ -53,7 +24,7 @@ func attrValue(r slog.Record, key string) (slog.Value, bool) {
 
 func TestL0Gate_EmitsVerdictOnCheck(t *testing.T) {
 	t.Parallel()
-	h := &captureHandler{}
+	h := obstest.New()
 	cfg := Default()
 	cfg.Logger = slog.New(h)
 
@@ -67,9 +38,9 @@ func TestL0Gate_EmitsVerdictOnCheck(t *testing.T) {
 `
 	_ = Check(cfg, ParseUnifiedDiff(d))
 
-	rec, ok := h.findEvent(obs.EventGateVerdict)
+	rec, ok := h.FindEvent(obs.EventGateVerdict)
 	if !ok {
-		t.Fatalf("gate.verdict event not emitted; records=%+v", h.records)
+		t.Fatalf("gate.verdict event not emitted; records=%+v", h.Records())
 	}
 	gid, ok := attrValue(rec, string(obs.KeyGateID))
 	if !ok {
