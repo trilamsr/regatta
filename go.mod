@@ -19,6 +19,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.10.0
 	golang.org/x/text v0.37.0
 	google.golang.org/grpc v1.81.1
+	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.50.1
 	pgregory.net/rapid v1.3.0
 )
@@ -244,7 +245,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/tools v0.7.0 // indirect
 	modernc.org/libc v1.72.3 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

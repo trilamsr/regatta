@@ -26,10 +26,32 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/trilamsr/regatta/internal/cost/gate"
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
+
+// CostGate is the scheduler-side seam to the cost-governor pre-call
+// deny primitive. Production wires *gate.Gate (spec §3.2 concrete type,
+// no interface — the gate package itself stays interface-free; this
+// scheduler-local seam exists only so tests can inject fakes without
+// pulling in spend.Reader + substrate fixtures).
+type CostGate interface {
+	Evaluate(ctx context.Context, scope gate.WorkItemScope) (gate.Verdict, error)
+}
+
+// CostGateResolver maps a planned work_item to its cost scope. Returns
+// (_, false) when the wi is out-of-scope (e.g. lane outside the cost
+// regime). Mirrors GateResolver shape so the scheduler treats both
+// gate-passes uniformly.
+type CostGateResolver func(wi state.WorkItem) (gate.WorkItemScope, bool)
+
+// DowngradeHook lets the production wiring surface a soft-cap-induced
+// model swap to the spawner. Scheduler-side we record the intent;
+// spawner-side Request.ModelOverride consumption lands in Wave 2. Nil
+// is legal — soft-cap downgrades degrade to WARN-only.
+type DowngradeHook func(workItemID, model string)
 
 // EdgeEvaluator is the seam between Scheduler.Tick and the CEL-based
 // predicate evaluator that lives in package program. Defining it here
@@ -144,6 +166,21 @@ type Config struct {
 	// global provider — noop until obs/otel.Setup runs. Per W6 spec
 	// §3.3 + feedback_spec_pattern_authority.
 	Tracer trace.Tracer
+
+	// CostGate evaluates the cost-governor pre-call deny gate per spec
+	// §3.2 step 0.6. Nil disables the cost-pass — applyCostGovernor
+	// short-circuits to identity (zero overhead per spec §8 row 1 + I6).
+	CostGate CostGate
+
+	// CostGateResolver maps a planned work_item to its cost scope.
+	// Nil disables the cost-pass; same semantics as CostGate=nil.
+	CostGateResolver CostGateResolver
+
+	// OnDowngrade is invoked once per Evaluate that returns
+	// SoftCapBreached=true with a DowngradeTo target AND a scope that
+	// opted in via AllowDowngrade. Wave 1 surfaces the intent; the
+	// spawner-side ModelOverride consumer lands in Wave 2.
+	OnDowngrade DowngradeHook
 }
 
 // schedulerDB is the seam between Scheduler and state.DB. The
@@ -289,6 +326,13 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 	spawnable, err = s.applyApprovalGates(ctx, spawnable)
 	if err != nil {
 		return nil, fmt.Errorf("scheduler: apply approval gates: %w", err)
+	}
+	// Spec §3.2 step 0.6 — cost-governor pre-call deny. Slots in
+	// between approval-gate and reserve, BEFORE laneHasCapacity is
+	// consulted. Identity short-circuit when CostGate is nil.
+	spawnable, err = s.applyCostGovernor(ctx, spawnable)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: apply cost governor: %w", err)
 	}
 
 	occupancy, err := s.db.CountAgentsByLane(ctx, activeStates...)
@@ -533,6 +577,58 @@ func (s *Scheduler) applyApprovalGates(ctx context.Context, spawnable []state.Wo
 				string(obs.KeyVerdict), approval.ResultPause.String(),
 			)
 		}
+	}
+	return kept, nil
+}
+
+// applyCostGovernor filters spawnable through the cost-governor pre-call
+// deny gate per spec §3.2 step 0.6. Returns the surviving slice:
+// Allow=true keeps the wi for the reservation loop, Allow=false drops
+// the wi from this tick (status stays 'planned' so the next tick
+// re-evaluates after the reconciler may have caught up).
+//
+// Disabled (CostGate or CostGateResolver nil) returns spawnable
+// byte-equal so callers that have not wired the cost-governor pay
+// ZERO overhead (closes I6 per spec §8 row 1).
+//
+// Per-wi evaluation errors warn on the injected logger and treat the
+// wi as denied for this tick — fail-closed posture matches the
+// approval gate's: a misconfigured gate must not silently allow.
+//
+// Soft-cap downgrade (spec R10): when Verdict.SoftCapBreached AND the
+// wi opted-in via scope.AllowDowngrade, OnDowngrade fires with the
+// suggested model so the spawner's Request.ModelOverride can carry
+// the swap (Wave 2 spawner consumer).
+func (s *Scheduler) applyCostGovernor(ctx context.Context, spawnable []state.WorkItem) ([]state.WorkItem, error) {
+	if s.cfg.CostGate == nil || s.cfg.CostGateResolver == nil {
+		return spawnable, nil
+	}
+	kept := make([]state.WorkItem, 0, len(spawnable))
+	for _, wi := range spawnable {
+		scope, ok := s.cfg.CostGateResolver(wi)
+		if !ok {
+			kept = append(kept, wi)
+			continue
+		}
+		v, err := s.cfg.CostGate.Evaluate(ctx, scope)
+		if err != nil {
+			s.log.Warn("scheduler.cost_gate_error",
+				string(obs.KeyWorkItemID), wi.ID,
+				string(obs.KeyErr), err.Error(),
+			)
+			continue
+		}
+		if !v.Allow {
+			s.log.Info("scheduler.cost_gate_denied",
+				string(obs.KeyWorkItemID), wi.ID,
+				string(obs.KeyReason), v.Reason,
+			)
+			continue
+		}
+		if v.SoftCapBreached && v.DowngradeTo != "" && s.cfg.OnDowngrade != nil {
+			s.cfg.OnDowngrade(wi.ID, v.DowngradeTo)
+		}
+		kept = append(kept, wi)
 	}
 	return kept, nil
 }
