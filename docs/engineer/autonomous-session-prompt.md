@@ -17,18 +17,41 @@ BOOT
 5. Read MEMORY.md + AGENTS.md (auto-loaded). Recover docs/superpowers/ per AGENTS.md recipe if needed.
 
 PRIORITY (top-down, skip if blocked)
-1. MVP-3 W6 OTel observability backbone — umbrella #159. Wave 1 partial shipped (T1 #172 + T2 #169). Remaining: T5 Config.Tracer injection across 8 components (depends on T1 merged; A4 #168 already landed so scheduler.go is settled). Wave 2 = T3 migration 0005 trace_id columns + T4 spawner stream-json GenAI semconv parser. Wave 3 = T6 docker-compose Jaeger E2E (scaffold pre-positioned at examples/observability/docker-compose.yml via #184) + T7 operator observability doc. Spec at `docs/superpowers/specs/2026-05-31-mvp-3-w6-otel-backbone.md` (gitignored — recover via AGENTS.md recipe or rebuild from #159 body). **Pre-written dispatch prompts for T3+T4+T5 at `docs/superpowers/dispatch/2026-05-31-mvp-3-w6-wave1-finish.md`** (gitignored; recover by rebuild from spec §5 task table). Paste straight into 3 parallel `Agent(isolation: worktree)` calls; cap at 3-4 parallel per `feedback_session_limit_dispatch`.
-2. #114 approval-gates closeout — Wave 5 E2E test dispatched. When merged + #114 umbrella closeable, comment "Closes #114" on the E2E PR or close #114 manually. Spec at docs/superpowers/specs/2026-05-31-mvp-approval-gates.md.
-3. Open follow-up issues (~50) by load-bearing weight — A+ tier rubric checkboxes from earlier waves (mutation testing, fuzz, key-rotation drill, etc.). Spawn a triage subagent (≤5 trivial PRs/session cap) to sweep. Per feedback_session_2026_05_31_lessons.
-4. MVP-3 next-level — brief at docs/superpowers/briefs/2026-05-31-mvp-3-next-level.md. After W6 lands: W7 operator web UI (rank #2; Temporal-UI pattern via Go embed.FS + htmx; scope-disciplined to approval flow + read-only DAG + cost panel). W8 OPA RBAC + multi-tenant (rank #3).
+1. **NEXT WEDGE — pick from memory/wedge_roadmap_assessment.md**. MVP-2 W1 (approval-gates) just shipped; the control-plane-for-AI-labor lineup ranks the next bets. Top candidates:
+   - **cost-governor (P8)** — per-DAG/operator USD+token caps; Helicone/Portkey/Anthropic Usage API patterns. See `memory/wedge_cost_governor.md`. Pairs naturally with MVP-3 W6 OTel backbone for spend instrumentation.
+   - **conditional-DAG (P1+P6)** — CEL-predicated edges + journal snapshot; Step Functions/BPMN deadlock-prevention. See `memory/wedge_conditional_dag.md` + `memory/wedge_blackboard.md`.
+   - **plan-as-code (P3+P4)** — .regatta/plans/*.yaml; CircleCI compile-time + Tekton result-refs; CUE-validated. See `memory/wedge_plan_as_code.md`.
+   Spawn design subagent on the chosen wedge spec FIRST; spec lands in `docs/superpowers/specs/`.
+2. MVP-3 W6 OTel observability backbone — umbrella #159. Wave 1 partial shipped (T1 #172 + T2 #169). Remaining: T5 Config.Tracer injection across 8 components. Wave 2 = T3 migration 0005 trace_id columns + T4 spawner stream-json GenAI semconv parser. Wave 3 = T6 docker-compose Jaeger E2E (scaffold pre-positioned at examples/observability/docker-compose.yml via #184) + T7 operator observability doc. Spec at `docs/superpowers/specs/2026-05-31-mvp-3-w6-otel-backbone.md` (gitignored — recover via AGENTS.md recipe or rebuild from #159 body). **Pre-written dispatch prompts for T3+T4+T5 at `docs/superpowers/dispatch/2026-05-31-mvp-3-w6-wave1-finish.md`** (gitignored; recover by rebuild from spec §5 task table). Paste straight into 3 parallel `Agent(isolation: worktree)` calls; cap at 3-4 parallel per `feedback_session_limit_dispatch`.
+3. **MVP-2 approval-gates followup cleanup** — load-bearing followups that ship after the wedge but before declaring it stable. Current open `mvp-2` / `approval-gates` followups (NOT blockers; ship after MVP-2 closeout):
+   - **#193** reaper auto_approve event-order vs fold-of-events disagreement (W5 finding — auto_approve resolves as rejected via gate path)
+   - **#194** reaper escalate path does not mint/notify tier-N+1 reviewers (W5 finding — production seam missing)
+   - **#195** minted token JTIs never land in approval_events; reaper revocation is dead code (W5 finding)
+   - **#133** wire state.Approval → notify.Request adapter (Wave 2)
+   - **#140** add CHECK on approval_events.kind once enum locked (Wave 5)
+   - **#145** consolidate reaper fold helpers with fold.go (post A2+A2b merge)
+   - **#146** route reaper events through audit.recordEvent for slog/row byte-equality
+   - **#147** mutation-survival test on tier-comparison logic (A+ rubric)
+   - **#153** JSON contract for 'approval list --format=json' (Wave 3 A5 follow-up)
+   - **#156** consolidate ApprovalGateConfig + sentinels with approval.Config
+   - **#157** consolidate CLI foldResult into internal/gates/approval/fold.go
+   - **#165** typed state.TransitionWorkItem (collapse raw-SQL CAS in scheduler.go)
+   - **#167** pending-agent-for-gated-wi consolidation
+   - **#132** FuzzToken_Verify parser fuzz target (A+ rubric)
+   - **#131** reuse contracts/schemas:macSum (kill duplicate tokenMAC)
+   - **#134** TestNotifier_InterfaceContract table-driven contract test (A+ rubric)
+   - **#139** state pkg coverage ≥90% OR re-word rubric to per-method coverage
+4. Open follow-up issues (~50 total) by load-bearing weight. Spawn a triage subagent (≤5 trivial PRs/session cap) to sweep. Per feedback_session_2026_05_31_lessons.
+5. MVP-3 next-level — brief at docs/superpowers/briefs/2026-05-31-mvp-3-next-level.md. After W6 lands: W7 operator web UI (rank #2; Temporal-UI pattern via Go embed.FS + htmx; scope-disciplined to approval flow + read-only DAG + cost panel). W8 OPA RBAC + multi-tenant (rank #3).
 
 Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -40`:
 - #98 #101 #115 #116 (Wave 0 prereqs)
-- #114 approval-gates Wave 1 — #123 #126 #127
-- #114 approval-gates Wave 2 — #143 #144
-- #114 approval-gates Wave 3 — #154 #155 #168 (A4 scheduler integration)
-- #114 approval-gates Wave 5 docs — #161 (operator runbook)
-- #114 Wave 5 E2E — possibly merged this session; check via `gh pr list --state merged --search "Wave 5 E2E"`
+- **#114 MVP-2 approval-gates wedge SHIPPED** (umbrella closed via Wave 5 E2E PR):
+  - Wave 1 — #123 (HMAC token) #126 (state migration + ops) #127 (notifier interface + stub)
+  - Wave 2 — #143 (reaper sweep + escalation) #144 (gate handler + fold + config)
+  - Wave 3 — #154 (config loader + CUE schema) #155 (CLI decide+list) #168 (A4 scheduler tick gate-pass)
+  - Wave 5 — #161 (operator runbook) #191 (E2E lifecycle: happy + reject + timeout-fail)
+  - Wave 5 closeout — this PR (E2E auto_approve + escalate + concurrent race + fold-vs-state-machine property test; closes #182 + #114)
 - #159 MVP-3 W6 T1 — #172 (OTel SDK setup)
 - #159 MVP-3 W6 T2 — #169 (slog→OTel logs bridge)
 - Cleanup + sweep: #160 (cel-go) #163 (single-NewReaper) #164 (kid sentinels) #166 (state dedupe) #170 (program-plan test) #177 (Kahn cycle-check)
@@ -57,7 +80,8 @@ WHEN BLOCKED
 - File [followup] issue + pick next priority. Never pause for user input.
 
 STOP CRITERIA (any one)
-- MVP-3 W6 Wave 1 merged (T1+T2+T5) + Wave 2 dispatched + #114 umbrella closed
+- Next-wedge spec landed (cost-governor / conditional-DAG / plan-as-code) + Wave 1 dispatched
+- OR MVP-3 W6 Wave 1 finished (T1+T2+T5) + Wave 2 dispatched
 - OR MVP-3 W7 (operator web UI) design spec drafted + reviewed
 - OR 3 critical PRs shipped this session
 - OR genuinely irreversible step required (tag signing, secret rotation, branch-protection downgrade)
