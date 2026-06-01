@@ -46,6 +46,20 @@ var ErrUnverifiable = errors.New("canon: approval token unverifiable")
 // because operators need to retry/re-mint, not raise a security alert.
 var ErrTokenExpired = errors.New("canon: approval token expired")
 
+// kid-scan sentinels. extractKIDFromCanonical is the pre-HMAC oracle
+// (spec §5.2 step 3); typed errors let callers map distinct framing
+// failures to exit codes without string-matching. Verify wraps every
+// kid-scan error with ErrTokenInvalid so framing failures continue to
+// satisfy errors.Is(err, ErrTokenInvalid).
+var (
+	ErrKIDFraming      = errors.New("canon: not a JSON object")
+	ErrKIDMissing      = errors.New("canon: kid key not found")
+	ErrKIDInvalidUTF8  = errors.New("canon: kid not valid UTF-8")
+	ErrKIDEscape       = errors.New("canon: kid contains escape sequence")
+	ErrKIDControl      = errors.New("canon: kid contains control byte")
+	ErrKIDUnterminated = errors.New("canon: unterminated kid string")
+)
+
 // TokenPayload is the canonical signed payload. JSON field order is
 // canonicalised at mint-time (lex-sorted keys) — see CanonicaliseJSON.
 type TokenPayload struct {
@@ -200,12 +214,12 @@ func tokenMAC(key []byte, kid string, body []byte) []byte {
 // the pre-HMAC surface tight.
 func extractKIDFromCanonical(body []byte) (string, error) {
 	if len(body) < 2 || body[0] != '{' {
-		return "", errors.New("not a JSON object")
+		return "", ErrKIDFraming
 	}
 	const needle = `"kid":"`
 	idx := indexOf(body, []byte(needle))
 	if idx < 0 {
-		return "", errors.New("kid key not found")
+		return "", ErrKIDMissing
 	}
 	start := idx + len(needle)
 	// Parse JSON string literal until unescaped closing quote.
@@ -215,7 +229,7 @@ func extractKIDFromCanonical(body []byte) (string, error) {
 		c := body[i]
 		if c == '"' {
 			if !utf8.Valid(out) {
-				return "", errors.New("kid not valid UTF-8")
+				return "", ErrKIDInvalidUTF8
 			}
 			return string(out), nil
 		}
@@ -225,15 +239,15 @@ func extractKIDFromCanonical(body []byte) (string, error) {
 			// and tokenMAC because kids are bytewise-fed. Operators
 			// must use the alnum + _:.- charset (same as
 			// approval_events.actor CHECK).
-			return "", errors.New("kid contains escape sequence")
+			return "", ErrKIDEscape
 		}
 		if c < 0x20 {
-			return "", errors.New("kid contains control byte")
+			return "", ErrKIDControl
 		}
 		out = append(out, c)
 		i++
 	}
-	return "", errors.New("unterminated kid string")
+	return "", ErrKIDUnterminated
 }
 
 // indexOf is bytes.Index without the bytes-package import — keeps the

@@ -237,6 +237,33 @@ func TestVerify_HMACBeforeJSONUnmarshal(t *testing.T) {
 	}
 }
 
+// TestExtractKID_TypedSentinels pins each kid-scan failure mode to its
+// typed sentinel so callers can errors.Is-discriminate without parsing
+// strings. Spec §7 A-tier: no errors.New outside the var (...) block.
+func TestExtractKID_TypedSentinels(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		body []byte
+		want error
+	}{
+		{"not_json_object", []byte("not-json"), ErrKIDFraming},
+		{"kid_missing", []byte(`{"other":"x"}`), ErrKIDMissing},
+		{"kid_invalid_utf8", []byte(`{"kid":"` + string([]byte{0xFF, 0xFE}) + `"}`), ErrKIDInvalidUTF8},
+		{"kid_escape", []byte(`{"kid":"a\b"}`), ErrKIDEscape},
+		{"kid_control_byte", []byte("{\"kid\":\"a\x01b\"}"), ErrKIDControl},
+		{"kid_unterminated", []byte(`{"kid":"abc`), ErrKIDUnterminated},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := extractKIDFromCanonical(tc.body)
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("err=%v; want errors.Is(%v)", err, tc.want)
+			}
+		})
+	}
+}
+
 // itoa avoids strconv import in test helper.
 func itoa(n int64) string {
 	if n == 0 {
