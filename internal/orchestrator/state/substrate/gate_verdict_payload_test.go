@@ -7,11 +7,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// TestSubstrate_GateVerdictPayloadValidation pins T-S2's KindGateVerdict
-// validator: well-formed payload ⇒ nil; missing gate_name ⇒
-// ErrInvalidPayload. Exercises the validator through the same
-// AppendEvent dispatch real producers use, so the init()-time
-// registration is also covered.
+// TestSubstrate_GateVerdictPayloadValidation pins T-S2's KindGateVerdict validator dispatch.
 func TestSubstrate_GateVerdictPayloadValidation(t *testing.T) {
 	db := openMigratedDB(t)
 	ctx := testCtx()
@@ -57,10 +53,7 @@ func TestSubstrate_GateVerdictPayloadValidation(t *testing.T) {
 	}
 }
 
-// TestSubstrate_GateVerdictReducerIsAppend pins spec §4: gate_verdict
-// uses StrategyAppend (signed verdict chain; RouteVerdicts consumes
-// most-recent). Hardcoded in T-S1's defaultReducer; T-S2 ships no
-// override.
+// TestSubstrate_GateVerdictReducerIsAppend pins spec §4 reducer strategy for KindGateVerdict.
 func TestSubstrate_GateVerdictReducerIsAppend(t *testing.T) {
 	if got := substrate.DefaultReducer(substrate.KindGateVerdict); got != substrate.StrategyAppend {
 		t.Fatalf("DefaultReducer(KindGateVerdict)=%q want %q", got, substrate.StrategyAppend)

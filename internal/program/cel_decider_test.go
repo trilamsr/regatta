@@ -47,9 +47,7 @@ func openDeciderDB(t *testing.T) *sql.DB {
 
 func rawMsg(s string) json.RawMessage { return json.RawMessage(s) }
 
-// TestCELDecider_CompileRejectsBadCEL pins constructor-time compile
-// rejection. Spec §2.2: the program is pre-compiled at constructor
-// time; malformed CEL must surface here, not at first eval.
+// TestCELDecider_CompileRejectsBadCEL pins constructor-time CEL compile rejection per spec §2.2.
 func TestCELDecider_CompileRejectsBadCEL(t *testing.T) {
 	db := openDeciderDB(t)
 	_, err := program.NewCELDecider("not a cel expression", db, decTestKey, decTestKeyID, "celdecider", "g")
@@ -66,9 +64,7 @@ func TestCELDecider_CompileRejectsBadCEL(t *testing.T) {
 	}
 }
 
-// TestCELDecider_DecideEmitsSignedGateVerdict pins the happy path:
-// CEL evaluates true, AppendEvent lands a row with kind=gate_verdict,
-// signature verifies via substrate.Verify.
+// TestCELDecider_DecideEmitsSignedGateVerdict pins fold+eval+emit happy path with verifiable signature.
 func TestCELDecider_DecideEmitsSignedGateVerdict(t *testing.T) {
 	db := openDeciderDB(t)
 	ctx := context.Background()
@@ -117,9 +113,7 @@ func TestCELDecider_DecideEmitsSignedGateVerdict(t *testing.T) {
 	}
 }
 
-// TestCELDecider_FailedCELReturnsErrorNoEmit pins eval-time error
-// handling: a CEL runtime error ⇒ Decide returns error AND no row
-// lands (the tx is rolled back).
+// TestCELDecider_FailedCELReturnsErrorNoEmit pins tx-rollback: eval failure ⇒ zero substrate rows.
 func TestCELDecider_FailedCELReturnsErrorNoEmit(t *testing.T) {
 	db := openDeciderDB(t)
 	ctx := context.Background()
@@ -152,9 +146,7 @@ func TestCELDecider_FailedCELReturnsErrorNoEmit(t *testing.T) {
 	}
 }
 
-// TestCELDecider_OneTxForFoldEvalEmit pins spec §10 #17: Decide MUST
-// run fold + eval + emit inside one tx. A mock Beginner counts
-// BeginTx calls; one Decide ⇒ exactly one BeginTx.
+// TestCELDecider_OneTxForFoldEvalEmit pins spec §10 #17 one-tx discipline via BeginTx-count tracker.
 func TestCELDecider_OneTxForFoldEvalEmit(t *testing.T) {
 	db := openDeciderDB(t)
 	ctx := context.Background()
@@ -181,10 +173,7 @@ func TestCELDecider_OneTxForFoldEvalEmit(t *testing.T) {
 	}
 }
 
-// TestCELDecider_SnapshotCarriesTraceSpanID pins ctx-driven enrichment:
-// the gate_verdict event's trace_id + span_id come from
-// trace.SpanContextFromContext at Decide time, NOT from caller-
-// injected Snapshot fields (hostile-caller forge defense).
+// TestCELDecider_SnapshotCarriesTraceSpanID pins ctx-driven trace/span override on the emitted event (forge defense).
 func TestCELDecider_SnapshotCarriesTraceSpanID(t *testing.T) {
 	db := openDeciderDB(t)
 
