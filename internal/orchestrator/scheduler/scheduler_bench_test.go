@@ -72,9 +72,9 @@ func BenchmarkTick(b *testing.B) {
 	}
 }
 
-// BenchmarkTickEvalEdges fixture and background.
+// Background for the eval-edges bench fixture below.
 //
-// Why this bench exists: PR closing #98 swapped a tick-local
+// Why this bench exists: the fix closing #98 swapped a tick-local
 // `nonDefaultAllFalse` accumulator for a post-loop ListEdgesFrom
 // re-read per pending-edge group (commit 7dbcbab). The pre-existing
 // BenchmarkTick exercises no-edge work items only, so the regression
@@ -158,7 +158,7 @@ func seedFanoutWithDefault(b *testing.B, db *state.DB, n int) {
 	}
 }
 
-// BenchmarkTickEvalEdges times the #98 evalPendingEdges hot path; see the block comment above benchUnconditionalEvaluator for fixture, Tick-1 amortisation framing, and baseline.
+// BenchmarkTickEvalEdges times the #98 evalPendingEdges hot path; fixture, Tick-1 amortisation, and baseline live in the Background block beside benchUnconditionalEvaluator.
 func BenchmarkTickEvalEdges(b *testing.B) {
 	sizes := []int{10, 100, 1000}
 	for _, n := range sizes {
