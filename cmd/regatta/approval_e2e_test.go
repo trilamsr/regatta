@@ -242,9 +242,7 @@ func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
 // repeated sub-test assertions.
 const workStatusRejectedStr = "rejected"
 
-// TestE2E_ApprovalGateLifecycle exercises the full HITL approval flow
-// end-to-end. Spec §6 "End-to-end" — happy / reject / timeout branches
-// are sub-tests so a regression in any one surfaces with a focused name.
+// TestE2E_ApprovalGateLifecycle pins spec §6 end-to-end coverage (happy/reject/timeout).
 func TestE2E_ApprovalGateLifecycle(t *testing.T) {
 	t.Run("HappyPath_Approve", func(t *testing.T) {
 		h := newE2EHarness(t, "prod-deploy")
