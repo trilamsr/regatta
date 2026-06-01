@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 
 	otelpkg "github.com/trilamsr/regatta/internal/obs/otel"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
@@ -131,7 +130,7 @@ func runSyntheticTick(t *testing.T, ctx context.Context) string {
 	}
 
 	sp := spawner.New(spawner.Config{DB: db, Tracer: tracer})
-	_, opCtx, opSpan := startOperatorInvocation(tickCtx, tracer, "F-E2E")
+	opCtx, opSpan := tracer.Start(tickCtx, "operator_invocation")
 	if _, err := sp.Spawn(opCtx, spawner.Request{AgentID: 1, WorkItemID: "F-E2E", Lane: "server"}); err != nil {
 		opSpan.End()
 		tickSpan.End()
@@ -153,17 +152,6 @@ func runSyntheticTick(t *testing.T, ctx context.Context) string {
 		t.Fatalf("trace id missing — Setup did not wire a real tracer provider")
 	}
 	return traceID
-}
-
-// startOperatorInvocation mirrors what the production spawner does for
-// the operator_invocation span — we open it explicitly here so the e2e
-// test asserts on the seam contract without going through the spawner's
-// internal span (which lives inside Spawn and is not directly handed
-// back). The synthetic span carries the same name + attribute key
-// surface as the production span.
-func startOperatorInvocation(ctx context.Context, tracer trace.Tracer, workItemID string) (string, context.Context, trace.Span) {
-	ctx, span := tracer.Start(ctx, "operator_invocation")
-	return workItemID, ctx, span
 }
 
 func seedWorkItem(t *testing.T, db *state.DB, id, lane string) {
