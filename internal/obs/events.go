@@ -78,6 +78,13 @@ const (
 	// Approval gates — stub notifier audit emission. Real channel
 	// emissions (slack/pagerduty/email) land alongside their adapters.
 	EventApprovalNotifyStub EventName = "approval.notify_stub"
+
+	// Approval gate lifecycle events (spec §4.1, §5.7). The gate
+	// handler emits these via the single recordEvent helper so the
+	// slog stream and approval_events row carry byte-equal payloads.
+	EventApprovalRequested EventName = "approval.requested"
+	EventApprovalNotified  EventName = "approval.notified"
+	EventApprovalDecided   EventName = "approval.decided"
 )
 
 // Attribute keys. The set is intentionally small — anything not on
@@ -115,6 +122,16 @@ const (
 	// Approval gate notification keys (spec §5.8).
 	KeyApprovalID    AttrKey = "approval_id"
 	KeyReviewerCount AttrKey = "reviewer_count"
+
+	// Approval gate decision keys (spec §4.1, §5.7). KeyReviewerID
+	// tags the per-vote actor; KeyDecision carries allow|deny.
+	KeyReviewerID AttrKey = "reviewer_id"
+	KeyDecision   AttrKey = "decision"
+
+	// KeyAuditPayload carries the canonical JSON payload that the
+	// recordEvent helper also writes to approval_events.payload_json,
+	// so byte-equality between slog and DB is a single string compare.
+	KeyAuditPayload AttrKey = "audit_payload"
 )
 
 // AllEventNames enumerates every EventName constant declared above.
@@ -148,6 +165,9 @@ func AllEventNames() []EventName {
 		EventAdapterSyncSynced,
 		EventAdapterSyncFailed,
 		EventApprovalNotifyStub,
+		EventApprovalRequested,
+		EventApprovalNotified,
+		EventApprovalDecided,
 	}
 }
 
@@ -173,5 +193,8 @@ func AllAttrKeys() []AttrKey {
 		KeyWorkItemsEvaluated,
 		KeyApprovalID,
 		KeyReviewerCount,
+		KeyReviewerID,
+		KeyDecision,
+		KeyAuditPayload,
 	}
 }
