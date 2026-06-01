@@ -28,7 +28,7 @@ type starterCall struct {
 	stdin string
 }
 
-func (f *fakeStarter) start(ctx context.Context, name string, args []string, stdin io.Reader, dir string) (*exec.Cmd, error) {
+func (f *fakeStarter) start(ctx context.Context, name string, args []string, stdin io.Reader, stdout io.Writer, dir string) (*exec.Cmd, error) {
 	if f.failNow.Load() {
 		return nil, errors.New("synthetic start failure")
 	}
@@ -36,9 +36,8 @@ func (f *fakeStarter) start(ctx context.Context, name string, args []string, std
 	f.mu.Lock()
 	f.calls = append(f.calls, starterCall{name: name, args: append([]string(nil), args...), dir: dir, stdin: string(buf)})
 	f.mu.Unlock()
+	_ = stdout
 
-	// Use `true` (POSIX) as the surrogate process. It exits cleanly
-	// so the test does not leak; CommandContext binds it to ctx.
 	cmd := exec.CommandContext(ctx, "true")
 	cmd.Dir = dir
 	if err := cmd.Start(); err != nil {

@@ -52,9 +52,7 @@ func attrValue(s sdktrace.ReadOnlySpan, key attribute.Key) (attribute.Value, boo
 	return attribute.Value{}, false
 }
 
-// TestGenAI_StreamJsonParser_OpensCloseOnInitAndResult pins spec §6 T4:
-// the parser MUST open exactly one llm_call span on system.init and close
-// it on the result event.
+// TestGenAI_StreamJsonParser_OpensCloseOnInitAndResult pins spec §6 T4 — open on system.init, close on result.
 func TestGenAI_StreamJsonParser_OpensCloseOnInitAndResult(t *testing.T) {
 	sr, tracer := newRecorder(t)
 	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl")); err != nil {
@@ -72,8 +70,7 @@ func TestGenAI_StreamJsonParser_OpensCloseOnInitAndResult(t *testing.T) {
 	}
 }
 
-// TestGenAI_AttributesMatchSemconv pins spec §3.4 verbatim: every attribute
-// listed in the table appears on the span with the documented value/type.
+// TestGenAI_AttributesMatchSemconv pins spec §3.4 — every table-row attr lands on the span with correct value+type.
 func TestGenAI_AttributesMatchSemconv(t *testing.T) {
 	sr, tracer := newRecorder(t)
 	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl")); err != nil {
@@ -116,8 +113,7 @@ func TestGenAI_AttributesMatchSemconv(t *testing.T) {
 	}
 }
 
-// TestGenAI_SpanNameMatchesSpec pins OTel GenAI spec §Inference: span
-// name MUST be "{operation} {model}".
+// TestGenAI_SpanNameMatchesSpec pins OTel GenAI §Inference — span name = "{operation} {model}".
 func TestGenAI_SpanNameMatchesSpec(t *testing.T) {
 	sr, tracer := newRecorder(t)
 	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl")); err != nil {
@@ -147,8 +143,7 @@ func TestGenAI_SpanKindClient(t *testing.T) {
 	}
 }
 
-// TestGenAI_ErrorEvent_SetsErrorType pins spec §3.4 + §9 R-error: a result
-// event with is_error=true sets error.type and span Status=Error.
+// TestGenAI_ErrorEvent_SetsErrorType pins spec §3.4 — is_error=true → error.type attr + Status=Error.
 func TestGenAI_ErrorEvent_SetsErrorType(t *testing.T) {
 	sr, tracer := newRecorder(t)
 	if err := ParseStream(context.Background(), tracer, openFixture(t, "error.jsonl")); err != nil {
@@ -170,8 +165,7 @@ func TestGenAI_ErrorEvent_SetsErrorType(t *testing.T) {
 	}
 }
 
-// TestGenAI_NoStreamJson_NoSpan pins spec §3.4 + §9 R10: when the input
-// is not stream-json, the parser is a no-op and no llm_call span opens.
+// TestGenAI_NoStreamJson_NoSpan pins spec §9 R10 — non-stream-json input is a parser no-op.
 func TestGenAI_NoStreamJson_NoSpan(t *testing.T) {
 	sr, tracer := newRecorder(t)
 	if err := ParseStream(context.Background(), tracer, openFixture(t, "legacy_plain.txt")); err != nil {
@@ -184,9 +178,7 @@ func TestGenAI_NoStreamJson_NoSpan(t *testing.T) {
 	}
 }
 
-// TestGenAI_SensitivePayloadNotEmitted pins spec §2 Out-of-scope safety:
-// gen_ai.input.messages and gen_ai.output.messages MUST NOT be set on any
-// span the parser emits. R7 regression guard.
+// TestGenAI_SensitivePayloadNotEmitted pins §9 R7 — gen_ai.{input,output}.messages must not appear on any span.
 func TestGenAI_SensitivePayloadNotEmitted(t *testing.T) {
 	sr, tracer := newRecorder(t)
 	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl")); err != nil {
@@ -201,9 +193,7 @@ func TestGenAI_SensitivePayloadNotEmitted(t *testing.T) {
 	}
 }
 
-// TestGenAI_LLMSpanIsChildOfActive pins spec §3.5: the llm_call span is
-// opened as a child of the active span in ctx (the operator_invocation
-// span that T5's spawner.Spawn opens).
+// TestGenAI_LLMSpanIsChildOfActive pins spec §3.5 — llm_call's parent is the active span in ctx.
 func TestGenAI_LLMSpanIsChildOfActive(t *testing.T) {
 	sr, tracer := newRecorder(t)
 	ctx, parent := tracer.Start(context.Background(), "operator_invocation")
