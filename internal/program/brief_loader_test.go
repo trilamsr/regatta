@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -17,37 +16,10 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/obstest"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
-
-// captureHandler records every slog.Record into a slice for the
-// LoggerInjected test below. Mirrors the spec §6.1 CaptureHandler
-// shape; lives locally because Task F's shared obstest helper has
-// not landed yet.
-type captureHandler struct {
-	mu      sync.Mutex
-	records []slog.Record
-}
-
-func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
-func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.records = append(h.records, r.Clone())
-	return nil
-}
-func (h *captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
-func (h *captureHandler) WithGroup(string) slog.Handler      { return h }
-func (h *captureHandler) Messages() []string {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	out := make([]string, len(h.records))
-	for i, r := range h.records {
-		out[i] = r.Message
-	}
-	return out
-}
 
 func newBriefTestDB(t *testing.T) *state.DB {
 	t.Helper()
@@ -914,7 +886,7 @@ func TestBriefLoader_LoggerInjected(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	h := &captureHandler{}
+	h := obstest.New()
 	logger := slog.New(h)
 
 	db := newBriefTestDB(t)

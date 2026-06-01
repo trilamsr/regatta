@@ -4,49 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"sync"
 	"testing"
 
 	"github.com/trilamsr/regatta/internal/obs"
+	"github.com/trilamsr/regatta/internal/obstest"
 )
-
-// captureHandler mirrors the orchestrator's test handler — records every
-// slog.Record so assertions can pin which obs events the spawner emitted
-// through its injected logger (spec §5.3).
-type captureHandler struct {
-	mu      sync.Mutex
-	records []slog.Record
-}
-
-func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
-
-func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.records = append(h.records, r.Clone())
-	return nil
-}
-
-func (h *captureHandler) WithAttrs(attrs []slog.Attr) slog.Handler { return h }
-
-func (h *captureHandler) WithGroup(name string) slog.Handler { return h }
-
-func (h *captureHandler) snapshot() []slog.Record {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	out := make([]slog.Record, len(h.records))
-	copy(out, h.records)
-	return out
-}
-
-func (h *captureHandler) findEvent(name obs.EventName) (slog.Record, bool) {
-	for _, r := range h.snapshot() {
-		if r.Message == string(name) {
-			return r, true
-		}
-	}
-	return slog.Record{}, false
-}
 
 func recordAttr(r slog.Record, key string) (slog.Value, bool) {
 	var found slog.Value
@@ -68,7 +30,7 @@ func TestSpawner_Spawn_EmitsStartedAndCompleted(t *testing.T) {
 	db := openSpawnerTestDB(t)
 	seedPlannedWI(t, db, "F-1")
 
-	h := &captureHandler{}
+	h := obstest.New()
 	logger := slog.New(h)
 
 	sp := NewStubWithDB(db).WithLogger(logger)
@@ -80,9 +42,9 @@ func TestSpawner_Spawn_EmitsStartedAndCompleted(t *testing.T) {
 		t.Fatalf("Complete: %v", err)
 	}
 
-	started, ok := h.findEvent(obs.EventSpawnStarted)
+	started, ok := h.FindEvent(obs.EventSpawnStarted)
 	if !ok {
-		t.Fatalf("missing %q event; got %d records", obs.EventSpawnStarted, len(h.snapshot()))
+		t.Fatalf("missing %q event; got %d records", obs.EventSpawnStarted, len(h.Records()))
 	}
 	if v, ok := recordAttr(started, string(obs.KeyWorkItemID)); !ok || v.String() != "F-1" {
 		t.Errorf("%s missing work_item_id=F-1; got %v ok=%v", obs.EventSpawnStarted, v, ok)
@@ -94,9 +56,9 @@ func TestSpawner_Spawn_EmitsStartedAndCompleted(t *testing.T) {
 		t.Errorf("%s missing lane=server; got %v ok=%v", obs.EventSpawnStarted, v, ok)
 	}
 
-	completed, ok := h.findEvent(obs.EventSpawnCompleted)
+	completed, ok := h.FindEvent(obs.EventSpawnCompleted)
 	if !ok {
-		t.Fatalf("missing %q event; got %d records", obs.EventSpawnCompleted, len(h.snapshot()))
+		t.Fatalf("missing %q event; got %d records", obs.EventSpawnCompleted, len(h.Records()))
 	}
 	if v, ok := recordAttr(completed, string(obs.KeyWorkItemID)); !ok || v.String() != "F-1" {
 		t.Errorf("%s missing work_item_id=F-1; got %v ok=%v", obs.EventSpawnCompleted, v, ok)
@@ -112,7 +74,7 @@ func TestSpawner_SpawnFailed_EmitsErr(t *testing.T) {
 	db := openSpawnerTestDB(t)
 	seedPlannedWI(t, db, "F-1")
 
-	h := &captureHandler{}
+	h := obstest.New()
 	logger := slog.New(h)
 
 	sp := NewStubWithDB(db).WithLogger(logger)
@@ -126,9 +88,9 @@ func TestSpawner_SpawnFailed_EmitsErr(t *testing.T) {
 		t.Fatal("Complete with invalid payload must fail")
 	}
 
-	failed, ok := h.findEvent(obs.EventSpawnFailed)
+	failed, ok := h.FindEvent(obs.EventSpawnFailed)
 	if !ok {
-		t.Fatalf("missing %q event; got %d records", obs.EventSpawnFailed, len(h.snapshot()))
+		t.Fatalf("missing %q event; got %d records", obs.EventSpawnFailed, len(h.Records()))
 	}
 	if v, ok := recordAttr(failed, string(obs.KeyErr)); !ok || v.String() == "" {
 		t.Errorf("%s missing err; got %v ok=%v", obs.EventSpawnFailed, v, ok)
