@@ -263,10 +263,22 @@ type BriefLoader struct {
 }
 
 // NewBriefLoader constructs a BriefLoader from a BriefLoaderConfig.
-// Timestamps are threaded through Sync's pollStartedAt rather than
-// held here, mirroring the AdapterSync DI pattern — concurrent
-// producers cannot race on a constructor-bound clock.
-func NewBriefLoader(cfg BriefLoaderConfig) *BriefLoader {
+// Returns an error if any required field (FS, DB, Keyring) is nil —
+// surfacing misconfiguration at boot instead of deferring a nil-deref
+// panic to the first Sync call. Timestamps are threaded through Sync's
+// pollStartedAt rather than held here, mirroring the AdapterSync DI
+// pattern — concurrent producers cannot race on a constructor-bound
+// clock.
+func NewBriefLoader(cfg BriefLoaderConfig) (*BriefLoader, error) {
+	if cfg.FS == nil {
+		return nil, fmt.Errorf("program: BriefLoaderConfig.FS is required")
+	}
+	if cfg.DB == nil {
+		return nil, fmt.Errorf("program: BriefLoaderConfig.DB is required")
+	}
+	if cfg.Keyring == nil {
+		return nil, fmt.Errorf("program: BriefLoaderConfig.Keyring is required")
+	}
 	log := cfg.Logger
 	if log == nil {
 		log = slog.Default()
@@ -279,7 +291,7 @@ func NewBriefLoader(cfg BriefLoaderConfig) *BriefLoader {
 		log:              log,
 		outputsSchemas:   map[FeatureID]*OutputsSchema{},
 		programByFeature: map[FeatureID]string{},
-	}
+	}, nil
 }
 
 // OutputsSchemaForFeature returns the OutputsSchema declared by the

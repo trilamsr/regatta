@@ -103,8 +103,12 @@ func TestRunConcurrentWithRecoverIsRaceFree(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
+	syncer, err := adaptersync.New(adaptersync.Config{Adapter: ad, DB: db})
+	if err != nil {
+		t.Fatalf("adaptersync.New: %v", err)
+	}
 	o := New(Config{
-		AdapterSync:       adaptersync.New(adaptersync.Config{Adapter: ad, DB: db}),
+		AdapterSync:       syncer,
 		BriefLoader:       noopBriefLoader{},
 		DB:                db,
 		Scheduler:         scheduler.New(db, scheduler.Config{LockTTL: time.Hour}),
@@ -181,8 +185,12 @@ func TestHeartbeatKeepsActiveLockAlive(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
+	syncer, err := adaptersync.New(adaptersync.Config{Adapter: ad, DB: db})
+	if err != nil {
+		t.Fatalf("adaptersync.New: %v", err)
+	}
 	o := New(Config{
-		AdapterSync: adaptersync.New(adaptersync.Config{Adapter: ad, DB: db}),
+		AdapterSync: syncer,
 		BriefLoader: noopBriefLoader{},
 		DB:          db,
 		Scheduler: scheduler.New(db, scheduler.Config{

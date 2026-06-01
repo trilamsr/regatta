@@ -84,7 +84,10 @@ func TestEndToEnd_V2_ConditionalDAG(t *testing.T) {
 	}
 
 	evaluator := NewEdgeEvaluator()
-	loader := NewBriefLoader(BriefLoaderConfig{FS: os.DirFS(briefDir), DB: db, Keyring: keyring, Evaluator: evaluator})
+	loader, err := NewBriefLoader(BriefLoaderConfig{FS: os.DirFS(briefDir), DB: db, Keyring: keyring, Evaluator: evaluator})
+	if err != nil {
+		t.Fatalf("NewBriefLoader: %v", err)
+	}
 	if err := loader.Sync(ctx, t0); err != nil {
 		t.Fatalf("BriefLoader.Sync: %v", err)
 	}

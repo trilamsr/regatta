@@ -126,8 +126,12 @@ func newHarness(t *testing.T, count int) (*Orchestrator, *spawner.Stub, *state.D
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	stub := spawner.New(spawner.Config{})
+	syncer, err := adaptersync.New(adaptersync.Config{Adapter: ad, DB: db})
+	if err != nil {
+		t.Fatalf("adaptersync.New: %v", err)
+	}
 	o := New(Config{
-		AdapterSync:       adaptersync.New(adaptersync.Config{Adapter: ad, DB: db}),
+		AdapterSync:       syncer,
 		BriefLoader:       noopBriefLoader{},
 		DB:                db,
 		Scheduler:         scheduler.New(db, scheduler.Config{LockTTL: time.Minute}),
@@ -256,8 +260,12 @@ func TestRunSurvivesFailingAdapter(t *testing.T) {
 	t.Cleanup(func() { _ = db.Close() })
 
 	ad := &failingAdapter{}
+	syncer, err := adaptersync.New(adaptersync.Config{Adapter: ad, DB: db})
+	if err != nil {
+		t.Fatalf("adaptersync.New: %v", err)
+	}
 	o := New(Config{
-		AdapterSync:       adaptersync.New(adaptersync.Config{Adapter: ad, DB: db}),
+		AdapterSync:       syncer,
 		BriefLoader:       noopBriefLoader{},
 		DB:                db,
 		Scheduler:         scheduler.New(db, scheduler.Config{LockTTL: time.Minute}),

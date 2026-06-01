@@ -45,14 +45,22 @@ type Syncer struct {
 	log     *slog.Logger
 }
 
-// New constructs a Syncer from a Config. nil Logger falls back to
-// slog.Default() (spec §4.1).
-func New(cfg Config) *Syncer {
+// New constructs a Syncer from a Config. Returns an error if any
+// required field (Adapter, DB) is nil — surfacing misconfiguration at
+// boot instead of deferring a nil-deref panic to the first Sync call.
+// nil Logger falls back to slog.Default() (spec §4.1).
+func New(cfg Config) (*Syncer, error) {
+	if cfg.Adapter == nil {
+		return nil, fmt.Errorf("adaptersync: Config.Adapter is required")
+	}
+	if cfg.DB == nil {
+		return nil, fmt.Errorf("adaptersync: Config.DB is required")
+	}
 	log := cfg.Logger
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Syncer{adapter: cfg.Adapter, db: cfg.DB, log: log}
+	return &Syncer{adapter: cfg.Adapter, db: cfg.DB, log: log}, nil
 }
 
 // Sync upserts adapter items, tombstones rows the adapter no longer
