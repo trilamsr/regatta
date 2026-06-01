@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
@@ -68,6 +69,16 @@ status: planned
 func TestRunProgramPlan_WriteCreatesFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HMAC_KEY", "test-key-32-bytes-aaaaaaaaaaaaaaa")
+
+	// --write-dir must live under cwd, so chdir into the fixture root.
+	prev, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(prev) })
 
 	itemPath := filepath.Join(dir, "PROG-1.md")
 	if err := os.WriteFile(itemPath, []byte(programMarkdown), 0o600); err != nil {
@@ -199,4 +210,166 @@ func TestOutputsSchemaResolverFor(t *testing.T) {
 	if _, ok := resolver("F-NOPE"); ok {
 		t.Fatalf("unknown feature: resolver returned ok=true")
 	}
+}
+
+// TestValidateWriteDirUnderCwd covers the defense-in-depth path validator
+// for --write-dir. Targets outside cwd must be rejected; the sibling-prefix
+// trap (/etc vs /etcetera) must NOT false-match; relative paths and ".."
+// traversals must resolve before the prefix check.
+func TestValidateWriteDirUnderCwd(t *testing.T) {
+	cwd := t.TempDir()
+	sibling := t.TempDir() // independent tempdir; outside cwd by construction.
+
+	cases := []struct {
+		name    string
+		target  string
+		wantErr bool
+	}{
+		{"under cwd absolute", filepath.Join(cwd, "out"), false},
+		{"cwd itself", cwd, false},
+		{"nested deep", filepath.Join(cwd, "a", "b", "c"), false},
+		{"trailing slash under cwd", filepath.Join(cwd, "out") + string(os.PathSeparator), false},
+		{"sibling tempdir outside cwd", sibling, true},
+		{"absolute /etc style", "/etc", true},
+		{"parent escape via ..", filepath.Join(cwd, "..", filepath.Base(sibling)), true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateWriteDirUnderCwd(tc.target, cwd)
+			if tc.wantErr && err == nil {
+				t.Fatalf("target=%q cwd=%q: want error, got nil", tc.target, cwd)
+			}
+			if !tc.wantErr && err != nil {
+				t.Fatalf("target=%q cwd=%q: want nil, got %v", tc.target, cwd, err)
+			}
+			if tc.wantErr && err != nil {
+				// Error must name both the offending path and the cwd so
+				// operators can act on the message without running pwd.
+				msg := err.Error()
+				if !containsAll(msg, tc.target, cwd) {
+					t.Fatalf("error %q must name target %q AND cwd %q", msg, tc.target, cwd)
+				}
+			}
+		})
+	}
+}
+
+// TestValidateWriteDirSymlinkEscape pins the symlink-resolution branch:
+// a symlink placed under cwd that points outside must NOT slip the check.
+// Without EvalSymlinks, an attacker could plant /cwd/back -> /etc and
+// pass --write-dir ./back.
+func TestValidateWriteDirSymlinkEscape(t *testing.T) {
+	cwd := t.TempDir()
+	outside := t.TempDir()
+	link := filepath.Join(cwd, "escape")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	if err := validateWriteDirUnderCwd(link, cwd); err == nil {
+		t.Fatalf("symlink %q -> %q must be rejected against cwd %q", link, outside, cwd)
+	}
+}
+
+// TestValidateWriteDirSiblingPrefixTrap pins the /etc vs /etcetera trap:
+// a naive HasPrefix without trailing-separator normalization would accept
+// /etcetera when cwd is /etc.
+func TestValidateWriteDirSiblingPrefixTrap(t *testing.T) {
+	// Build two sibling dirs under a shared parent so one is a string
+	// prefix of the other but neither contains the other.
+	parent := t.TempDir()
+	cwd := filepath.Join(parent, "etc")
+	trap := filepath.Join(parent, "etcetera")
+	for _, d := range []string{cwd, trap} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := validateWriteDirUnderCwd(trap, cwd); err == nil {
+		t.Fatalf("sibling prefix %q must be rejected against cwd %q", trap, cwd)
+	}
+}
+
+// TestRunProgramPlan_WriteRejectsOutsideCwd drives the end-to-end CLI
+// surface: a --write-dir pointing outside cwd exits non-zero without
+// the opt-out flag.
+func TestRunProgramPlan_WriteRejectsOutsideCwd(t *testing.T) {
+	t.Setenv("HMAC_KEY", "test-key-32-bytes-aaaaaaaaaaaaaaa")
+
+	// Operator working directory: where the cmd is invoked from.
+	work := t.TempDir()
+	// Sibling outside cwd: the rejected target.
+	outside := t.TempDir()
+
+	prev, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(prev) })
+
+	itemPath := filepath.Join(work, "PROG-1.md")
+	if err := os.WriteFile(itemPath, []byte(programMarkdown), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	args := []string{"-hmac-key-env=HMAC_KEY", "-planner=stub", "-write",
+		"-write-dir=" + outside, itemPath}
+	if rc := runProgramPlan(args); rc == 0 {
+		t.Fatalf("expected non-zero rc for outside-cwd --write-dir; got 0")
+	}
+}
+
+// TestRunProgramPlan_WriteUnsafeOptOutAllowsOutsideCwd verifies the
+// escape hatch: with --unsafe-write-dir set, the same outside path is
+// accepted.
+func TestRunProgramPlan_WriteUnsafeOptOutAllowsOutsideCwd(t *testing.T) {
+	t.Setenv("HMAC_KEY", "test-key-32-bytes-aaaaaaaaaaaaaaa")
+
+	work := t.TempDir()
+	outside := t.TempDir()
+
+	prev, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(work); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(prev) })
+
+	itemPath := filepath.Join(work, "PROG-1.md")
+	if err := os.WriteFile(itemPath, []byte(programMarkdown), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	args := []string{"-hmac-key-env=HMAC_KEY", "-planner=stub", "-write",
+		"-write-dir=" + outside, "-unsafe-write-dir", itemPath}
+	if rc := runProgramPlan(args); rc != 0 {
+		t.Fatalf("expected rc=0 with --unsafe-write-dir; got %d", rc)
+	}
+	// Confirm a brief actually landed in the outside dir.
+	entries, err := os.ReadDir(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var briefs int
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".json" {
+			briefs++
+		}
+	}
+	if briefs != 1 {
+		t.Fatalf("want exactly one brief in %s; got %d", outside, briefs)
+	}
+}
+
+func containsAll(s string, subs ...string) bool {
+	for _, sub := range subs {
+		if !strings.Contains(s, sub) {
+			return false
+		}
+	}
+	return true
 }

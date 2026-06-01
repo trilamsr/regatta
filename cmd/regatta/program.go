@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
@@ -56,6 +57,8 @@ func runProgramPlan(args []string) int {
 		"directory to write brief into when -write is set; defaults to ./.regatta/programs")
 	force := fs.Bool("force", false,
 		"overwrite existing brief at the target path")
+	unsafeWriteDir := fs.Bool("unsafe-write-dir", false,
+		"allow --write-dir to point outside cwd (defense-in-depth opt-out)")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta program plan <work-item.{md,json}>")
 		fs.PrintDefaults()
@@ -120,6 +123,17 @@ func runProgramPlan(args []string) int {
 		if target == "" {
 			target = filepath.Join(".regatta", "programs")
 		}
+		if !*unsafeWriteDir {
+			cwd, err := os.Getwd()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "regatta program plan: getwd:", err)
+				return 1
+			}
+			if err := validateWriteDirUnderCwd(target, cwd); err != nil {
+				fmt.Fprintln(os.Stderr, "regatta program plan:", err)
+				return 2
+			}
+		}
 		if err := os.MkdirAll(target, 0o750); err != nil {
 			fmt.Fprintln(os.Stderr, "regatta program plan:", err)
 			return 1
@@ -144,6 +158,96 @@ func runProgramPlan(args []string) int {
 	enc.SetIndent("", "  ")
 	_ = enc.Encode(plan)
 	return 0
+}
+
+// validateWriteDirUnderCwd refuses a --write-dir that escapes cwd.
+// Symlinks are resolved on both sides — without that, an attacker (or a
+// sloppy fixture) could place a symlink under cwd pointing at /etc and
+// slip the check. EvalSymlinks requires the path to exist, so the
+// target is canonicalized component-wise: walk existing ancestors up to
+// the first that exists, then re-attach the missing tail.
+// The trailing-separator append on the prefix prevents the
+// sibling-prefix trap where "/etcetera" would naively HasPrefix("/etc").
+func validateWriteDirUnderCwd(target, cwd string) error {
+	canonTarget, err := canonicalizePath(target)
+	if err != nil {
+		return fmt.Errorf("resolve --write-dir %q: %w", target, err)
+	}
+	canonCwd, err := canonicalizePath(cwd)
+	if err != nil {
+		return fmt.Errorf("resolve cwd %q: %w", cwd, err)
+	}
+	if pathsEqual(canonTarget, canonCwd) {
+		return nil
+	}
+	prefix := canonCwd
+	if !strings.HasSuffix(prefix, string(os.PathSeparator)) {
+		prefix += string(os.PathSeparator)
+	}
+	if !pathHasPrefix(canonTarget, prefix) {
+		return fmt.Errorf("--write-dir %q is outside cwd %q; pass -unsafe-write-dir to override", canonTarget, canonCwd)
+	}
+	return nil
+}
+
+// pathsEqual and pathHasPrefix collapse case on Windows (NTFS is
+// case-insensitive); Linux and macOS use byte-exact comparison. We
+// pivot on runtime.GOOS rather than separator so a Linux operator
+// writing to a case-sensitive filesystem stays strict.
+const goosWindows = "windows"
+
+var pathCaseFold = runtime.GOOS == goosWindows
+
+func pathsEqual(a, b string) bool {
+	if pathCaseFold {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+func pathHasPrefix(s, prefix string) bool {
+	if pathCaseFold {
+		return len(s) >= len(prefix) && strings.EqualFold(s[:len(prefix)], prefix)
+	}
+	return strings.HasPrefix(s, prefix)
+}
+
+// canonicalizePath returns an absolute, symlink-resolved path even when
+// the leaf does not yet exist. We climb to the deepest existing ancestor,
+// EvalSymlinks that, then rejoin the missing components — Clean'd at the
+// end so any "." or ".." in the synthetic tail collapses.
+func canonicalizePath(p string) (string, error) {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	cur := abs
+	var tail []string
+	for {
+		if _, err := os.Lstat(cur); err == nil {
+			resolved, err := filepath.EvalSymlinks(cur)
+			if err != nil {
+				return "", err
+			}
+			if len(tail) == 0 {
+				return resolved, nil
+			}
+			// Reverse tail (we appended leaf-first while climbing).
+			for i, j := 0, len(tail)-1; i < j; i, j = i+1, j-1 {
+				tail[i], tail[j] = tail[j], tail[i]
+			}
+			return filepath.Clean(filepath.Join(append([]string{resolved}, tail...)...)), nil
+		} else if !os.IsNotExist(err) {
+			return "", err
+		}
+		parent, leaf := filepath.Split(cur)
+		// Filesystem root reached but never existed — fall back to abs.
+		if parent == "" || parent == cur {
+			return filepath.Clean(abs), nil
+		}
+		tail = append(tail, leaf)
+		cur = filepath.Clean(parent)
+	}
 }
 
 // loadParentWorkItem reads a parent WorkItem from disk. JSON files are
