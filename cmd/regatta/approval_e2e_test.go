@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -106,7 +107,12 @@ type e2eHarness struct {
 	keyID    string
 }
 
-func newE2EHarness(t *testing.T, workItemLane string) *e2eHarness {
+// newE2EHarness builds the harness; optional cfgMutator runs after the
+// YAML-loaded Config is converted, before the gate is wired. Variadic so
+// existing single-arg callers stay unchanged — TimeoutEscalatePath uses
+// it to stage on_timeout=escalate + EscalationChain on the same fixture
+// without forking a sibling YAML doc.
+func newE2EHarness(t *testing.T, workItemLane string, cfgMutator ...func(*approval.Config)) *e2eHarness {
 	t.Helper()
 	t0 := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	clock := func() time.Time { return t0 }
@@ -126,6 +132,11 @@ func newE2EHarness(t *testing.T, workItemLane string) *e2eHarness {
 		t.Fatalf("LoadApprovalGates: got %d gates; want 1", len(gates))
 	}
 	gateCfg := convertApprovalGateConfig(gates[0])
+	for _, m := range cfgMutator {
+		if m != nil {
+			m(&gateCfg)
+		}
+	}
 
 	// Keyring + env wiring matches serve.go's approvalKeyring() — the
 	// decide CLI re-reads env at each runApprovalDecideWith call, so the
@@ -517,4 +528,172 @@ func TestE2E_ApprovalGateLifecycle(t *testing.T) {
 			t.Fatalf("spawning=%+v; want one agent for WI-E2E-1", spawning)
 		}
 	})
+}
+
+// TestE2E_TimeoutEscalatePath pins spec §3.3.1 on_timeout=escalate lifecycle.
+func TestE2E_TimeoutEscalatePath(t *testing.T) {
+	// Disjoint tier-1 set so the snapshot rewrite is observable via
+	// alice's tier-0 token producing exitNotReviewer post-sweep.
+	tier1 := approval.TierConfig{
+		Reviewers:      []string{"dave", "erin"},
+		Quorum:         1,
+		Timeout:        time.Hour,
+		DecisionWindow: 30 * time.Minute,
+	}
+	h := newE2EHarness(t, "prod-deploy", func(c *approval.Config) {
+		c.OnTimeout = approval.OnTimeoutEscalate
+		c.EscalationChain = []approval.TierConfig{tier1}
+	})
+	ctx := context.Background()
+
+	if _, err := h.sched.Tick(ctx); err != nil {
+		t.Fatalf("Tick#1: %v", err)
+	}
+	ap, err := h.db.GetApprovalForWorkItem(ctx, "WI-E2E-1", h.gateCfg.Name)
+	if err != nil || ap == nil {
+		t.Fatalf("GetApprovalForWorkItem: ap=%v err=%v", ap, err)
+	}
+	aliceTier0Tok, ok := h.notifier.lastRequest(t).Tokens["alice"]
+	if !ok {
+		t.Fatalf("tier-0 alice token missing")
+	}
+
+	afterTimeout := h.now.Add(h.gateCfg.Timeout + time.Minute)
+	reaper, err := approval.NewReaper(h.db, slog.New(slog.NewTextHandler(discardWriter{}, nil)),
+		func() time.Time { return afterTimeout })
+	if err != nil {
+		t.Fatalf("NewReaper: %v", err)
+	}
+	if err := reaper.Sweep(ctx); err != nil {
+		t.Fatalf("Sweep: %v", err)
+	}
+
+	ap2, err := h.db.GetApproval(ctx, ap.ID)
+	if err != nil {
+		t.Fatalf("GetApproval: %v", err)
+	}
+	if ap2.Status != state.ApprovalStatusPending {
+		t.Fatalf("post-sweep status=%q; want pending (awaiting tier-1)", ap2.Status)
+	}
+	if got := ap2.ReviewerSetSnapshot.Reviewers; !reflect.DeepEqual(got, tier1.Reviewers) {
+		t.Errorf("snapshot reviewers=%v; want %v", got, tier1.Reviewers)
+	}
+	if ap2.Quorum != tier1.Quorum {
+		t.Errorf("snapshot quorum=%d; want %d", ap2.Quorum, tier1.Quorum)
+	}
+
+	events, err := h.db.ListApprovalEvents(ctx, ap.ID)
+	if err != nil {
+		t.Fatalf("ListApprovalEvents: %v", err)
+	}
+	if !hasEvent(events, approval.EventKindTimedOut) {
+		t.Errorf("expected timed_out event; got %v", eventKinds(events))
+	}
+	if !hasEvent(events, "escalated") {
+		t.Errorf("expected escalated event; got %v", eventKinds(events))
+	}
+
+	// Tier-0 token is off-snapshot → decideTx must surface NotReviewer.
+	// This is the observable revocation regardless of #194's missing
+	// token_consumed reason=escalated rows (requires token_minted events).
+	if code, _ := h.decideViaCLI(aliceTier0Tok, "allow", "alice"); code != exitNotReviewer {
+		t.Errorf("post-escalate tier-0 decide exit=%d; want %d (NotReviewer)", code, exitNotReviewer)
+	}
+
+	t.Skip("#194 — gate.Evaluate does not mint+notify tier-N+1; tier-1 decide deferred")
+}
+
+// TestE2E_ConcurrentDecideVsReaper pins spec §3.2.1 atomicity under race.
+func TestE2E_ConcurrentDecideVsReaper(t *testing.T) {
+	h := newE2EHarness(t, "prod-deploy")
+	ctx := context.Background()
+
+	if _, err := h.sched.Tick(ctx); err != nil {
+		t.Fatalf("Tick#1: %v", err)
+	}
+	ap, err := h.db.GetApprovalForWorkItem(ctx, "WI-E2E-1", h.gateCfg.Name)
+	if err != nil || ap == nil {
+		t.Fatalf("GetApprovalForWorkItem: ap=%v err=%v", ap, err)
+	}
+	aliceTok, ok := h.notifier.lastRequest(t).Tokens["alice"]
+	if !ok {
+		t.Fatalf("alice token missing")
+	}
+
+	// Reaper sees past-timeout clock; CLI keeps t0 so the token's
+	// decision window (t0 + 30m) stays valid. Sqlite's single writer
+	// serializes the two txes; whichever commits first wins.
+	afterTimeout := h.now.Add(h.gateCfg.Timeout + time.Minute)
+	reaper, err := approval.NewReaper(h.db, slog.New(slog.NewTextHandler(discardWriter{}, nil)),
+		func() time.Time { return afterTimeout })
+	if err != nil {
+		t.Fatalf("NewReaper: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	var sweepErr error
+	go func() {
+		defer wg.Done()
+		sweepErr = reaper.Sweep(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		_, _ = h.decideViaCLI(aliceTok, "allow", "alice")
+	}()
+	wg.Wait()
+	if sweepErr != nil {
+		t.Fatalf("Sweep: %v", sweepErr)
+	}
+
+	ap2, err := h.db.GetApproval(ctx, ap.ID)
+	if err != nil {
+		t.Fatalf("GetApproval: %v", err)
+	}
+	switch ap2.Status {
+	case state.ApprovalStatusApproved, state.ApprovalStatusTimedOut:
+	default:
+		t.Fatalf("race resolved to status=%q; want approved XOR timed_out", ap2.Status)
+	}
+
+	// Exactly one of each terminal kind: the loser must not append a
+	// second terminal event after the winner committed (§3.2.1 atomicity).
+	events, err := h.db.ListApprovalEvents(ctx, ap.ID)
+	if err != nil {
+		t.Fatalf("ListApprovalEvents: %v", err)
+	}
+	if n := countKind(events, approval.EventKindTimedOut); n > 1 {
+		t.Errorf("timed_out events=%d; want ≤1 (events=%v)", n, eventKinds(events))
+	}
+	if n := countKind(events, approval.EventKindApproved); n > 1 {
+		t.Errorf("approved events=%d; want ≤1 (events=%v)", n, eventKinds(events))
+	}
+}
+
+// hasEvent reports whether any event in the log carries kind k.
+func hasEvent(events []state.ApprovalEvent, k string) bool {
+	for _, e := range events {
+		if e.Kind == k {
+			return true
+		}
+	}
+	return false
+}
+
+func eventKinds(events []state.ApprovalEvent) []string {
+	out := make([]string, len(events))
+	for i, e := range events {
+		out[i] = e.Kind
+	}
+	return out
+}
+
+func countKind(events []state.ApprovalEvent, k string) int {
+	n := 0
+	for _, e := range events {
+		if e.Kind == k {
+			n++
+		}
+	}
+	return n
 }
