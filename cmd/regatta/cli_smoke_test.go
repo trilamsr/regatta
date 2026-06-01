@@ -272,6 +272,7 @@ func TestCLI_Serve_TickOnceStub(t *testing.T) {
 	args := []string{
 		"serve",
 		"-tick-once",
+		"-ui=false",
 		"-spawner=stub",
 		"-repo=" + dir,
 		"-items-root=" + dir,
@@ -293,6 +294,7 @@ func TestCLI_Serve_BogusSpawner(t *testing.T) {
 	args := []string{
 		"serve",
 		"-tick-once",
+		"-ui=false",
 		"-spawner=bogus",
 		"-repo=" + dir,
 		"-db=" + filepath.Join(dir, "state.db"),
