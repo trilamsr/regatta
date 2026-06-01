@@ -43,10 +43,7 @@ safety:
   agent_creds_scope: dev_only
 `
 
-// TestBuildApprovalGate_LoadsAndResolvesByLane pins the MVP-2 W3
-// resolution policy: gate.Name == work_item.Lane. A wi on lane "prod"
-// matches the "prod" gate; lanes without a matching gate resolve as
-// non-gated.
+// TestBuildApprovalGate_LoadsAndResolvesByLane pins gate.Name == wi.Lane resolution.
 func TestBuildApprovalGate_LoadsAndResolvesByLane(t *testing.T) {
 	repoRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repoRoot, "regatta.yaml"), []byte(serveTestGateYAML), 0o600); err != nil {
@@ -82,10 +79,7 @@ func TestBuildApprovalGate_LoadsAndResolvesByLane(t *testing.T) {
 	}
 }
 
-// TestBuildApprovalGate_NoConfigFileDisabled pins the zero-config path:
-// repos without a regatta.yaml load with gate=nil so the scheduler
-// gate-pass is a no-op. Operators who have not adopted approval gates
-// pay zero runtime cost.
+// TestBuildApprovalGate_NoConfigFileDisabled pins (nil, nil) when regatta.yaml absent.
 func TestBuildApprovalGate_NoConfigFileDisabled(t *testing.T) {
 	repoRoot := t.TempDir()
 	db := openSchedulerTestDB(t)
@@ -100,9 +94,7 @@ func TestBuildApprovalGate_NoConfigFileDisabled(t *testing.T) {
 	}
 }
 
-// TestBuildApprovalGate_NoGatesDisabled pins the other zero-cost path:
-// regatta.yaml exists but declares zero approval_gate rows. Same
-// outcome as no-config — scheduler gate-pass stays disabled.
+// TestBuildApprovalGate_NoGatesDisabled pins (nil, nil) when no approval_gate rows present.
 func TestBuildApprovalGate_NoGatesDisabled(t *testing.T) {
 	repoRoot := t.TempDir()
 	emptyYAML := `version: 1
@@ -138,10 +130,7 @@ safety:
 	}
 }
 
-// TestConvertApprovalGateConfig_RoundTrips pins the field-for-field
-// mapping between config.ApprovalGateConfig (YAML loader) and
-// approval.Config (runtime). Drift here means a gate operator typed in
-// regatta.yaml gets silently dropped at the scheduler boundary.
+// TestConvertApprovalGateConfig_RoundTrips pins config→runtime field parity.
 func TestConvertApprovalGateConfig_RoundTrips(t *testing.T) {
 	// Compile-time + runtime sanity: build, convert, compare.
 	in := canonicalApprovalGateConfig()
