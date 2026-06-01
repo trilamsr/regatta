@@ -14,56 +14,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/obs"
+	"github.com/trilamsr/regatta/internal/obstest"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
-
-// captureHandler records every slog.Record so tests can assert the
-// orchestrator emitted the canonical obs events. Threadsafe so the Run
-// loop tests can hit it without -race tripping.
-type captureHandler struct {
-	mu      sync.Mutex
-	records []slog.Record
-}
-
-func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
-
-func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.records = append(h.records, r.Clone())
-	return nil
-}
-
-func (h *captureHandler) WithAttrs(attrs []slog.Attr) slog.Handler { return h }
-
-func (h *captureHandler) WithGroup(name string) slog.Handler { return h }
-
-func (h *captureHandler) Records() []slog.Record {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	out := make([]slog.Record, len(h.records))
-	copy(out, h.records)
-	return out
-}
-
-func (h *captureHandler) findEvent(name obs.EventName) (slog.Record, bool) {
-	for _, r := range h.Records() {
-		if r.Message == string(name) {
-			return r, true
-		}
-	}
-	return slog.Record{}, false
-}
 
 func recordHasAttr(r slog.Record, key string) (slog.Value, bool) {
 	var found slog.Value
@@ -406,7 +368,7 @@ status: planned
 func TestOrchestrator_Tick_EmitsStartedAndCompleted(t *testing.T) {
 	ctx := context.Background()
 	o, _, _, _ := newHarness(t, 1)
-	h := &captureHandler{}
+	h := obstest.New()
 	o.cfg.Logger = slog.New(h)
 	// Re-init the logger on the live orchestrator so the test exercises
 	// the same field New() would populate from cfg.Logger.
@@ -419,10 +381,10 @@ func TestOrchestrator_Tick_EmitsStartedAndCompleted(t *testing.T) {
 		t.Fatalf("schedule: %v", err)
 	}
 
-	if _, ok := h.findEvent(obs.EventTickStarted); !ok {
+	if _, ok := h.FindEvent(obs.EventTickStarted); !ok {
 		t.Fatalf("expected event %q in captured records; got %d records", obs.EventTickStarted, len(h.Records()))
 	}
-	completed, ok := h.findEvent(obs.EventTickCompleted)
+	completed, ok := h.FindEvent(obs.EventTickCompleted)
 	if !ok {
 		t.Fatalf("expected event %q in captured records; got %d records", obs.EventTickCompleted, len(h.Records()))
 	}
@@ -435,16 +397,16 @@ func TestOrchestrator_Tick_EmitsStartedAndCompleted(t *testing.T) {
 func TestOrchestrator_Tick_EmitsOnEmptyQueue(t *testing.T) {
 	ctx := context.Background()
 	o, _, _, _ := newHarness(t, 0)
-	h := &captureHandler{}
+	h := obstest.New()
 	o.log = slog.New(h)
 
 	if err := o.ScheduleOnce(ctx); err != nil {
 		t.Fatalf("schedule: %v", err)
 	}
-	if _, ok := h.findEvent(obs.EventTickStarted); !ok {
+	if _, ok := h.FindEvent(obs.EventTickStarted); !ok {
 		t.Fatalf("tick.started missing on empty-queue tick")
 	}
-	completed, ok := h.findEvent(obs.EventTickCompleted)
+	completed, ok := h.FindEvent(obs.EventTickCompleted)
 	if !ok {
 		t.Fatalf("tick.completed missing on empty-queue tick")
 	}
