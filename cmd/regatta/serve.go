@@ -17,6 +17,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/config"
+	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
@@ -124,11 +127,18 @@ func runServe(args []string) int {
 		logger.Printf("brief loader: %v", err)
 		return 2
 	}
+	gate, gateResolver, err := buildApprovalGate(db, *repoRoot, slogger)
+	if err != nil {
+		logger.Printf("approval gates: %v", err)
+		return 2
+	}
 	sched := scheduler.New(db, scheduler.Config{
 		LaneCaps:       map[string]int(laneCaps),
 		LockTTL:        *lockTTL,
 		Evaluator:      schedulerEvaluator{evaluator},
 		OutputsSchemas: outputsSchemaResolverFor(loader),
+		Gate:           gate,
+		GateResolver:   gateResolver,
 	})
 
 	o := orchestrator.New(orchestrator.Config{
@@ -272,4 +282,92 @@ func loadBriefKeyring() map[string][]byte {
 		keyID = "k1"
 	}
 	return map[string][]byte{keyID: []byte(v)}
+}
+
+// buildApprovalGate constructs the scheduler-side HITL gate seam from
+// regatta.yaml. Missing or empty regatta.yaml yields (nil, nil, nil) so
+// repos that have not adopted approval gates pay zero runtime cost —
+// scheduler.Config.Gate=nil disables the gate-pass entirely.
+//
+// MVP-2 W3 resolution policy: gate name == work_item lane. Operators
+// who want richer routing (per-feature gates, predicate-CEL) plug in a
+// custom GateResolver post-MVP; the seam stays scheduler-agnostic.
+//
+// The notifier defaults to the stub (audit-only slog) until the
+// channel-adapter PR lands. Keyring + kid are shared with the brief
+// loader so an operator who configured REGATTA_HMAC_KEY for briefs
+// gets approval-token signing for free.
+func buildApprovalGate(db *state.DB, repoRoot string, logger *slog.Logger) (scheduler.ApprovalGate, scheduler.GateResolver, error) {
+	cfgPath := filepath.Join(repoRoot, "regatta.yaml")
+	data, err := os.ReadFile(cfgPath) // #nosec G304 -- repoRoot is an operator-supplied trust boundary; the path is fixed to regatta.yaml under it.
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil, nil
+		}
+		return nil, nil, fmt.Errorf("read %s: %w", cfgPath, err)
+	}
+	gates, err := config.LoadApprovalGates(data)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load approval gates: %w", err)
+	}
+	if len(gates) == 0 {
+		return nil, nil, nil
+	}
+
+	byName := make(map[string]approval.Config, len(gates))
+	for _, g := range gates {
+		byName[g.Name] = convertApprovalGateConfig(g)
+	}
+
+	keyring, kid := approvalKeyring()
+	g := approval.NewGate(db, approval.NewStubNotifier(logger), keyring, kid, time.Now, logger)
+	resolver := scheduler.GateResolver(func(wi state.WorkItem) (approval.Config, bool) {
+		c, ok := byName[wi.Lane]
+		return c, ok
+	})
+	return g, resolver, nil
+}
+
+// convertApprovalGateConfig adapts the YAML-loaded config.ApprovalGateConfig
+// to the runtime approval.Config. Fields are field-for-field identical —
+// the two types differ only by yaml vs runtime tags so the package
+// boundary stays clean. A future consolidation may collapse them.
+func convertApprovalGateConfig(in config.ApprovalGateConfig) approval.Config {
+	tiers := make([]approval.TierConfig, len(in.EscalationChain))
+	for i, t := range in.EscalationChain {
+		tiers[i] = approval.TierConfig{
+			Reviewers:         t.Reviewers,
+			Roles:             t.Roles,
+			Quorum:            t.Quorum,
+			PreventSelfReview: t.PreventSelfReview,
+			Timeout:           t.Timeout,
+			DecisionWindow:    t.DecisionWindow,
+		}
+	}
+	return approval.Config{
+		Name:              in.Name,
+		RiskClass:         in.RiskClass,
+		Reviewers:         in.Reviewers,
+		Roles:             in.Roles,
+		Quorum:            in.Quorum,
+		PreventSelfReview: in.PreventSelfReview,
+		Timeout:           in.Timeout,
+		DecisionWindow:    in.DecisionWindow,
+		OnTimeout:         in.OnTimeout,
+		EscalationChain:   tiers,
+		PredicateCEL:      in.PredicateCEL,
+	}
+}
+
+// approvalKeyring reuses the brief HMAC key for approval-token signing.
+// Operators set REGATTA_HMAC_KEY once and both surfaces light up; an
+// empty key returns an empty MapKeyring so NewGate's constructor guard
+// fires only when the operator has at least one gate defined.
+func approvalKeyring() (canon.Keyring, string) {
+	keys := loadBriefKeyring()
+	keyID := os.Getenv("REGATTA_HMAC_KEY_ID")
+	if keyID == "" {
+		keyID = "k1"
+	}
+	return canon.MapKeyring(keys), keyID
 }

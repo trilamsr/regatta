@@ -13,6 +13,7 @@ package scheduler
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -21,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -69,6 +71,23 @@ type OutputsSchemaResolver func(featureID string) (any, bool)
 // a valid return for items that touch no hotspots.
 type HotspotResolver func(workItemID string) []string
 
+// ApprovalGate is the scheduler-side seam to the HITL gate. Production
+// wires *approval.Gate (constructed in serve.go); tests inject fakes.
+// The seam keeps scheduler ↔ approval coupling to a single method so
+// the gate's transitive dependencies (canon.Keyring, notifier, slog)
+// stay invisible to scheduler tests.
+type ApprovalGate interface {
+	Evaluate(ctx context.Context, wi state.WorkItem, cfg approval.Config) (approval.Result, error)
+}
+
+// GateResolver maps a planned work_item to the approval gate config
+// that governs it. Returns (_, false) when the wi is non-gated — the
+// scheduler then treats it as a plain spawnable. Production wiring
+// closes over a regatta.yaml-derived gate map; the resolution policy
+// (by-lane, by-tag, predicate-CEL) lives in serve.go so the scheduler
+// stays policy-agnostic.
+type GateResolver func(wi state.WorkItem) (approval.Config, bool)
+
 // Config holds tunables for a Scheduler. All durations and caps are
 // derived from regatta.yaml at orchestrator construction time.
 type Config struct {
@@ -103,6 +122,18 @@ type Config struct {
 	// reservation skips. Nil falls back to slog.Default() so embedded
 	// callers still get output without panicking (spec §4.1).
 	Logger *slog.Logger
+
+	// Gate evaluates the HITL approval gate-pass per spec §3.1 step 0.5.
+	// Nil disables the gate-pass entirely so the scheduler behaves like
+	// its pre-Wave-3 self for callers that have not yet wired approval
+	// gates.
+	Gate ApprovalGate
+
+	// GateResolver maps a planned work_item to its gate config (or
+	// (_, false) when non-gated). Nil disables the gate-pass; same
+	// semantics as Gate=nil so an operator who forgets one of the two
+	// gets a clean "gates disabled" rather than a half-wired runtime.
+	GateResolver GateResolver
 }
 
 // schedulerDB is the seam between Scheduler and state.DB. The
@@ -125,6 +156,14 @@ type schedulerDB interface {
 	ListEdgesFrom(ctx context.Context, fromID string) ([]state.EdgeRow, error)
 	MarkEdgeFired(ctx context.Context, edgeID int64, fired, contentSHA string) error
 	GetLatestOutput(ctx context.Context, workItemID string) (state.OutputJournalEntry, error)
+	// SQL escapes the seam for the gate-pass's raw-SQL CAS write that
+	// transitions a rejected work_item to status='rejected'. Spec §3.1
+	// step 0.5 spells this as state.TransitionWorkItem, but state has no
+	// typed transition for work_items yet; the precedent from
+	// internal/program/brief_loader.go (the archive-on-archived-dep path)
+	// is to use db.SQL() directly. Promoting this to a typed method on
+	// *state.DB is tracked as a followup so the next wave can consolidate.
+	SQL() *sql.DB
 }
 
 // Scheduler is single-caller: Tick must not be invoked concurrently.
@@ -207,7 +246,21 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 		return nil, fmt.Errorf("scheduler: expire stale locks: %w", err)
 	}
 
-	pending, err := s.materializePending(ctx)
+	spawnable, err := s.db.ListSpawnable(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: list spawnable: %w", err)
+	}
+	// Spec §3.1 step 0.5 — HITL gate-pass between edge-eval and reserve.
+	// Filters spawnable in-place: Proceed keeps the wi, Pause drops it
+	// from this tick (re-evaluated next tick because status stays
+	// planned), Reject flips status to 'rejected' so future ticks no
+	// longer surface it via ListSpawnable.
+	spawnable, err = s.applyApprovalGates(ctx, spawnable)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: apply approval gates: %w", err)
+	}
+
+	pending, err := s.materializePending(ctx, spawnable)
 	if err != nil {
 		return nil, fmt.Errorf("scheduler: materialize: %w", err)
 	}
@@ -260,22 +313,17 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 	return reserved, nil
 }
 
-// materializePending walks ListSpawnable (work_items LEFT JOIN
-// agents WHERE agents.id IS NULL ...) and UpsertPending-s one
-// agents row per missing work_item. Returns the union: every
-// existing pending agent + every newly-materialized one, in
-// db-natural order. Per spec §2.8 — Scheduler is the
-// materialization point so the orphan-row class is impossible by
-// construction.
+// materializePending UpsertPending-s one agents row per work_item in
+// the supplied spawnable slice (filtered upstream by Tick — the gate-
+// pass may have removed paused/rejected wi rows). Returns the union:
+// every existing pending agent + every newly-materialized one, in
+// db-natural order. Per spec §2.8 — Scheduler is the materialization
+// point so the orphan-row class is impossible by construction.
 //
 // Per-item UpsertPending failures are logged and skipped rather than
 // aborting the batch: a single bad row should not stall every other
 // pending agent. Context cancellation still propagates.
-func (s *Scheduler) materializePending(ctx context.Context) ([]state.Agent, error) {
-	spawnable, err := s.db.ListSpawnable(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: list spawnable: %w", err)
-	}
+func (s *Scheduler) materializePending(ctx context.Context, spawnable []state.WorkItem) ([]state.Agent, error) {
 	var failures int
 	for _, w := range spawnable {
 		if err := ctx.Err(); err != nil {
@@ -303,6 +351,98 @@ func (s *Scheduler) materializePending(ctx context.Context) ([]state.Agent, erro
 		return nil, fmt.Errorf("scheduler: list pending: %w", err)
 	}
 	return pending, nil
+}
+
+// applyApprovalGates filters spawnable through the HITL gate-pass per
+// spec §3.1 step 0.5. Returns the surviving slice: Proceed keeps the
+// wi for the reservation loop, Pause drops it from this tick, Reject
+// drops it AND flips its status to 'rejected' so future ListSpawnable
+// calls no longer surface it.
+//
+// Disabled (Gate or GateResolver nil) returns spawnable unchanged so
+// callers that have not wired approval gates pay zero cost.
+//
+// Per-wi evaluation errors warn on the injected logger and treat the
+// wi as paused for this tick — same fail-closed posture spec §3.2 uses
+// for journal-load failures: a misconfigured gate must not stall the
+// rest of the tick, but the wi MUST NOT advance until the gate is
+// healthy. Reject-transition failures DO halt the tick because a wi
+// stuck in 'planned' after a reject verdict would silently retry until
+// the operator notices.
+func (s *Scheduler) applyApprovalGates(ctx context.Context, spawnable []state.WorkItem) ([]state.WorkItem, error) {
+	if s.cfg.Gate == nil || s.cfg.GateResolver == nil {
+		return spawnable, nil
+	}
+	kept := make([]state.WorkItem, 0, len(spawnable))
+	for _, wi := range spawnable {
+		cfg, gated := s.cfg.GateResolver(wi)
+		if !gated {
+			kept = append(kept, wi)
+			continue
+		}
+		res, err := s.cfg.Gate.Evaluate(ctx, wi, cfg)
+		if err != nil {
+			s.log.Warn(string(obs.EventApprovalDecided),
+				string(obs.KeyWorkItemID), wi.ID,
+				string(obs.KeyGateID), cfg.Name,
+				string(obs.KeyVerdict), approval.ResultPause.String(),
+				string(obs.KeyReason), "evaluate_error",
+				string(obs.KeyErr), err.Error(),
+			)
+			continue
+		}
+		switch res {
+		case approval.ResultProceed:
+			kept = append(kept, wi)
+		case approval.ResultReject:
+			if err := s.markWorkItemRejected(ctx, wi.ID); err != nil {
+				return nil, fmt.Errorf("mark %s rejected: %w", wi.ID, err)
+			}
+			s.log.Info(string(obs.EventApprovalDecided),
+				string(obs.KeyWorkItemID), wi.ID,
+				string(obs.KeyGateID), cfg.Name,
+				string(obs.KeyVerdict), approval.ResultReject.String(),
+			)
+		default:
+			// ResultPause (zero value) — drop from this tick. The approval
+			// row persists; next Tick re-Evaluates and observes the same
+			// fold-of-events until a reviewer decides or the reaper times
+			// it out (spec §3.3).
+			s.log.Info(string(obs.EventApprovalDecided),
+				string(obs.KeyWorkItemID), wi.ID,
+				string(obs.KeyGateID), cfg.Name,
+				string(obs.KeyVerdict), approval.ResultPause.String(),
+			)
+		}
+	}
+	return kept, nil
+}
+
+// markWorkItemRejected flips work_items.status='rejected' atomically
+// against the planned-source state. CAS predicate (`status='planned'`)
+// is load-bearing: a concurrent writer that already moved the row
+// (cancel/archive) must win — the gate cannot resurrect a terminal wi.
+//
+// Spec §3.1 calls this state.TransitionWorkItem; state has no typed
+// work_item transition yet, so the raw-SQL pattern matches the
+// brief_loader.go archive-on-archived-dep precedent. A followup will
+// consolidate both into a state-package API.
+func (s *Scheduler) markWorkItemRejected(ctx context.Context, id string) error {
+	now := time.Now().UTC().Unix()
+	res, err := s.db.SQL().ExecContext(ctx,
+		`UPDATE work_items SET status = ?, updated_at = ? WHERE id = ? AND status = ?`,
+		"rejected", now, id, string(state.WorkStatusPlanned))
+	if err != nil {
+		return err
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows == 0 {
+		return fmt.Errorf("scheduler: work_item %s no longer in status=planned", id)
+	}
+	return nil
 }
 
 func (s *Scheduler) laneHasCapacity(lane string, occupancy map[string]int) bool {
