@@ -17,11 +17,6 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// highestKnownVersion is the version this binary's embedded
-// migrations top out at. Migrate() rejects DBs whose
-// goose_db_version exceeds this — see ErrSchemaTooNew.
-const highestKnownVersion int64 = 4
-
 // Migrate mutates goose package globals (SetBaseFS, SetLogger, SetDialect);
 // not safe to call concurrently from multiple goroutines with different settings.
 //
@@ -39,8 +34,8 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	if err != nil && !errors.Is(err, goose.ErrNoNextVersion) {
 		return fmt.Errorf("state: read goose version: %w", err)
 	}
-	if current > highestKnownVersion {
-		return fmt.Errorf("%w: db=%d binary=%d", ErrSchemaTooNew, current, highestKnownVersion)
+	if current > CurrentSchemaVersion {
+		return fmt.Errorf("%w: db=%d binary=%d", ErrSchemaTooNew, current, CurrentSchemaVersion)
 	}
 
 	if err := goose.UpContext(ctx, db, "migrations"); err != nil {

@@ -27,7 +27,7 @@ func TestMigrate_EmptyDBAppliesAllVersions(t *testing.T) {
 		t.Fatalf("Migrate: %v", err)
 	}
 
-	var version int
+	var version int64
 	if err := raw.QueryRow("SELECT MAX(version_id) FROM goose_db_version").Scan(&version); err != nil {
 		t.Fatalf("read goose version: %v", err)
 	}
