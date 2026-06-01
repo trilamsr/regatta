@@ -33,7 +33,7 @@ func seedPlannedWI(t *testing.T, db *state.DB, id string) {
 }
 
 func TestStubReturnsUniqueIdentity(t *testing.T) {
-	s := NewStub()
+	s := New(Config{})
 	ctx := context.Background()
 	a, err := s.Spawn(ctx, Request{AgentID: 1, WorkItemID: "WORK-1", Lane: "server"})
 	if err != nil {
@@ -52,7 +52,7 @@ func TestStubReturnsUniqueIdentity(t *testing.T) {
 }
 
 func TestStubRecordsCalls(t *testing.T) {
-	s := NewStub()
+	s := New(Config{})
 	_, _ = s.Spawn(context.Background(), Request{AgentID: 7, WorkItemID: "WORK-7"})
 	calls := s.Calls()
 	if len(calls) != 1 || calls[0].AgentID != 7 {
@@ -61,7 +61,7 @@ func TestStubRecordsCalls(t *testing.T) {
 }
 
 func TestStubConcurrentSafe(t *testing.T) {
-	s := NewStub()
+	s := New(Config{})
 	var wg sync.WaitGroup
 	for i := 0; i < 32; i++ {
 		wg.Add(1)
@@ -86,7 +86,7 @@ func TestSpawner_WritesJournalBeforeMerge(t *testing.T) {
 	db := openSpawnerTestDB(t)
 	seedPlannedWI(t, db, "F-1")
 
-	sp := NewStubWithDB(db)
+	sp := New(Config{DB: db})
 	if _, err := sp.Spawn(ctx, Request{AgentID: 1, WorkItemID: "F-1", Lane: "server"}); err != nil {
 		t.Fatalf("Spawn: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestSpawnerComplete_AtomicJournalAndMerge(t *testing.T) {
 	db := openSpawnerTestDB(t)
 	seedPlannedWI(t, db, "F-1")
 
-	sp := NewStubWithDB(db)
+	sp := New(Config{DB: db})
 
 	// Invalid (non-JSON) payload makes AppendOutput's canonicaliser fail.
 	err := sp.Complete(ctx, "F-1", json.RawMessage(`not-json`))

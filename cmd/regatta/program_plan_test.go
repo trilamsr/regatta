@@ -1,15 +1,22 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
+	"testing/fstest"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/orchestrator"
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/program"
 )
 
@@ -205,7 +212,21 @@ func keysOf(m map[string][]byte) []string {
 // features, absence otherwise. Without this, scheduler.Config.OutputsSchemas
 // silently returns nil and predicates evaluate against an empty env.
 func TestOutputsSchemaResolverFor(t *testing.T) {
-	loader := program.NewBriefLoader(nil, nil, map[string][]byte{"k1": []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")}, program.NewEdgeEvaluator())
+	db, err := state.Open(context.Background(), state.DSN(filepath.Join(t.TempDir(), "rsv.db")))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	loader, err := program.NewBriefLoader(program.BriefLoaderConfig{
+		FS:        fstest.MapFS{},
+		DB:        db,
+		Keyring:   map[string][]byte{"k1": []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")},
+		Evaluator: program.NewEdgeEvaluator(),
+	})
+	if err != nil {
+		t.Fatalf("NewBriefLoader: %v", err)
+	}
 	resolver := outputsSchemaResolverFor(loader)
 	if _, ok := resolver("F-NOPE"); ok {
 		t.Fatalf("unknown feature: resolver returned ok=true")
@@ -217,6 +238,14 @@ func TestValidateWriteDirUnderCwd(t *testing.T) {
 	cwd := t.TempDir()
 	sibling := t.TempDir() // independent tempdir; outside cwd by construction.
 
+	// Platform-foreign absolute path. "/etc" is meaningful on POSIX; on
+	// Windows we substitute a system path on the C: drive so the case
+	// still exercises absolute-foreign-root rejection.
+	foreignAbs := "/etc"
+	if runtime.GOOS == goosWindows {
+		foreignAbs = `C:\Windows\System32`
+	}
+
 	cases := []struct {
 		name    string
 		target  string
@@ -227,7 +256,7 @@ func TestValidateWriteDirUnderCwd(t *testing.T) {
 		{"nested deep", filepath.Join(cwd, "a", "b", "c"), false},
 		{"trailing slash under cwd", filepath.Join(cwd, "out") + string(os.PathSeparator), false},
 		{"sibling tempdir outside cwd", sibling, true},
-		{"absolute /etc style", "/etc", true},
+		{"absolute /etc style", foreignAbs, true},
 		{"parent escape via ..", filepath.Join(cwd, "..", filepath.Base(sibling)), true},
 	}
 	for _, tc := range cases {
@@ -242,13 +271,38 @@ func TestValidateWriteDirUnderCwd(t *testing.T) {
 			if tc.wantErr && err != nil {
 				// Error must name both the offending path and the cwd so
 				// operators can act on the message without running pwd.
+				// Production canonicalizes both before formatting, so
+				// compare against the canonicalized forms — on Windows,
+				// 8.3 short-path normalization mangles raw tempdir paths
+				// (e.g. runneradmin -> RUNNER~1) and would break a literal
+				// match.
+				// Production formats canonicalized paths through %q
+				// (strconv.Quote), so the rendered message contains the
+				// escaped form — on Windows, backslashes become "\\".
+				// Mirror that here so the substring check sees the same
+				// bytes the operator does.
 				msg := err.Error()
-				if !containsAll(msg, tc.target, cwd) {
-					t.Fatalf("error %q must name target %q AND cwd %q", msg, tc.target, cwd)
+				wantTarget := strconv.Quote(canonForAssert(t, tc.target))
+				wantCwd := strconv.Quote(canonForAssert(t, cwd))
+				if !containsAll(msg, wantTarget, wantCwd) {
+					t.Fatalf("error %q must name target %s AND cwd %s", msg, wantTarget, wantCwd)
 				}
 			}
 		})
 	}
+}
+
+// canonForAssert mirrors production's canonicalizePath so test assertions
+// compare against the same string the error message embeds. Falls back to
+// the input on error so a hostile environment surfaces as a clear mismatch
+// rather than a t.Fatal in the helper.
+func canonForAssert(t *testing.T, p string) string {
+	t.Helper()
+	got, err := canonicalizePath(p)
+	if err != nil {
+		return p
+	}
+	return got
 }
 
 // TestValidateWriteDirSymlinkEscape: a symlink under cwd pointing outside must not slip the check.

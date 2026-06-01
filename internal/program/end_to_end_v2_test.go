@@ -84,7 +84,10 @@ func TestEndToEnd_V2_ConditionalDAG(t *testing.T) {
 	}
 
 	evaluator := NewEdgeEvaluator()
-	loader := NewBriefLoader(os.DirFS(briefDir), db, keyring, evaluator)
+	loader, err := NewBriefLoader(BriefLoaderConfig{FS: os.DirFS(briefDir), DB: db, Keyring: keyring, Evaluator: evaluator})
+	if err != nil {
+		t.Fatalf("NewBriefLoader: %v", err)
+	}
 	if err := loader.Sync(ctx, t0); err != nil {
 		t.Fatalf("BriefLoader.Sync: %v", err)
 	}
@@ -109,7 +112,7 @@ func TestEndToEnd_V2_ConditionalDAG(t *testing.T) {
 		Evaluator:      adaptEvaluator{evaluator},
 		OutputsSchemas: resolverFor(loader),
 	})
-	stub := spawner.NewStubWithDB(db)
+	stub := spawner.New(spawner.Config{DB: db})
 
 	// Drive the pipeline. Each tick: scheduler reserves spawnable
 	// work_items, then we run Complete on every reserved agent's
