@@ -94,6 +94,7 @@ status: planned
 		"--claude", shim,
 		"--base-ref", "HEAD",
 		"--tick-once",
+		"--ui=false",
 	)
 	var stderr bytes.Buffer
 	serve.Stderr = &stderr

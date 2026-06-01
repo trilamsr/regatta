@@ -5,11 +5,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -30,6 +32,15 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/program"
 )
+
+// defaultListenerAddr matches spec §1.3 — `--addr` default is `:8080`.
+const defaultListenerAddr = ":8080"
+
+// listenerShutdownBudget mirrors the existing serve.go signal-shutdown contract: 5 s to drain inflight requests before forced exit.
+const listenerShutdownBudget = 5 * time.Second
+
+// healthzBody is the spec §3.3 row 6 literal: `200 OK` with body `ok` and zero DB queries.
+const healthzBody = "ok\n"
 
 // defaultLogFormat is the value used when --log-format is omitted —
 // the `text (default)` contract from #117.
@@ -113,6 +124,8 @@ func runServe(args []string) int {
 	fs.Var(laneCaps, "lane", "Per-lane concurrency cap, repeatable (e.g. -lane server:1)")
 	logFormat := logFormatFlag(defaultLogFormat)
 	fs.Var(&logFormat, "log-format", "Structured-log handler: text | json")
+	addr := fs.String("addr", defaultListenerAddr, "HTTP listener bind address when --ui=true")
+	ui := fs.Bool("ui", true, "Boot the operator HTTP listener; --ui=false skips bind entirely")
 	_ = fs.Parse(args)
 
 	logger := log.New(os.Stderr, "regatta: ", log.LstdFlags|log.Lmicroseconds)
@@ -124,6 +137,13 @@ func runServe(args []string) int {
 		return 2
 	}
 	slogger := slog.New(handler)
+
+	// Loud-at-boot before any DB open (spec §1.3 open-q 9.8): refuse to
+	// start the listener when its HMAC key dependency is missing.
+	if err := preflightUIBoot(*ui); err != nil {
+		logger.Printf("%v", err)
+		return 2
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -211,6 +231,30 @@ func runServe(args []string) int {
 	if err := o.Recover(ctx); err != nil {
 		logger.Printf("recover: %v", err)
 		return 1
+	}
+
+	httpSrv, err := bootListener(listenerConfig{
+		UI:      *ui,
+		Addr:    *addr,
+		DB:      db,
+		Keyring: canon.MapKeyring(loadBriefKeyring()),
+		Clock:   time.Now,
+	})
+	if err != nil {
+		logger.Printf("listener boot: %v", err)
+		return 2
+	}
+	if httpSrv != nil {
+		serveErr := make(chan error, 1)
+		go func() { serveErr <- httpSrv.ListenAndServe() }()
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), listenerShutdownBudget)
+			defer cancel()
+			_ = httpSrv.Shutdown(shutdownCtx)
+			if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+				logger.Printf("listener: %v", err)
+			}
+		}()
 	}
 
 	if *tickOnce {
@@ -402,6 +446,64 @@ func convertApprovalGateConfig(in config.ApprovalGateConfig) approval.Config {
 		EscalationChain:   tiers,
 		PredicateCEL:      in.PredicateCEL,
 	}
+}
+
+// listenerConfig is the bootListener seam; the test harness drives it directly so integration tests exercise the real boot path.
+type listenerConfig struct {
+	UI      bool
+	Addr    string
+	DB      *state.DB
+	Keyring canon.Keyring
+	Clock   func() time.Time
+}
+
+// preflightUIBoot fires BEFORE state.Open so the operator sees the HMAC misconfig at the loud-at-boot moment (spec §1.3 open-q 9.8) rather than as a render-time lie.
+func preflightUIBoot(ui bool) error {
+	if !ui {
+		return nil
+	}
+	if os.Getenv("REGATTA_HMAC_KEY") != "" {
+		return nil
+	}
+	if envName := os.Getenv("REGATTA_HMAC_KEY_ENV"); envName != "" && os.Getenv(envName) != "" {
+		return nil
+	}
+	return fmt.Errorf("--ui requires REGATTA_HMAC_KEY (or REGATTA_HMAC_KEY_ENV) to be set; refusing to boot")
+}
+
+// bootListener returns a configured *http.Server when --ui=true, or nil when --ui=false so the caller skips the listen syscall entirely.
+func bootListener(cfg listenerConfig) (*http.Server, error) {
+	if !cfg.UI {
+		return nil, nil
+	}
+	if err := preflightUIBoot(true); err != nil {
+		return nil, err
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", healthzHandler)
+	cbPath, cbHandler := approval.NewHTTPCallback(approval.Dependencies{
+		DB:      cfg.DB,
+		Keyring: cfg.Keyring,
+		Clock:   cfg.Clock,
+	})
+	mux.Handle(cbPath, cbHandler)
+	addr := cfg.Addr
+	if addr == "" {
+		addr = defaultListenerAddr
+	}
+	return &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}, nil
+}
+
+// healthzHandler returns the spec §3.3 row 6 liveness probe — zero DB queries, literal `ok\n`, Cache-Control: no-store.
+func healthzHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(healthzBody))
 }
 
 // approvalKeyring reuses the brief HMAC key for approval-token signing.
