@@ -10,19 +10,7 @@ import (
 	"testing"
 )
 
-// TestGoroutineCtxPropagation_LintCheck — W6 spec A+2 stretch rubric
-// + §9 R3 risk mitigation. AST-walks the 8 T5-touched files and asserts
-// no `go func() {}()` closure references a span-bearing ctx without
-// explicit passing. Specifically: when the enclosing function takes
-// a ctx parameter and a goroutine launched inside it uses `ctx` or
-// `tracer.Start`, the goroutine MUST receive ctx as a function arg
-// rather than closing over the outer ctx (which may end before the
-// goroutine runs).
-//
-// The check is intentionally narrow: only the 8 files modified by W6
-// T5 are scanned. Future components opt in by adding their path to
-// the t5TouchedFiles list. A repo-wide variant lives behind a
-// followup tracking issue if/when other packages take spans.
+// TestGoroutineCtxPropagation_LintCheck — W6 spec A+2 goroutine-ctx-propagation lint over 8 T5 files.
 func TestGoroutineCtxPropagation_LintCheck(t *testing.T) {
 	repoRoot := mustRepoRoot(t)
 	t5TouchedFiles := []string{

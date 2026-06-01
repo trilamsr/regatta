@@ -11,8 +11,7 @@ import (
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
-// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 invariant: nil
-// Tracer resolves to otel.Tracer("scheduler") without panic.
+// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 nil-tracer invariant.
 func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	s := New(statetest.OpenDB(t), Config{})
 	if s.tracer == nil {
@@ -20,10 +19,7 @@ func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	}
 }
 
-// TestScheduler_Tick_WorkItemSpansChildOfTick — spec §6 T5: every
-// `work_item` span observed in a tick has the tick span as parent.
-// The orchestrator owns the `tick` span (see orchestrator.ScheduleOnce);
-// here we open it manually to test the scheduler-side parenting.
+// TestScheduler_Tick_WorkItemSpansChildOfTick — spec §6 T5 work_item-child-of-tick invariant.
 func TestScheduler_Tick_WorkItemSpansChildOfTick(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
@@ -69,8 +65,7 @@ func TestScheduler_Tick_WorkItemSpansChildOfTick(t *testing.T) {
 	}
 }
 
-// TestScheduler_Tick_WorkItemAttrsPresent — pins spec §4.1 attribute
-// set on work_item spans (work_item_id, lane, regatta.kind).
+// TestScheduler_Tick_WorkItemAttrsPresent — spec §4.1 work_item attribute set.
 func TestScheduler_Tick_WorkItemAttrsPresent(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))

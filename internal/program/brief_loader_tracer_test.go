@@ -10,8 +10,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 invariant: nil
-// Tracer resolves to otel.Tracer("program") without panic.
+// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 nil-tracer invariant.
 func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	l := mustNewLoader(t, BriefLoaderConfig{
 		FS:      fstest.MapFS{},
@@ -24,8 +23,7 @@ func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	}
 }
 
-// TestBriefLoader_OpensSyncSpan — spec §8 T5: Sync opens a span at
-// the main entry function so brief-verify activity shows in traces.
+// TestBriefLoader_OpensSyncSpan — spec §8 T5 entry-point span invariant.
 func TestBriefLoader_OpensSyncSpan(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))

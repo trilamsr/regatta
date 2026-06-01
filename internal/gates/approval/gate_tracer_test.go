@@ -11,11 +11,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 invariant: a nil
-// Gate.Tracer must not panic; Evaluate resolves to
-// otel.Tracer("gates/approval") at call time. Gate.Tracer is an
-// exported field rather than a positional constructor arg to keep the
-// existing NewGate signature stable across 13 call sites.
+// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 nil-tracer invariant.
 func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	db := newGateTestDB(t, func() time.Time { return now })
@@ -34,9 +30,7 @@ func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	}
 }
 
-// TestGateApproval_EvaluateOpensGateSpan — spec §6 T5: gate evaluation
-// opens a `gate.evaluate` span as a child of the active work_item
-// span; verdict attribute matches the decision.
+// TestGateApproval_EvaluateOpensGateSpan — spec §6 T5 gate.evaluate child-of-work_item invariant.
 func TestGateApproval_EvaluateOpensGateSpan(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))

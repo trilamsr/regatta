@@ -8,8 +8,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 invariant: nil
-// Tracer resolves to otel.Tracer("adapter/markdown") without panic.
+// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 nil-tracer invariant.
 func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	dir := t.TempDir()
 	writeItem(t, dir, "good.md", sampleItem)
@@ -22,9 +21,7 @@ func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	}
 }
 
-// TestMarkdownAdapter_OpensListSpan — spec §8 T5: List opens a span
-// at the main entry function so the adapter's filesystem-scan latency
-// shows up in the trace tree.
+// TestMarkdownAdapter_OpensListSpan — spec §8 T5 entry-point span invariant.
 func TestMarkdownAdapter_OpensListSpan(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))

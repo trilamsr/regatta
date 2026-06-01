@@ -14,8 +14,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 )
 
-// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 invariant: nil
-// Tracer resolves to otel.Tracer("orchestrator") without panic.
+// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 nil-tracer invariant.
 func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	o, _, _, _ := newHarness(t, 0)
 	if o.tracer == nil {
@@ -23,9 +22,7 @@ func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	}
 }
 
-// TestScheduler_Tick_OpensTickSpan — spec §6 T5: ScheduleOnce opens
-// one `tick` span per call. Orchestrator owns the tick span so the
-// scheduler-side work_item children can be parented under it.
+// TestScheduler_Tick_OpensTickSpan — spec §6 T5 tick-span-per-ScheduleOnce invariant.
 func TestScheduler_Tick_OpensTickSpan(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))

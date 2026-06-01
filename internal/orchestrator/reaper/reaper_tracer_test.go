@@ -10,8 +10,7 @@ import (
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
-// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 invariant: a nil
-// Tracer must not panic; New resolves to otel.Tracer("reaper").
+// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 nil-tracer invariant.
 func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	r := New(Config{DB: statetest.OpenDB(t), WM: newWM(t)})
 	if r.tracer == nil {
@@ -19,9 +18,7 @@ func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	}
 }
 
-// TestReaper_SweepOpensReapSpan — spec §6 T5: ReapAll opens a
-// `reaper.sweep` span per call. Standalone (not nested under tick) per
-// spec §3.5 architecture diagram.
+// TestReaper_SweepOpensReapSpan — spec §6 T5 standalone reaper.sweep invariant.
 func TestReaper_SweepOpensReapSpan(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))

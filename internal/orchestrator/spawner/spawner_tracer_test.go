@@ -8,8 +8,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 invariant: nil
-// Tracer resolves to otel.Tracer("spawner") without panic.
+// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 nil-tracer invariant.
 func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	s := New(Config{})
 	if s.tracer == nil {
@@ -17,9 +16,7 @@ func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	}
 }
 
-// TestSpawner_Spawn_OpensOperatorInvocationSpan — spec §6 T5: Spawn
-// emits one `operator_invocation` span; closed when the subprocess
-// returns. T4 will open `llm_call` under this span via stream-json.
+// TestSpawner_Spawn_OpensOperatorInvocationSpan — spec §6 T5 operator_invocation parent-of-llm_call invariant.
 func TestSpawner_Spawn_OpensOperatorInvocationSpan(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))

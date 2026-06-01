@@ -12,8 +12,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 )
 
-// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 invariant: nil
-// Tracer resolves to otel.Tracer("adaptersync") without panic.
+// TestConfig_TracerNilFallsBackToGlobal — spec §6 T5 nil-tracer invariant.
 func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	s := mustNew(t, adaptersync.Config{Adapter: &stubAdapter{}, DB: newSyncTestDB(t)})
 	// No panic on Sync → tracer resolved at construct-time.
@@ -22,9 +21,7 @@ func TestConfig_TracerNilFallsBackToGlobal(t *testing.T) {
 	}
 }
 
-// TestAdapterSync_OpensSyncSpan — spec §8 T5: Sync opens one span at
-// the main entry function so adapter→state mirror activity shows up
-// in the trace tree.
+// TestAdapterSync_OpensSyncSpan — spec §8 T5 entry-point span invariant.
 func TestAdapterSync_OpensSyncSpan(t *testing.T) {
 	sr := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(sr))
