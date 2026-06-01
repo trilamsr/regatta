@@ -34,9 +34,7 @@ var observabilityEnvVars = []string{
 	"--otel-dev-stdout",
 }
 
-// TestObservabilityDoc_DocumentsAllEnvVars pins spec §6 T7 — every env
-// var named in §3.6 appears in observability.md. Operator-doc completeness
-// is a falsifiable contract; this is its gate.
+// TestObservabilityDoc_DocumentsAllEnvVars pins spec §6 T7 — every env var named in §3.6 appears in observability.md.
 func TestObservabilityDoc_DocumentsAllEnvVars(t *testing.T) {
 	body := readDoc(t, observabilityDoc)
 	for _, name := range observabilityEnvVars {
@@ -46,12 +44,7 @@ func TestObservabilityDoc_DocumentsAllEnvVars(t *testing.T) {
 	}
 }
 
-// TestObservabilityDoc_LinksValid pins spec §6 T7 — every relative .md
-// link in observability.md resolves to an on-disk file. External http(s)
-// links and pure anchors are out of scope (the repo-wide doc-check.sh
-// gate runs the same rule across all markdown; this test localises the
-// invariant to the operator doc so a doc-only edit fails the package's
-// own go-test gate without waiting for doc-check.sh).
+// TestObservabilityDoc_LinksValid pins spec §6 T7 — every relative .md link in observability.md resolves on disk.
 func TestObservabilityDoc_LinksValid(t *testing.T) {
 	docPath := docFullPath(t, observabilityDoc)
 	body := readDoc(t, observabilityDoc)
@@ -86,11 +79,7 @@ func TestObservabilityDoc_LinksValid(t *testing.T) {
 	}
 }
 
-// TestObservabilityDoc_NoSensitivePayloadKey pins spec §9 R7 — the doc
-// must NOT teach operators how to enable gen_ai.{input,output}.messages.
-// W6 keeps these attribute keys off by design; documenting an opt-in
-// path here would invite the sensitive-payload regression the runtime
-// gate (TestGenAI_SensitivePayloadNotEmitted) already blocks.
+// TestObservabilityDoc_NoSensitivePayloadKey pins spec §9 R7 — doc must not teach an opt-in for gen_ai.{input,output}.messages.
 func TestObservabilityDoc_NoSensitivePayloadKey(t *testing.T) {
 	body := readDoc(t, observabilityDoc)
 	for _, forbidden := range []string{"gen_ai.input.messages", "gen_ai.output.messages"} {

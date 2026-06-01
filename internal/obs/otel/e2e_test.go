@@ -42,9 +42,7 @@ const (
 	composeService  = "jaeger"
 )
 
-// TestE2E_TraceReachesJaeger runs one synthetic Tick that materialises
-// scheduler.Tick → spawner.Spawn → ParseStream and asserts the resulting
-// trace appears in Jaeger's query API within 5s. Spec §6 T6 + §7 A+1.
+// TestE2E_TraceReachesJaeger pins spec §6 T6 + §7 A+1 — synthetic Tick materialises the full span tree into Jaeger within 5s.
 func TestE2E_TraceReachesJaeger(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker not available; e2e test requires docker compose")
