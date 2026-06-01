@@ -11,8 +11,8 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// TestMigration0005_SubstrateAppliesAndCreatesSchema pins the substrate_events DDL shape per spec §2.1.
-func TestMigration0005_SubstrateAppliesAndCreatesSchema(t *testing.T) {
+// TestMigration0006_SubstrateAppliesAndCreatesSchema pins the substrate_events DDL shape per spec §2.1.
+func TestMigration0006_SubstrateAppliesAndCreatesSchema(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "subs.db")
 	raw, err := sql.Open("sqlite", state.DSN(dbPath))
 	if err != nil {
