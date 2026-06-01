@@ -115,6 +115,25 @@ func TestRunProgramPlan_WriteCreatesFile(t *testing.T) {
 	if len(briefs) != 1 {
 		t.Fatalf("want exactly one brief .json in %s, got %v", outDir, briefs)
 	}
+
+	// Parse + verify HMAC of the written brief: file-exists alone could
+	// mask a producer that emits malformed JSON, drops the signature, or
+	// signs with the wrong key.
+	briefBytes, err := os.ReadFile(filepath.Join(outDir, briefs[0]))
+	if err != nil {
+		t.Fatalf("read brief: %v", err)
+	}
+	var pb program.ProgramBrief
+	if err := json.Unmarshal(briefBytes, &pb); err != nil {
+		t.Fatalf("unmarshal brief: %v", err)
+	}
+	if err := pb.Validate(); err != nil {
+		t.Fatalf("brief failed Validate: %v", err)
+	}
+	keyring := map[string][]byte{"k1": []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")}
+	if err := pb.VerifySignature(keyring); err != nil {
+		t.Fatalf("brief failed VerifySignature: %v", err)
+	}
 }
 
 // TestRunProgramPlan_WriteTargetExistsErrors exercises the no-clobber
