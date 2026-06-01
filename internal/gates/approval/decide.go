@@ -1,0 +1,262 @@
+package approval
+
+import (
+	"context"
+	"crypto/subtle"
+	"database/sql"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
+)
+
+// systemActor stamps approval_events rows the decide path emits on
+// behalf of the orchestrator (terminal approved|rejected wrappers).
+const systemActor = "system"
+
+// Decide-path sentinels distinct from canon verify-time errors so callers can branch CLI exit codes / HTTP status on the specific failure mode.
+var (
+	// ErrNotReviewer signals reviewerID is not in the approval's snapshot.
+	ErrNotReviewer = errors.New("approval: reviewer not in snapshot")
+	// ErrSelfReview signals the reviewer is the work_item's requested_by under prevent_self_review=true.
+	ErrSelfReview = errors.New("approval: self-review blocked by gate policy")
+	// ErrDoubleVote signals the reviewer already appears in decided_by.
+	ErrDoubleVote = errors.New("approval: reviewer already voted")
+)
+
+// DecideTxResult is the decide-path slice of the event-log fold: running decided_by + counts + terminal verdict. Distinct from approval.FoldResult (canonical gate-tick verdict in fold.go).
+type DecideTxResult struct {
+	DecidedBy     []string
+	AllowCount    int
+	DenyCount     int
+	Terminal      bool
+	TerminalAllow bool
+}
+
+func foldDecisions(events []state.ApprovalEvent, quorum int, reviewerSetSize int) DecideTxResult {
+	r := DecideTxResult{}
+	for _, ev := range events {
+		if ev.Kind != EventKindDecided {
+			continue
+		}
+		var p struct {
+			Decision string `json:"decision"`
+		}
+		_ = json.Unmarshal(ev.Payload, &p)
+		r.DecidedBy = append(r.DecidedBy, ev.Actor)
+		switch p.Decision {
+		case DecisionAllow:
+			r.AllowCount++
+		case DecisionDeny:
+			r.DenyCount++
+		}
+	}
+	switch {
+	case r.AllowCount >= quorum:
+		r.Terminal = true
+		r.TerminalAllow = true
+	case r.DenyCount >= quorum:
+		// ≥quorum denies terminates the gate as rejected (spec §6 N-of-M).
+		r.Terminal = true
+	case r.DenyCount+r.AllowCount >= reviewerSetSize:
+		// Every reviewer has voted and neither side reached quorum:
+		// the gate cannot reach approval, so we close as rejected.
+		r.Terminal = true
+	}
+	return r
+}
+
+// DecideTx consumes the token, records the decision, folds the event log, and (when terminal) stamps the denorm status in one sqlite transaction (spec §3.2 step 6).
+func DecideTx(ctx context.Context, db *state.DB, payload canon.TokenPayload, reviewerID, decision, reason string, clock func() time.Time) (DecideTxResult, string, error) {
+	a, err := db.GetApproval(ctx, payload.AID)
+	if err != nil {
+		return DecideTxResult{}, "", err
+	}
+	if !inReviewerSet(a.ReviewerSetSnapshot.Reviewers, reviewerID) {
+		return DecideTxResult{}, "", ErrNotReviewer
+	}
+	if a.ReviewerSetSnapshot.PreventSelfReview && a.RequestedBy == reviewerID {
+		return DecideTxResult{}, "", ErrSelfReview
+	}
+	for _, prev := range a.DecidedBy {
+		if prev == reviewerID {
+			return DecideTxResult{}, "", ErrDoubleVote
+		}
+	}
+
+	tx, err := db.SQL().BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return DecideTxResult{}, "", fmt.Errorf("begin tx: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	now := clock().UTC()
+
+	// (1) token_consumed first: the UNIQUE(approval_id,kind,token_jti)
+	// index turns a replayed token into a transactional abort BEFORE
+	// any 'decided' row materialises.
+	if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
+		ApprovalID: payload.AID,
+		Ts:         now,
+		Kind:       "token_consumed",
+		Actor:      reviewerID,
+		TokenJTI:   payload.JTI,
+	}); err != nil {
+		return DecideTxResult{}, "", err
+	}
+
+	// (2) decided event carries the vote.
+	decidedPayload, _ := json.Marshal(struct {
+		Decision string `json:"decision"`
+		Reason   string `json:"reason,omitempty"`
+	}{Decision: decision, Reason: reason})
+	if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
+		ApprovalID: payload.AID,
+		Ts:         now,
+		Kind:       EventKindDecided,
+		Actor:      reviewerID,
+		Payload:    decidedPayload,
+	}); err != nil {
+		return DecideTxResult{}, "", err
+	}
+
+	// (3) Re-list events inside the tx so the fold sees the just-inserted
+	// vote. sqlite's single-writer guarantee makes this consistent.
+	events, err := decideListEventsTx(ctx, tx, payload.AID)
+	if err != nil {
+		return DecideTxResult{}, "", err
+	}
+	folded := foldDecisions(events, a.Quorum, len(a.ReviewerSetSnapshot.Reviewers))
+
+	status := state.ApprovalStatusPending
+	if folded.Terminal {
+		if folded.TerminalAllow {
+			status = state.ApprovalStatusApproved
+			if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
+				ApprovalID: payload.AID, Ts: now, Kind: EventKindApproved, Actor: systemActor,
+			}); err != nil {
+				return DecideTxResult{}, "", err
+			}
+		} else {
+			status = state.ApprovalStatusRejected
+			if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
+				ApprovalID: payload.AID, Ts: now, Kind: EventKindRejected, Actor: systemActor,
+			}); err != nil {
+				return DecideTxResult{}, "", err
+			}
+		}
+		if err := markApprovalDecidedTx(ctx, tx, payload.AID, status, folded.DecidedBy, now); err != nil {
+			return DecideTxResult{}, "", err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return DecideTxResult{}, "", fmt.Errorf("commit: %w", err)
+	}
+	committed = true
+	return folded, status, nil
+}
+
+// InsertApprovalEvent mirrors state.AppendApprovalEvent's INSERT but runs against the caller's *sql.Tx so all mutations share one BEGIN..COMMIT (spec §3.2.1).
+func InsertApprovalEvent(ctx context.Context, tx *sql.Tx, ev state.ApprovalEvent) error {
+	payload := ev.Payload
+	if len(payload) == 0 {
+		payload = json.RawMessage(`{}`)
+	}
+	var traceID string
+	state.PersistTraceIDFromContext(ctx, &traceID)
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO approval_events (
+			approval_id, ts, kind, actor, payload_json, token_jti, trace_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		ev.ApprovalID, ev.Ts.UTC().Unix(), ev.Kind, ev.Actor,
+		string(payload), ev.TokenJTI, traceID,
+	)
+	if err != nil {
+		if isUniqueTokenConsumeTx(err) {
+			return state.ErrTokenReplay
+		}
+		return fmt.Errorf("insert approval_event: %w", err)
+	}
+	return nil
+}
+
+// isUniqueTokenConsumeTx mirrors state.isUniqueTokenConsume — modernc.org/sqlite surfaces the colliding column tuple (not the index name) in the error text.
+func isUniqueTokenConsumeTx(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "approval_events.approval_id") &&
+		strings.Contains(msg, "approval_events.kind") &&
+		strings.Contains(msg, "approval_events.token_jti")
+}
+
+func decideListEventsTx(ctx context.Context, tx *sql.Tx, approvalID string) ([]state.ApprovalEvent, error) {
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, approval_id, ts, kind, actor, payload_json, token_jti
+		FROM approval_events
+		WHERE approval_id = ?
+		ORDER BY id`, approvalID)
+	if err != nil {
+		return nil, fmt.Errorf("list events: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []state.ApprovalEvent
+	for rows.Next() {
+		var e state.ApprovalEvent
+		var ts int64
+		var payload string
+		if err := rows.Scan(&e.ID, &e.ApprovalID, &ts, &e.Kind, &e.Actor, &payload, &e.TokenJTI); err != nil {
+			return nil, fmt.Errorf("scan event: %w", err)
+		}
+		e.Ts = time.Unix(ts, 0).UTC()
+		e.Payload = json.RawMessage(payload)
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+func markApprovalDecidedTx(ctx context.Context, tx *sql.Tx, id, status string, decidedBy []string, decidedAt time.Time) error {
+	by, err := json.Marshal(decidedBy)
+	if err != nil {
+		return fmt.Errorf("marshal decided_by: %w", err)
+	}
+	now := decidedAt.UTC().Unix()
+	res, err := tx.ExecContext(ctx, `
+		UPDATE approvals
+		SET status = ?, decided_at = ?, decided_by = ?, updated_at = ?
+		WHERE id = ?`,
+		status, decidedAt.UTC().Unix(), string(by), now, id)
+	if err != nil {
+		return fmt.Errorf("update approval: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("rows affected: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("approval id=%q not found", id)
+	}
+	return nil
+}
+
+// inReviewerSet is a constant-time membership check across the snapshot. Linear scan + no early-exit matches the spec's belt-and-suspenders timing-safe posture.
+func inReviewerSet(set []string, id string) bool {
+	hit := 0
+	for _, r := range set {
+		if subtle.ConstantTimeCompare([]byte(r), []byte(id)) == 1 {
+			hit = 1
+		}
+	}
+	return hit == 1
+}
