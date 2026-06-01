@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -382,21 +383,42 @@ func loadParentWorkItem(path string) (schemas.WorkItem, error) {
 	return parent, nil
 }
 
+// atomicWriteBriefReadCap bounds the bytes pulled into RAM by the
+// idempotent-skip equality check in atomicWriteBrief. 8 MiB is ~8x the
+// brief-loader's maxBriefSize so a legitimate brief always reads in
+// full, but a pathological file dropped into the briefs directory can
+// no longer pin unbounded memory mid-check.
+const atomicWriteBriefReadCap = 8 << 20
+
 // atomicWriteBrief writes data to path via temp + os.Rename. When path
 // already exists, identical bytes are a no-op (idempotent reruns);
 // differing bytes return ErrTargetExists unless force is true. The
 // temp file lives in path's directory so the rename is intra-FS
 // (atomic on POSIX).
+//
+// Threat model: this is `regatta program plan`'s brief writer — an
+// operator-driven CLI against an operator-owned directory. The FS is
+// trusted; there is a TOCTOU window between the equality read and the
+// rename, but the threat model does not treat a concurrent mutator of
+// the briefs directory as in-scope (mid-flight swap would just race
+// with the rename and one of the two writes wins, which is the same
+// outcome operators get from running `plan` twice). The
+// io.LimitReader cap below is defense-in-depth for memory exhaustion
+// rather than integrity — a file that exceeds the cap cannot match
+// `data` (briefs are <= 1 MiB by maxBriefSize) so the equality check
+// short-circuits to false and the force gate handles the rest.
 func atomicWriteBrief(path string, data []byte, force bool) error {
-	if existing, err := os.ReadFile(path); err == nil { // #nosec G304 — path is the brief target the cmd just computed from operator-supplied -write-dir + program_id; identity check is the whole point of the helper.
-		if bytes.Equal(existing, data) {
+	equal, exists, err := readExistingForEqualityCheck(path, data)
+	if err != nil {
+		return fmt.Errorf("stat target: %w", err)
+	}
+	if exists {
+		if equal {
 			return nil
 		}
 		if !force {
 			return fmt.Errorf("%w: %s", orchestrator.ErrTargetExists, path)
 		}
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("stat target: %w", err)
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".brief-*.tmp")
 	if err != nil {
@@ -419,6 +441,41 @@ func atomicWriteBrief(path string, data []byte, force bool) error {
 		return fmt.Errorf("rename temp into place: %w", err)
 	}
 	return nil
+}
+
+// readExistingForEqualityCheck reads at most atomicWriteBriefReadCap+1
+// bytes from path and reports whether the truncated contents equal
+// want. Thin wrapper around readExistingForEqualityCheckWithCap so the
+// production callsite stays parameter-free; tests pin a small cap to
+// exercise the truncation branch directly.
+func readExistingForEqualityCheck(path string, want []byte) (equal bool, exists bool, err error) {
+	return readExistingForEqualityCheckWithCap(path, want, atomicWriteBriefReadCap)
+}
+
+// readExistingForEqualityCheckWithCap is the cap-parameterized core.
+// The cap+1 sentinel lets the caller distinguish a file that fits
+// within the cap from one that exceeds it: an oversize file cannot
+// match a brief that fits in maxBriefSize, so equality is reported
+// false without pulling the rest of the file into RAM. Missing path
+// surfaces as (false, false, nil) so callers branch the same as the
+// pre-LimitReader os.ReadFile shape.
+func readExistingForEqualityCheckWithCap(path string, want []byte, capBytes int64) (equal bool, exists bool, err error) {
+	f, err := os.Open(path) // #nosec G304 — path is the brief target the cmd just computed from operator-supplied -write-dir + program_id; identity check is the whole point of the helper.
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+	defer func() { _ = f.Close() }()
+	existing, err := io.ReadAll(io.LimitReader(f, capBytes+1))
+	if err != nil {
+		return false, true, err
+	}
+	if int64(len(existing)) > capBytes {
+		return false, true, nil
+	}
+	return bytes.Equal(existing, want), true, nil
 }
 
 func runProgramVerifyHandoff(args []string) int {

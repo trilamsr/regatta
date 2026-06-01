@@ -193,6 +193,100 @@ func TestRunProgramPlan_WriteTargetExistsErrors(t *testing.T) {
 	}
 }
 
+// TestAtomicWriteBriefReadCap_TruncationFiresOnOversize: cap=4 against a 5-byte file must report equal=false — proves the LimitReader sentinel fired (mutation guard).
+func TestAtomicWriteBriefReadCap_TruncationFiresOnOversize(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "five.json")
+	if err := os.WriteFile(path, []byte("hello"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	equal, exists, err := readExistingForEqualityCheckWithCap(path, []byte("hello"), 4)
+	if err != nil {
+		t.Fatalf("readExistingForEqualityCheckWithCap: %v", err)
+	}
+	if !exists {
+		t.Fatalf("exists=false; want true")
+	}
+	if equal {
+		t.Fatalf("equal=true; cap must force this to false to prove the LimitReader sentinel fired")
+	}
+
+	// Loose cap → equality is detected; pins functional correctness.
+	equal, exists, err = readExistingForEqualityCheckWithCap(path, []byte("hello"), 16)
+	if err != nil {
+		t.Fatalf("readExistingForEqualityCheckWithCap (loose cap): %v", err)
+	}
+	if !exists || !equal {
+		t.Fatalf("loose cap: exists=%v equal=%v want true,true", exists, equal)
+	}
+}
+
+// TestAtomicWriteBriefReadCap_OversizeExistingTreatedAsDiffering: a sparse 64 MiB existing file (8x cap) must surface ErrTargetExists with force=false, then overwrite cleanly with force=true.
+func TestAtomicWriteBriefReadCap_OversizeExistingTreatedAsDiffering(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "huge.json")
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(path, 64<<20); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := atomicWriteBrief(path, []byte(`{"new":true}`), false); err == nil {
+		t.Fatalf("atomicWriteBrief returned nil on oversize differing target; want ErrTargetExists")
+	} else if !errors.Is(err, orchestrator.ErrTargetExists) {
+		t.Fatalf("err=%v want wrap of orchestrator.ErrTargetExists", err)
+	}
+	if err := atomicWriteBrief(path, []byte(`{"new":true}`), true); err != nil {
+		t.Fatalf("force overwrite of oversize file errored: %v", err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != `{"new":true}` {
+		t.Fatalf("post-force content = %q want %q", got, `{"new":true}`)
+	}
+}
+
+// TestAtomicWriteBriefReadCap_NotExistAndEqualPaths: missing path and matching/mismatching bytes within cap behave the same as the pre-LimitReader os.ReadFile shape.
+func TestAtomicWriteBriefReadCap_NotExistAndEqualPaths(t *testing.T) {
+	dir := t.TempDir()
+	missing := filepath.Join(dir, "absent.json")
+	equal, exists, err := readExistingForEqualityCheck(missing, []byte(`x`))
+	if err != nil {
+		t.Fatalf("missing path errored: %v", err)
+	}
+	if exists || equal {
+		t.Fatalf("missing path: exists=%v equal=%v want false,false", exists, equal)
+	}
+
+	present := filepath.Join(dir, "present.json")
+	if err := os.WriteFile(present, []byte(`hello`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	equal, exists, err = readExistingForEqualityCheck(present, []byte(`hello`))
+	if err != nil {
+		t.Fatalf("present matching path errored: %v", err)
+	}
+	if !exists || !equal {
+		t.Fatalf("present matching: exists=%v equal=%v want true,true", exists, equal)
+	}
+
+	equal, exists, err = readExistingForEqualityCheck(present, []byte(`world`))
+	if err != nil {
+		t.Fatalf("present mismatch path errored: %v", err)
+	}
+	if !exists || equal {
+		t.Fatalf("present mismatch: exists=%v equal=%v want true,false", exists, equal)
+	}
+}
+
 // TestLoadBriefKeyring_HonorsKeyIDEnv pins the sign/verify keyID
 // contract: program plan's -hmac-key-id default ("k1") must match
 // the keyID under which serve verifies. Without this, briefs sign
