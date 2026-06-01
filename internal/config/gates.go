@@ -19,9 +19,7 @@ import (
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-// Risk classes (spec §5.5 V6). Duplicated from
-// internal/gates/approval/config.go (PR #144); CONSOLIDATION note at
-// end of file tracks the swap to a type alias once #144 merges.
+// Risk classes (spec §5.5 V6).
 const (
 	RiskLow    = "low"
 	RiskMedium = "medium"
@@ -81,10 +79,7 @@ type ApprovalTierConfig struct {
 	DecisionWindow    time.Duration `yaml:"decision_window"`
 }
 
-// ApprovalGateConfig is the parsed gate entry from regatta.yaml. Field
-// names + yaml tags mirror A2's approval.Config in
-// internal/gates/approval/config.go so the consolidation diff is a pure
-// type-alias swap once PR #144 lands.
+// ApprovalGateConfig is the parsed gate entry from regatta.yaml.
 type ApprovalGateConfig struct {
 	Name              string               `yaml:"name"`
 	RiskClass         string               `yaml:"risk_class"`
@@ -365,9 +360,3 @@ var reviewerIDRE = regexp.MustCompile(`^[a-zA-Z0-9_:.-]{1,128}$`)
 // 1..64 chars. Identical to A2's gateNameRE.
 var gateNameRE = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 
-// CONSOLIDATION: This file duplicates the type + sentinels + Validate
-// in internal/gates/approval/config.go (PR #144). When that PR merges,
-// fold this loader's ApprovalGateConfig into approval.Config via type
-// alias, drop the duplicate sentinels, and have LoadApprovalGates
-// return []approval.Config. Tracked separately so this PR remains
-// independently mergeable. See gates_consolidation_followup issue.
