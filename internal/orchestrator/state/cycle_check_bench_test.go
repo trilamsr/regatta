@@ -88,3 +88,57 @@ func BenchmarkCycleCheck(b *testing.B) {
 		})
 	}
 }
+
+// seedLargeDAG seeds `nodes` work_items as a linear backbone (F-{i}
+// depends on F-{i-1}) plus power-of-two cross edges so total edges
+// land near edgesPerNode * nodes. Candidate depends on the chain tip,
+// forcing traversal of every node before concluding "no cycle" — the
+// worst case for any cycle-detection algorithm. Direction (higher
+// index depends on lower) keeps the graph acyclic by construction.
+func seedLargeDAG(b *testing.B, db *state.DB, nodes, edgesPerNode int) state.WorkItem {
+	b.Helper()
+	ctx := context.Background()
+	at := time.Unix(1_700_000_000, 0)
+
+	for i := 0; i < nodes; i++ {
+		id := fmt.Sprintf("F-%07d", i)
+		var deps []string
+		if i > 0 {
+			deps = append(deps, fmt.Sprintf("F-%07d", i-1))
+		}
+		stride := 2
+		for len(deps) < edgesPerNode && stride <= i {
+			deps = append(deps, fmt.Sprintf("F-%07d", i-stride))
+			stride *= 2
+		}
+		w := state.WorkItem{
+			ID: id, Kind: state.KindFeature, Title: id,
+			Lane: "server", Status: state.WorkStatusPlanned,
+			DependsOnFeatures: deps,
+		}
+		if err := db.UpsertWorkItem(ctx, w, state.SourceBrief, at); err != nil {
+			b.Fatalf("seed %s: %v", id, err)
+		}
+	}
+
+	return state.WorkItem{
+		ID: "F-CANDIDATE", Kind: state.KindFeature, Title: "cand",
+		Lane: "server", Status: state.WorkStatusPlanned,
+		DependsOnFeatures: []string{fmt.Sprintf("F-%07d", nodes-1)},
+	}
+}
+
+// BenchmarkCycleCheck_LargeGraph: 10k items, ~50k edges (issue #90 acceptance fixture).
+func BenchmarkCycleCheck_LargeGraph(b *testing.B) {
+	db := newBenchDB(b)
+	cand := seedLargeDAG(b, db, 10_000, 5)
+	ctx := context.Background()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := db.CycleCheck(ctx, cand); err != nil {
+			b.Fatalf("CycleCheck: %v", err)
+		}
+	}
+}

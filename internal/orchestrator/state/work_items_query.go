@@ -97,39 +97,219 @@ func (d *DB) ListSpawnable(ctx context.Context) ([]WorkItem, error) {
 }
 
 // CycleCheck verifies that inserting (or updating) candidate would
-// not introduce a dependency cycle. Walks the existing graph + the
-// candidate's depends_on_features and looks for a back-edge to
-// candidate.ID. Returns ErrCycleDetected wrapped on cycle.
+// not introduce a dependency cycle. Loads the full work_items
+// dependency graph, overlays candidate's depends_on_features, and
+// runs Kahn's topological sort: if any node remains undrained, a
+// cycle exists. Complexity is O(n + m) across n work_items and m
+// edges — the prior DFS-from-candidate impl built a string-keyed
+// adjacency map then walked it recursively; the int-indexed CSR
+// layout below keeps every hot lookup in a flat slice.
 //
-// Self-loop (candidate depends on itself) counts as a cycle.
+// The dep-list JSON is parsed with a hand-rolled scanner instead of
+// json.Unmarshal because Unmarshal allocates one new string per
+// dep, and 50k-edge graphs paid 50k+ string allocs that dwarfed the
+// algorithm itself. The scanner reuses the SQL row's byte buffer
+// and looks each dep ID up in idx via `map[string(s)]` — the Go
+// compiler turns that byte→string conversion into an
+// allocation-free lookup.
+//
+// Semantic note vs the pre-Kahn implementation: the old DFS started
+// at candidate and only flagged cycles reachable from candidate.
+// Kahn's scans the whole graph, so it would additionally fail when
+// the DB already contained a candidate-disjoint cycle. That case is
+// impossible in practice because every insert path runs CycleCheck
+// first — the invariant "DB is acyclic" is maintained inductively.
+// For any input that satisfies the invariant the boolean result is
+// identical. Self-loop is caught because the looping node's indegree
+// never reaches zero.
 func (d *DB) CycleCheck(ctx context.Context, candidate WorkItem) error {
 	rows, err := d.sql.QueryContext(ctx, `SELECT id, depends_on_features FROM work_items`)
 	if err != nil {
 		return fmt.Errorf("state: cycle scan: %w", err)
 	}
-	adj := map[string][]string{}
+	// First pass: assign every known ID a dense int index and stash
+	// the raw deps JSON for the second pass. We can't resolve deps
+	// to indices yet because depends_on_features can reference IDs
+	// that appear later in the row stream.
+	idx := map[string]int{}
+	var depsRaw [][]byte
+	addNode := func(id string) int {
+		if i, ok := idx[id]; ok {
+			return i
+		}
+		i := len(depsRaw)
+		idx[id] = i
+		depsRaw = append(depsRaw, nil)
+		return i
+	}
 	for rows.Next() {
-		var id, depsJSON string
-		if err := rows.Scan(&id, &depsJSON); err != nil {
+		var id string
+		var deps []byte
+		if err := rows.Scan(&id, &deps); err != nil {
 			_ = rows.Close()
 			return fmt.Errorf("state: cycle scan row: %w", err)
 		}
-		var deps []string
-		if err := json.Unmarshal([]byte(depsJSON), &deps); err != nil {
-			_ = rows.Close()
-			return fmt.Errorf("state: cycle decode deps for %s: %w", id, err)
+		i := addNode(id)
+		// Overlay: when this row IS candidate, drop the persisted
+		// deps — candidate.DependsOnFeatures drives validation. nil
+		// here signals "use the candidate slice in the second pass".
+		if id == candidate.ID {
+			depsRaw[i] = nil
+		} else {
+			// Copy because Scan reuses the row buffer on Next().
+			depsRaw[i] = append([]byte(nil), deps...)
 		}
-		adj[id] = deps
 	}
 	if err := rows.Close(); err != nil {
 		return fmt.Errorf("state: cycle close rows: %w", err)
 	}
-	adj[candidate.ID] = candidate.DependsOnFeatures
+	// Candidate may be a brand-new ID not yet in the DB.
+	candIdx := addNode(candidate.ID)
 
-	if reachable(adj, candidate.ID, candidate.ID) {
+	n := len(depsRaw)
+	indeg := make([]int, n)
+	// revHead is a CSR offset array: reverse-edge list of node i
+	// lives in revEdges[revHead[i]:revHead[i+1]]. One flat backing
+	// slice beats a [][]int because Kahn's hot loop walks it
+	// linearly with no per-node bounds check on the outer slice.
+	revHead := make([]int, n+1)
+
+	// visitDeps invokes f(depIdx) for every dep of node i that
+	// resolves to a known index. Candidate's deps come from the
+	// in-memory overlay; everyone else from the cached JSON bytes.
+	visitDeps := func(i int, f func(depIdx int)) error {
+		if i == candIdx {
+			for _, dep := range candidate.DependsOnFeatures {
+				if depI, ok := idx[dep]; ok {
+					f(depI)
+				}
+			}
+			return nil
+		}
+		return scanJSONStrings(depsRaw[i], func(s []byte) {
+			if depI, ok := idx[string(s)]; ok {
+				f(depI)
+			}
+		})
+	}
+
+	// First sweep: indegree counts + per-target reverse-edge counts.
+	for i := 0; i < n; i++ {
+		if err := visitDeps(i, func(depIdx int) {
+			indeg[i]++
+			revHead[depIdx+1]++
+		}); err != nil {
+			return fmt.Errorf("state: cycle decode deps: %w", err)
+		}
+	}
+	for i := 1; i <= n; i++ {
+		revHead[i] += revHead[i-1]
+	}
+	revEdges := make([]int, revHead[n])
+	cursor := make([]int, n)
+	for i := 0; i < n; i++ {
+		// Error path already covered in the first sweep.
+		_ = visitDeps(i, func(depIdx int) {
+			revEdges[revHead[depIdx]+cursor[depIdx]] = i
+			cursor[depIdx]++
+		})
+	}
+
+	// Kahn's main loop: seed every zero-indegree node, drain its
+	// successors. len(queue) at end equals the count of nodes
+	// drained, so a shortfall is a cycle.
+	queue := make([]int, 0, n)
+	for i := 0; i < n; i++ {
+		if indeg[i] == 0 {
+			queue = append(queue, i)
+		}
+	}
+	for head := 0; head < len(queue); head++ {
+		for _, succ := range revEdges[revHead[queue[head]]:revHead[queue[head]+1]] {
+			indeg[succ]--
+			if indeg[succ] == 0 {
+				queue = append(queue, succ)
+			}
+		}
+	}
+	if len(queue) != n {
 		return fmt.Errorf("%w: %s", ErrCycleDetected, candidate.ID)
 	}
 	return nil
+}
+
+// scanJSONStrings walks a JSON array of strings (the shape
+// depends_on_features always carries) and invokes f on each unquoted
+// element. Avoids json.Unmarshal's per-element string allocation —
+// the byte slice handed to f aliases the input buffer and must not
+// be retained past f's return. Supports the standard JSON escapes
+// (\", \\) that the upstream marshaler might emit; non-string array
+// elements return an error.
+func scanJSONStrings(raw []byte, f func(s []byte)) error {
+	i := 0
+	for i < len(raw) && (raw[i] == ' ' || raw[i] == '\t' || raw[i] == '\n' || raw[i] == '\r') {
+		i++
+	}
+	if i >= len(raw) || raw[i] != '[' {
+		// Empty deps store as '[]'; treat anything malformed as a
+		// hard error rather than silently dropping edges.
+		if i >= len(raw) {
+			return nil
+		}
+		return fmt.Errorf("expected '[', got %q", raw[i])
+	}
+	i++
+	for i < len(raw) {
+		for i < len(raw) && (raw[i] == ' ' || raw[i] == '\t' || raw[i] == '\n' || raw[i] == '\r' || raw[i] == ',') {
+			i++
+		}
+		if i >= len(raw) || raw[i] == ']' {
+			return nil
+		}
+		if raw[i] != '"' {
+			return fmt.Errorf("expected '\"', got %q at offset %d", raw[i], i)
+		}
+		i++
+		start := i
+		hasEscape := false
+		for i < len(raw) && raw[i] != '"' {
+			if raw[i] == '\\' {
+				hasEscape = true
+				i += 2
+				continue
+			}
+			i++
+		}
+		if i >= len(raw) {
+			return fmt.Errorf("unterminated string")
+		}
+		if !hasEscape {
+			f(raw[start:i])
+		} else {
+			// Escapes are rare in our IDs (F-uuid charset); fall
+			// back to a small allocation on this path.
+			unesc := unescapeJSON(raw[start:i])
+			f(unesc)
+		}
+		i++
+	}
+	return nil
+}
+
+// unescapeJSON handles the two escapes our marshaler can emit for
+// dep IDs (\" and \\). Anything else is passed through verbatim —
+// IDs in our system never contain unicode escapes.
+func unescapeJSON(s []byte) []byte {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			out = append(out, s[i+1])
+			i++
+			continue
+		}
+		out = append(out, s[i])
+	}
+	return out
 }
 
 // MaxUpdatedAtForBriefChildren returns the largest updated_at across
@@ -181,30 +361,6 @@ func (d *DB) ListArchivedProgramsWithLiveChildren(ctx context.Context) ([]string
 		ids = append(ids, id)
 	}
 	return ids, rows.Err()
-}
-
-// reachable returns true if target is reachable from start via adj,
-// excluding the zero-depth self-arrival case. A self-loop
-// (start depends on start) is reachable at depth 1, returning true.
-func reachable(adj map[string][]string, start, target string) bool {
-	visited := map[string]bool{}
-	var dfs func(node string, depth int) bool
-	dfs = func(node string, depth int) bool {
-		if depth > 0 && node == target {
-			return true
-		}
-		if visited[node] {
-			return false
-		}
-		visited[node] = true
-		for _, next := range adj[node] {
-			if dfs(next, depth+1) {
-				return true
-			}
-		}
-		return false
-	}
-	return dfs(start, 0)
 }
 
 func scanWorkItems(rows *sql.Rows) ([]WorkItem, error) {
