@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 )
 
@@ -327,6 +328,46 @@ func newProgramID() string {
 // loading gigabytes into RAM.
 const maxPlannerPromptSize int64 = 1 << 20
 
+// PromptLoaderConfig holds dependencies for a PromptLoader. Mirrors the
+// Config.Logger DI pattern shipped for spawner/adaptersync/brief_loader
+// (#115/#125) so the planner-fallback emission threads through the same
+// injected sink instead of escaping to slog.Default at call time.
+type PromptLoaderConfig struct {
+	// Logger is the structured-event sink for the planner.prompt_fallback
+	// breadcrumb (spec §3.3 / #118). Nil falls back to slog.Default() so
+	// the existing package-level LoadPlannerPrompt wrapper and embedded
+	// callers stay zero-config.
+	Logger *slog.Logger
+}
+
+// PromptLoader resolves the planner system prompt. The injected logger
+// receives the fallback breadcrumb when the operator-pinned prompt file
+// is absent (and the SHA pin is also unset — pinned-but-missing fails
+// closed before any log fires).
+type PromptLoader struct {
+	log *slog.Logger
+}
+
+// NewPromptLoader constructs a PromptLoader from a PromptLoaderConfig.
+// Mirrors spawner.New / NewBriefLoader so callers see one injection
+// shape across the obs-101 family.
+func NewPromptLoader(cfg PromptLoaderConfig) *PromptLoader {
+	log := cfg.Logger
+	if log == nil {
+		log = slog.Default()
+	}
+	return &PromptLoader{log: log}
+}
+
+// LoadPlannerPrompt is the package-level entry point preserved for the
+// existing test corpus + future cmd wiring that has no Config plumbed
+// yet. Routes through a zero-value PromptLoaderConfig so the fallback
+// breadcrumb still lands on slog.Default — byte-equivalent to the prior
+// behaviour, but the seam exists for callers ready to inject.
+func LoadPlannerPrompt(path string, expectedSHA string) (string, error) {
+	return NewPromptLoader(PromptLoaderConfig{}).LoadPlannerPrompt(path, expectedSHA)
+}
+
 // LoadPlannerPrompt returns the planner system prompt to use.
 //
 // Behaviour matrix:
@@ -341,7 +382,7 @@ const maxPlannerPromptSize int64 = 1 << 20
 // mismatch. Malformed pins (non-hex or wrong length) are rejected
 // up-front as a config error instead of being treated as a content
 // mismatch.
-func LoadPlannerPrompt(path string, expectedSHA string) (string, error) {
+func (p *PromptLoader) LoadPlannerPrompt(path string, expectedSHA string) (string, error) {
 	expectedSHA = strings.ToLower(strings.TrimSpace(expectedSHA))
 	if expectedSHA != "" {
 		if len(expectedSHA) != sha256.Size*2 || !isHex(expectedSHA) {
@@ -355,7 +396,7 @@ func LoadPlannerPrompt(path string, expectedSHA string) (string, error) {
 			if expectedSHA != "" {
 				return "", fmt.Errorf("%w: path=%s", orchestrator.ErrPlannerPromptMissing, path)
 			}
-			slog.Info("planner.prompt.fallback", "path", path, "reason", "missing_file")
+			p.log.Info(string(obs.EventPlannerFallback), "path", path, "reason", "missing_file")
 			return defaultPlannerPrompt, nil
 		}
 		return "", fmt.Errorf("program: stat planner prompt: %w", err)

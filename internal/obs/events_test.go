@@ -142,6 +142,8 @@ func TestEventName_SpecVocabulary(t *testing.T) {
 		"brief.materialise_failed", "brief.edges_materialised",
 		// Adapter sync
 		"adaptersync.synced", "adaptersync.failed",
+		// Planner
+		"planner.prompt_fallback",
 	}
 	got := enumerateEventNames(t)
 	for _, w := range want {
