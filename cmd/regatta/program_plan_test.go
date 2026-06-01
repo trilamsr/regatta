@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -275,11 +276,16 @@ func TestValidateWriteDirUnderCwd(t *testing.T) {
 				// 8.3 short-path normalization mangles raw tempdir paths
 				// (e.g. runneradmin -> RUNNER~1) and would break a literal
 				// match.
+				// Production formats canonicalized paths through %q
+				// (strconv.Quote), so the rendered message contains the
+				// escaped form — on Windows, backslashes become "\\".
+				// Mirror that here so the substring check sees the same
+				// bytes the operator does.
 				msg := err.Error()
-				wantTarget := canonForAssert(t, tc.target)
-				wantCwd := canonForAssert(t, cwd)
+				wantTarget := strconv.Quote(canonForAssert(t, tc.target))
+				wantCwd := strconv.Quote(canonForAssert(t, cwd))
 				if !containsAll(msg, wantTarget, wantCwd) {
-					t.Fatalf("error %q must name target %q AND cwd %q", msg, wantTarget, wantCwd)
+					t.Fatalf("error %q must name target %s AND cwd %s", msg, wantTarget, wantCwd)
 				}
 			}
 		})
