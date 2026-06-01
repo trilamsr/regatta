@@ -20,6 +20,9 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -45,6 +48,12 @@ type Config struct {
 	WM     *spawner.WorktreeManager
 	Killer ChildKiller
 	Logger *slog.Logger
+
+	// Tracer is the OTel tracer this component uses to open spans.
+	// Nil falls back to otel.Tracer("reaper") which resolves to the
+	// global provider — noop until obs/otel.Setup runs. Per W6 spec
+	// §3.3 + feedback_spec_pattern_authority.
+	Tracer trace.Tracer
 }
 
 // Reaper owns the post-terminal cleanup path.
@@ -53,6 +62,7 @@ type Reaper struct {
 	wm       *spawner.WorktreeManager
 	killer   ChildKiller
 	log      *slog.Logger
+	tracer   trace.Tracer
 	terminal []state.AgentState
 }
 
@@ -64,11 +74,16 @@ func New(cfg Config) *Reaper {
 	if log == nil {
 		log = slog.Default()
 	}
+	tracer := cfg.Tracer
+	if tracer == nil {
+		tracer = otel.Tracer("reaper")
+	}
 	return &Reaper{
 		db:     cfg.DB,
 		wm:     cfg.WM,
 		killer: cfg.Killer,
 		log:    log,
+		tracer: tracer,
 		terminal: []state.AgentState{
 			state.AgentDone,
 			state.AgentWithdrawn,
@@ -134,6 +149,10 @@ func (r *Reaper) Reap(ctx context.Context, agentID int64) error {
 // a timer so a missed terminal-edge hook (e.g. external state mutation
 // via sql) is eventually cleaned up.
 func (r *Reaper) ReapAll(ctx context.Context) error {
+	// W6 spec §3.5: `reaper.sweep` is a standalone span (not nested
+	// under tick) — the reaper runs on its own ticker cadence.
+	ctx, span := r.tracer.Start(ctx, "reaper.sweep")
+	defer span.End()
 	agents, err := r.db.ListAgentsByState(ctx, r.terminal...)
 	if err != nil {
 		return fmt.Errorf("reaper: list terminal agents: %w", err)

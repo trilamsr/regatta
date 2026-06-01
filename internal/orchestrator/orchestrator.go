@@ -20,6 +20,9 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/lockfile"
@@ -88,6 +91,13 @@ type Config struct {
 	// events. Nil falls back to slog.Default() so embedded callers
 	// still get output without panicking (spec §4.1).
 	Logger *slog.Logger
+
+	// Tracer is the OTel tracer this component uses to open spans.
+	// Nil falls back to otel.Tracer("orchestrator") which resolves to
+	// the global provider — noop until obs/otel.Setup runs. Mirrors
+	// the Config.Logger DI normalization per W6 spec §3.3 +
+	// feedback_spec_pattern_authority.
+	Tracer trace.Tracer
 }
 
 // Orchestrator coordinates the spec adapter, scheduler, and spawner.
@@ -105,6 +115,7 @@ type Orchestrator struct {
 	dbPath      string
 	cfg         Config
 	log         *slog.Logger
+	tracer      trace.Tracer
 }
 
 // New constructs an Orchestrator from a Config. All deps are wired
@@ -126,6 +137,10 @@ func New(cfg Config) *Orchestrator {
 	if log == nil {
 		log = slog.Default()
 	}
+	tracer := cfg.Tracer
+	if tracer == nil {
+		tracer = otel.Tracer("orchestrator")
+	}
 	return &Orchestrator{
 		adapterSync: cfg.AdapterSync,
 		briefLoader: cfg.BriefLoader,
@@ -135,6 +150,7 @@ func New(cfg Config) *Orchestrator {
 		dbPath:      cfg.DBPath,
 		cfg:         cfg,
 		log:         log,
+		tracer:      tracer,
 	}
 }
 
@@ -236,6 +252,12 @@ func (o *Orchestrator) PollOnce(ctx context.Context) error {
 // spawning state with their locks held until the recovery sweep on
 // the next restart.
 func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
+	// W6 spec §3.5: `tick` is the per-scheduler-tick span — the
+	// orchestrator owns the open/close because it is the loop driver;
+	// scheduler.Tick opens `work_item` children under the active ctx.
+	ctx, span := o.tracer.Start(ctx, "tick")
+	defer span.End()
+
 	// Spec §3.3: tick.started + tick.completed are unconditional on
 	// every tick exit; no early return may skip the completion event.
 	startedAt := time.Now()

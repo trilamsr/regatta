@@ -16,6 +16,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -67,18 +71,25 @@ type Config struct {
 	// pin deterministic timestamps (#100). Nil falls back to time.Now so
 	// production callers stay zero-config.
 	Clock func() time.Time
+
+	// Tracer is the OTel tracer this component uses to open spans.
+	// Nil falls back to otel.Tracer("spawner") which resolves to the
+	// global provider — noop until obs/otel.Setup runs. Per W6 spec
+	// §3.3 + feedback_spec_pattern_authority.
+	Tracer trace.Tracer
 }
 
 // Stub records every Spawn call and returns a synthetic
 // (pid, session-id) pair. Used by tests and by `regatta serve` until
 // the real spawner ships.
 type Stub struct {
-	mu    sync.Mutex
-	seq   atomic.Int64
-	calls []Request
-	db    *state.DB
-	log   *slog.Logger
-	clock func() time.Time
+	mu     sync.Mutex
+	seq    atomic.Int64
+	calls  []Request
+	db     *state.DB
+	log    *slog.Logger
+	clock  func() time.Time
+	tracer trace.Tracer
 }
 
 // New constructs a Stub from a Config. Mirrors orchestrator/scheduler/
@@ -92,13 +103,26 @@ func New(cfg Config) *Stub {
 	if clock == nil {
 		clock = time.Now
 	}
-	return &Stub{db: cfg.DB, log: log, clock: clock}
+	tracer := cfg.Tracer
+	if tracer == nil {
+		tracer = otel.Tracer("spawner")
+	}
+	return &Stub{db: cfg.DB, log: log, clock: clock, tracer: tracer}
 }
 
 // Spawn returns a deterministic synthetic Result. PID is a negative
 // counter (so it cannot collide with any real OS pid) and SessionID
 // embeds the work-item ID for easier debugging.
-func (s *Stub) Spawn(_ context.Context, req Request) (Result, error) {
+func (s *Stub) Spawn(ctx context.Context, req Request) (Result, error) {
+	// W6 spec §3.5: one `operator_invocation` span per spawn, parent
+	// of the T4 `llm_call` child opened by the stream-json parser.
+	_, span := s.tracer.Start(ctx, "operator_invocation",
+		trace.WithAttributes(
+			attribute.Int64(string(obs.KeyAgentID), req.AgentID),
+			attribute.String(string(obs.KeyWorkItemID), req.WorkItemID),
+			attribute.String(string(obs.KeyLane), req.Lane),
+		))
+	defer span.End()
 	s.log.Info(string(obs.EventSpawnStarted),
 		string(obs.KeyWorkItemID), req.WorkItemID,
 		string(obs.KeyAgentID), req.AgentID,

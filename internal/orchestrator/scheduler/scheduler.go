@@ -22,6 +22,10 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -134,6 +138,12 @@ type Config struct {
 	// semantics as Gate=nil so an operator who forgets one of the two
 	// gets a clean "gates disabled" rather than a half-wired runtime.
 	GateResolver GateResolver
+
+	// Tracer is the OTel tracer this component uses to open spans.
+	// Nil falls back to otel.Tracer("scheduler") which resolves to the
+	// global provider — noop until obs/otel.Setup runs. Per W6 spec
+	// §3.3 + feedback_spec_pattern_authority.
+	Tracer trace.Tracer
 }
 
 // schedulerDB is the seam between Scheduler and state.DB. The
@@ -177,9 +187,10 @@ type schedulerDB interface {
 // state must use the read-only state.DB queries directly rather than
 // calling Tick.
 type Scheduler struct {
-	db  schedulerDB
-	cfg Config
-	log *slog.Logger
+	db     schedulerDB
+	cfg    Config
+	log    *slog.Logger
+	tracer trace.Tracer
 
 	// multiDefaultLogged dedupes the edge.multiple_defaults_per_from
 	// warn so a misconfigured brief logs once per (program_id, from_id)
@@ -211,7 +222,11 @@ func newScheduler(db schedulerDB, cfg Config) *Scheduler {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Scheduler{db: db, cfg: cfg, log: log}
+	tracer := cfg.Tracer
+	if tracer == nil {
+		tracer = otel.Tracer("scheduler")
+	}
+	return &Scheduler{db: db, cfg: cfg, log: log, tracer: tracer}
 }
 
 // activeStates lists agent states that count against a lane's
@@ -306,8 +321,17 @@ func (s *Scheduler) reserveFromSpawnable(ctx context.Context, spawnable []state.
 		if err := ctx.Err(); err != nil {
 			return reserved, attempted, err
 		}
+		// W6 spec §3.5: one `work_item` span per work_item lifecycle
+		// under the active `tick` span. Attrs match spec §4.1.
+		itemCtx, itemSpan := s.tracer.Start(ctx, "work_item",
+			trace.WithAttributes(
+				attribute.String(string(obs.KeyWorkItemID), w.ID),
+				attribute.String(string(obs.KeyLane), w.Lane),
+				attribute.String("regatta.kind", string(w.Kind)),
+			))
 		hasCap := s.laneHasCapacity(w.Lane, occupancy)
-		agentID, transitioned, err := s.reserveOne(ctx, w.ID, w.Lane, hasCap)
+		agentID, transitioned, err := s.reserveOne(itemCtx, w.ID, w.Lane, hasCap)
+		itemSpan.End()
 		if err != nil {
 			if errors.Is(err, state.ErrLockHeld) {
 				// The full reservation tx rolled back, so the pending
@@ -465,7 +489,17 @@ func (s *Scheduler) applyApprovalGates(ctx context.Context, spawnable []state.Wo
 			kept = append(kept, wi)
 			continue
 		}
-		res, err := s.cfg.Gate.Evaluate(ctx, wi, cfg)
+		// W6 spec §3.5: gate.evaluate must be a child of the active
+		// work_item span. Open the work_item span here for the gated
+		// branch so Gate.Evaluate sees the parent ctx.
+		itemCtx, itemSpan := s.tracer.Start(ctx, "work_item",
+			trace.WithAttributes(
+				attribute.String(string(obs.KeyWorkItemID), wi.ID),
+				attribute.String(string(obs.KeyLane), wi.Lane),
+				attribute.String("regatta.kind", string(wi.Kind)),
+			))
+		res, err := s.cfg.Gate.Evaluate(itemCtx, wi, cfg)
+		itemSpan.End()
 		if err != nil {
 			s.log.Warn(string(obs.EventApprovalDecided),
 				string(obs.KeyWorkItemID), wi.ID,

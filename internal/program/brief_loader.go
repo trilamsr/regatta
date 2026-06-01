@@ -20,6 +20,9 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -241,6 +244,12 @@ type BriefLoaderConfig struct {
 	// diagnostics. Nil falls back to slog.Default() so embedded
 	// callers still get output without panicking (spec §4.1 + §5.7).
 	Logger *slog.Logger
+
+	// Tracer is the OTel tracer this component uses to open spans.
+	// Nil falls back to otel.Tracer("program") which resolves to the
+	// global provider — noop until obs/otel.Setup runs. Per W6 spec
+	// §3.3 + feedback_spec_pattern_authority.
+	Tracer trace.Tracer
 }
 
 // BriefLoader is the recurring sync. Construct once at orchestrator
@@ -256,6 +265,7 @@ type BriefLoader struct {
 	keyring   map[string][]byte
 	evaluator *EdgeEvaluator
 	log       *slog.Logger
+	tracer    trace.Tracer
 
 	mu               sync.RWMutex
 	outputsSchemas   map[FeatureID]*OutputsSchema
@@ -283,12 +293,17 @@ func NewBriefLoader(cfg BriefLoaderConfig) (*BriefLoader, error) {
 	if log == nil {
 		log = slog.Default()
 	}
+	tracer := cfg.Tracer
+	if tracer == nil {
+		tracer = otel.Tracer("program")
+	}
 	return &BriefLoader{
 		fsys:             cfg.FS,
 		db:               cfg.DB,
 		keyring:          cfg.Keyring,
 		evaluator:        cfg.Evaluator,
 		log:              log,
+		tracer:           tracer,
 		outputsSchemas:   map[FeatureID]*OutputsSchema{},
 		programByFeature: map[FeatureID]string{},
 	}, nil
@@ -331,6 +346,10 @@ func (b *BriefLoader) OutputsSchemaForFeature(id FeatureID) (*OutputsSchema, boo
 // stale_produced_at. This survives orchestrator restart because the
 // watermark is derived from durable state.
 func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
+	// W6 spec §8 T5: open a span at the main entry function so brief
+	// sync activity shows up in the trace tree.
+	ctx, span := b.tracer.Start(ctx, "brief_loader.sync")
+	defer span.End()
 	entries, err := fs.Glob(b.fsys, "*.json")
 	if err != nil {
 		return fmt.Errorf("brief_loader: glob: %w", err)

@@ -14,6 +14,10 @@ import (
 	"sort"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/trilamsr/regatta/internal/canon"
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -62,6 +66,12 @@ type Gate struct {
 	kid      string
 	clock    func() time.Time
 	log      *slog.Logger
+	// Tracer is the OTel tracer this component uses to open spans.
+	// Exported so callers can set it after NewGate without expanding
+	// the positional signature; nil falls back to otel.Tracer
+	// ("gates/approval") at Evaluate-time. Per W6 spec §3.3 +
+	// feedback_spec_pattern_authority.
+	Tracer trace.Tracer
 	// jtiRand is the entropy source MintToken consumes for the per-
 	// token jti. Defaults to crypto/rand.Reader; tests inject their own.
 	jtiRand io.Reader
@@ -97,7 +107,22 @@ func NewGate(db *state.DB, n Notifier, kr canon.Keyring, kid string, clock func(
 // (state.go:9 pool=1). The schema-level UNIQUE(work_item_id, gate_name)
 // is the belt; this method's CreateApproval-then-Get loop covers the
 // belt-trip case (two callers race) so neither errors out.
-func (g *Gate) Evaluate(ctx context.Context, wi state.WorkItem, cfg Config) (Result, error) {
+func (g *Gate) Evaluate(ctx context.Context, wi state.WorkItem, cfg Config) (result Result, retErr error) {
+	// W6 spec §3.5: `gate.evaluate` is a child of the active
+	// `work_item` span (opened by scheduler.applyApprovalGates).
+	tracer := g.Tracer
+	if tracer == nil {
+		tracer = otel.Tracer("gates/approval")
+	}
+	ctx, span := tracer.Start(ctx, "gate.evaluate",
+		trace.WithAttributes(
+			attribute.String(string(obs.KeyGateID), cfg.Name),
+			attribute.String(string(obs.KeyWorkItemID), wi.ID),
+		))
+	defer func() {
+		span.SetAttributes(attribute.String(string(obs.KeyVerdict), result.String()))
+		span.End()
+	}()
 	existing, err := g.db.GetApprovalForWorkItem(ctx, wi.ID, cfg.Name)
 	if err != nil {
 		return ResultPause, fmt.Errorf("approval: lookup: %w", err)

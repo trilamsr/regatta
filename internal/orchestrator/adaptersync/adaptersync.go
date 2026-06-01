@@ -10,6 +10,9 @@ import (
 	"log/slog"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -34,6 +37,12 @@ type Config struct {
 	// diagnostics. Nil falls back to slog.Default() so embedded
 	// callers still get output without panicking (spec §4.1 + §5.8).
 	Logger *slog.Logger
+
+	// Tracer is the OTel tracer this component uses to open spans.
+	// Nil falls back to otel.Tracer("adaptersync") which resolves to
+	// the global provider — noop until obs/otel.Setup runs. Per W6
+	// spec §3.3 + feedback_spec_pattern_authority.
+	Tracer trace.Tracer
 }
 
 // Syncer pairs an adapter with the state DB. Timestamps are passed
@@ -43,6 +52,7 @@ type Syncer struct {
 	adapter SpecAdapter
 	db      *state.DB
 	log     *slog.Logger
+	tracer  trace.Tracer
 }
 
 // New constructs a Syncer from a Config. Returns an error if any
@@ -60,7 +70,11 @@ func New(cfg Config) (*Syncer, error) {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Syncer{adapter: cfg.Adapter, db: cfg.DB, log: log}, nil
+	tracer := cfg.Tracer
+	if tracer == nil {
+		tracer = otel.Tracer("adaptersync")
+	}
+	return &Syncer{adapter: cfg.Adapter, db: cfg.DB, log: log, tracer: tracer}, nil
 }
 
 // Sync upserts adapter items, tombstones rows the adapter no longer
@@ -73,6 +87,10 @@ func New(cfg Config) (*Syncer, error) {
 // a poll. Per spec §3 any DB error returns immediately; per-item
 // upserts are individual txs.
 func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
+	// W6 spec §8 T5: open a span at the main entry function so the
+	// adapter→state mirror activity shows up in the trace tree.
+	ctx, span := s.tracer.Start(ctx, "adaptersync.sync")
+	defer span.End()
 	items, err := s.adapter.List(ctx)
 	if err != nil {
 		return fmt.Errorf("adaptersync: adapter list: %w", err)
