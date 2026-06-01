@@ -301,9 +301,7 @@ func TestLoad_ApprovalGate_BadRiskClass_Errors(t *testing.T) {
 	}
 }
 
-// TestLoad_ApprovalGate_AutoApproveHighRisk_Errors pins V5 at CUE:
-// `regatta validate-config` rejects auto_approve+risk_class=high
-// without the Go loader in the loop.
+// TestLoad_ApprovalGate_AutoApproveHighRisk_Errors pins V5 at CUE (validate-config rejection path).
 func TestLoad_ApprovalGate_AutoApproveHighRisk_Errors(t *testing.T) {
 	yaml := strings.Replace(minimalValid, `gates:
   - id: spec_conformance
@@ -326,8 +324,7 @@ func TestLoad_ApprovalGate_AutoApproveHighRisk_Errors(t *testing.T) {
 	}
 }
 
-// TestLoad_ApprovalGate_EscalateNoChain_Errors pins V9 at CUE:
-// on_timeout=escalate without an escalation_chain fails schema.
+// TestLoad_ApprovalGate_EscalateNoChain_Errors pins V9 at CUE (escalate requires chain).
 func TestLoad_ApprovalGate_EscalateNoChain_Errors(t *testing.T) {
 	yaml := strings.Replace(minimalValid, `gates:
   - id: spec_conformance

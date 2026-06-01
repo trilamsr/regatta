@@ -109,8 +109,7 @@ func TestLoadApprovalGates_HappyPath(t *testing.T) {
 	}
 }
 
-// TestLoadApprovalGates_IgnoresNonApprovalGates: non-approval rows
-// (`ai`, `deterministic`) in the gates union must be filtered out.
+// TestLoadApprovalGates_IgnoresNonApprovalGates filters non-approval gate rows.
 func TestLoadApprovalGates_IgnoresNonApprovalGates(t *testing.T) {
 	yaml := minimalConfigWithGate(`  - id: spec_conformance
     type: ai
@@ -132,8 +131,7 @@ func TestLoadApprovalGates_IgnoresNonApprovalGates(t *testing.T) {
 	}
 }
 
-// TestLoadApprovalGates_NoApprovalGates: zero approval gates returns
-// nil slice + nil error so callers can range without nil-checking.
+// TestLoadApprovalGates_NoApprovalGates returns (nil, nil) when no approval gates exist.
 func TestLoadApprovalGates_NoApprovalGates(t *testing.T) {
 	yaml := minimalConfigWithGate(`  - id: spec_conformance
     type: ai
@@ -314,9 +312,7 @@ func TestLoadApprovalGates_Invariants(t *testing.T) {
 	}
 }
 
-// TestLoadApprovalGates_AccumulatesAllErrors pairs V3 (window>timeout)
-// + V7-upper (quorum>set); both bypass CUE and must surface together
-// via errors.Join (no fail-on-first).
+// TestLoadApprovalGates_AccumulatesAllErrors surfaces V3+V7 together via errors.Join (not fail-on-first).
 func TestLoadApprovalGates_AccumulatesAllErrors(t *testing.T) {
 	yaml := strings.Replace(canonicalApprovalGateYAML, "quorum: 2", "quorum: 99", 1)
 	yaml = strings.Replace(yaml, "decision_window: 4h", "decision_window: 48h", 1)
@@ -333,9 +329,7 @@ func TestLoadApprovalGates_AccumulatesAllErrors(t *testing.T) {
 	}
 }
 
-// TestLoadApprovalGates_CUE_V5_FootGun pins V5 at the CUE layer: the
-// bare validator (operator `regatta validate-config` path) must reject
-// auto_approve + risk_class!=low without the Go loader in the loop.
+// TestLoadApprovalGates_CUE_V5_FootGun pins V5 at the CUE layer (operator validate-config path).
 func TestLoadApprovalGates_CUE_V5_FootGun(t *testing.T) {
 	yaml := strings.Replace(canonicalApprovalGateYAML,
 		"on_timeout: fail", "on_timeout: auto_approve", 1)
@@ -346,8 +340,7 @@ func TestLoadApprovalGates_CUE_V5_FootGun(t *testing.T) {
 	}
 }
 
-// TestLoadApprovalGates_RoleOnlyReviewerSet pins V7 union semantics:
-// quorum=N is valid against |roles|=N alone (no direct reviewers).
+// TestLoadApprovalGates_RoleOnlyReviewerSet pins V7 union semantics for role-only reviewer sets.
 func TestLoadApprovalGates_RoleOnlyReviewerSet(t *testing.T) {
 	// Quorum stays 2 (canonical). Reviewers drops to empty; roles
 	// expands to two entries so the V7 union (|reviewers|+|roles|=2)
@@ -364,8 +357,7 @@ func TestLoadApprovalGates_RoleOnlyReviewerSet(t *testing.T) {
 	}
 }
 
-// TestLoadApprovalGates_MalformedDuration: a non-parseable duration
-// must be rejected by either CUE (regex) or Go (time.ParseDuration).
+// TestLoadApprovalGates_MalformedDuration rejects unparseable durations via CUE or Go.
 func TestLoadApprovalGates_MalformedDuration(t *testing.T) {
 	yaml := mutate(t, "timeout: 24h", "timeout: forever")
 	_, err := LoadApprovalGates([]byte(minimalConfigWithGate(yaml)))
@@ -377,9 +369,7 @@ func TestLoadApprovalGates_MalformedDuration(t *testing.T) {
 	}
 }
 
-// TestLoadApprovalGates_GoDurationParseRejection: a duration shape
-// CUE accepts but time.ParseDuration rejects (int64 overflow) must
-// surface ErrInvalidDuration from the Go side.
+// TestLoadApprovalGates_GoDurationParseRejection surfaces int64-overflow durations via ErrInvalidDuration.
 func TestLoadApprovalGates_GoDurationParseRejection(t *testing.T) {
 	yaml := mutate(t, "timeout: 24h", "timeout: 99999999999999999999h")
 	_, err := LoadApprovalGates([]byte(minimalConfigWithGate(yaml)))
