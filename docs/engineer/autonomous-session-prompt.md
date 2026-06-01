@@ -17,21 +17,17 @@ BOOT
 5. Read MEMORY.md + AGENTS.md (auto-loaded). Recover docs/superpowers/ per AGENTS.md recipe if needed.
 
 PRIORITY (top-down, skip if blocked)
-1. MVP-3 W6 OTel observability backbone — umbrella #159. Wave 1 partial shipped (T1 #172 + T2 #169). Remaining: T5 Config.Tracer injection across 8 components (depends on T1 merged; A4 #168 already landed so scheduler.go is settled). Wave 2 = T3 migration 0005 trace_id columns + T4 spawner stream-json GenAI semconv parser. Wave 3 = T6 docker-compose Jaeger E2E (scaffold pre-positioned at examples/observability/docker-compose.yml via #184) + T7 operator observability doc. Spec at `docs/superpowers/specs/2026-05-31-mvp-3-w6-otel-backbone.md` (gitignored — recover via AGENTS.md recipe or rebuild from #159 body). **Pre-written dispatch prompts for T3+T4+T5 at `docs/superpowers/dispatch/2026-05-31-mvp-3-w6-wave1-finish.md`** (gitignored; recover by rebuild from spec §5 task table). Paste straight into 3 parallel `Agent(isolation: worktree)` calls; cap at 3-4 parallel per `feedback_session_limit_dispatch`.
-2. #114 approval-gates closeout — Wave 5 E2E test dispatched. When merged + #114 umbrella closeable, comment "Closes #114" on the E2E PR or close #114 manually. Spec at docs/superpowers/specs/2026-05-31-mvp-approval-gates.md.
-3. Open follow-up issues (~50) by load-bearing weight — A+ tier rubric checkboxes from earlier waves (mutation testing, fuzz, key-rotation drill, etc.). Spawn a triage subagent (≤5 trivial PRs/session cap) to sweep. Per feedback_session_2026_05_31_lessons.
+1. **Cost-governor (P8) wedge** — moat-widening per [[wedge-roadmap-assessment]] / [[wedge-cost-governor]]. Build per-DAG + per-operator USD/token caps with pre-call deny + post-hoc reconciliation against Anthropic Usage API. Spec-first via design subagent citing wedge-cost-governor memory; trap pattern P8 is load-bearing for the control-plane-for-AI-labor framing. Hook points: scheduler tick (pre-call deny), spawner SupervisorLimits (cumulative), `regatta.yaml:safety.spend_cap_usd` (extend).
+2. MVP-3 W6 OTel observability backbone — umbrella #159. Wave 1 partial shipped (T1 #172 + T2 #169). Remaining: T5 Config.Tracer injection across 8 components (depends on T1 merged; A4 #168 already landed so scheduler.go is settled). Wave 2 = T3 migration 0005 trace_id columns + T4 spawner stream-json GenAI semconv parser. Wave 3 = T6 docker-compose Jaeger E2E (scaffold pre-positioned at examples/observability/docker-compose.yml via #184) + T7 operator observability doc. Spec at `docs/superpowers/specs/2026-05-31-mvp-3-w6-otel-backbone.md` (gitignored — recover via AGENTS.md recipe or rebuild from #159 body). **Pre-written dispatch prompts for T3+T4+T5 at `docs/superpowers/dispatch/2026-05-31-mvp-3-w6-wave1-finish.md`** (gitignored; recover by rebuild from spec §5 task table). Paste straight into 3 parallel `Agent(isolation: worktree)` calls; cap at 3-4 parallel per `feedback_session_limit_dispatch`.
+3. Open follow-up issues (~50) by load-bearing weight — A+ tier rubric checkboxes from earlier waves (mutation testing, fuzz, key-rotation drill, etc.). Plus #194 (reaper-escalate gate.Evaluate mint+notify gap, surfaced by E2E escalate test t.Skip). Spawn a triage subagent (≤5 trivial PRs/session cap) to sweep. Per feedback_session_2026_05_31_lessons.
 4. MVP-3 next-level — brief at docs/superpowers/briefs/2026-05-31-mvp-3-next-level.md. After W6 lands: W7 operator web UI (rank #2; Temporal-UI pattern via Go embed.FS + htmx; scope-disciplined to approval flow + read-only DAG + cost panel). W8 OPA RBAC + multi-tenant (rank #3).
 
 Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -40`:
 - #98 #101 #115 #116 (Wave 0 prereqs)
-- #114 approval-gates Wave 1 — #123 #126 #127
-- #114 approval-gates Wave 2 — #143 #144
-- #114 approval-gates Wave 3 — #154 #155 #168 (A4 scheduler integration)
-- #114 approval-gates Wave 5 docs — #161 (operator runbook)
-- #114 Wave 5 E2E — possibly merged this session; check via `gh pr list --state merged --search "Wave 5 E2E"`
+- **MVP-2 W1-W5 approval-gates SHIPPED** (#114 umbrella) — #123 #126 #127 (W1) · #143 #144 (W2) · #154 #155 #168 (W3) · #170 (W4 program-plan) · #191 (W5 E2E lifecycle) · #197 (W5 log-format) · #203 (W5 reaper auto_approve fix)
 - #159 MVP-3 W6 T1 — #172 (OTel SDK setup)
 - #159 MVP-3 W6 T2 — #169 (slog→OTel logs bridge)
-- Cleanup + sweep: #160 (cel-go) #163 (single-NewReaper) #164 (kid sentinels) #166 (state dedupe) #170 (program-plan test) #177 (Kahn cycle-check)
+- Cleanup + sweep: #160 (cel-go) #163 (single-NewReaper) #164 (kid sentinels) #166 (state dedupe) #177 (Kahn cycle-check)
 
 WORKFLOW per item
 1. Spawn design subagent → spec (w/ grade rubric per feedback_grade_rubric)
