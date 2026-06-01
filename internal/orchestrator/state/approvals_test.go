@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -101,6 +103,52 @@ func TestApproval_CreateGetRoundTrip(t *testing.T) {
 	}
 	if !got.CreatedAt.Equal(t0) || !got.UpdatedAt.Equal(t0) {
 		t.Fatalf("created/updated=%v/%v want %v", got.CreatedAt, got.UpdatedAt, t0)
+	}
+}
+
+// Concurrent regression guard for the #98 tick-local-vs-DB bug class — spec §4.2 A-rubric.
+func TestApproval_CreateRaceUniqueIndex(t *testing.T) {
+	t0 := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+	db := fixedClockDB(t, t0)
+	ctx := context.Background()
+	seedApprovalWorkItem(t, db, "F-1")
+
+	var (
+		wg        sync.WaitGroup
+		ready     sync.WaitGroup
+		start     = make(chan struct{})
+		errs      [2]error
+		successes atomic.Int32
+	)
+	ready.Add(2)
+	wg.Add(2)
+	ids := [2]string{"a-race-A", "a-race-B"}
+	for i := 0; i < 2; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			a := sampleApproval(ids[i], "F-1", t0, t0.Add(time.Hour))
+			ready.Done()
+			<-start
+			errs[i] = db.CreateApproval(ctx, a)
+			if errs[i] == nil {
+				successes.Add(1)
+			}
+		}()
+	}
+	ready.Wait()
+	close(start)
+	wg.Wait()
+
+	if got := successes.Load(); got != 1 {
+		t.Fatalf("successes=%d want 1; errs=[%v, %v]", got, errs[0], errs[1])
+	}
+	loserIdx := 0
+	if errs[0] == nil {
+		loserIdx = 1
+	}
+	if !errors.Is(errs[loserIdx], ErrApprovalAlreadyExists) {
+		t.Fatalf("loser err=%v want ErrApprovalAlreadyExists", errs[loserIdx])
 	}
 }
 

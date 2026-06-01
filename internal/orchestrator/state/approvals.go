@@ -24,6 +24,11 @@ import (
 // as the canonical single-use violation; see spec §4.3.
 var ErrTokenReplay = errors.New("state: approval token already consumed")
 
+// ErrApprovalAlreadyExists is returned by CreateApproval when a second
+// row collides on UNIQUE(work_item_id, gate_name); lets decide-path
+// callers branch on errors.Is rather than substring-probing. See spec §4.2.
+var ErrApprovalAlreadyExists = errors.New("state: approval already exists for (work_item_id, gate_name)")
+
 // ApprovalStatus values for the `approvals.status` denorm column.
 // Source of truth is fold(approval_events); see spec §4.1.
 const (
@@ -129,6 +134,9 @@ func (d *DB) CreateApproval(ctx context.Context, a Approval) error {
 		a.TimeoutAt.UTC().Unix(), onTimeout,
 		string(chainJSON), now, now,
 	); err != nil {
+		if isUniqueWorkItemGate(err) {
+			return ErrApprovalAlreadyExists
+		}
 		return fmt.Errorf("state: insert approval: %w", err)
 	}
 	return nil
@@ -355,4 +363,15 @@ func isUniqueTokenConsume(err error) bool {
 	return strings.Contains(msg, "approval_events.approval_id") &&
 		strings.Contains(msg, "approval_events.kind") &&
 		strings.Contains(msg, "approval_events.token_jti")
+}
+
+// isUniqueWorkItemGate detects the sqlite UNIQUE collision on
+// approvals(work_item_id, gate_name); same shape as isUniqueTokenConsume.
+func isUniqueWorkItemGate(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "approvals.work_item_id") &&
+		strings.Contains(msg, "approvals.gate_name")
 }

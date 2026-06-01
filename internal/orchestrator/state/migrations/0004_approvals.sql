@@ -16,7 +16,8 @@ CREATE TABLE approvals (
     requested_by                TEXT    NOT NULL,
     reviewer_set_snapshot_json  TEXT    NOT NULL,
     quorum                      INTEGER NOT NULL DEFAULT 1,
-    status                      TEXT    NOT NULL DEFAULT 'pending',
+    status                      TEXT    NOT NULL DEFAULT 'pending'
+                                CHECK (status IN ('pending','approved','rejected','timed_out')),
     decided_at                  INTEGER,
     decided_by                  TEXT    NOT NULL DEFAULT '[]',
     callback_token_hmac_sig     TEXT    NOT NULL DEFAULT '',
@@ -60,5 +61,11 @@ CREATE UNIQUE INDEX uq_approval_events_token_consume
 
 -- +goose Down
 -- +goose StatementBegin
+-- Forward-only migration: matches 0003's no-op Down. Rolling back the
+-- binary retains the approvals/approval_events tables and their data;
+-- the no-op SELECT lets goose record the down-step without destroying
+-- the human-decision audit log on a binary downgrade. Operators who
+-- truly need to drop the tables run DROP TABLE manually after backing
+-- up approval_events (audit-critical per spec §3 + §5).
 SELECT 1;
 -- +goose StatementEnd
