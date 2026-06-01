@@ -1,0 +1,54 @@
+package pricing_test
+
+import (
+	"testing"
+	"time"
+
+	"github.com/trilamsr/regatta/internal/cost/pricing"
+)
+
+// TestPricing_AllActiveSKUsHavePositiveRows pins B7 Portkey-trap defense.
+func TestPricing_AllActiveSKUsHavePositiveRows(t *testing.T) {
+	if len(pricing.Anthropic) == 0 {
+		t.Fatal("pricing.Anthropic table is empty")
+	}
+	for model, row := range pricing.Anthropic {
+		if !row.RetiredAfter.IsZero() {
+			continue
+		}
+		if row.InputUSDPerMTok <= 0 {
+			t.Errorf("active SKU %q has non-positive InputUSDPerMTok=%v", model, row.InputUSDPerMTok)
+		}
+		if row.CacheReadUSDPerMTok <= 0 {
+			t.Errorf("active SKU %q has non-positive CacheReadUSDPerMTok=%v", model, row.CacheReadUSDPerMTok)
+		}
+		if row.CacheCreationUSDPerMTok <= 0 {
+			t.Errorf("active SKU %q has non-positive CacheCreationUSDPerMTok=%v", model, row.CacheCreationUSDPerMTok)
+		}
+		if row.OutputUSDPerMTok <= 0 {
+			t.Errorf("active SKU %q has non-positive OutputUSDPerMTok=%v", model, row.OutputUSDPerMTok)
+		}
+	}
+}
+
+// TestPricing_RetiredSKURejected_IfStrictMode pins R1 pricing-drift defense.
+func TestPricing_RetiredSKURejected_IfStrictMode(t *testing.T) {
+	// Inject a retired-in-the-past SKU; Lookup must reject it, not return a zero row.
+	const sku = "test-retired-sku"
+	pricing.Anthropic[sku] = pricing.Row{
+		InputUSDPerMTok:         1.0,
+		CacheReadUSDPerMTok:     0.1,
+		CacheCreationUSDPerMTok: 1.25,
+		OutputUSDPerMTok:        5.0,
+		RetiredAfter:            time.Now().Add(-24 * time.Hour),
+	}
+	t.Cleanup(func() { delete(pricing.Anthropic, sku) })
+
+	row, err := pricing.Lookup(sku)
+	if err == nil {
+		t.Fatalf("Lookup(%q) for retired SKU returned no error; got row=%+v", sku, row)
+	}
+	if !errorsIs(err, pricing.ErrPricingMissing) {
+		t.Fatalf("Lookup(%q) for retired SKU returned %v; want ErrPricingMissing", sku, err)
+	}
+}
