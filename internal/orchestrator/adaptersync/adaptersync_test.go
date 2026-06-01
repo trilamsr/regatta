@@ -495,10 +495,7 @@ func TestAdapterSync_LoggerInjected(t *testing.T) {
 	}
 }
 
-// TestSyncer_Config_RequiresAdapter pins the constructor-time
-// validation: a Config missing Adapter must surface a clear error at
-// New() rather than nil-deref on first Sync. Partial configs (Logger
-// set, required fields missing) must also fail.
+// TestSyncer_Config_RequiresAdapter — partial Config (incl. Logger-only) must error at New, not nil-deref later.
 func TestSyncer_Config_RequiresAdapter(t *testing.T) {
 	db := newSyncTestDB(t)
 	if _, err := adaptersync.New(adaptersync.Config{DB: db}); err == nil {
@@ -512,9 +509,7 @@ func TestSyncer_Config_RequiresAdapter(t *testing.T) {
 	}
 }
 
-// TestSyncer_Config_RequiresDB pins the DB required-field check. A
-// missing DB previously deferred the nil-deref to UpsertWorkItem; New
-// now surfaces it eagerly.
+// TestSyncer_Config_RequiresDB — nil DB used to defer the panic to UpsertWorkItem; New now surfaces it eagerly.
 func TestSyncer_Config_RequiresDB(t *testing.T) {
 	adapter := &stubAdapter{}
 	if _, err := adaptersync.New(adaptersync.Config{Adapter: adapter}); err == nil {

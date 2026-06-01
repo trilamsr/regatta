@@ -958,9 +958,7 @@ func TestBriefLoader_LoggerInjected(t *testing.T) {
 	}
 }
 
-// TestNewBriefLoader_Config_RequiresFS pins the constructor-time
-// validation: a Config missing FS must surface a clear error at
-// NewBriefLoader rather than nil-deref on first Sync.
+// TestNewBriefLoader_Config_RequiresFS — nil FS must error at New, not nil-deref on first Sync.
 func TestNewBriefLoader_Config_RequiresFS(t *testing.T) {
 	db := newBriefTestDB(t)
 	if _, err := NewBriefLoader(BriefLoaderConfig{DB: db, Keyring: map[string][]byte{}}); err == nil {
@@ -974,7 +972,7 @@ func TestNewBriefLoader_Config_RequiresFS(t *testing.T) {
 	}
 }
 
-// TestNewBriefLoader_Config_RequiresDB pins the DB required-field check.
+// TestNewBriefLoader_Config_RequiresDB — nil DB must error at New.
 func TestNewBriefLoader_Config_RequiresDB(t *testing.T) {
 	if _, err := NewBriefLoader(BriefLoaderConfig{FS: fstest.MapFS{}, Keyring: map[string][]byte{}}); err == nil {
 		t.Fatal("NewBriefLoader with nil DB must error")
@@ -983,9 +981,7 @@ func TestNewBriefLoader_Config_RequiresDB(t *testing.T) {
 	}
 }
 
-// TestNewBriefLoader_Config_RequiresKeyring pins the Keyring required-
-// field check. A nil keyring is rejected at New so callers cannot defer
-// the nil-deref to LoadAndVerifyBrief.
+// TestNewBriefLoader_Config_RequiresKeyring — nil Keyring rejected at New, not deferred to LoadAndVerifyBrief.
 func TestNewBriefLoader_Config_RequiresKeyring(t *testing.T) {
 	db := newBriefTestDB(t)
 	if _, err := NewBriefLoader(BriefLoaderConfig{FS: fstest.MapFS{}, DB: db}); err == nil {
