@@ -31,8 +31,7 @@ func TestEstimate_UpperBound_Deterministic(t *testing.T) {
 	}
 }
 
-// TestEstimate_UpperBound_NeverUndercountsActual pins the conservative
-// invariant: UpperBound ≥ actual cost for every actual_out ∈ [0, max_tokens].
+// TestEstimate_UpperBound_NeverUndercountsActual pins the conservative invariant (est ≥ actual for actual_out ∈ [0, max]).
 func TestEstimate_UpperBound_NeverUndercountsActual(t *testing.T) {
 	ub := estimate.UpperBound{}
 	ctx := context.Background()
@@ -63,8 +62,7 @@ func TestEstimate_UpperBound_NeverUndercountsActual(t *testing.T) {
 	})
 }
 
-// TestEstimate_UpperBound_HintOverridesInputTokens pins planner-supplied Hint
-// precedence used by T1's Request.EstHint path.
+// TestEstimate_UpperBound_HintOverridesInputTokens pins planner-supplied Hint precedence (T1 Request.EstHint path).
 func TestEstimate_UpperBound_HintOverridesInputTokens(t *testing.T) {
 	ub := estimate.UpperBound{}
 	ctx := context.Background()
@@ -98,8 +96,7 @@ func TestEstimate_UpperBound_HintOverridesInputTokens(t *testing.T) {
 	}
 }
 
-// TestEstimate_UpperBound_UnknownModelErrors covers the Portkey-trap path at
-// the estimator seam.
+// TestEstimate_UpperBound_UnknownModelErrors covers the Portkey-trap path at the estimator seam.
 func TestEstimate_UpperBound_UnknownModelErrors(t *testing.T) {
 	ub := estimate.UpperBound{}
 	if _, err := ub.Estimate(context.Background(), "gpt-4", 100, 100, estimate.Hint{}); err == nil {

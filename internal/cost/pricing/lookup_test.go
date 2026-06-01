@@ -22,8 +22,7 @@ func TestPricing_Lookup_UnknownModelErrors(t *testing.T) {
 	}
 }
 
-// TestPricing_Lookup_KnownModelReturnsRow sanity-checks the happy path so the
-// retired-SKU and unknown-SKU branches are not the only coverage.
+// TestPricing_Lookup_KnownModelReturnsRow sanity-checks the happy path.
 func TestPricing_Lookup_KnownModelReturnsRow(t *testing.T) {
 	row, err := pricing.Lookup("claude-sonnet-4-7")
 	if err != nil {

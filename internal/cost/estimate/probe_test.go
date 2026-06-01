@@ -11,10 +11,7 @@ import (
 	"github.com/trilamsr/regatta/internal/cost/estimate"
 )
 
-// TestProbe_CountTokensClaudeCLI_DetectsCapability covers both branches: when
-// a stub `claude` binary supports `--count-tokens` the probe enters CLI mode;
-// when it does not the probe falls back to the heuristic counter. Either way,
-// no panic on missing binary or missing flag.
+// TestProbe_CountTokensClaudeCLI_DetectsCapability pins CLI-flag detection + heuristic fallback + no-panic on missing binary.
 func TestProbe_CountTokensClaudeCLI_DetectsCapability(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell-script stub not portable to windows")
@@ -70,8 +67,7 @@ func TestProbe_CountTokensClaudeCLI_DetectsCapability(t *testing.T) {
 	})
 }
 
-// TestProbe_HeuristicFallbackAddsSafetyMargin pins R11/I1 mitigation: heuristic
-// mode must add ≥ 50% above the raw `len(bytes)/4` count.
+// TestProbe_HeuristicFallbackAddsSafetyMargin pins R11/I1 mitigation (≥ 50% above raw len/4).
 func TestProbe_HeuristicFallbackAddsSafetyMargin(t *testing.T) {
 	p, err := estimate.NewProbe(estimate.ProbeConfig{Command: "/nonexistent/claude-bin"})
 	if err != nil {
