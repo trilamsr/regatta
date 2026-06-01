@@ -193,10 +193,7 @@ func runApprovalDecideWith(deps approvalDecideDeps, args []string) int {
 
 // foldResult is the minimal slice of the event-log fold needed by the
 // CLI: the running decided_by list (for self-double-vote rejection)
-// and the derived terminal status (or pending). The full fold helper
-// will move to internal/gates/approval/fold.go when PR #144 (A2)
-// merges; until then this local helper keeps the decide path self-
-// contained per the spec-deviation rule. Tracking issue filed in PR.
+// and the derived terminal status (or pending).
 type foldResult struct {
 	decidedBy     []string
 	allowCount    int
