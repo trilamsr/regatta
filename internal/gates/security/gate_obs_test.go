@@ -3,37 +3,11 @@ package security
 import (
 	"context"
 	"log/slog"
-	"sync"
 	"testing"
 
 	"github.com/trilamsr/regatta/internal/obs"
+	"github.com/trilamsr/regatta/internal/obstest"
 )
-
-type captureHandler struct {
-	mu      sync.Mutex
-	records []slog.Record
-}
-
-func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
-func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.records = append(h.records, r.Clone())
-	return nil
-}
-func (h *captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
-func (h *captureHandler) WithGroup(string) slog.Handler     { return h }
-
-func (h *captureHandler) findEvent(name obs.EventName) (slog.Record, bool) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for _, r := range h.records {
-		if r.Message == string(name) {
-			return r, true
-		}
-	}
-	return slog.Record{}, false
-}
 
 func attrValue(r slog.Record, key string) (slog.Value, bool) {
 	var out slog.Value
@@ -50,7 +24,7 @@ func attrValue(r slog.Record, key string) (slog.Value, bool) {
 }
 
 func TestSecurityGate_EmitsVerdictOnCheck(t *testing.T) {
-	h := &captureHandler{}
+	h := obstest.New()
 	cfg := Config{
 		GateID: "security",
 		DeterminismFloor: FloorConfig{
@@ -63,9 +37,9 @@ func TestSecurityGate_EmitsVerdictOnCheck(t *testing.T) {
 	if _, err := Run(context.Background(), cfg, Input{PRSHA: "abc", RunID: "00000000-0000-0000-0000-000000000000"}); err != nil {
 		t.Fatalf("run: %v", err)
 	}
-	rec, ok := h.findEvent(obs.EventGateVerdict)
+	rec, ok := h.FindEvent(obs.EventGateVerdict)
 	if !ok {
-		t.Fatalf("gate.verdict event not emitted; records=%+v", h.records)
+		t.Fatalf("gate.verdict event not emitted; records=%+v", h.Records())
 	}
 	gid, ok := attrValue(rec, string(obs.KeyGateID))
 	if !ok {
