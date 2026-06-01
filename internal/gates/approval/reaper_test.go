@@ -157,6 +157,14 @@ func TestReaper_FailPolicy(t *testing.T) {
 	}
 }
 
+// TestReaper_AutoApprovePolicy — issue #193: auto_approve must NOT write a
+// timed_out event. Fold iterates id-ASC + first terminal wins; if the
+// reaper writes timed_out then approved, Fold returns StatusTimedOut and
+// gate.Evaluate maps that to ResultReject — flipping a should-proceed
+// work_item to rejected. The fix (option A) is single-concern: don't
+// write events that lie. The denotation of timed_out is "no decision in
+// window"; auto_approve has a decision (system:timeout-default approve),
+// so only the approved event matches the truth of what happened.
 func TestReaper_AutoApprovePolicy(t *testing.T) {
 	t0 := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 	db := reaperTestDB(t, t0)
@@ -173,8 +181,8 @@ func TestReaper_AutoApprovePolicy(t *testing.T) {
 	if err := r.Sweep(context.Background()); err != nil {
 		t.Fatalf("Sweep: %v", err)
 	}
-	if n := countEvents(t, db, "a-002", "timed_out"); n != 1 {
-		t.Errorf("timed_out events=%d; want 1", n)
+	if n := countEvents(t, db, "a-002", "timed_out"); n != 0 {
+		t.Errorf("timed_out events=%d; want 0 (issue #193: auto_approve must not write timed_out)", n)
 	}
 	if n := countEvents(t, db, "a-002", "approved"); n != 1 {
 		t.Errorf("approved events=%d; want 1", n)
@@ -191,6 +199,22 @@ func TestReaper_AutoApprovePolicy(t *testing.T) {
 	}
 	if _, ok := h.findEvent(obs.EventApprovalAutoApproved); !ok {
 		t.Errorf("slog %q missing", obs.EventApprovalAutoApproved)
+	}
+
+	// Fold-equivalence assertion: full gate cycle must return ResultProceed.
+	// This is the spec §3.3 contract that #193 reported as broken — the
+	// denorm column said approved but gate.Evaluate returned reject because
+	// Fold saw timed_out first and short-circuited.
+	events, err := db.ListApprovalEvents(context.Background(), "a-002")
+	if err != nil {
+		t.Fatalf("ListApprovalEvents: %v", err)
+	}
+	res := Fold(events, FoldConfig{
+		ReviewerSet: got.ReviewerSetSnapshot,
+		RequestedBy: got.RequestedBy,
+	})
+	if res.Status != StatusApproved {
+		t.Errorf("Fold.Status=%v; want StatusApproved (gate.Evaluate would map to ResultProceed)", res.Status)
 	}
 }
 

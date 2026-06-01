@@ -169,9 +169,16 @@ func (r *Reaper) sweepOne(ctx context.Context, a state.Approval, now time.Time) 
 	if policy == "" {
 		policy = policyFail
 	}
-	timedOutPayload, _ := json.Marshal(map[string]string{"policy": policy})
-	if err := insertEvent(ctx, tx, a.ID, now, kindTimedOut, "system", string(timedOutPayload), ""); err != nil {
-		return fmt.Errorf("approval/reaper: append timed_out: %w", err)
+	// Issue #193: only write timed_out for policies whose denotation matches
+	// "no decision in window" — fail and escalate (chain-exhausted). The
+	// auto_approve policy resolves to approved; writing timed_out first
+	// would make Fold (id-ASC, first-terminal-wins) return StatusTimedOut
+	// and the gate verdict would contradict the denorm status column.
+	if policy != policyAutoApprove {
+		timedOutPayload, _ := json.Marshal(map[string]string{"policy": policy})
+		if err := insertEvent(ctx, tx, a.ID, now, kindTimedOut, "system", string(timedOutPayload), ""); err != nil {
+			return fmt.Errorf("approval/reaper: append timed_out: %w", err)
+		}
 	}
 	if r.txHook != nil {
 		if err := r.txHook(tx); err != nil {
