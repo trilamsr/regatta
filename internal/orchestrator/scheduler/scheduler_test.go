@@ -9,54 +9,16 @@ import (
 	"math/rand/v2"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite"
 
 	"github.com/trilamsr/regatta/internal/obs"
+	"github.com/trilamsr/regatta/internal/obstest"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
-
-// captureHandler is an in-test slog.Handler that records every Record
-// the scheduler emits so assertions can match events by name and attr.
-// Kept package-local — Task F's shared obstest helper is not landed
-// yet; this is a minimal stand-in scoped to scheduler tests.
-type captureHandler struct {
-	mu      sync.Mutex
-	records []slog.Record
-}
-
-func (h *captureHandler) Enabled(context.Context, slog.Level) bool { return true }
-
-func (h *captureHandler) Handle(_ context.Context, r slog.Record) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.records = append(h.records, r.Clone())
-	return nil
-}
-
-func (h *captureHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
-func (h *captureHandler) WithGroup(string) slog.Handler      { return h }
-
-func (h *captureHandler) Records() []slog.Record {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	out := make([]slog.Record, len(h.records))
-	copy(out, h.records)
-	return out
-}
-
-func (h *captureHandler) findByMsg(msg string) (slog.Record, bool) {
-	for _, r := range h.Records() {
-		if r.Message == msg {
-			return r, true
-		}
-	}
-	return slog.Record{}, false
-}
 
 func recordHasAttr(r slog.Record, key string) bool {
 	found := false
@@ -412,7 +374,7 @@ func TestTickLogsSkipsOnLockHeld(t *testing.T) {
 	seedPlanned(t, db, "WORK-1", "server")
 	seedPlanned(t, db, "WORK-2", "server")
 
-	h := &captureHandler{}
+	h := obstest.New()
 	sch := New(db, Config{
 		LockTTL:  time.Minute,
 		Hotspots: func(string) []string { return []string{"shared"} },
@@ -870,7 +832,7 @@ func TestScheduler_Tick_EmitsEdgeFiredEvent(t *testing.T) {
 		t.Fatalf("AppendOutput: %v", err)
 	}
 
-	h := &captureHandler{}
+	h := obstest.New()
 	sch := New(db, Config{
 		Evaluator: newFakeEvaluator(),
 		Logger:    slog.New(h),
@@ -879,7 +841,7 @@ func TestScheduler_Tick_EmitsEdgeFiredEvent(t *testing.T) {
 		t.Fatalf("Tick: %v", err)
 	}
 
-	r, ok := h.findByMsg(string(obs.EventEdgeFired))
+	r, ok := h.FindEvent(obs.EventEdgeFired)
 	if !ok {
 		records := h.Records()
 		msgs := make([]string, 0, len(records))
