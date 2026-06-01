@@ -178,8 +178,6 @@ run_case current_branch_protected ''                                          'w
 run_case main_protected           ''                                          'would delete branch main'         case_main_protected
 run_case unmerged_gone_preserved  'skip lost-work \(upstream gone but not merged' 'would delete branch lost-work' case_unmerged_gone_preserved
 
-# --- Fetch-failure + default-branch hardening (issue #122) ----------------
-
 # Pass-2 fetch fails (unreachable origin). Default behavior MUST abort
 # non-zero so a stale [gone] marker can't drive a deletion against a
 # stale origin/main snapshot. Also asserts the gone-marker branch is
