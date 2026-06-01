@@ -22,6 +22,19 @@ run_case() {
   local want_absent="$1"; shift  # regex stdout must NOT match (or empty)
   local setup="$1"; shift        # bash function name
 
+  _run "$name" "$want_match" "$want_absent" "$setup" 0 --dry-run
+}
+
+# Extended runner: caller controls expected exit code and script args.
+# Lets fetch-failure cases assert exit != 0 without changing the legacy runner.
+_run() {
+  local name="$1"; shift
+  local want_match="$1"; shift
+  local want_absent="$1"; shift
+  local setup="$1"; shift
+  local want_exit="$1"; shift
+  # Remaining args ($@) are passed to the script under test.
+
   tmp=$(mktemp -d)
   pushd "$tmp" >/dev/null
 
@@ -46,11 +59,11 @@ EOF
 
   "$setup"
 
-  out=$(PATH="$tmp/bin:$PATH" bash "$script" --dry-run 2>&1) && got_exit=0 || got_exit=$?
+  out=$(PATH="$tmp/bin:$PATH" bash "$script" "$@" 2>&1) && got_exit=0 || got_exit=$?
 
   ok=1
-  if [ "$got_exit" != 0 ]; then
-    echo "FAIL $name: exit=$got_exit"
+  if [ "$got_exit" != "$want_exit" ]; then
+    echo "FAIL $name: exit=$got_exit want $want_exit"
     echo "  output: $out"
     ok=0
   fi
@@ -65,6 +78,16 @@ EOF
     ok=0
   fi
 
+  # Setups may set verify_branch_still_exists to assert a branch
+  # survived (catches false-positive deletions that a stdout grep alone
+  # would miss).
+  if [ "${verify_branch_still_exists:-}" != "" ]; then
+    if ! git rev-parse --verify "refs/heads/$verify_branch_still_exists" >/dev/null 2>&1; then
+      echo "FAIL $name: branch $verify_branch_still_exists missing (should be preserved)"
+      ok=0
+    fi
+  fi
+
   if [ $ok -eq 1 ]; then
     pass=$((pass + 1))
     echo "PASS $name"
@@ -75,6 +98,7 @@ EOF
   popd >/dev/null  # leave work
   popd >/dev/null  # leave tmp
   rm -rf "$tmp"
+  unset verify_branch_still_exists
 }
 
 # Local branch `foo` pushed as `bar`, bar merged-and-pruned on origin.
@@ -153,6 +177,107 @@ run_case no_upstream_skipped      ''                                          'w
 run_case current_branch_protected ''                                          'would delete branch stuck'        case_current_branch_protected
 run_case main_protected           ''                                          'would delete branch main'         case_main_protected
 run_case unmerged_gone_preserved  'skip lost-work \(upstream gone but not merged' 'would delete branch lost-work' case_unmerged_gone_preserved
+
+# --- Fetch-failure + default-branch hardening (issue #122) ----------------
+
+# Pass-2 fetch fails (unreachable origin). Default behavior MUST abort
+# non-zero so a stale [gone] marker can't drive a deletion against a
+# stale origin/main snapshot. Also asserts the gone-marker branch is
+# preserved (no deletion) and the error message names the failure.
+case_fetch_failure_aborts() {
+  git checkout -q -b foo
+  git commit -q --allow-empty -m foo-work
+  git push -q -u origin foo:bar
+  pushd ../origin.git >/dev/null
+  git update-ref refs/heads/main refs/heads/bar
+  git update-ref -d refs/heads/bar
+  popd >/dev/null
+  git fetch -q --prune
+  git checkout -q main
+  # Break origin AFTER local [gone] marker is set: subsequent fetch fails.
+  git remote set-url origin "$tmp/does-not-exist.git"
+  # Real script (not --dry-run) so the failure path runs unconditionally.
+  verify_branch_still_exists=foo
+}
+
+# --allow-stale converts the fetch failure into a warning + skipped
+# pass-2. Pass 1 still completes (exit 0). The gone-marker branch is
+# preserved because pass 2 never runs.
+case_fetch_failure_allow_stale() {
+  git checkout -q -b foo
+  git commit -q --allow-empty -m foo-work
+  git push -q -u origin foo:bar
+  pushd ../origin.git >/dev/null
+  git update-ref refs/heads/main refs/heads/bar
+  git update-ref -d refs/heads/bar
+  popd >/dev/null
+  git fetch -q --prune
+  git checkout -q main
+  git remote set-url origin "$tmp/does-not-exist.git"
+  verify_branch_still_exists=foo
+}
+
+# Repo whose default branch is `trunk` (not `main`). Two branches:
+#   - foo:  merged into trunk via PR-style update — must be deleted.
+#   - keep: never merged into trunk — must be preserved.
+# A script that hard-codes `main` looks up an empty main_sha, skips the
+# ancestry check, and falsely deletes `keep`. The fix discovers trunk
+# via origin/HEAD and runs the ancestry check against origin/trunk.
+case_non_main_default_branch() {
+  # Tear down the default-main setup the runner created and rebuild
+  # the work clone with trunk as origin/HEAD.
+  popd >/dev/null  # leave work
+  rm -rf work
+  pushd origin.git >/dev/null
+  git symbolic-ref HEAD refs/heads/trunk
+  git update-ref refs/heads/trunk refs/heads/main
+  git update-ref -d refs/heads/main
+  popd >/dev/null
+  git clone -q origin.git work
+  pushd work >/dev/null
+  git config user.email t@t
+  git config user.name t
+  # foo: merged-and-pruned into trunk.
+  git checkout -q -b foo
+  git commit -q --allow-empty -m foo-work
+  git push -q -u origin foo:bar
+  pushd ../origin.git >/dev/null
+  git update-ref refs/heads/trunk refs/heads/bar
+  git update-ref -d refs/heads/bar
+  popd >/dev/null
+  # keep: gone upstream but never merged into trunk.
+  git checkout -q trunk
+  git pull -q --ff-only
+  git checkout -q -b keep
+  git commit -q --allow-empty -m unmerged-work
+  git push -q -u origin keep:remote-keep
+  pushd ../origin.git >/dev/null
+  git update-ref -d refs/heads/remote-keep
+  popd >/dev/null
+  git fetch -q --prune
+  git checkout -q trunk
+}
+
+# --dry-run honored in pass 2: gone-upstream candidate is logged but
+# branch survives (test #1 covers the log; this one verifies the
+# filesystem side and re-asserts dry-run end-to-end).
+case_dry_run_no_deletion() {
+  git checkout -q -b foo
+  git commit -q --allow-empty -m foo-work
+  git push -q -u origin foo:bar
+  pushd ../origin.git >/dev/null
+  git update-ref refs/heads/main refs/heads/bar
+  git update-ref -d refs/heads/bar
+  popd >/dev/null
+  git fetch -q --prune
+  git checkout -q main
+  verify_branch_still_exists=foo
+}
+
+_run fetch_failure_default_aborts             'fetch failed' 'would delete branch foo' case_fetch_failure_aborts             1
+_run fetch_failure_allow_stale_skips_second_pass 'allow-stale' 'would delete branch foo' case_fetch_failure_allow_stale       0 --dry-run --allow-stale
+_run non_main_default_branch                  'would delete branch foo \(upstream gone\)' 'would delete branch keep' case_non_main_default_branch       0 --dry-run
+_run dry_run_second_pass_no_deletion          'would delete branch foo \(upstream gone\)' '' case_dry_run_no_deletion           0 --dry-run
 
 echo
 echo "summary: $pass passed, $failed failed"
