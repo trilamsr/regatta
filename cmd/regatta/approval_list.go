@@ -44,7 +44,7 @@ func runApprovalListWith(deps approvalListDeps, args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *formatFlag != "table" && *formatFlag != "json" {
+	if *formatFlag != "table" && *formatFlag != logFormatJSON {
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta approval list: --format must be table|json, got %q\n", *formatFlag)
 		return 2
 	}
@@ -71,7 +71,7 @@ func runApprovalListWith(deps approvalListDeps, args []string) int {
 		approvals = filtered
 	}
 
-	if *formatFlag == "json" {
+	if *formatFlag == logFormatJSON {
 		return emitApprovalsJSON(deps.Stdout, approvals)
 	}
 	return emitApprovalsTable(deps.Stdout, approvals)

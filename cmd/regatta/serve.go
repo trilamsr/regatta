@@ -7,6 +7,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"os"
@@ -29,6 +30,44 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/program"
 )
+
+// defaultLogFormat is the value used when --log-format is omitted —
+// the `text (default)` contract from #117.
+const defaultLogFormat = "text"
+
+// logFormatJSON is the operator-facing `json` token, shared by both
+// `serve --log-format=json` and `approval list --format=json`.
+// Renaming it is a deliberate CLI change.
+const logFormatJSON = "json"
+
+// newLogHandler is the single source of truth for accepted
+// --log-format values; logFormatFlag.Set delegates here so the
+// valid-set lives in one switch.
+func newLogHandler(format string, w io.Writer) (slog.Handler, error) {
+	switch format {
+	case defaultLogFormat:
+		return slog.NewTextHandler(w, nil), nil
+	case logFormatJSON:
+		return slog.NewJSONHandler(w, nil), nil
+	default:
+		return nil, fmt.Errorf("invalid log format %q (want %s|%s)", format, defaultLogFormat, logFormatJSON)
+	}
+}
+
+// logFormatFlag validates `--log-format=text|json` at Parse time so
+// flag.ExitOnError surfaces a clear error + exit 2 before any startup
+// work happens (#117).
+type logFormatFlag string
+
+func (l *logFormatFlag) String() string { return string(*l) }
+
+func (l *logFormatFlag) Set(s string) error {
+	if _, err := newLogHandler(s, io.Discard); err != nil {
+		return fmt.Errorf("--log-format: %w", err)
+	}
+	*l = logFormatFlag(s)
+	return nil
+}
 
 // laneCapsFlag implements flag.Value for repeated `-lane name:cap` flags.
 type laneCapsFlag map[string]int
@@ -72,13 +111,19 @@ func runServe(args []string) int {
 	baseRef := fs.String("base-ref", "HEAD", "Git ref a new agent worktree branches from")
 	laneCaps := laneCapsFlag{}
 	fs.Var(laneCaps, "lane", "Per-lane concurrency cap, repeatable (e.g. -lane server:1)")
+	logFormat := logFormatFlag(defaultLogFormat)
+	fs.Var(&logFormat, "log-format", "Structured-log handler: text | json")
 	_ = fs.Parse(args)
 
 	logger := log.New(os.Stderr, "regatta: ", log.LstdFlags|log.Lmicroseconds)
-	// slogger is the structured-logging sink for orchestrator + future
-	// scheduler/spawner/reaper wiring (obs-101). Task E will replace
-	// this default text handler with --log-format-controlled JSON.
-	slogger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+	// logFormat was validated at Parse-time; the err branch fires only
+	// if logFormatFlag.Set and newLogHandler ever drift.
+	handler, err := newLogHandler(string(logFormat), os.Stderr)
+	if err != nil {
+		logger.Printf("log-format: %v", err)
+		return 2
+	}
+	slogger := slog.New(handler)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
