@@ -81,7 +81,7 @@ func TestSync_UpsertsAdapterItems(t *testing.T) {
 		{ID: "ITEM-2", Kind: schemas.KindFeature, Title: "b", Lane: "client", Status: schemas.StatusPlanned},
 	}}
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-	syncer := adaptersync.New(adapter, db)
+	syncer := adaptersync.New(adaptersync.Config{Adapter: adapter, DB: db})
 
 	if err := syncer.Sync(context.Background(), now); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -133,7 +133,7 @@ func TestSync_TombstonesMissingOnSecondTick(t *testing.T) {
 		{ID: "ITEM-2", Kind: schemas.KindFeature, Title: "b", Lane: "server", Status: schemas.StatusPlanned},
 	}}
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-	syncer := adaptersync.New(adapter, db)
+	syncer := adaptersync.New(adaptersync.Config{Adapter: adapter, DB: db})
 
 	if err := syncer.Sync(context.Background(), now); err != nil {
 		t.Fatal(err)
@@ -167,7 +167,7 @@ func TestSync_SkipsUnmappableStatus(t *testing.T) {
 		{ID: "BAD-STATUS", Kind: schemas.KindFeature, Title: "bad", Lane: "server", Status: schemas.StatusInProgress},
 	}}
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-	syncer := adaptersync.New(adapter, db)
+	syncer := adaptersync.New(adaptersync.Config{Adapter: adapter, DB: db})
 
 	if err := syncer.Sync(context.Background(), now); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -198,7 +198,7 @@ func TestSync_SkipsUnmappableKind(t *testing.T) {
 		{ID: "BAD-KIND", Kind: schemas.WorkItemKind("garbage"), Title: "x", Lane: "server", Status: schemas.StatusPlanned},
 	}}
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-	syncer := adaptersync.New(adapter, db)
+	syncer := adaptersync.New(adaptersync.Config{Adapter: adapter, DB: db})
 
 	if err := syncer.Sync(context.Background(), now); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -219,7 +219,7 @@ func TestSync_SkipsEmptyLane(t *testing.T) {
 		{ID: "BAD-LANE", Kind: schemas.KindFeature, Title: "x", Lane: "", Status: schemas.StatusPlanned},
 	}}
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-	syncer := adaptersync.New(adapter, db)
+	syncer := adaptersync.New(adaptersync.Config{Adapter: adapter, DB: db})
 
 	if err := syncer.Sync(context.Background(), now); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -244,12 +244,12 @@ func TestSync_EmptyListSkipsTombstone(t *testing.T) {
 	seed := &stubAdapter{items: []schemas.WorkItem{
 		{ID: "SEED", Kind: schemas.KindFeature, Title: "s", Lane: "server", Status: schemas.StatusPlanned},
 	}}
-	if err := adaptersync.New(seed, db).Sync(context.Background(), now); err != nil {
+	if err := adaptersync.New(adaptersync.Config{Adapter: seed, DB: db}).Sync(context.Background(), now); err != nil {
 		t.Fatalf("seed Sync: %v", err)
 	}
 
 	empty := &stubAdapter{items: nil}
-	if err := adaptersync.New(empty, db).Sync(context.Background(), now.Add(time.Minute)); err != nil {
+	if err := adaptersync.New(adaptersync.Config{Adapter: empty, DB: db}).Sync(context.Background(), now.Add(time.Minute)); err != nil {
 		t.Fatalf("empty Sync: %v", err)
 	}
 
@@ -276,7 +276,7 @@ func TestSync_DedupsDuplicateIDsInSameTick(t *testing.T) {
 		{ID: "DUP", Kind: schemas.KindFeature, Title: "second", Lane: "server", Status: schemas.StatusPlanned},
 	}}
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-	syncer := adaptersync.New(adapter, db)
+	syncer := adaptersync.New(adaptersync.Config{Adapter: adapter, DB: db})
 
 	if err := syncer.Sync(context.Background(), now); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -307,7 +307,7 @@ func TestSync_CascadeReconcilerConverges(t *testing.T) {
 	seed := &stubAdapter{items: []schemas.WorkItem{
 		{ID: "PROG-X", Kind: schemas.KindProgram, Title: "p", Lane: "server", Status: schemas.StatusPlanned},
 	}}
-	if err := adaptersync.New(seed, db).Sync(ctx, t0); err != nil {
+	if err := adaptersync.New(adaptersync.Config{Adapter: seed, DB: db}).Sync(ctx, t0); err != nil {
 		t.Fatalf("seed Sync: %v", err)
 	}
 	// Children come from a different writer (BriefLoader in
@@ -337,7 +337,7 @@ func TestSync_CascadeReconcilerConverges(t *testing.T) {
 	next := &stubAdapter{items: []schemas.WorkItem{
 		{ID: "KEEP", Kind: schemas.KindFeature, Title: "k", Lane: "server", Status: schemas.StatusPlanned},
 	}}
-	if err := adaptersync.New(next, db).Sync(ctx, t0.Add(time.Minute)); err != nil {
+	if err := adaptersync.New(adaptersync.Config{Adapter: next, DB: db}).Sync(ctx, t0.Add(time.Minute)); err != nil {
 		t.Fatalf("next Sync: %v", err)
 	}
 
@@ -351,7 +351,7 @@ func TestSync_CascadeReconcilerConverges(t *testing.T) {
 		}
 	}
 
-	if err := adaptersync.New(next, db).Sync(ctx, t0.Add(2*time.Minute)); err != nil {
+	if err := adaptersync.New(adaptersync.Config{Adapter: next, DB: db}).Sync(ctx, t0.Add(2*time.Minute)); err != nil {
 		t.Fatalf("idempotent Sync: %v", err)
 	}
 }
@@ -370,7 +370,7 @@ func TestSync_CascadeReconciler_EmitsPerChildEvent(t *testing.T) {
 	seed := &stubAdapter{items: []schemas.WorkItem{
 		{ID: "PROG-Y", Kind: schemas.KindProgram, Title: "p", Lane: "server", Status: schemas.StatusPlanned},
 	}}
-	if err := adaptersync.New(seed, db).Sync(ctx, t0); err != nil {
+	if err := adaptersync.New(adaptersync.Config{Adapter: seed, DB: db}).Sync(ctx, t0); err != nil {
 		t.Fatalf("seed Sync: %v", err)
 	}
 	for _, id := range []string{"CHILD-1", "CHILD-2", "CHILD-3"} {
@@ -390,7 +390,7 @@ func TestSync_CascadeReconciler_EmitsPerChildEvent(t *testing.T) {
 	next := &stubAdapter{items: []schemas.WorkItem{
 		{ID: "KEEP", Kind: schemas.KindFeature, Title: "k", Lane: "server", Status: schemas.StatusPlanned},
 	}}
-	if err := adaptersync.New(next, db).Sync(ctx, t0.Add(time.Minute)); err != nil {
+	if err := adaptersync.New(adaptersync.Config{Adapter: next, DB: db}).Sync(ctx, t0.Add(time.Minute)); err != nil {
 		t.Fatalf("next Sync: %v", err)
 	}
 
@@ -424,14 +424,14 @@ func TestSync_LogFieldRenamedToCutoff(t *testing.T) {
 	seed := &stubAdapter{items: []schemas.WorkItem{
 		{ID: "TOMB-ME", Kind: schemas.KindFeature, Title: "x", Lane: "server", Status: schemas.StatusPlanned},
 	}}
-	if err := adaptersync.New(seed, db).Sync(ctx, t0); err != nil {
+	if err := adaptersync.New(adaptersync.Config{Adapter: seed, DB: db}).Sync(ctx, t0); err != nil {
 		t.Fatal(err)
 	}
 
 	next := &stubAdapter{items: []schemas.WorkItem{
 		{ID: "KEEP", Kind: schemas.KindFeature, Title: "k", Lane: "server", Status: schemas.StatusPlanned},
 	}}
-	if err := adaptersync.New(next, db).Sync(ctx, t0.Add(time.Minute)); err != nil {
+	if err := adaptersync.New(adaptersync.Config{Adapter: next, DB: db}).Sync(ctx, t0.Add(time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -464,7 +464,7 @@ func TestAdapterSync_LoggerInjected(t *testing.T) {
 		{ID: "BAD", Kind: schemas.KindFeature, Title: "x", Lane: "server", Status: schemas.StatusInProgress},
 	}}
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-	syncer := adaptersync.NewWithLogger(adapter, db, logger)
+	syncer := adaptersync.New(adaptersync.Config{Adapter: adapter, DB: db, Logger: logger})
 
 	if err := syncer.Sync(context.Background(), now); err != nil {
 		t.Fatalf("Sync: %v", err)

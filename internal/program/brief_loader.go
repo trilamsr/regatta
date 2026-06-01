@@ -217,6 +217,32 @@ func projectV2ToV1(v2 *ProgramBriefV2) *ProgramBrief {
 	return &out
 }
 
+// BriefLoaderConfig holds dependencies for a BriefLoader. Mirrors the
+// Config.Logger DI pattern used by orchestrator, scheduler, and reaper
+// so all components share one injection shape.
+type BriefLoaderConfig struct {
+	// FS is the briefs directory. Typically
+	// os.DirFS(filepath.Join(repoRoot, ".regatta", "programs")) in
+	// production and fstest.MapFS in tests. Required.
+	FS fs.FS
+
+	// DB is the universal state store. Required.
+	DB *state.DB
+
+	// Keyring maps key-id → HMAC secret for VerifySignature. Required.
+	Keyring map[string][]byte
+
+	// Evaluator is the shared *EdgeEvaluator handed to the scheduler.
+	// Sync warms its compile cache on v2 edges; nil skips the warm
+	// pass (legal for v1-only deployments and tests).
+	Evaluator *EdgeEvaluator
+
+	// Logger is the structured-event sink for brief-rejection
+	// diagnostics. Nil falls back to slog.Default() so embedded
+	// callers still get output without panicking (spec §4.1 + §5.7).
+	Logger *slog.Logger
+}
+
 // BriefLoader is the recurring sync. Construct once at orchestrator
 // boot; Sync once per PollOnce tick.
 //
@@ -224,17 +250,6 @@ func projectV2ToV1(v2 *ProgramBriefV2) *ProgramBrief {
 // the scheduler's OutputsSchemaResolver reads. They are rebuilt from
 // scratch on every Sync so a re-plan that drops feature F-X removes
 // F-X's schema entry by next tick (cross-brief staleness defence).
-//
-// evaluator is the shared *EdgeEvaluator handed to the scheduler. Sync
-// warms its compile cache on v2 edges so the first scheduler tick sees
-// hot predicates; passing nil disables the warm pass (legal for v1-only
-// deployments and the pollonce_test harness).
-//
-// log is the structured-event sink for brief-rejection diagnostics.
-// Injected via NewBriefLoaderWithLogger; NewBriefLoader defaults to
-// slog.Default() so embedded callers still get output without
-// panicking (spec §4.1 + §5.7). All package-level slog.* calls were
-// retired in #101 task H.
 type BriefLoader struct {
 	fsys      fs.FS
 	db        *state.DB
@@ -247,40 +262,21 @@ type BriefLoader struct {
 	programByFeature map[FeatureID]string
 }
 
-// NewBriefLoader constructs a BriefLoader. fsys is typically
-// os.DirFS(filepath.Join(repoRoot, ".regatta", "programs")) in
-// production and fstest.MapFS in tests. No clock argument: timestamps
-// are threaded through Sync's pollStartedAt and passed into the
-// state APIs explicitly, mirroring the AdapterSync DI pattern from
-// commit 3741f0a — concurrent producers can no longer race on the
-// DB's constructor-bound clock.
-//
-// evaluator may be nil — v1-only deployments and tests pass nil to
-// skip the v2 compile-cache warm pass. Production wiring shares the
-// same *EdgeEvaluator instance between the loader and the scheduler
-// so the cache survives across ticks.
-//
-// The structured-event sink defaults to slog.Default(); production
-// wiring should prefer NewBriefLoaderWithLogger so test capture
-// handlers and the off-host audit sink (#101 follow-up) can intercept
-// records.
-func NewBriefLoader(fsys fs.FS, db *state.DB, keyring map[string][]byte, evaluator *EdgeEvaluator) *BriefLoader {
-	return NewBriefLoaderWithLogger(fsys, db, keyring, evaluator, nil)
-}
-
-// NewBriefLoaderWithLogger constructs a BriefLoader with an explicit
-// structured log sink. nil logger falls back to slog.Default()
-// (spec §4.1).
-func NewBriefLoaderWithLogger(fsys fs.FS, db *state.DB, keyring map[string][]byte, evaluator *EdgeEvaluator, logger *slog.Logger) *BriefLoader {
-	if logger == nil {
-		logger = slog.Default()
+// NewBriefLoader constructs a BriefLoader from a BriefLoaderConfig.
+// Timestamps are threaded through Sync's pollStartedAt rather than
+// held here, mirroring the AdapterSync DI pattern — concurrent
+// producers cannot race on a constructor-bound clock.
+func NewBriefLoader(cfg BriefLoaderConfig) *BriefLoader {
+	log := cfg.Logger
+	if log == nil {
+		log = slog.Default()
 	}
 	return &BriefLoader{
-		fsys:             fsys,
-		db:               db,
-		keyring:          keyring,
-		evaluator:        evaluator,
-		log:              logger,
+		fsys:             cfg.FS,
+		db:               cfg.DB,
+		keyring:          cfg.Keyring,
+		evaluator:        cfg.Evaluator,
+		log:              log,
 		outputsSchemas:   map[FeatureID]*OutputsSchema{},
 		programByFeature: map[FeatureID]string{},
 	}

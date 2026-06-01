@@ -194,7 +194,7 @@ func keysOf(m map[string][]byte) []string {
 // features, absence otherwise. Without this, scheduler.Config.OutputsSchemas
 // silently returns nil and predicates evaluate against an empty env.
 func TestOutputsSchemaResolverFor(t *testing.T) {
-	loader := program.NewBriefLoader(nil, nil, map[string][]byte{"k1": []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")}, program.NewEdgeEvaluator())
+	loader := program.NewBriefLoader(program.BriefLoaderConfig{Keyring: map[string][]byte{"k1": []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")}, Evaluator: program.NewEdgeEvaluator()})
 	resolver := outputsSchemaResolverFor(loader)
 	if _, ok := resolver("F-NOPE"); ok {
 		t.Fatalf("unknown feature: resolver returned ok=true")

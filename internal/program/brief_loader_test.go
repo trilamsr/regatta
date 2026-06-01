@@ -311,7 +311,7 @@ func TestBriefLoaderSync_UpsertsThreeChildren(t *testing.T) {
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	seedParent(t, db, "PROG-1", now)
 
-	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, nil)
+	loader := NewBriefLoader(BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}})
 
 	if err := loader.Sync(context.Background(), now); err != nil {
 		t.Fatalf("Sync: %v", err)
@@ -338,7 +338,7 @@ func TestBriefLoaderSync_SkipsTmpFiles(t *testing.T) {
 	fsys := fstest.MapFS{"PROG-1.json.tmp": &fstest.MapFile{Data: raw}}
 
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, nil)
+	loader := NewBriefLoader(BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}})
 	if err := loader.Sync(context.Background(), now); err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +357,7 @@ func TestBriefLoaderSync_TombstonesMissingBrief(t *testing.T) {
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	seedParent(t, db, "PROG-1", t0)
 
-	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key}, nil)
+	loader := NewBriefLoader(BriefLoaderConfig{FS: files, DB: db, Keyring: map[string][]byte{"key-1": key}})
 	if err := loader.Sync(context.Background(), t0); err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +388,7 @@ func TestBriefLoaderSync_TombstoneLogsCutoff(t *testing.T) {
 
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	seedParent(t, db, "PROG-1", t0)
-	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key}, nil)
+	loader := NewBriefLoader(BriefLoaderConfig{FS: files, DB: db, Keyring: map[string][]byte{"key-1": key}})
 	if err := loader.Sync(context.Background(), t0); err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +431,7 @@ func TestBriefLoaderSync_CrossBriefFeatureIDCollision(t *testing.T) {
 	}
 
 	logs := captureLogs(t)
-	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, nil)
+	loader := NewBriefLoader(BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}})
 	if err := loader.Sync(context.Background(), t0); err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +463,7 @@ func TestBriefLoaderSync_RejectsUnknownParent(t *testing.T) {
 
 	logs := captureLogs(t)
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, nil)
+	loader := NewBriefLoader(BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}})
 	if err := loader.Sync(context.Background(), now); err != nil {
 		t.Fatal(err)
 	}
@@ -487,7 +487,7 @@ func TestBriefLoaderSync_StaleBriefRejected(t *testing.T) {
 	_, raw := mustSignedBrief(t, key) // ProducedAt = t0
 	files := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
 
-	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key}, nil)
+	loader := NewBriefLoader(BriefLoaderConfig{FS: files, DB: db, Keyring: map[string][]byte{"key-1": key}})
 	if err := loader.Sync(context.Background(), t0); err != nil {
 		t.Fatal(err)
 	}
@@ -536,7 +536,7 @@ func seedFeature(t *testing.T, db *state.DB, id, parent string, deps []string, s
 // freshBriefLoader returns a loader with no fsys content (Sync just
 // runs the reconciler). The reconciler is independent of any brief.
 func freshBriefLoader(db *state.DB) *BriefLoader {
-	return NewBriefLoader(fstest.MapFS{}, db, map[string][]byte{"key-1": []byte("k")}, nil)
+	return NewBriefLoader(BriefLoaderConfig{FS: fstest.MapFS{}, DB: db, Keyring: map[string][]byte{"key-1": []byte("k")}})
 }
 
 // Note for cascade-dep tests: seed timestamps must equal pollStartedAt
@@ -697,7 +697,7 @@ func TestBriefLoaderSync_V2BriefUpsertsEdges(t *testing.T) {
 		}, t0)
 
 	fsys := fstest.MapFS{"PROG-V2.json": &fstest.MapFile{Data: raw}}
-	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, NewEdgeEvaluator())
+	loader := NewBriefLoader(BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}, Evaluator: NewEdgeEvaluator()})
 	if err := loader.Sync(context.Background(), t0); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -765,7 +765,7 @@ func TestBriefLoaderSync_V2BriefStoresOutputsSchemas(t *testing.T) {
 		}, t0)
 	fsys := fstest.MapFS{"PROG-V2.json": &fstest.MapFile{Data: raw}}
 
-	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, NewEdgeEvaluator())
+	loader := NewBriefLoader(BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}, Evaluator: NewEdgeEvaluator()})
 	if err := loader.Sync(context.Background(), t0); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -812,7 +812,7 @@ func TestBriefLoaderSync_V2BriefRejectionDoesNotWriteEdges(t *testing.T) {
 	fsys := fstest.MapFS{"PROG-V2-BAD.json": &fstest.MapFile{Data: raw}}
 
 	logs := captureLogs(t)
-	loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, NewEdgeEvaluator())
+	loader := NewBriefLoader(BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}, Evaluator: NewEdgeEvaluator()})
 	if err := loader.Sync(context.Background(), t0); err != nil {
 		t.Fatalf("Sync: %v", err)
 	}
@@ -857,7 +857,7 @@ func TestBriefLoaderSync_V2SchemaStalePurged(t *testing.T) {
 			{PlannedFeature: PlannedFeature{ID: "F-B", Title: "remediate"}},
 		}, t0)
 	files := fstest.MapFS{"PROG-V2.json": &fstest.MapFile{Data: rawT0}}
-	loader := NewBriefLoader(files, db, map[string][]byte{"key-1": key}, NewEdgeEvaluator())
+	loader := NewBriefLoader(BriefLoaderConfig{FS: files, DB: db, Keyring: map[string][]byte{"key-1": key}, Evaluator: NewEdgeEvaluator()})
 	if err := loader.Sync(context.Background(), t0); err != nil {
 		t.Fatalf("Sync 1: %v", err)
 	}
@@ -926,7 +926,7 @@ func TestBriefLoader_LoggerInjected(t *testing.T) {
 	fsys := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
 
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
-	loader := NewBriefLoaderWithLogger(fsys, db, map[string][]byte{"key-1": key}, nil, logger)
+	loader := NewBriefLoader(BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}, Logger: logger})
 
 	if err := loader.Sync(context.Background(), now); err != nil {
 		t.Fatalf("Sync: %v", err)

@@ -100,7 +100,7 @@ func BenchmarkBriefLoaderSync(b *testing.B) {
 			silenceSlog(b)
 			db := newBriefBenchDB(b)
 			fsys := seedBriefCorpus(b, db, n, key)
-			loader := NewBriefLoader(fsys, db, map[string][]byte{"key-1": key}, nil)
+			loader := NewBriefLoader(BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}})
 			base := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC).Add(time.Hour)
 			ctx := context.Background()
 
