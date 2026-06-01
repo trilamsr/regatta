@@ -16,15 +16,17 @@ BOOT
 4. Read MEMORY.md + AGENTS.md (auto-loaded). Recover docs/superpowers/ per AGENTS.md recipe if needed.
 
 PRIORITY (top-down, skip if blocked)
-1. #114 approval-gates Wave 1 — umbrella issue body has locked design decisions (HMAC token format, atomic decide tx, escalation semantics, fold ordering, etc.). Spec exists locally at docs/superpowers/specs/2026-05-31-mvp-approval-gates.md but is gitignored — recover via AGENTS.md recipe OR rebuild from #114 body. Wave 1 = migration 0004 (approvals + approval_events) + state ops + HMAC token issue/verify (reuses contracts/schemas/sign.go:macSum) + notifier adapter stub interface. File-disjoint, 4 parallel implementers.
-2. #115 normalize logger-injection pattern to Config.Logger (#101 cleanup; mechanical ~15 call sites)
-3. #117 --log-format=text|json flag (A+ tier for #101; small, single-file)
-4. #99-#100 spawner determinism + reconciler (MVP-2 followups, load-bearing for approval-gates Wave 2)
-5. Other open follow-ups (#82-#118) by load-bearing weight
+1. #114 approval-gates remaining waves — Wave 1 + 2 + much of 3 already shipped (see "Already shipped" below). Remaining: Wave 3 A4 (scheduler integration — extend tick w/ gate-pass per spec §3.1), Wave 4 (e2e + ops runbook), Wave 5 (operator doc + property tests). Spec at docs/superpowers/specs/2026-05-31-mvp-approval-gates.md (gitignored — recover via AGENTS.md recipe or rebuild from #114 body).
+2. Open follow-up issues #115-#148 by load-bearing weight — many are A+ tier rubric checkboxes from earlier waves (mutation testing, fuzz, key-rotation drill, etc.). Triage via `gh issue list --state open` and pick highest UX impact per feedback_decision_priority.
+3. MVP-3 next-level — design brief written at docs/superpowers/briefs/2026-05-31-mvp-3-next-level.md (gitignored). Top-3 wedges: W6 OTel + GenAI semconv observability backbone, W7 operator web UI, W8 OPA RBAC + multi-tenant. W6 unblocks W7+W9+W10+W12; spawn design subagent on W6 spec FIRST. Brief §8 carries a ready-to-paste design-subagent bootstrap prompt.
+4. #99-#100 spawner determinism + reconciler (MVP-2 followups, load-bearing for approval-gates Wave 3 A4 scheduler integration)
 
 Already shipped (do NOT redo):
 - #98 scheduler default-fallback bug — merged PR #112 (commit 7dbcbab)
 - #101 observability sweep — merged PR #113 (commit ab9f978)
+- #114 approval-gates Wave 1 — merged PRs #123 (HMAC token), #126 (migration + state ops), #127 (notifier interface + stub)
+- #114 approval-gates Wave 2 — merged PRs #143 (reaper + escalation), #144 (gate handler + fold + config)
+- #114 approval-gates Wave 3 partial — A5 (CLI decide/list) + A7 (config loader + CUE bump) dispatched, may have merged; check `gh pr list --state merged --search "Wave 3"`
 
 WORKFLOW per item
 1. Spawn design subagent → spec (w/ grade rubric per feedback_grade_rubric)
@@ -37,18 +39,20 @@ RULES (memory-bound; do not re-derive)
 - Subagents do everything: design, plan, impl, review, doc, PR-body drafting, issue filing, debugging. Main thread = dispatcher + integrator.
 - Decisions: NEVER ask user. Spawn review subagent + decide based on memory/feedback_decision_priority (UX > ease > best-practices > speed > velocity).
 - TDD strict (failing test FIRST, capture output)
-- adversarial-only review (drop_ceremony); skip review on PRs <100 LOC single-file or mechanical
+- adversarial review on EVERY PR before automerge fires; main session OR implementer subagent may enable automerge once reviewer-cleared AND all Risk-tier+ findings addressed (inline-fixed or filed as cited followup issues) per memory/feedback_review_before_automerge
+- Unaddressed load-bearing items in PR body → file tracking issues + cite numbers in PR before merge (memory/feedback_unaddressed_load_bearing)
+- Research + design: prefer adopting proven OSS over reimplementation. Priority order: user experience first, then quality bar matching reference systems, then ecosystem conventions, then long-term repo + user benefit (memory/feedback_research_design_principles). Every design-subagent prompt must cite this rule.
+- Spec deviations require design-subagent re-spawn (memory/feedback_spec_pattern_authority); never let implementer pick alternative
 - root-cause only, no workarounds
 - max parallel fan-out (memory/feedback_parallel_dispatch)
 - make pre-push-check before every push
-- automerge enabled per PR (gh pr merge N --auto --squash); next wave dispatches while CI runs
 - no AI signatures in commits/PRs
 
 WHEN BLOCKED
 - File [followup] issue + pick next priority. Never pause for user input.
 
 STOP CRITERIA (any one)
-- Approval-gates Wave 1+2 merged + Wave 3 dispatched
+- Approval-gates Wave 5 merged (full HITL flow shippable) OR MVP-3 W6 (OTel backbone) Wave 1 merged + Wave 2 dispatched
 - OR 3 critical PRs shipped this session
 - OR genuinely irreversible step required (tag signing, secret rotation, branch-protection downgrade)
 - OR context budget tight + Wave-mid (don't leave half-applied state)
