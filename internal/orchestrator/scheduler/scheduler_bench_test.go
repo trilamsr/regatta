@@ -72,13 +72,36 @@ func BenchmarkTick(b *testing.B) {
 	}
 }
 
+// BenchmarkTickEvalEdges fixture and background
+// ----------------------------------------------
+//
+// Why this bench exists: PR closing #98 swapped a tick-local
+// `nonDefaultAllFalse` accumulator for a post-loop ListEdgesFrom
+// re-read per pending-edge group (commit 7dbcbab). The pre-existing
+// BenchmarkTick exercises no-edge work items only, so the regression
+// on the multi-sibling-with-default shape was invisible. This bench
+// fans out N merged from_ids each with 2 non-default predicated
+// edges + 1 default + journal row, driving the fallback-fires branch
+// on every group so the new ListEdgesFrom call stays on the measured
+// path. Per-tick cost scales O(N) in the merged-fanout count.
+//
+// Tick-1 vs steady state: bench measures total Tick latency, not
+// just evalPendingEdges, because operators care about the full
+// poll-cycle budget. After tick 1 every edge is settled and the
+// per-tick ListPendingEdgesFromMerged returns empty — that is the
+// steady-state cost b.N - 1 of the runs measure. Tick 1 amortises
+// across b.N, which understates the regression for small b.N but
+// matches what a long-running orchestrator sees in practice.
+//
+// Baseline: pre-#98 commit 66816c9 on Apple M1 Max at
+// `-benchtime=5x -count=10`. If a future scheduler change pushes the
+// alloc-proxy regression past 5% vs that baseline, switch to the
+// CountNonDefaultEdgeStates aggregate query (the H2 alternative
+// tracked in #187) per issue #119's decision rule.
+
 // benchUnconditionalEvaluator marks every predicated edge fired=false
 // so the default-fallback branch in evalPendingEdges fires on the same
-// tick. This is the worst-case shape the #98 fix added — after each
-// group's inner loop, scheduler issues a fresh ListEdgesFrom against
-// the just-written rows to decide the default. Driving the
-// fallback-fires branch on every group keeps the post-loop sibling
-// re-read on the measured path.
+// tick — keeps the post-loop sibling re-read on the measured path.
 type benchUnconditionalEvaluator struct{}
 
 func (benchUnconditionalEvaluator) Eval(_ context.Context, _ state.EdgeRow, _ any, _ state.OutputJournalEntry) (bool, string, error) {
@@ -136,25 +159,7 @@ func seedFanoutWithDefault(b *testing.B, db *state.DB, n int) {
 	}
 }
 
-// BenchmarkTickEvalEdges times the #98 hot path — evalPendingEdges
-// over N merged from_ids each with 2 non-default predicated edges +
-// 1 default. The post-loop ListEdgesFrom (introduced by 7dbcbab to
-// survive partial-tick crashes) runs once per from_id, so per-tick
-// cost scales O(N) in the merged-fanout count.
-//
-// Bench captures total Tick latency, not just evalPendingEdges,
-// because operators care about the full poll-cycle budget. After tick
-// 1 every edge is settled and the per-tick ListPendingEdgesFromMerged
-// returns empty — that is the steady-state cost b.N - 1 of the runs
-// measure. Tick 1 amortises across b.N, which understates the
-// regression for small b.N but matches what a long-running
-// orchestrator sees in practice.
-//
-// Baseline is pre-#98 commit 66816c9 on Apple M1 Max at
-// `-benchtime=5x -count=10`. If a future scheduler change pushes the
-// alloc-proxy regression past 5% vs that baseline, switch to the
-// CountNonDefaultEdgeStates aggregate query (the H2 alternative
-// tracked in #187) per issue #119's decision rule.
+// BenchmarkTickEvalEdges times the #98 evalPendingEdges hot path; see the block comment above benchUnconditionalEvaluator for fixture, Tick-1 amortisation framing, and baseline.
 func BenchmarkTickEvalEdges(b *testing.B) {
 	sizes := []int{10, 100, 1000}
 	for _, n := range sizes {
