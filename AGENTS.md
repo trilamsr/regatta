@@ -85,12 +85,23 @@ belong in a topic note instead.
   a sub-process whose output is privileged. The review stack treats
   agent and human commits identically.
 
-- **Recovering working specs/plans across sessions.** Plan + spec
-  files under `docs/superpowers/` are gitignored (large + per-iteration
-  drafts; the final state lives in `docs/engineer/specs/` and
-  `docs/rfcs/`). To recover them on a fresh session:
-  `git show <commit>:docs/superpowers/plans/<file>.md > docs/superpowers/plans/<file>.md`.
-  Find the originating commit via `git log --all --oneline -- docs/superpowers/`.
+- **Promotion criteria for working docs.** `docs/superpowers/` is
+  gitignored per-iteration scratch; load-bearing content is promoted
+  to tracked locations under `docs/`:
+  - Strategic vision (briefs) → `docs/engineer/briefs/`
+    (e.g. `2026-05-31-mvp-3-next-level.md`).
+  - Locked design for the ACTIVE or NEXT wave → `docs/engineer/specs/`
+    (e.g. the substrate v2 spec, W7 v2 spec, W9 red-team spec,
+    adapter contracts spec, W6 OTel backbone spec). Each spec ends
+    with a B/A/A+ grade rubric; deviations require re-spawning the
+    design subagent per `memory/feedback_spec_pattern_authority`.
+  - Accepted decisions for SHIPPED milestones → `docs/rfcs/000N-*.md`
+    (e.g. RFC-0001 MVP-1 program publish, RFC-0002 MVP-2
+    conditional-DAG, RFC-0003 MVP-2 approval gates).
+  Per-iteration plans, dispatch prompts, working reviews, and
+  superseded specs stay in `docs/superpowers/` (one-shot, gitignored).
+  RFCs are self-contained -- a reader does not need to recover
+  superpowers/ content to understand a shipped decision.
 
 ## Topic index - repo-wide
 
