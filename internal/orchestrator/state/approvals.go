@@ -187,12 +187,14 @@ func (d *DB) AppendApprovalEvent(ctx context.Context, ev ApprovalEvent) error {
 	if len(payload) == 0 {
 		payload = json.RawMessage(`{}`)
 	}
+	var traceID string
+	PersistTraceIDFromContext(ctx, &traceID)
 	_, err := d.sql.ExecContext(ctx, `
 		INSERT INTO approval_events (
-			approval_id, ts, kind, actor, payload_json, token_jti
-		) VALUES (?, ?, ?, ?, ?, ?)`,
+			approval_id, ts, kind, actor, payload_json, token_jti, trace_id
+		) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		ev.ApprovalID, ev.Ts.UTC().Unix(), ev.Kind, ev.Actor,
-		string(payload), ev.TokenJTI,
+		string(payload), ev.TokenJTI, traceID,
 	)
 	if err != nil {
 		if isUniqueTokenConsume(err) {
