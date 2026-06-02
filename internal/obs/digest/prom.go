@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -96,9 +97,11 @@ func (s *PromSource) queryScalar(ctx context.Context, query string) (float64, bo
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode/100 != 2 {
-		// 5xx is treated as backend-down for banner purposes — the
-		// renderer needs to flag stale data to the operator.
-		return 0, resp.StatusCode == http.StatusNotFound
+		// Any non-2xx flips backendUp=false. 404 in particular catches
+		// an operator typo in DIGEST_PROM_URL — silently returning
+		// up=true on 404 would hide the misconfig behind all-zero
+		// metrics rendered as authoritative.
+		return 0, false
 	}
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -118,6 +121,15 @@ func (s *PromSource) queryScalar(ctx context.Context, query string) (float64, bo
 	}
 	f, err := strconv.ParseFloat(str, 64)
 	if err != nil {
+		return 0, true
+	}
+	// NaN / ±Inf sanitize to zero at the wire boundary. Prom emits
+	// these legitimately (empty histogram → histogram_quantile = NaN;
+	// zero-rate division → +Inf) but the renderer would either spit
+	// "NaN"/"+Inf" through %.2f (invalid YAML in strict parsers) or
+	// saturate int(+Inf) to MaxInt64 in tick_p95_ms. Treat as
+	// missing-metric: same shape as the empty-result-set branch above.
+	if math.IsNaN(f) || math.IsInf(f, 0) {
 		return 0, true
 	}
 	return f, true
