@@ -27,7 +27,7 @@ A+ SCORECARD
 - PHASE-S-RELAX: required only when `<PR-TYPE>` ∈ {feat}. Refactor / chore / docs / ci skip the scorecard.
 
 DOC-CHECK
-- Pre-push grep banned phrases (see `scripts/doc-check.sh` — 11 tokens incl. `robust`, `battle-tested`, `world-class`, `cutting-edge`, `production-grade`). Reword to falsifiable claims (version pin, benchmark, named reference). Per `feedback_doc_check_banned_phrases`.
+- Pre-push grep banned phrases — token list (11 entries) lives in `scripts/doc-check.sh` (`banned_tokens` array). Reword hits to falsifiable claims (version pin, benchmark, named reference). Per `feedback_doc_check_banned_phrases`.
 
 RELEASE NOTES
 - PR body MUST contain a ```release-notes ... ``` fence (one line: user-visible change OR `none (internal)`). Body-edit alone won't retrigger pr-lint — needs a new commit. Per `feedback_pr_body_release_notes_fence`.
