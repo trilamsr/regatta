@@ -70,6 +70,8 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 		maxChars = DefaultMaxDiffChars
 	}
 
+	inst := newInstruments(cfg.ResolveMeter())
+
 	gr := schemas.GateResult{
 		SchemaVersion: 1,
 		GateID:        cfg.GateID,
@@ -94,6 +96,10 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 		})
 		finalize(&gr, started)
 		emitVerdict(gr)
+		// Skip label per brief: nil-Invoker is a config-bug short-circuit;
+		// dashboards should distinguish it from a model-decided deny.
+		emitInvocations(ctx, inst, verdictLabelSkip, AllCategories)
+		inst.recordLatency(ctx, float64(gr.Telemetry.DurationMs))
 		return gr, err
 	}
 
@@ -128,6 +134,8 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 			gr.Verdict = schemas.VerdictAdvisory
 			finalize(&gr, started)
 			emitVerdict(gr)
+			emitInvocations(ctx, inst, verdictLabelNeedsReview, AllCategories)
+			inst.recordLatency(ctx, float64(gr.Telemetry.DurationMs))
 			return gr, nil
 		}
 		gr.Findings = append(gr.Findings, resp.Findings...)
@@ -154,10 +162,13 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 	// finding the primary actually returned, re-invoke with the alt
 	// model and drop any disputed finding the second opinion did NOT
 	// confirm. Second-opinion error fails-closed (keeps primary).
+	soFlipped := false
 	if disputed := ParseDisputes(in.PRBody); len(disputed) > 0 {
 		toReview := intersect(disputed, gr.Findings)
 		if len(toReview) > 0 {
 			soModel := ResolveSecondOpinionModel(cfg.SecondOpinionModel)
+			inst.recordSecondOpinion(ctx)
+			before := len(gr.Findings)
 			soResp, soErr := cfg.Invoker(ctx, InvokeRequest{
 				Model:    soModel,
 				Input:    in,
@@ -168,6 +179,10 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 				gr.Findings = mergeDisputed(gr.Findings, toReview, soResp.Findings)
 				gr.Telemetry.TokensInput += soResp.TokensIn
 				gr.Telemetry.TokensOutput += soResp.TokensOut
+				// Fire-and-flip: SO actually dropped a primary finding.
+				// Anything less (SO confirmed all disputed) is not an
+				// escalate per brief.
+				soFlipped = len(gr.Findings) < before
 			}
 		}
 	}
@@ -183,7 +198,29 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 
 	finalize(&gr, started)
 	emitVerdict(gr)
+	emitInvocations(ctx, inst, metricVerdict(gr.Verdict, soFlipped), AllCategories)
+	inst.recordLatency(ctx, float64(gr.Telemetry.DurationMs))
 	return gr, nil
+}
+
+// metricVerdict maps the gate verdict to the regatta.l4.invocations
+// label set. Second-opinion fire-and-flip overrides the schema verdict
+// with "escalate" so dashboards distinguish a dispute-driven downgrade
+// from an unflipped pass.
+func metricVerdict(v schemas.Verdict, soFlipped bool) string {
+	if soFlipped {
+		return verdictLabelEscalate
+	}
+	switch v {
+	case schemas.VerdictPass:
+		return verdictLabelAllow
+	case schemas.VerdictFail:
+		return verdictLabelDeny
+	case schemas.VerdictAdvisory:
+		return verdictLabelNeedsReview
+	default:
+		return verdictLabelSkip
+	}
 }
 
 func finalize(gr *schemas.GateResult, started time.Time) {

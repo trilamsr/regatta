@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"sync"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
@@ -31,13 +33,28 @@ const DefaultCacheCapacity = 64
 // disables caching (returns base unchanged) so the wrapper is safe
 // to compose unconditionally.
 //
+// meter is the OTel meter the cache emits regatta.l4.cache.hits +
+// regatta.l4.cache.misses against. Nil meter is safe — emits are
+// dropped to a noop so callers that opt out of telemetry get zero
+// overhead.
+//
 // Only successful invocations cache. Errors propagate uncached so
 // a transient model outage does not poison subsequent runs.
-func NewCachedInvoker(base Invoker, capacity int) Invoker {
+func NewCachedInvoker(base Invoker, capacity int, meter metric.Meter) Invoker {
 	if capacity <= 0 || base == nil {
 		return base
 	}
-	c := &invokerCache{base: base, cap: capacity, entries: map[string]*list.Element{}, order: list.New()}
+	var inst *instruments
+	if meter != nil {
+		inst = newInstruments(meter)
+	}
+	c := &invokerCache{
+		base:    base,
+		cap:     capacity,
+		entries: map[string]*list.Element{},
+		order:   list.New(),
+		inst:    inst,
+	}
 	return c.invoke
 }
 
@@ -52,13 +69,16 @@ type invokerCache struct {
 	mu      sync.Mutex
 	entries map[string]*list.Element
 	order   *list.List
+	inst    *instruments
 }
 
 func (c *invokerCache) invoke(ctx context.Context, req InvokeRequest) (InvokeResponse, error) {
 	key := cacheKey(req)
 	if hit, ok := c.get(key); ok {
+		c.inst.recordCacheHit(ctx)
 		return hit, nil
 	}
+	c.inst.recordCacheMiss(ctx)
 	resp, err := c.base(ctx, req)
 	if err != nil {
 		return resp, err
