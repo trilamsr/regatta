@@ -1,16 +1,17 @@
 ---
 id: WAVE-4-NIT-2
-title: brief §7 — Operator row dating fix (preview not GA)
+title: brief §7 Operator-row dating — RESOLVED in unified brief
 lane: self-host
-status: planned
-linked_artifact: https://github.com/trilamsr/regatta/pull/417
+status: closed-resolved
+linked_artifact: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md
+source_ref: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md §7.3
 ---
 
-Source: docs/engineer/reviews/2026-06-02-wave-4-amendments-review-of-414.md G2 (Operator Jan 2025 was preview, not GA)
+Source: unified next-horizon roadmap §7.3. The G2 nit targeted an "OpenAI Operator GA Jan 2025" row in the superseded wave-4 brief; that row does NOT appear in the unified brief. §7.3 lists "OpenAI Agents SDK + Google ADK + Microsoft Agent Framework" as a track-cluster without dating claims. Operator/CUA tracking moved into `wave-4-07-operator-cua-tracking.md` standing-check format, where dating discipline carries through.
 
-Brief: F4 amendment pins OpenAI Operator to `Jan 2025 OpenAI Operator GA`. Operator launched as research-preview Jan 2025 (Pro-tier only); broader availability shifted through 2025. The "GA" label is loose. One-word fix on the brief PR amendment commit: reword to `Jan 2025 launch (Pro preview) → broader availability through 2025`. Folds into the brief-PR (#401) amendment commit alongside G3/G4/G5.
+Status: closed-resolved (no row remains to re-date in the unified brief).
 
 ## Acceptance criteria
 
-- [planned] c1: Brief §7 Operator row text reworded to "Jan 2025 launch (Pro preview) → broader availability through 2025" (or equivalent honest framing) on the #401 amendment commit.
-- [planned] c2: `bash scripts/doc-check.sh` exits 0 with the reworded text in place.
+- [closed] c1: Verified — no "OpenAI Operator GA Jan 2025" row exists in the unified brief §7.3.
+- [closed] c2: WAVE-4-07 owns the Operator standing-track surface; dating discipline carries through there.

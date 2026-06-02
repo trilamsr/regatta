@@ -4,10 +4,11 @@ title: publish regatta as MCP server in official + GitHub registries
 lane: self-host
 status: planned
 dependencies: WAVE-4-01
-linked_artifact: https://github.com/trilamsr/regatta/pull/401
+linked_artifact: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md
+source_ref: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md §7.2 (Adopt — MCP Server Registry) + §5.4 (MCP read-only surface) + §11 MVR-2 dispatch list
 ---
 
-Source: docs/engineer/research/2026-06-02-wedge-wave-4-emerging-tech.md §4 (Adopt — MCP Server Registry + GitHub MCP Registry) + §7 (registry GA mid-2026)
+Source: unified next-horizon roadmap §7.2 (Adopt — Anthropic Claude Skills + MCP Server Registry) + §5.4 (consume + expose read-only MCP surface). Background context: `docs/engineer/research/2026-06-02-wedge-wave-4-emerging-tech.md` §4 + §7.
 
 Brief: Official MCP Server Registry (modelcontextprotocol.io) now lists 2k+ servers; GitHub MCP Registry adds discoverability inside GH workflows. Dual-publish (Claude Skill + MCP server) is the §4 recommendation, but the F7 maintenance-tax amendment gates the second channel on the first returning ≥10 installs/mo for two consecutive months. This item stays `planned` until WAVE-4-01's install-signal threshold trips. Scope at unblock: author MCP server manifest exposing regatta's orchestrator + adapter + gate primitives as MCP tools; submit to both registries. Source-neutrality note per F5: validate registry presence claims against the registries' own published catalogs (not vendor blogs).
 

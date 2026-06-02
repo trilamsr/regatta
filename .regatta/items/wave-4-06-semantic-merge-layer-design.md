@@ -4,12 +4,13 @@ title: semantic-merge layer above CRDT for P6+P9 blackboard
 lane: self-host
 status: planned
 dependencies: WAVE-4-03
-linked_artifact: https://github.com/trilamsr/regatta/pull/401
+linked_artifact: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md
+source_ref: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md §7.1 24-mo prediction (CRDT-mediated shared state) + §7.5 G4 (blackboard reducer layer reframe) + §11 MVR-3 dispatch list
 ---
 
-Source: docs/engineer/specs/2026-06-02-wave-4-amendments.md Lens-8 (semantic-merge gap; Yjs is the floor, L4 adversarial judge is the ceiling) + docs/engineer/research/2026-06-02-wedge-wave-4-emerging-tech.md §6
+Source: unified next-horizon roadmap §7.1 24-mo prediction + §7.5 G4 reframe ("blackboard reducer layer" not "semantic merge layer"). Background context: `docs/engineer/research/2026-06-02-wedge-wave-4-emerging-tech.md` §6.
 
-Brief: §6 24-mo prediction softened from "collapse two wedges into one library" to "substrate + semantic layer". CRDTs (Yjs/Automerge) merge syntactically — text + JSON; agent disagreement is semantic — two refactors that touch disjoint lines but contradict in intent. regatta's contribution above the CRDT substrate is the **L4 cross-family judge gate fired on merge-conflict-detected**. Scope: design spike (no implementation) — pick one of (a) Yjs server-side peer + judge-arbitration callback or (b) Automerge with branch-per-agent + judge-mediated rebase. Output: design doc covering substrate choice rationale, judge-invocation surface, integration point with WAVE-4-03's rubric schema, failure-mode catalog. Depends on WAVE-4-03 because the judge surface this layer calls into is defined there.
+Brief: per §7.1 24-mo prediction, multi-agent collab moves to CRDT-mediated shared state (Yjs/Automerge). CRDTs merge syntactically; agent disagreement is semantic — two refactors that touch disjoint lines but contradict in intent. regatta's contribution above the CRDT substrate is the **blackboard reducer layer** (per §7.5 G4 reframe — not "semantic merge layer") that fires the L4 cross-family judge on merge-conflict-detected. Scope: design spike (no implementation) — pick one of (a) Yjs server-side peer + judge-arbitration callback or (b) Automerge with branch-per-agent + judge-mediated rebase. Output: design doc covering substrate choice rationale, judge-invocation surface, integration point with WAVE-4-03's rubric schema, failure-mode catalog. Depends on WAVE-4-03 because the judge surface this layer calls into is defined there.
 
 ## Acceptance criteria
 

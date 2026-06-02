@@ -5,14 +5,14 @@ lane: customer
 kind: feature
 status: planned
 gate: mvr-1-entry (30-day-self-host-green OR named persona-A inbound)
-source_ref: docs/engineer/briefs/2026-06-02-next-horizon-customer-roadmap.md §6 MVR-1-T1 (PR #399) + amendments §6 Diff A (PR #408, L8 widen 3-5 wks)
+source_ref: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md §3 (top-3 rank 1) + §4 MVR-1-T1 + §11 dispatch list
 dependencies: S2-T1
 linked_artifact: docs/engineer/specs/2026-06-01-w7-operator-web-ui-design.md
 ---
 
-Source briefs: #399 §6 MVR-1-T1 + #408 §6 Diff A (L8 widen) + #418 §5 (unchanged label).
+Source brief: the unified next-horizon roadmap at `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §3 (top-3 rank 1) + §4 MVR-1-T1 + §11 dispatch list. Effort-band 3-5 wks per the consolidation's MVR-1 sequencing.
 
-Phase-MVR-1 wedge 1 of 4 per #421 ADOPT-WITH-AMENDMENTS verdict. Smallest UI cut that closes G2 (mobile approval) + G6 (cost-cap reset) + G8 (dashboard URL) blockers per #399 §2.
+Phase-MVR-1 wedge 1 of 4. Smallest UI cut that closes the persona-A mobile-approval + cost-cap-reset + dashboard-URL blockers.
 
 ## Scope
 
@@ -50,8 +50,8 @@ Out of scope for Wave 1: DAG read view + log streaming (deferred to MVR-2-T1 per
 
 ## Cites
 
-- #399 §4 rank 1 + §6 MVR-1-T1
-- #408 §6 Diff A (L8 effort widen)
-- #318 / #303 / #307 prior W7 specs
-- `feedback_research_design_principles` - htmx + html/template adopted vs React/shadcn/Streamlit per #399 §3 W7 score table
+- `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §3 + §4 MVR-1-T1 + §11
+- `docs/engineer/specs/2026-06-01-w7-operator-web-ui-design.md` (W7 design source-of-truth)
+- Prior W7 specs (preserved as background context): #318 / #303 / #307
+- `feedback_research_design_principles` - htmx + html/template adopted vs React/shadcn/Streamlit
 - `feedback_decision_priority` - mobile approval UX is the load-bearing customer-0 unblock

@@ -1,18 +1,20 @@
 ---
-id: MVR-1-T3
+id: MVR-1-T5
 title: P3.8 SCM adapter - Gitea first (second-consumer proof for SCM-adapter contract)
 lane: customer
 kind: feature
 status: planned
-gate: mvr-2-stretch (named SCM-blocked persona-A or persona-B inbound; demoted from MVR-1-T5 per #408 L2)
-source_ref: docs/engineer/briefs/2026-06-02-next-horizon-customer-roadmap.md §3 SCM-adapter table + amendments §4 (PR #408, L2 demote) + amend-to-amend §3.1/§4 (PR #418, OSS row)
+gate: mvr-1-entry (30-day-self-host-green OR named persona-A inbound)
+source_ref: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md §3 (top-3 rank 3) + §4 MVR-1-T5 + §11 dispatch list
 dependencies: MVR-1-T2
 linked_artifact: docs/engineer/specs/2026-06-01-adapter-contracts-design.md
 ---
 
-Source briefs: #399 §3 SCM-adapter score table + §6 MVR-1-T5 + #408 §4 L2 amendment (demote to MVR-2-T4-stretch + decide-at-trigger) + #418 §4 OSS-vs-paid row (Gitea/GitLab both OSS) + #421 verdict (Gitea-vs-GitLab pick verified per #418).
+Source brief: the unified next-horizon roadmap at `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §3 (top-3 rank 3) + §4 MVR-1-T5 + §11 dispatch list. The unified brief supersedes the prior customer-roadmap chain (PRs #399 / #408 / #418 / #421) and re-promotes SCM to MVR-1-entry — the §3 top-3 verdict overrides the earlier #408-L2 stretch demotion.
 
-Phase-MVR-1 wedge 3 of 4 per #421 ADOPT-WITH-AMENDMENTS verdict, BUT demoted to MVR-2-stretch per #408 L2 RISK closure. Closes G7 (SCM beyond GitHub) - low severity since most OSS lives on GH; lands when a named inbound fires.
+Filename note: file kept as `mvr-1-t3-*` (rank 3 in §3 top-3); ID is `MVR-1-T5` matching the §4 dispatch-sequence table.
+
+Phase-MVR-1 wedge 3 of 4. Closes G7 (SCM beyond GitHub) — low severity since most OSS lives on GH, but ships in MVR-1 for second-consumer-proof of the P3.8 SCM-adapter contract per `feedback_research_design_principles`.
 
 ## Scope
 
@@ -26,8 +28,8 @@ Two child tasks under this item:
 ## Approach
 
 - Reuse: existing go-github code is the first consumer of the contract; no extraction is bespoke design - the contract shape is dictated by what already ships.
-- Gitea-vs-GitLab: per #418 §4 both are OSS rows; per #408 L2 customer-signal-driven (not engineering-convenience). Default if both inbounds fire simultaneously: Gitea (lower porting cost per #399 §3 SCM table).
-- Status `planned` on-disk but gate-blocked semantically per `gate:` field above; implementer reads `gate:` + does NOT dispatch until trigger fires.
+- Gitea-vs-GitLab: both are OSS rows. Default if no inbound signal lands first: Gitea (lower porting cost per the original #399 §3 SCM score table, preserved as background context only). Customer-signal-driven if a named inbound fires.
+- Status `planned`; dispatch when MVR-1-entry gate fires (see frontmatter).
 
 ## Acceptance criteria
 
@@ -47,9 +49,7 @@ Two child tasks under this item:
 
 ## Cites
 
-- #399 §3 SCM-adapter score table (Gitea ADOPT-FIRST original verdict)
-- #408 §4 L2 amendment (DEFER + decide-at-trigger)
-- #418 §4 OSS-vs-paid row (Gitea/GitLab both OSS)
-- #421 final verdict (Gitea-vs-GitLab pick verified)
+- `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §3 (top-3 rank 3) + §4 MVR-1-T5 + §11 dispatch list
+- `docs/engineer/specs/2026-06-01-adapter-contracts-design.md` (P3.8 adapter contracts)
 - `feedback_research_design_principles` - second-consumer proof for adapter contract
 - `feedback_decision_priority` - customer-signal-driven > engineering-convenience

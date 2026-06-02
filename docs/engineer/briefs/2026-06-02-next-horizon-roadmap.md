@@ -13,7 +13,8 @@ MVR-2/3/4. §§5-7 are the wedge-by-wedge research that feeds the
 sequence (wave-2 primitives + wave-3 adjacent-market borrow/reject
 + wave-4 emerging-tech 6/12/24 mo predictions). §8 pricing. §9
 cuts. §10 open questions. §11 cites the impl-ready items already
-filed in `.regatta/items/`.
+filed in `.regatta/items/`. §12 references. §13 self-scores against
+the B/A/A+ rubric.
 
 ---
 
@@ -141,6 +142,12 @@ hours, returns the following weekend.
 | MVR-1-T3 | GoReleaser release pipeline | XS (1-2d) | GoReleaser | none |
 | MVR-1-T4 | GH-issue adapter (`[autonomous]` label) | S (3-5d) | go-github | substrate Wave 1 (shipped) |
 | MVR-1-T5 | P3.8 SCM-adapter contract + Gitea second consumer | M (1-2 wks) | go-gitea/sdk | P3.8 spec (deferred — landed concurrently) |
+
+Numbering note: §3's three top-3 wedges expand into the five MVR-1
+table rows here — rank-1 (W7 UI) → T1, rank-2 (init bundle) → T2/T3/T4
+(wizard + GoReleaser + GH-issue adapter, dispatched as one program),
+rank-3 (SCM adapter) → T5. The impl-ready item filenames in `.regatta/
+items/` preserve the rank-3 nomenclature (`mvr-1-t3-p38-scm-adapter-*`).
 
 Effort total: ~5-7 calendar weeks. **Abandon-criterion:** if
 MVR-1-T1 takes >4 wks OR no persona-A install lands within 60 days
@@ -424,10 +431,34 @@ already filed as `.regatta/items/wave-4-nits-1..5-*.md`:
 
 ## 8. Pricing + monetization
 
-**License:** Apache 2.0 for the core. (License decision tracks §10
-Q5 — finalize at MVR-2 kickoff. Until then, the brief picks Apache-2
-as default; reversible to BSL only with a named persona-C
-reselling-risk trigger.)
+**License:** Apache 2.0 for the core (provisional pending §10 Q5
+final decision at MVR-2 kickoff).
+
+Counter-licenses considered:
+
+- **BSL (Business Source License).** Trigger to switch: a named
+  persona-C reseller appears with no contracting interest. BSL caps
+  the reselling vector but costs persona-A adoption (BSL is not
+  OSI-approved; many corporate procurement filters reject it). Net:
+  pay a measurable adoption tax to defend against a hypothetical
+  reselling vector. Defer until trigger fires. (Elastic / Sentry /
+  HashiCorp Terraform precedent.)
+- **AGPL.** Trigger to switch: a hosted-SaaS competitor appears with
+  no contracting interest. AGPL forces re-distribution of any
+  hosted-fork's modifications. Costs persona-B adoption (corporate
+  legal teams reflexively reject AGPL even for non-network-served
+  use). Defer until trigger fires. (MongoDB pre-SSPL / Grafana
+  precedent.)
+- **Source-available only (no OSI license).** Considered + rejected:
+  collapses persona-A funnel entirely; the §6.7 cultural moat
+  insight #3 ("OSS-then-monetize is the only credible move for
+  open-core dispatch") depends on a true-OSI license at the core
+  layer.
+
+Apache 2.0 is the maximalist-adoption pick at the core. Commercial-
+core add-ons (W8 / W10 / W12) live under a separate restrictive
+license (Polyform or BSL) — that is where reselling-risk gets
+fenced, NOT at the core.
 
 **Open-core split:**
 
@@ -474,6 +505,9 @@ with explicit reopen condition. Empty cuts list = failure mode.
 | In-house CRDT lib | Yjs / Automerge already won. Building one ourselves is the deletion-default counter-example. | Both Yjs and Automerge stop maintenance for ≥12 months. Unlikely. |
 
 11 cuts. Each cut is a step we don't take.
+
+<!-- FOLLOWUP: fleet management (multi-DAG / multi-org operator-view UX) is not addressed here. Implicitly deferred behind W8 multi-tenant in MVR-2. If a persona-B inbound asks specifically for "manage N regattas from one pane", it would belong in MVR-2-T1 (W7 Wave 2) scope — operator decision when the ask fires. -->
+<!-- FOLLOWUP: plugin API (third-party extension surface beyond MCP read-only + SKILL.md) is not explicitly scoped. Cuts list already excludes IDE plugins; MCP + Skill bundle are the de-facto extension surface. Revisit if a persona-C reseller asks for a regatta-native extension API. -->
 
 ---
 

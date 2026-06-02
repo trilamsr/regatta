@@ -1,17 +1,17 @@
 ---
 id: WAVE-4-NIT-4
-title: brief §0 24-mo row — parallel "floor/ceiling" wording with §6
+title: semantic-merge wording — RESOLVED via §7.5 G4 reframe in unified brief
 lane: self-host
-status: planned
-linked_artifact: https://github.com/trilamsr/regatta/pull/417
+status: closed-resolved
+linked_artifact: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md
+source_ref: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md §7.5 G4 + §7.1 24-mo row
 ---
 
-Source: docs/engineer/reviews/2026-06-02-wave-4-amendments-review-of-414.md G4 (§0/§6 wording parallel; semantic-merge gap framing)
+Source: unified next-horizon roadmap §7.5 G4 already records the wording reframe — "semantic merge layer" → "blackboard reducer layer" (item 4-06) — to avoid implying we are building a generic CRDT product. The §0/§6 floor-vs-ceiling parallel wording the original G4 nit asked for is no longer applicable; the unified brief's §7.1 24-mo row reads honestly ("substrate + reducer layer") without the floor/ceiling rhetoric.
 
-Brief: The Lens-8 amendment correctly adds the semantic-merge open-problem row to §6 ("Yjs is the floor, the L4 adversarial judge is the ceiling"), but the §0 24-mo prediction's `Predicted impact` cell uses a different phrasing ("regatta's contribution is the semantic-merge layer above the CRDT, judge-arbitration on intent conflict"). Tightening: §0 24-mo `Predicted impact` cell reuses §6's "Yjs is the floor, L4 adversarial judge is the ceiling" wording so the two sections parallel. Folds into the #401 amendment commit alongside G2/G3/G5.
+Status: closed-resolved (reframe stronger than parallel wording).
 
 ## Acceptance criteria
 
-- [planned] c1: Brief §0 24-mo `Predicted impact` cell adopts the §6 "floor/ceiling" wording verbatim on the #401 amendment commit.
-- [planned] c2: §6 open-problem row wording stays unchanged; §0 and §6 are textually parallel where they describe the same gap.
-- [planned] c3: `bash scripts/doc-check.sh` exits 0 with the parallel wording in place.
+- [closed] c1: Verified — unified brief §7.5 G4 carries the "blackboard reducer layer" reframe.
+- [closed] c2: WAVE-4-06 carries the reframed term in its title + body.

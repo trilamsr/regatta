@@ -5,14 +5,14 @@ lane: customer
 kind: program
 status: planned
 gate: mvr-1-entry (30-day-self-host-green OR named persona-A inbound)
-source_ref: docs/engineer/briefs/2026-06-02-next-horizon-customer-roadmap.md §6 MVR-1-T2/T3/T4 (PR #399) - bundled into one program per dispatch
+source_ref: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md §3 (top-3 rank 2) + §4 MVR-1-T2/T3/T4 + §11 dispatch list
 dependencies:
-linked_artifact: docs/engineer/briefs/2026-06-02-next-horizon-customer-roadmap.md
+linked_artifact: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md
 ---
 
-Source briefs: #399 §3 (NEW wedges: init wizard / release pipeline / GH-issue adapter) + §6 MVR-1-T2/T3/T4 + #408 §6 cross-phase budget table.
+Source brief: the unified next-horizon roadmap at `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §3 (top-3 rank 2) + §4 MVR-1-T2/T3/T4 + §11 dispatch list.
 
-Phase-MVR-1 wedge 2 of 4 per #421 ADOPT-WITH-AMENDMENTS verdict. Closes G1 (init wizard) + G3 (GH-issue adapter) + G4 (binary release) - the three adoption-cost blockers that bounce persona A at minute 5.
+Phase-MVR-1 wedge 2 of 4. Closes the three adoption-cost blockers (init wizard, GH-issue adapter, binary release) that bounce persona A at minute 5.
 
 ## Scope
 
@@ -50,8 +50,6 @@ Three child tasks under this program item:
 
 ## Cites
 
-- #399 §3 NEW wedges (init wizard / release pipeline / GH-issue adapter score tables)
-- #399 §6 MVR-1-T2/T3/T4
-- #408 §6 cross-phase budget table (MVR-1 OSS adoptions: survey + GoReleaser + go-github)
+- `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §3 + §4 MVR-1-T2/T3/T4 + §11
 - `feedback_research_design_principles` - adopt-over-build for all three sub-deliveries
 - `feedback_decision_priority` - first-30-min-friction is the customer-0 conversion funnel
