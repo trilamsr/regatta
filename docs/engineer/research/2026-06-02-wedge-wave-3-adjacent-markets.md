@@ -117,7 +117,7 @@ Systems surveyed: **Helicone**, **Langfuse**, **Phoenix** (Arize), **Braintrust*
 ### 4.2 What regatta borrows
 
 - **Braintrust's "eval-blocks-merge" pattern is the most direct external precedent for regatta's gate stack**. Statistical-significance analysis on every PR, merge-block on regression — this is structurally identical to MVR-1 Task 1-4 (four methodology gates). **Action: in MVR-1 documentation, cite Braintrust GitHub Action as the closest precedent for the gate-blocks-merge UX. Borrow the "quality gate" terminology in the operator UI — operators already understand it from CI.**
-- **OpenLLMetry / OpenInference as the wire-format for LLM spans**. regatta's W6 OTel backbone already shipped — the OpenInference schema (`llm.token_count.prompt`, `llm.token_count.completion`, `llm.model.name`) is the de-facto standard. **Action: confirm W6 emits OpenInference-shaped attributes; if not, file a tracking issue. This is a `feedback_research_design_principles` "borrow proven OSS" win — do not invent a regatta-specific attribute schema.**
+- **OpenLLMetry / OpenInference as the wire-format for LLM spans**. regatta's W6 OTel backbone already shipped — the OpenInference schema (`gen_ai.usage.input_tokens`, `gen_ai.usage.output_tokens`, `gen_ai.request.model` (OTel GenAI semconv per W6 #213)) is the de-facto standard. **Action: confirm W6 emits OpenInference-shaped attributes; if not, file a tracking issue. This is a `feedback_research_design_principles` "borrow proven OSS" win — do not invent a regatta-specific attribute schema.**
 - **Langfuse's prompt-versioning-as-OSS-primitive**. regatta has no built-in prompt registry. If MVR-2 expands `Spawner` to carry parameterized prompts, the prompt-version surface should adopt the Langfuse shape (versions + tags + release channels). **Action: defer until MVR-2 needs it; track as a Phase-X candidate, not MVR-1 scope.**
 
 ### 4.3 What regatta rejects
@@ -141,7 +141,7 @@ Systems surveyed: **LangGraph**, **CrewAI**, **AutoGen**, **n8n**, **Langflow**,
 | State / memory | Explicit `State` typed-dict + checkpointer | Shared crew context + memory primitives | Conversation history + short/long-term | Workflow-scoped vars | Flow-scoped state | Per-function state + step memoization |
 | MCP / tools | Tools as functions; MCP via adapters | Native MCP via `crewai-tools-mcp` (1.0 GA) | Tool fn registration | 400+ pre-built integrations | Pre-built nodes | Tool fn registration |
 | Multi-agent pattern | Graph of specialized nodes | Role-based crew (Researcher / Writer / Reviewer) | Multi-agent group chat | n/a (workflow, not agents) | n/a (workflow, not agents) | Workflow engine (often wraps an agent framework) |
-| Status (2026) | v0.4 GA; surpassed CrewAI on GitHub stars | 1.10.1; 60% Fortune 500 | maintenance mode (Microsoft pivoted to Agent Framework) | Strong AI capabilities added 2025 | OSS visual builder; MCP server | Production-grade durable execution |
+| Status (2026) | v0.4 GA; surpassed CrewAI on GitHub stars | 1.10.1; 60% Fortune 500 | maintenance mode (Microsoft pivoted to Agent Framework) | Strong AI capabilities added 2025 | OSS visual builder; MCP server | Durable-execution-pinned durable execution |
 
 ### 5.2 What regatta borrows
 
