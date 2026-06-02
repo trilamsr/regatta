@@ -329,8 +329,10 @@ wait for the full PR to be ready before pushing.
      feedback_pr_lint_gates). PR body MUST cite the 10 pre-filed
      [billing-followup] issue numbers + post the A+ scorecard
      VERBATIM per feedback_a_plus_scorecard_required.
-  7. Grep banned phrases against the PR body text BEFORE opening:
-     `grep -E '\b(blazing[- ]fast|production[- ]grade|world[- ]class|best[- ]in[- ]class|industry[- ]leading|cutting[- ]edge|lightning[- ]fast|battle[- ]tested|enterprise[- ]grade|rock[- ]solid|robust)\b' <pr-body-file>` — exit 1 means reword before pushing.
+  7. Grep your PR body against the banned-phrase token list in
+     `scripts/doc-check.sh` BEFORE opening (per
+     `feedback_doc_check_banned_phrases`). Any match means reword to
+     a falsifiable claim before pushing.
   8. Grep ```release-notes``` fence in the PR body before opening per
      feedback_pr_body_release_notes_fence — must be present and end
      the body.
@@ -1834,7 +1836,7 @@ Per `feedback_adversarial_review` + `feedback_simplify_reviewer` + `feedback_age
 
 10. **Operator-only enforcement pre-W8.** Spec R4 says `/billing/{tenant_id}/...` is operator-only pre-W8 then tenant-scoped post-W8. T5 A+ test covers this with a config-flag-driven assertion. Confirmed in test 6 of T5.
 
-11. **Doc-check banned phrases.** Plan body grep-checked at write time against `scripts/doc-check.sh` token list (`blazing-fast`, `production-grade`, `world-class`, `best-in-class`, `industry-leading`, `cutting-edge`, `lightning-fast`, `battle-tested`, `enterprise-grade`, `rock-solid`, `robust`). Banned terms reworded throughout. Every dispatch prompt + PR body skeleton cites the grep step pre-push.
+11. **Doc-check banned phrases.** Plan body grep-checked at write time against the banned-phrase token list in `scripts/doc-check.sh` (per `feedback_doc_check_banned_phrases` — 11-token marketing-prose lint). Hits reworded throughout to falsifiable claims. Every dispatch prompt + PR body skeleton cites the grep step pre-push.
 
 12. **Release-notes fence universal.** Every PR body skeleton ends with ` ```release-notes ... ``` ` fence per `feedback_pr_body_release_notes_fence`. T6 doc-only PR fence reads `[DOC] operator billing runbook ...`; Wave A PRs read `[FEATURE]`.
 
