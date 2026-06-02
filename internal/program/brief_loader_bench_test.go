@@ -36,12 +36,12 @@ func newBriefBenchDB(b *testing.B) *state.DB {
 	return db
 }
 
-// seedBriefCorpus writes n signed briefs onto a fstest.MapFS, each
-// targeting a distinct parent program row that we also pre-insert into
-// state. Feature IDs are namespaced by brief index so the
-// cross-brief-collision rejection path is never exercised — the bench
-// times the success path Sync's wired for.
-func seedBriefCorpus(b *testing.B, db *state.DB, n int, key []byte) fstest.MapFS {
+// seedBriefCorpus writes n signed briefs onto a fstest.MapFS. featPerBrief
+// features per brief surface the batched-UPSERT win (issue #89): one
+// feature per brief lands one Batch call of size 1 — equivalent to a
+// single UpsertWorkItem — so the perf delta only shows up when briefs
+// carry realistic multi-feature payloads.
+func seedBriefCorpus(b *testing.B, db *state.DB, n, featPerBrief int, key []byte) fstest.MapFS {
 	b.Helper()
 	fsys := fstest.MapFS{}
 	at := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
@@ -50,19 +50,25 @@ func seedBriefCorpus(b *testing.B, db *state.DB, n int, key []byte) fstest.MapFS
 	for i := 0; i < n; i++ {
 		parentID := fmt.Sprintf("PROG-%04d", i)
 		programID := fmt.Sprintf("m-%012x", i+1)
+		feats := make([]PlannedFeature, featPerBrief)
+		crits := make([]PlanCriterion, featPerBrief)
+		for j := 0; j < featPerBrief; j++ {
+			cid := fmt.Sprintf("c%04d-%02d", i, j)
+			crits[j] = PlanCriterion{ID: cid, Text: "criterion"}
+			feats[j] = PlannedFeature{
+				ID:       fmt.Sprintf("F-%04d-%02d", i, j),
+				Title:    fmt.Sprintf("feat-%d-%d", i, j),
+				Fulfills: []string{cid},
+			}
+		}
 		brief := &ProgramBrief{
 			SchemaVersion:    1,
 			ProgramID:        programID,
 			ParentWorkItemID: parentID,
-			ParentCriteria: []PlanCriterion{
-				{ID: fmt.Sprintf("c%04d", i), Text: "criterion"},
-			},
-			PlannerModelID: "claude-bench",
-			ProducedAt:     at,
-			Features: []PlannedFeature{
-				{ID: fmt.Sprintf("F-%04d-A", i), Title: "a",
-					Fulfills: []string{fmt.Sprintf("c%04d", i)}},
-			},
+			ParentCriteria:   crits,
+			PlannerModelID:   "claude-bench",
+			ProducedAt:       at,
+			Features:         feats,
 		}
 		signed, err := brief.Sign(key, "key-1")
 		if err != nil {
@@ -85,21 +91,25 @@ func seedBriefCorpus(b *testing.B, db *state.DB, n int, key []byte) fstest.MapFS
 	return fsys
 }
 
-// BenchmarkBriefLoaderSync times an end-to-end BriefLoader.Sync over a
-// fixed-size brief corpus. The fixture is a fstest.MapFS — no on-disk
-// I/O — so the cost we see is signature verify + Validate + per-feature
-// CycleCheck + UpsertWorkItem + the tombstone sweep. Each iteration
-// bumps pollStartedAt so the watermark check stays well-defined across
-// repeats (later iterations exercise the stale_produced_at no-op path —
-// the operator-visible cost of polling when no brief changed).
+// BenchmarkBriefLoaderSync times end-to-end BriefLoader.Sync. Two shapes
+// surface the batched-UPSERT delta (issue #89): N briefs × 1 feature
+// (BriefLoader's MVP-1 norm) and N briefs × 10 features (MVP-2 shape).
 func BenchmarkBriefLoaderSync(b *testing.B) {
 	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
-	sizes := []int{10, 100}
-	for _, n := range sizes {
-		b.Run(fmt.Sprintf("N=%d", n), func(b *testing.B) {
+	shapes := []struct {
+		n, featPerBrief int
+	}{
+		{10, 1},
+		{100, 1},
+		{10, 10},
+		{100, 10},
+	}
+	for _, s := range shapes {
+		name := fmt.Sprintf("N=%d_F=%d", s.n, s.featPerBrief)
+		b.Run(name, func(b *testing.B) {
 			silenceSlog(b)
 			db := newBriefBenchDB(b)
-			fsys := seedBriefCorpus(b, db, n, key)
+			fsys := seedBriefCorpus(b, db, s.n, s.featPerBrief, key)
 			loader, err := NewBriefLoader(BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}})
 			if err != nil {
 				b.Fatalf("NewBriefLoader: %v", err)
