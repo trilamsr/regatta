@@ -171,7 +171,6 @@ func TestTick_LabelerFailure_RetriedNextTick(t *testing.T) {
 	}
 }
 
-// ---- helpers --------------------------------------------------------
 
 func openDB(t *testing.T) *state.DB {
 	t.Helper()
