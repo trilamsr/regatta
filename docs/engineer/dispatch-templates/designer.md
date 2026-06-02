@@ -42,6 +42,12 @@ NO SIGNATURES
 MEMORY CITES
 - Cite `<MEMORY-RULES>` in PR body footer + inline in spec where load-bearing.
 
+## RECURRING-FAILURE TRAPS (2026-06-02 session)
+
+1. `gh pr create` / `gh pr edit` MUST use `--body-file <path>`. HEREDOC bodies escape backticks and break the release-notes fence detector. Write to `/tmp/pr-<slug>.md` first. Per `feedback_pr_body_file_only`.
+
+2. GH base-sha drift workaround (per #343; fix in flight via #347): spec PRs are docs-only — start the ```release-notes``` block with `[DOCS]` so `check-tdd` skips the test-first check when `BASE_SHA` is stale from a post-open `main` merge. Drop the prefix once #347 lands.
+
 ## Per-dispatch payload
 - Topic: `<TOPIC>`
 - Slug: `<SPEC-SLUG>`
