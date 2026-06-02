@@ -99,6 +99,24 @@ func DecideTx(ctx context.Context, db *state.DB, payload canon.TokenPayload, rev
 		}
 	}()
 
+	// Issue #206: re-read the event log INSIDE the tx so a reaper sweep
+	// that committed a terminal event between the pre-tx GetApproval
+	// above and this BEGIN is observed. sqlite's single-writer pool
+	// serialises BeginTx behind the reaper's COMMIT — the in-tx list
+	// sees the winning terminal row and we exit clean rather than
+	// silently overwriting it with decided+approved (the bug in #206,
+	// sibling to the reaper-side guard in reaper.go::sweepOne). Reuse
+	// state.ErrTokenReplay rather than minting a fresh sentinel: the
+	// CLI / HTTP layers already map it to the canonical "this approval
+	// is no longer decidable" exit code (notify_http.go::110).
+	priorInTx, err := decideListEventsTx(ctx, tx, payload.AID)
+	if err != nil {
+		return DecideTxResult{}, "", err
+	}
+	if isTerminal(priorInTx) {
+		return DecideTxResult{}, "", state.ErrTokenReplay
+	}
+
 	now := clock().UTC()
 
 	// (1) token_consumed first: the UNIQUE(approval_id,kind,token_jti)
