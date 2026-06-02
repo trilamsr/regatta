@@ -195,19 +195,14 @@ func TestApprovalDecideTx_RefactorPreservesCLIBehavior(t *testing.T) {
 	}
 }
 
-// TestApprovalDecideTx_TerminalRaceLeavesEventLogIntact pins issue #206:
-// a reaper sweep that commits a `timed_out` event between the pre-tx
-// GetApproval read and the BEGIN must not be silently overwritten. The
-// regression simulates the worst case — reaper's terminal event lands
-// BEFORE DecideTx is even called — and asserts DecideTx returns the
-// terminal sentinel and writes zero new events. Pre-fix: DecideTx
-// appended `decided` + `approved` and flipped the denorm to approved,
-// producing the operator-visible split-status bug described in #206.
+// TestApprovalDecideTx_TerminalRaceLeavesEventLogIntact pins #206: terminal event between GetApproval and BEGIN no longer silently overwrites status.
 func TestApprovalDecideTx_TerminalRaceLeavesEventLogIntact(t *testing.T) {
 	h := newDecideTxHarness(t, "system", []string{"alice", "bob"}, 2, false)
 	ctx := context.Background()
 
-	// Simulate reaper having committed timed_out + flipped denorm.
+	// Worst-case: reaper's terminal event lands BEFORE DecideTx is even called.
+	// Pre-fix DecideTx appended `decided` + `approved` and flipped the denorm
+	// to approved, producing the split-status bug in #206.
 	if err := h.db.AppendApprovalEvent(ctx, state.ApprovalEvent{
 		ApprovalID: h.approvalID,
 		Ts:         h.now,
