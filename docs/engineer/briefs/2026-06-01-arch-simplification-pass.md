@@ -36,7 +36,7 @@ The substrate spec ships a single signed event log replacing `work_item_outputs`
 - OTel exporter: stdlib OTLP is the only impl planned per W6 spec §3.1.
 - OPA RBAC: does not exist yet; W8 deferred.
 - Sigstore: HMAC is the only signer shipping (`contracts/schemas/sign.go`).
-- Stripe billing: MVP-4 W12.
+- Stripe billing: W12, Phase X per `2026-06-01-self-host-first.md`.
 - LLM gateway: one provider exists (`internal/program/provider_anthropic.go:1`); LiteLLM is P2.8, post-MVP-3.
 
 This is the textbook `PRINCIPLES.md` §2 violation — pre-files contract tests for adapters with zero implementers.
@@ -74,7 +74,7 @@ This is the textbook `PRINCIPLES.md` §2 violation — pre-files contract tests 
 - **Active or next-wave (keep):** substrate, W6 OTel, W7 UI (post-substrate rebase).
 - **Decision documents — move to `docs/rfcs/000N-*.md`:** W9 Temporal-vs-bespoke (this is a decision doc, not an implementation spec; the decision was Option D — defer to MVP-4 — but the doc still lives under `specs/`).
 - **Delete:** adapter-contracts (per §2.2).
-- **Park until prerequisites land:** W11 blackboard, W10 Sigstore, W12 billing (MVP-4 candidates, not active).
+- **Park until prerequisites land:** W11 blackboard, W10 Sigstore, W12 billing (all Phase X per `2026-06-01-self-host-first.md`; reopen scope on first external-customer ask or 30-day-self-host-green trigger).
 
 **Action:** Promote the 3 live specs to canonical `docs/engineer/specs/`; demote 3 specs to `docs/rfcs/`; delete the adapter-contracts spec; archive the duplicates that already live under RFCs.
 
@@ -99,18 +99,11 @@ An earlier draft of this brief included a "MVP-0: ship-the-binary minimum" secti
 
 The collapse work in §2 (substrate cutover + sub-package flatten + duplicate-interface resolution + three-way planner-fork pick-one + adapter-contracts spec delete + spec promote/demote/delete + schema-encoding-drift codegen) is independent of MVP-0 and stands on its own.
 
-## 4. Re-sequenced MVP-3 (substrate-first)
+## 4. Re-sequencing (superseded by `2026-06-01-self-host-first.md`)
 
-Current state: W6 + W7 + W8 + W9 + substrate + cost-gov dispatching in parallel.
+An earlier draft of this brief proposed a substrate-first MVP-3 re-sequencing (W6 → substrate Wave 1 → W7 UI → W8 → cost-gov). That sequencing has since been overridden by the self-host-first roadmap, which goes further: W7 UI, W8 multi-tenant scoping, W10 Sigstore, W11 blackboard, W12 billing, and P3.8 adapters all defer to Phase X. The current sequencing lives in `docs/engineer/briefs/2026-06-01-self-host-first.md` §3 (Phase S1 → S2 → S3).
 
-**Proposed:**
-
-1. **Substrate Wave 1 first.** Hard gate on everything else.
-2. **W6 OTel** after substrate (current dependency order anyway).
-3. **W7 operator UI** after substrate cutover (NOT during). Eliminates the W7 §3.10 "reconciliation" complexity.
-4. **W8 OPA** after substrate. Authorizer interface was already designed pre-W8 in W7 spec §3.6.4.
-5. **Cost-gov Wave 3** as currently scoped.
-6. **W9 take Option D** — defer to MVP-4, or delete entirely if substrate covers the durable-history use case. The `DurableHistory` interface had zero second consumer; substrate IS the durable history.
+The arch-simplification commitments in §2 apply across both sequencings — the collapse work is orthogonal to roadmap shape. Notable interaction: W9 substrate-default impl is now Phase S2-T1 (promoted per `2026-06-01-self-host-first.md`); Temporal-backed variant remains Phase X. The `DurableHistory` interface ships behind W9 for self-host scope; refined P2.5 trigger gates Temporal upgrade. The adapter-contracts spec's `DurableHistory` contract is one of the five swap-out adapters the spec proposed; its deletion is consistent with the self-host filter (single-tenant operator, no second-consumer adapter).
 
 ## 5. Counter-cases (defended complexity — do NOT touch)
 
@@ -122,13 +115,17 @@ Current state: W6 + W7 + W8 + W9 + substrate + cost-gov dispatching in parallel.
 
 ## 6. Roadmap impact (summary)
 
+The self-host-first brief (`2026-06-01-self-host-first.md`) supersedes the prior MVP-3/MVP-4 sequencing for the self-host window. The arch-simplification commitments in §2 apply across whichever roadmap shape is in effect.
+
 | Roadmap layer | Change |
 |---|---|
-| **MVP-1** (existing) | Unchanged scope. |
-| **MVP-2** (existing) | Unchanged scope. |
-| **MVP-3** (re-sequenced) | Substrate Wave 1 first → W6 OTel → W7 UI (post-substrate) → W8 OPA → Cost-gov Wave 3. W9 takes Option D. |
-| **MVP-4** (existing) | W10 Sigstore + W11 blackboard + W12 billing. Unchanged scope. |
-| **MVR-1** (new — post-MVP-4, optional) | Research-mode (per `2026-06-01-research-mode-extension-design.md`). Gated on substrate + W8 + W10 + W11 + this simplification pass. |
+| **MVP-1** (existing, shipped) | Unchanged scope. |
+| **MVP-2** (existing, shipped) | Unchanged scope. |
+| **Phase S1** (self-host-first) | Substrate-callback wiring (#282), cost-gov Wave 3, `regatta.yaml` for this repo, boot-prompt→brief converter, self-host smoke test. ~1-2 weeks. |
+| **Phase S2** (self-host-first) | W9 substrate-default `DurableHistory` impl (Temporal variant deferred), adversarial-reviewer-as-L4 gate, followup auto-triage, mutation testing. ~2-3 weeks. |
+| **Phase S3** (self-host-first) | W8 OPA slim authorizer (multi-tenant deferred), substrate Phase B+C cutover for cost-gov + approvals, key-rotation drill, crash-recovery property test. ~3-4 weeks. |
+| **Phase X** | W7 htmx UI, W8 multi-tenant scoping, W10 Sigstore, W11 blackboard CAS, W12 billing, P3.8 swap-out adapters, W9 Temporal-backed impl. Reopen on first external-customer ask OR 30-day-self-host-green trigger. |
+| **MVR-1** (Phase X wedge) | Research-mode (per `2026-06-01-research-mode-extension-design.md`). Gated on substrate Wave 1 + W8 slim authorizer + Phase S2-T1 W9 substrate-default impl + this simplification pass + the Phase-X trigger. W10 / W11 / W12 are NOT in the dependency chain — research-mode rides existing HMAC + `SourceRef.SHA` + local-publish primitives. |
 
 ## 7. Bootstrap roadmap collapse (regatta-builds-regatta)
 

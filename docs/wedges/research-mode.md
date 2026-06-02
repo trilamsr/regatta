@@ -1,10 +1,17 @@
 # Wedge: research-mode (autonomous empirical AI/CS research)
 
-Prospective. Not on the milestone path. See
-[`README.md`](./README.md) for ranking and the adopt-when-needed
-gate. Adopt-when-needed trigger: first external user with a
-machine-readable research backlog AND substrate Wave 1 + W8 + W10
-+ W11 all landed.
+Prospective. **Phase X wedge** per
+[`docs/engineer/briefs/2026-06-01-self-host-first.md`](../engineer/briefs/2026-06-01-self-host-first.md).
+See [`README.md`](./README.md) for ranking and the
+adopt-when-needed gate. Adopt-when-needed trigger: the 30-day-
+self-host-green trigger fires (≥10 PRs/day green-merge for ≥30
+days unattended at this repo) OR the first external user with a
+machine-readable research backlog asks AND substrate Wave 1 + W8
+slim authorizer + Phase S2 W9 substrate-default `DurableHistory`
+impl all landed. Phase X wedges (W10 Sigstore, W11 blackboard
+CAS, W12 billing) are NOT in the dependency chain — research-
+mode rides existing primitives (HMAC, `SourceRef.SHA`, local
+publish) and drop-in-upgrades when those wedges exit Phase X.
 
 ## Thesis
 
@@ -137,24 +144,45 @@ shape; their verdicts flow through the existing
 
 ## Adoption gate
 
-Research-mode does NOT ship until ALL of the following land:
+Research-mode is a Phase X wedge per `2026-06-01-self-host-first.md`.
+It does NOT ship until ALL of the following land:
 
-1. Substrate Wave 1 (`substrate_events` + reducers).
-2. W8 OPA RBAC (the `Authorizer` interface — research-mode adds four
-   Rego rules to its policy bundle).
-3. W10 Sigstore signer adapter (the `kind=repro_verdict` event is
-   signed via this adapter, not a parallel-built crypto stack).
-4. W11 blackboard CAS (`substrate_blobs` with `BlobDigest` — dataset
-   + model + canary pins live here).
+1. Substrate Wave 1 (`substrate_events` + reducers) — Phase S3-T2.
+2. W8 slim authorizer (`Authorizer` interface + Rego hot-reload,
+   single-tenant default) — Phase S3-T1. Research-mode adds four
+   Rego rules to its policy bundle. Multi-tenant `tenant_id`
+   propagation is itself Phase X and not in the dependency chain.
+3. Phase S2-T1 W9 substrate-default `DurableHistory` impl —
+   research-mode reuses this primitive for the K=10 reproducibility
+   cron's fresh-seed sweeps. The Temporal-backed variant remains
+   Phase X.
+4. The 30-day-self-host-green trigger fires (≥10 PRs/day green-merge
+   ≥30 days unattended) OR a first external research-customer ask is
+   on file (per self-host-first §7).
 5. The repo-wide simplification pass (audit the sibling-package
    `Estimator` seam-vs-impl split during the cost-package flatten;
    flatten `orchestrator/{adapter,adaptersync,lockfile}` and
    `cost/{estimate,gate,pricing,reconcile,spend}`; pick-one between
    `planner.go` / `planner_v2.go` / `planner_stub.go`).
 
-Until those land, research-mode is forbidden to dispatch. If a wedge
-needs to ship sooner because of an external research-customer ask,
-re-litigate the wedge; do not ship around the blockers.
+**Phase X wedges NOT in the dependency chain:** W10 Sigstore, W11
+blackboard CAS, W12 billing. Research-mode rides existing primitives
+instead and upgrades drop-in when each exits Phase X:
+
+- Signing: HMAC canonicalization in `contracts/schemas/sign.go` (W10
+  upgrade swaps to Sigstore + Rekor without changing the canonical
+  byte representation).
+- Dataset / model / canary pins: `SourceRef.SHA` byte-comparison (W11
+  upgrade swaps to `BlobDigest` references; comparison shape
+  unchanged).
+- Publication: local `regatta research publish` writes the rendered
+  bundle to disk (W12 upgrade adds a `--metered` flag that emits a
+  Stripe usage event alongside the local write).
+
+Until the gating items land, research-mode is forbidden to dispatch.
+If a wedge needs to ship sooner because of an external research-
+customer ask, re-litigate the wedge; do not ship around the
+blockers.
 
 ## References
 
