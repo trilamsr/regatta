@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups mutation-test mutation-test-install
+.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full crash-recovery-property-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups mutation-test mutation-test-install
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -29,6 +29,9 @@ property-test:  ## Run rapid property tests. PHASE-S-RELAX: 50 checks in CI/loca
 
 property-test-full:  ## Full 200/2000-check property sweep. Run weekly + before any tag. PHASE-S-RELAX restoration target — fold back into `property-test` at end of self-host phase (memory/feedback_gate_relaxation_phase_s).
 	go test -race -run 'TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty' ./internal/orchestrator/state/... -rapid.checks=200
+	go test -race -run 'TestSchedulerCrashRecoveryProperty' ./internal/orchestrator/scheduler/... -rapid.checks=2000 -timeout=5m
+
+crash-recovery-property-full:  ## 2000-case crash-recovery property sweep. Nightly CI target; spec §3.4. ≤90s wallclock budget.
 	go test -race -run 'TestSchedulerCrashRecoveryProperty' ./internal/orchestrator/scheduler/... -rapid.checks=2000 -timeout=5m
 
 mutation-test-install:  ## Install pinned gremlins binary into $GOPATH/bin. Idempotent.
