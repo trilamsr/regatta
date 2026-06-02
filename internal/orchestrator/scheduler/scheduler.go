@@ -291,6 +291,14 @@ type Scheduler struct {
 	log    *slog.Logger
 	tracer trace.Tracer
 
+	// tickLatency + stepDuration are the §3 row 4 / A-T3 histograms.
+	// Pre-created at constructor time so the hot path is a single
+	// Record() call with no per-tick allocation. tickLatency carries
+	// no labels (spec §3); stepDuration carries the 8-enum `step`
+	// label only.
+	tickLatency  metric.Float64Histogram
+	stepDuration metric.Float64Histogram
+
 	// multiDefaultLogged dedupes the edge.multiple_defaults_per_from
 	// warn so a misconfigured brief logs once per (program_id, from_id)
 	// per scheduler-process lifetime instead of every tick.
@@ -333,7 +341,21 @@ func newScheduler(db schedulerDB, cfg Config) *Scheduler {
 	if tracer == nil {
 		tracer = otel.Tracer("scheduler")
 	}
-	return &Scheduler{db: db, cfg: cfg, log: log, tracer: tracer}
+	meter := cfg.ResolveMeter()
+	tickLatency, err := meter.Float64Histogram("regatta.scheduler.tick.latency_ms")
+	if err != nil {
+		// Histogram-construction failure on a noop or in-process SDK is not
+		// recoverable here; fall back to the noop meter so Tick stays hot.
+		tickLatency, _ = otel.Meter("scheduler-fallback").Float64Histogram("regatta.scheduler.tick.latency_ms")
+	}
+	stepDuration, err := meter.Float64Histogram("regatta.scheduler.tick.step_duration_ms")
+	if err != nil {
+		stepDuration, _ = otel.Meter("scheduler-fallback").Float64Histogram("regatta.scheduler.tick.step_duration_ms")
+	}
+	return &Scheduler{
+		db: db, cfg: cfg, log: log, tracer: tracer,
+		tickLatency: tickLatency, stepDuration: stepDuration,
+	}
 }
 
 // activeStates lists agent states that count against a lane's
@@ -374,60 +396,122 @@ var activeStates = []state.AgentState{
 //     was upserted as pending but never transitioned (lane-capped
 //     last tick, hotspot-blocked, or a future failure mode), letting
 //     the next tick retry the reservation tx.
-func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
+func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
+	tickStart := time.Now()
+	defer func() {
+		s.tickLatency.Record(ctx, float64(time.Since(tickStart).Microseconds())/1000.0)
+	}()
+
 	tc := &tickCtx{}
-	if s.cfg.Evaluator != nil {
-		if err := s.evalPendingEdges(ctx, tc); err != nil {
-			return nil, fmt.Errorf("scheduler: eval edges: %w", err)
+	var spawnable []state.WorkItem
+	var occupancy map[string]int
+	var attempted map[int64]struct{}
+
+	// Per spec §2.3 + §4 trap #2: ONE span around the step loop with an
+	// iteration counter — NOT one span per step. The histogram records
+	// per-step latency; the span scopes the whole loop. Step ordering
+	// matches the pre-refactor straight-line shape so behavioural tests
+	// stay green.
+	steps := []struct {
+		name string
+		fn   func() error
+	}{
+		// fold: evalPendingEdges folds work_item_events into the edge-fired
+		// state so ListSpawnable observes the updated fired column.
+		{"fold", func() error {
+			if s.cfg.Evaluator == nil {
+				return nil
+			}
+			if e := s.evalPendingEdges(ctx, tc); e != nil {
+				return fmt.Errorf("scheduler: eval edges: %w", e)
+			}
+			return nil
+		}},
+		// reaper: ExpireStaleLocks releases hotspot locks past their TTL.
+		{"reaper", func() error {
+			if _, e := s.db.ExpireStaleLocks(ctx, s.cfg.LockTTL); e != nil {
+				return fmt.Errorf("scheduler: expire stale locks: %w", e)
+			}
+			return nil
+		}},
+		// gate_l0: universal-queue source-of-truth read (spec §2.8).
+		{"gate_l0", func() error {
+			sp, e := s.db.ListSpawnable(ctx)
+			if e != nil {
+				return fmt.Errorf("scheduler: list spawnable: %w", e)
+			}
+			spawnable = sp
+			return nil
+		}},
+		// gate_approval: HITL gate-pass between edge-eval and reserve
+		// (spec §3.1 step 0.5). Filters in-place.
+		{"gate_approval", func() error {
+			sp, e := s.applyApprovalGates(ctx, tc, spawnable)
+			if e != nil {
+				return fmt.Errorf("scheduler: apply approval gates: %w", e)
+			}
+			spawnable = sp
+			return nil
+		}},
+		// gate_cost: cost-governor pre-call deny (spec §3.2 step 0.6).
+		// Runs BEFORE l4 so we never pay model tokens for cost-denied wi.
+		{"gate_cost", func() error {
+			sp, e := s.applyCostGovernor(ctx, spawnable)
+			if e != nil {
+				return fmt.Errorf("scheduler: apply cost governor: %w", e)
+			}
+			spawnable = sp
+			return nil
+		}},
+		// gate_l4: adversarial-reviewer gate (spec §3.2 step 0.7).
+		{"gate_l4", func() error {
+			sp, e := s.applyL4Gate(ctx, spawnable)
+			if e != nil {
+				return fmt.Errorf("scheduler: apply l4 gate: %w", e)
+			}
+			spawnable = sp
+			return nil
+		}},
+		// dispatch: lane-occupancy read + per-wi reservation tx through
+		// the gate-pass-filtered slice (spec §3.2 step 0.8).
+		{"dispatch", func() error {
+			occ, e := s.db.CountAgentsByLane(ctx, activeStates...)
+			if e != nil {
+				return e
+			}
+			occupancy = occ
+			r, att, e := s.reserveFromSpawnable(ctx, tc, spawnable, occupancy)
+			reserved = r
+			attempted = att
+			return e
+		}},
+		// persist: orphan re-reservation pass — lane-capped and
+		// lock-held pending rows from prior ticks (spec §3.2 step 0.9).
+		{"persist", func() error {
+			rest, e := s.reserveOrphans(ctx, tc, occupancy, attempted)
+			if e != nil {
+				return e
+			}
+			reserved = append(reserved, rest...)
+			return nil
+		}},
+	}
+
+	loopCtx, loopSpan := s.tracer.Start(ctx, "tick_steps",
+		trace.WithAttributes(attribute.Int("step_count", len(steps))))
+	defer loopSpan.End()
+
+	for _, step := range steps {
+		stepStart := time.Now()
+		stepErr := step.fn()
+		s.stepDuration.Record(loopCtx,
+			float64(time.Since(stepStart).Microseconds())/1000.0,
+			metric.WithAttributes(attribute.String("step", step.name)))
+		if stepErr != nil {
+			return reserved, stepErr
 		}
 	}
-	if _, err := s.db.ExpireStaleLocks(ctx, s.cfg.LockTTL); err != nil {
-		return nil, fmt.Errorf("scheduler: expire stale locks: %w", err)
-	}
-
-	spawnable, err := s.db.ListSpawnable(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: list spawnable: %w", err)
-	}
-	// Spec §3.1 step 0.5 — HITL gate-pass between edge-eval and reserve.
-	// Filters spawnable in-place: Proceed keeps the wi, Pause drops it
-	// from this tick (re-evaluated next tick because status stays
-	// planned), Reject flips status to 'rejected' so future ticks no
-	// longer surface it via ListSpawnable.
-	spawnable, err = s.applyApprovalGates(ctx, tc, spawnable)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: apply approval gates: %w", err)
-	}
-	// Spec §3.2 step 0.6 — cost-governor pre-call deny. Slots in
-	// between approval-gate and reserve, BEFORE laneHasCapacity is
-	// consulted. Identity short-circuit when CostGate is nil.
-	spawnable, err = s.applyCostGovernor(ctx, spawnable)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: apply cost governor: %w", err)
-	}
-	// Spec §3.2 step 0.7 — adversarial-reviewer gate. Cost-deny
-	// short-circuits BEFORE L4 fires so we never pay model tokens for
-	// a wi the cheap deterministic gate already rejected.
-	spawnable, err = s.applyL4Gate(ctx, spawnable)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: apply l4 gate: %w", err)
-	}
-
-	occupancy, err := s.db.CountAgentsByLane(ctx, activeStates...)
-	if err != nil {
-		return nil, err
-	}
-
-	reserved, attempted, err := s.reserveFromSpawnable(ctx, tc, spawnable, occupancy)
-	if err != nil {
-		return reserved, err
-	}
-
-	rest, err := s.reserveOrphans(ctx, tc, occupancy, attempted)
-	if err != nil {
-		return reserved, err
-	}
-	return append(reserved, rest...), nil
+	return reserved, nil
 }
 
 // tickCtx threads the per-tick WriteHook counter through Tick's
