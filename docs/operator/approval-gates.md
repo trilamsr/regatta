@@ -252,6 +252,39 @@ exit code so runbooks can grep on the number. Source of truth:
 Exit code uniqueness is pinned by `TestApprovalDecide_ExitCodeMappingTable`
 so a refactor cannot silently collapse two sentinels onto one code.
 
+### Web POST: `token_replay` folds `ErrDoubleVote`
+
+The HTTP callback handler (`/api/approval/callback`, shipped by PR #263)
+collapses two distinct Go sentinels onto a single wire sentinel:
+
+| Go sentinel | When it fires | Web sentinel (HTTP 409) | CLI exit code |
+|---|---|---|---|
+| `state.ErrTokenReplay` | Same token POSTed twice (UNIQUE `token_jti` constraint) or the approval already reached a terminal status | `token_replay` | 4 |
+| `approval.ErrDoubleVote` | Same reviewer id appears in `decided_by` already (in-memory guard in `DecideTx`, fires before the token UNIQUE-trip) | `token_replay` | 1 (generic) |
+
+The folding is intentional. The dominant trigger on the web is a Slack
+button retry — the reviewer's first click already committed their vote,
+and the second click is operator-facing identical ("your vote already
+counted") regardless of whether a fresh token was minted between
+clicks. A distinct `double_vote` HTTP sentinel would surface a Go-side
+ordering detail (in-memory guard before SQL constraint) with no
+actionable difference for the on-call.
+
+The CLI keeps the sentinels distinct because terminal exit codes are a
+stable contract surface that runbooks grep on. `slog` and the
+`approval_events` audit trail are also unchanged — a real
+`ErrTokenReplay` writes a `token_consumed` row that fails the UNIQUE
+constraint (visible as the rollback in tx logs), while `ErrDoubleVote`
+short-circuits before any row is written. So a compliance grep for
+"who tried to re-vote" can still distinguish the two paths via the
+event log, not via the HTTP sentinel.
+
+If you see `error=token_replay` in the web access log AND no
+corresponding `token_consumed` failure in the orchestrator slog, the
+underlying cause was `ErrDoubleVote` (in-memory guard). Either way the
+remediation is the same: that reviewer's vote is already recorded — no
+action needed.
+
 ## MTTD runbook (≤ 60s)
 
 You have been paged: "approval stuck on gate X". These four steps
