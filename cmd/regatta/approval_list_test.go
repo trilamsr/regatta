@@ -177,6 +177,54 @@ func TestApprovalList_JSONMatchesSchema(t *testing.T) {
 	}
 }
 
+// TestApprovalList_NilReviewerSetEmitsEmptyArray pins the orEmpty marshal shim — a nil ReviewerSetSnapshot.Reviewers must emit "reviewer_set":[] not null, so JSON Schema validation never sees null.
+func TestApprovalList_NilReviewerSetEmitsEmptyArray(t *testing.T) {
+	db, dsn, t0 := newApprovalListHarness(t)
+	clock := func() time.Time { return t0 }
+	ctx := context.Background()
+	seedApprovalWorkItemForCLI(t, db, "F-nil", t0)
+	// Reviewers explicitly nil. CUE V7 normally blocks this at config-validate
+	// time (|reviewers| >= quorum >= 1), so reaching this state requires a
+	// validation bypass. Defense-in-depth: marshal path must still emit [].
+	a := state.Approval{
+		ID: "a-nilrev", WorkItemID: "F-nil", GateName: "ship-gate",
+		RequestedAt: t0, RequestedBy: "system",
+		ReviewerSetSnapshot: state.ReviewerSet{Reviewers: nil, Quorum: 1},
+		Quorum: 1, Status: state.ApprovalStatusPending,
+		TimeoutAt: t0.Add(time.Hour), OnTimeout: "fail",
+	}
+	if err := db.CreateApproval(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runList(t, dsn, clock, "--format", "json")
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, stderr)
+	}
+	// Raw-bytes check: "reviewer_set":null must never appear.
+	if strings.Contains(stdout, `"reviewer_set": null`) || strings.Contains(stdout, `"reviewer_set":null`) {
+		t.Fatalf("emitted null reviewer_set; want []: %s", stdout)
+	}
+	// Decode and assert empty (non-nil) slice surface.
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &rows); err != nil {
+		t.Fatalf("Unmarshal: %v stdout=%q", err, stdout)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows=%d want 1", len(rows))
+	}
+	rs, ok := rows[0]["reviewer_set"]
+	if !ok {
+		t.Fatalf("missing reviewer_set key: %v", rows[0])
+	}
+	arr, ok := rs.([]any)
+	if !ok {
+		t.Fatalf("reviewer_set type=%T want []any (got nil from null?)", rs)
+	}
+	if len(arr) != 0 {
+		t.Fatalf("reviewer_set=%v want empty []", arr)
+	}
+}
+
 func TestApprovalList_TableFormatColumns(t *testing.T) {
 	db, dsn, t0 := newApprovalListHarness(t)
 	clock := func() time.Time { return t0 }

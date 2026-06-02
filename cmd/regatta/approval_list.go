@@ -88,13 +88,21 @@ type approvalListRow = schemas.ApprovalListRow
 func emitApprovalsJSON(out io.Writer, approvals []state.Approval) int {
 	rows := make([]approvalListRow, 0, len(approvals))
 	for _, a := range approvals {
+		// orEmpty: schema requires reviewer_set:[]string (no null). CUE V7
+		// blocks |reviewers|<quorum at config-validate time, but a row
+		// reaching here with nil reviewers (validation bypass) must still
+		// emit [] so downstream schema-check never sees null.
+		rs := a.ReviewerSetSnapshot.Reviewers
+		if rs == nil {
+			rs = []string{}
+		}
 		rows = append(rows, approvalListRow{
 			ApprovalID:      a.ID,
 			WorkItemID:      a.WorkItemID,
 			GateName:        a.GateName,
 			RequestedAtUnix: a.RequestedAt.Unix(),
 			TimeoutAtUnix:   a.TimeoutAt.Unix(),
-			ReviewerSet:     a.ReviewerSetSnapshot.Reviewers,
+			ReviewerSet:     rs,
 			Quorum:          a.Quorum,
 		})
 	}
