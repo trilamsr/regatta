@@ -139,7 +139,7 @@ func runSyntheticTick(t *testing.T, ctx context.Context) string {
 
 	fixture := openStreamJSONFixture(t)
 	defer fixture.Close()
-	if err := spawner.ParseStream(opCtx, tracer, fixture); err != nil {
+	if err := spawner.ParseStream(opCtx, tracer, fixture, nil); err != nil {
 		opSpan.End()
 		tickSpan.End()
 		t.Fatalf("spawner.ParseStream: %v", err)

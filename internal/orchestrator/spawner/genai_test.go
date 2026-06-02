@@ -2,6 +2,7 @@ package spawner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,7 +56,7 @@ func attrValue(s sdktrace.ReadOnlySpan, key attribute.Key) (attribute.Value, boo
 // TestGenAI_StreamJsonParser_OpensCloseOnInitAndResult pins spec §6 T4 — open on system.init, close on result.
 func TestGenAI_StreamJsonParser_OpensCloseOnInitAndResult(t *testing.T) {
 	sr, tracer := newRecorder(t)
-	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl")); err != nil {
+	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl"), nil); err != nil {
 		t.Fatalf("ParseStream: %v", err)
 	}
 	spans := sr.Ended()
@@ -73,7 +74,7 @@ func TestGenAI_StreamJsonParser_OpensCloseOnInitAndResult(t *testing.T) {
 // TestGenAI_AttributesMatchSemconv pins spec §3.4 — every table-row attr lands on the span with correct value+type.
 func TestGenAI_AttributesMatchSemconv(t *testing.T) {
 	sr, tracer := newRecorder(t)
-	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl")); err != nil {
+	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl"), nil); err != nil {
 		t.Fatalf("ParseStream: %v", err)
 	}
 	span := findSpan(sr.Ended(), "chat ")
@@ -116,7 +117,7 @@ func TestGenAI_AttributesMatchSemconv(t *testing.T) {
 // TestGenAI_SpanNameMatchesSpec pins OTel GenAI §Inference — span name = "{operation} {model}".
 func TestGenAI_SpanNameMatchesSpec(t *testing.T) {
 	sr, tracer := newRecorder(t)
-	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl")); err != nil {
+	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl"), nil); err != nil {
 		t.Fatalf("ParseStream: %v", err)
 	}
 	span := findSpan(sr.Ended(), "chat ")
@@ -131,7 +132,7 @@ func TestGenAI_SpanNameMatchesSpec(t *testing.T) {
 // TestGenAI_SpanKindClient pins OTel GenAI spec §Inference: kind=CLIENT.
 func TestGenAI_SpanKindClient(t *testing.T) {
 	sr, tracer := newRecorder(t)
-	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl")); err != nil {
+	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl"), nil); err != nil {
 		t.Fatalf("ParseStream: %v", err)
 	}
 	span := findSpan(sr.Ended(), "chat ")
@@ -146,7 +147,7 @@ func TestGenAI_SpanKindClient(t *testing.T) {
 // TestGenAI_ErrorEvent_SetsErrorType pins spec §3.4 — is_error=true → error.type attr + Status=Error.
 func TestGenAI_ErrorEvent_SetsErrorType(t *testing.T) {
 	sr, tracer := newRecorder(t)
-	if err := ParseStream(context.Background(), tracer, openFixture(t, "error.jsonl")); err != nil {
+	if err := ParseStream(context.Background(), tracer, openFixture(t, "error.jsonl"), nil); err != nil {
 		t.Fatalf("ParseStream: %v", err)
 	}
 	span := findSpan(sr.Ended(), "chat ")
@@ -168,7 +169,7 @@ func TestGenAI_ErrorEvent_SetsErrorType(t *testing.T) {
 // TestGenAI_NoStreamJson_NoSpan pins spec §9 R10 — non-stream-json input is a parser no-op.
 func TestGenAI_NoStreamJson_NoSpan(t *testing.T) {
 	sr, tracer := newRecorder(t)
-	if err := ParseStream(context.Background(), tracer, openFixture(t, "legacy_plain.txt")); err != nil {
+	if err := ParseStream(context.Background(), tracer, openFixture(t, "legacy_plain.txt"), nil); err != nil {
 		t.Fatalf("ParseStream: %v", err)
 	}
 	for _, s := range sr.Ended() {
@@ -181,7 +182,7 @@ func TestGenAI_NoStreamJson_NoSpan(t *testing.T) {
 // TestGenAI_SensitivePayloadNotEmitted pins §9 R7 — gen_ai.{input,output}.messages must not appear on any span.
 func TestGenAI_SensitivePayloadNotEmitted(t *testing.T) {
 	sr, tracer := newRecorder(t)
-	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl")); err != nil {
+	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl"), nil); err != nil {
 		t.Fatalf("ParseStream: %v", err)
 	}
 	for _, s := range sr.Ended() {
@@ -197,7 +198,7 @@ func TestGenAI_SensitivePayloadNotEmitted(t *testing.T) {
 func TestGenAI_LLMSpanIsChildOfActive(t *testing.T) {
 	sr, tracer := newRecorder(t)
 	ctx, parent := tracer.Start(context.Background(), "operator_invocation")
-	if err := ParseStream(ctx, tracer, openFixture(t, "success.jsonl")); err != nil {
+	if err := ParseStream(ctx, tracer, openFixture(t, "success.jsonl"), nil); err != nil {
 		t.Fatalf("ParseStream: %v", err)
 	}
 	parent.End()
@@ -213,5 +214,74 @@ func TestGenAI_LLMSpanIsChildOfActive(t *testing.T) {
 	}
 	if child.Parent().SpanID() != parentEnded.SpanContext().SpanID() {
 		t.Fatalf("chat span parent=%s, want %s", child.Parent().SpanID(), parentEnded.SpanContext().SpanID())
+	}
+}
+
+// TestParseStream_NilOnResult_NoCallback_BackwardsCompat pins amendment-PR — nil callback = behaviour-preserving.
+func TestParseStream_NilOnResult_NoCallback_BackwardsCompat(t *testing.T) {
+	sr, tracer := newRecorder(t)
+	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl"), nil); err != nil {
+		t.Fatalf("ParseStream: %v", err)
+	}
+	span := findSpan(sr.Ended(), "chat ")
+	if span == nil {
+		t.Fatalf("no chat span found")
+	}
+	v, ok := attrValue(span, otel.GenAIUsageInputTokens)
+	if !ok || v.AsInt64() != 120 {
+		t.Fatalf("nil callback path mutated W6 attrs (input_tokens=%v, want 120)", v.AsInt64())
+	}
+	if span.Status().Code == codes.Error {
+		t.Fatalf("nil callback marked span Error; want Unset")
+	}
+}
+
+// TestParseStream_OnResultFiresExactlyOncePerResultEvent pins amendment — one call per result event.
+func TestParseStream_OnResultFiresExactlyOncePerResultEvent(t *testing.T) {
+	_, tracer := newRecorder(t)
+	var calls int
+	var got StreamResultEvent
+	cb := func(_ context.Context, ev StreamResultEvent) error {
+		calls++
+		got = ev
+		return nil
+	}
+	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl"), cb); err != nil {
+		t.Fatalf("ParseStream: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("callback fired %d times, want 1", calls)
+	}
+	if got.MessageID != "msg_01abc" || got.Model != "claude-sonnet-4-7" {
+		t.Fatalf("projection mis-mapped: msgid=%q model=%q", got.MessageID, got.Model)
+	}
+	if got.InputTokens != 120 || got.OutputTokens != 42 || got.CacheReadInputTokens != 80 {
+		t.Fatalf("usage projection mis-mapped: in=%d out=%d cache_read=%d",
+			got.InputTokens, got.OutputTokens, got.CacheReadInputTokens)
+	}
+}
+
+// TestParseStream_OnResultErrorMarksSpanError pins R4 — callback error ⇒ span Error + error.type=record_call_failed.
+func TestParseStream_OnResultErrorMarksSpanError(t *testing.T) {
+	sr, tracer := newRecorder(t)
+	cb := func(context.Context, StreamResultEvent) error {
+		return errors.New("synthetic")
+	}
+	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl"), cb); err != nil {
+		t.Fatalf("ParseStream returned err=%v; want nil (callback error logged on span, not propagated)", err)
+	}
+	span := findSpan(sr.Ended(), "chat ")
+	if span == nil {
+		t.Fatalf("no chat span found")
+	}
+	if span.Status().Code != codes.Error {
+		t.Fatalf("status=%v, want Error", span.Status().Code)
+	}
+	v, ok := attrValue(span, otel.ErrorType)
+	if !ok {
+		t.Fatalf("error.type attr missing")
+	}
+	if v.AsString() != "record_call_failed" {
+		t.Fatalf("error.type=%q, want record_call_failed", v.AsString())
 	}
 }
