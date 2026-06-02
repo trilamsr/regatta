@@ -195,6 +195,62 @@ func TestApprovalDecideTx_RefactorPreservesCLIBehavior(t *testing.T) {
 	}
 }
 
+// TestApprovalDecideTx_TerminalRaceLeavesEventLogIntact pins #206: terminal event between GetApproval and BEGIN no longer silently overwrites status.
+func TestApprovalDecideTx_TerminalRaceLeavesEventLogIntact(t *testing.T) {
+	h := newDecideTxHarness(t, "system", []string{"alice", "bob"}, 2, false)
+	ctx := context.Background()
+
+	// Worst-case: reaper's terminal event lands BEFORE DecideTx is even called.
+	// Pre-fix DecideTx appended `decided` + `approved` and flipped the denorm
+	// to approved, producing the split-status bug in #206.
+	if err := h.db.AppendApprovalEvent(ctx, state.ApprovalEvent{
+		ApprovalID: h.approvalID,
+		Ts:         h.now,
+		Kind:       EventKindTimedOut,
+		Actor:      "system",
+		Payload:    []byte(`{"policy":"fail"}`),
+	}); err != nil {
+		t.Fatalf("seed timed_out: %v", err)
+	}
+	if err := h.db.MarkApprovalDecided(ctx, h.approvalID, state.ApprovalStatusTimedOut, []string{}, h.now); err != nil {
+		t.Fatalf("seed denorm: %v", err)
+	}
+
+	priorEvents, err := h.db.ListApprovalEvents(ctx, h.approvalID)
+	if err != nil {
+		t.Fatalf("ListApprovalEvents (pre): %v", err)
+	}
+	priorCount := len(priorEvents)
+
+	_, _, err = DecideTx(ctx, h.db, h.payload("alice"), "alice", "allow", "", h.clock)
+	if err == nil {
+		t.Fatalf("DecideTx: got nil err; want terminal-race sentinel")
+	}
+	if !errors.Is(err, state.ErrTokenReplay) {
+		t.Fatalf("DecideTx err=%v; want state.ErrTokenReplay (terminal-race sentinel)", err)
+	}
+
+	got, err := h.db.GetApproval(ctx, h.approvalID)
+	if err != nil {
+		t.Fatalf("GetApproval: %v", err)
+	}
+	if got.Status != state.ApprovalStatusTimedOut {
+		t.Fatalf("denorm status=%q; want timed_out (must not be overwritten by losing decide tx)", got.Status)
+	}
+
+	postEvents, err := h.db.ListApprovalEvents(ctx, h.approvalID)
+	if err != nil {
+		t.Fatalf("ListApprovalEvents (post): %v", err)
+	}
+	if len(postEvents) != priorCount {
+		kinds := make([]string, len(postEvents))
+		for i, e := range postEvents {
+			kinds[i] = e.Kind
+		}
+		t.Fatalf("events grew from %d to %d (kinds=%v); decide tx must not append after terminal", priorCount, len(postEvents), kinds)
+	}
+}
+
 func TestApprovalDecideTx_NoUpdateDeleteOutsideApprovalEvents(t *testing.T) {
 	// Append-only invariant: decide.go writes UPDATE only against the
 	// approvals denorm row (the same path the CLI used pre-lift). No
