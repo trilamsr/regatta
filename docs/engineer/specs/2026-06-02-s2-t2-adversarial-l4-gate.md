@@ -378,3 +378,7 @@ All findings resolved in this revision. No outstanding F-tier blockers.
 ---
 
 _End of spec. Line count target ≤ 400 (this file: 380). Spec freezes the L4 gate pattern per `feedback_spec_pattern_authority`; implementer-subagent deviations require re-spawning this subagent._
+
+## Resolution (2026-06-02)
+
+Shipped across an 8-PR wave: #351 (interface + slim impl), #370 (scheduler-wire at step 0.7), #373 (Anthropic adapter + tolerant JSON parser + 7-fixture table), #380 (reviewer-disagreement second-opinion loop), #381 (LRU findings cache), #385 (auto-fix patch mode), #387 (prompt-template SIGHUP hot-reload), #388 (per-category model selection). L4 is now a first-class gate at `internal/gates/l4/`.

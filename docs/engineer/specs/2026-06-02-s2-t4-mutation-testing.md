@@ -346,3 +346,7 @@ Per `feedback_unaddressed_load_bearing` — file as gh issues, cite by number in
 - go-mutesting: https://github.com/zimmski/go-mutesting (MIT, 2014-).
 - stryker-mutator: https://github.com/stryker-mutator (Apache-2.0, multi-language; no Go runner).
 - Memory: `feedback_research_design_principles`, `feedback_grade_rubric`, `feedback_pr_body_file_only`, `feedback_test_godoc_one_line`, `feedback_deletion_default`, `feedback_doc_check_banned_phrases`, `feedback_unaddressed_load_bearing`, `feedback_agent_pr_review`, `feedback_subagent_verification`, `feedback_cross_doc_link_phasing`, `feedback_migration_number_lock`, `feedback_root_cause`.
+
+## Resolution (2026-06-02)
+
+Wave-1 infra shipped via #372 (`ci(mutation): wire gremlins for cost + scheduler packages`). Mutation runner lives at `.github/workflows/mutation.yml`; baseline + threshold tracking enforced in CI.
