@@ -224,13 +224,7 @@ func TestListPendingEdgesFromMerged_OnlyMergedSources(t *testing.T) {
 	}
 }
 
-// TestCountNonDefaultEdgeStates covers the aggregate that replaces the
-// post-loop ListEdgesFrom re-read in evalPendingEdges (see #187). The
-// scheduler needs five facts about a from_id's sibling set: how many
-// non-defaults exist, whether any non-default has fired=true, whether
-// any non-default is still pending, the default row's id+fired (so it
-// can be marked when the fallback wins), and the default count (so a
-// misconfigured brief warns once). Each sub-case targets one branch.
+// TestCountNonDefaultEdgeStates covers the aggregate that replaces the post-loop ListEdgesFrom re-read in evalPendingEdges
 func TestCountNonDefaultEdgeStates(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -386,11 +380,7 @@ func TestCountNonDefaultEdgeStates(t *testing.T) {
 	}
 }
 
-// TestCountNonDefaultEdgeStates_MatchesListEdgesFrom is a property-style
-// equivalence test: for every from_id seeded into a randomized fixture,
-// the aggregate must report the same five facts the loop-over-
-// ListEdgesFrom path computes. This guards against the regression
-// in #187 reappearing if the aggregate SQL drifts.
+// TestCountNonDefaultEdgeStates_MatchesListEdgesFrom is a property-style equivalence test: for every from_id seeded into a
 func TestCountNonDefaultEdgeStates_MatchesListEdgesFrom(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
