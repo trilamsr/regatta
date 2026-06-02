@@ -38,6 +38,7 @@ while IFS= read -r phrase; do
     --exclude-dir='briefs' \
     --exclude-dir='specs' \
     --exclude-dir='plans' \
+    --exclude-dir='testdata' \
     -F "$phrase" "$root" 2>/dev/null || true)
   count=$(echo -n "$hits" | grep -c . || true)
   if [ "$count" -gt 1 ]; then
