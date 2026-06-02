@@ -173,6 +173,16 @@ import "list"
 	reconcile_interval:         *"1h" | "5m" | "15m" | "30m" | "6h" | "24h"
 	drift_alert_threshold_pct:  *10 | int & >=0 & <=100
 	usage_api_key_env:          *"ANTHROPIC_ADMIN_KEY" | string
+	// Optional path to a JSON file that overrides or extends the
+	// hardcoded pricing table at boot. Per-key merge — each model in
+	// the override file replaces the corresponding hardcoded row;
+	// rows not present in the override are untouched. Adds new SKUs
+	// (Bedrock/Vertex/marketplace) the upstream-mirror table cannot
+	// carry. Hard-fails on malformed JSON, unknown fields, non-positive
+	// rates, or world-writable file mode (R14 mitigation). Refresh
+	// via in-tree PR is still the default; this is the escape hatch
+	// for operators who cannot fork. Spec §10 S2 + §3.8.
+	pricing_override_path?:     string
 }
 
 #Context: {
