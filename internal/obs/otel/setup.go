@@ -132,10 +132,10 @@ func Setup(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 
 	// Sampler resolution: with OTEL_TRACES_SAMPLER set, the SDK env-config
 	// path applies and Setup omits WithSampler so the operator override
-	// wins (the contract PR #438 pins). With neither env var set, the
-	// regatta default per spec §2.5 is ParentBased(TraceIDRatioBased(0.1))
-	// wrapped in ErrorOverrideSampler so error.type-tagged + chain-verify /
-	// divergence-audit spans always sample regardless of the ratio bucket.
+	// wins. With neither env var set, the regatta default per spec §2.5
+	// is ParentBased(TraceIDRatioBased(0.1)) wrapped in ErrorOverrideSampler
+	// so error.type-tagged + chain-verify / divergence-audit spans always
+	// sample regardless of the ratio bucket.
 	tpOpts := []sdktrace.TracerProviderOption{
 		sdktrace.WithBatcher(traceExp),
 		sdktrace.WithResource(res),
