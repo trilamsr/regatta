@@ -50,7 +50,7 @@ type GHLabeler struct {
 
 // GHLabelerOptions wires GHLabeler dependencies at construction time
 // so the counter (and any future instruments) attach once per
-// process. Meter follows the Config.Meter DI seam pinned by PR #490.
+// process. Meter follows the Config.Meter DI seam pinned by T0a Config.Meter retrofit.
 type GHLabelerOptions struct {
 	// Repo is the "owner/name" passed via --repo. Empty falls back to
 	// gh's default-repo resolution (current git remote).
