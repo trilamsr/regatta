@@ -4,7 +4,8 @@ Strategic vision that survives sessions. One brief per inflection point. Briefs 
 
 ## Index
 
-- [`2026-05-31-mvp-3-next-level.md`](2026-05-31-mvp-3-next-level.md) — MVP-3 next-level moves: substrate-first sequencing, W6 OTel finish, W7 operator web UI, W8 OPA RBAC, W9 replay+diff (Temporal hybrid), P3.8 swap-out adapters.
+- [`2026-06-01-self-host-first.md`](2026-06-01-self-host-first.md) — **active roadmap.** Self-host-first reorder: S1 dogfood-ready core → S2 trust-the-loop → S3 durability. Defers W7 htmx UI / W8 multi-tenant scope / W10 Sigstore / W11 blackboard / W12 billing / P3.8 adapters / W9 Temporal-impl to Phase X (external-customer trigger). Supersedes `2026-05-31-mvp-3-next-level.md` §4 rank ordering.
+- [`2026-05-31-mvp-3-next-level.md`](2026-05-31-mvp-3-next-level.md) — MVP-3 next-level moves: substrate-first sequencing, W6 OTel finish, W7 operator web UI, W8 OPA RBAC, W9 replay+diff (Temporal hybrid), P3.8 swap-out adapters. _§4 rank ordering superseded by self-host-first brief; other sections still load-bearing as the external-buyer roadmap (Phase X reopen target)._
 
 ## What goes here
 

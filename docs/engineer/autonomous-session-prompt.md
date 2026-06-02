@@ -7,7 +7,7 @@ Copy-paste this prompt to bootstrap a fully autonomous regatta dev session. Desi
 ## Prompt
 
 ```
-Continue regatta development autonomously. Operate INDEFINITELY in auto mode — execute don't ask, ship don't explain, stop only when externally interrupted. Drive toward MVP-3 wave completion → MVP-4 wedges (W10 Sigstore / W11 blackboard / W12 billing per docs/engineer/briefs/2026-05-31-mvp-3-next-level.md) → Phase 2 P2.x adopt-when-needed triggers → Phase 3 P3.x conditional adoption. Never bottleneck on roadmap depth — pre-fetch next horizon per feedback_roadmap_pre_fetch when current wave drains. NEVER ask for clarification; decide via subagent + memory rules per feedback_decision_priority (UX > ease > best-practices > speed > velocity). When blocked: file [followup] issue + add to watch-triggers list + pick next priority. Pause only for genuinely irreversible action (tag signing, secret rotation, branch-protection downgrade).
+Continue regatta development autonomously. Operate INDEFINITELY in auto mode — execute don't ask, ship don't explain, stop only when externally interrupted. **Self-host-first.** Drive toward regatta dispatching regatta-the-binary at regatta-the-repo unattended (per docs/engineer/briefs/2026-06-01-self-host-first.md): Phase S1 (dogfood-ready core) → S2 (trust-the-loop) → S3 (durability). External-buyer wedges (W7 htmx UI, W8 multi-tenant scoping, W10 Sigstore, W11 blackboard, W12 billing, P3.8 adapters, W9 Temporal-backed impl) are Phase X — deferred until external customer ask or 30-day self-host-green trigger fires. Never bottleneck on roadmap depth — pre-fetch next horizon per feedback_roadmap_pre_fetch when current wave drains. NEVER ask for clarification; decide via subagent + memory rules per feedback_decision_priority (UX > ease > performance > best-practices > speed > velocity). When blocked: file [followup] issue + add to watch-triggers list + pick next priority. Pause only for genuinely irreversible action (tag signing, secret rotation, branch-protection downgrade).
 
 BOOT
 1. cd /Users/treedesk/Desktop/Projects/regatta && git fetch && git pull --ff-only main
@@ -16,14 +16,37 @@ BOOT
 4. gh pr list --state open  (note current state; in-flight PRs are normal)
 5. Read MEMORY.md + AGENTS.md (auto-loaded). Specs in `docs/engineer/specs/` are canonical for execution.
 
-PRIORITY (top-down, skip if blocked)
-1. **Cost-governor (P8) Wave 3 dispatch** — T5 (operator CLI doc) + T6 (ops runbook) + T7 (dashboard reference) per plan #267. Wave 2 SHIPPED (T3 amendment #270 + T3 primary #283 + T4 reconciler #279) — Wave 3 ungated. File-disjoint trio, single batch dispatch.
-2. **MVP-3 W7 Wave 1 (T4-T7)** — plan PR #268 OPEN (review + merge first). Once #268 lands, dispatch T4 (`internal/web/` scaffold + CSP + healthz) + T5 (vendored Tailwind + htmx + `build-tailwind`) + T7 (`Principal` + cookie-bound HMAC + CSRF + Origin) in parallel; T6 (`/approve/*` handlers + templates + 8 KiB diff cap) dispatches LAST (depends on T4+T7 merge).
-3. **MVP-3 W8 OPA RBAC implementer plan + dispatch** — spec SHIPPED #266. Plan subagent gated on W7 Wave 1 plan #268 land (W8 plugs into W7's `Authorizer` interface seam — designed pre-W8 in W7 spec §3.6.4 — one-file impl swap, no re-architecture). Substrate `policies` primitive ships in W8 (deferred from substrate W1 per spec §13).
-4. **Cost-gov #282 spawner-callback production wiring** — single-PR followup: wire `spend.SpawnerCallback` into `cmd/regatta/serve.go::buildSpawner`. Closes #282 (filed session C).
-5. Open follow-up issues (~50+) by load-bearing weight — A+ tier rubric checkboxes from earlier waves (mutation testing, fuzz, key-rotation drill, etc.). Plus session-C followups #272 #273 #274 #275 #276 #277 #282 (cost-gov) + #265 (approval). Spawn a triage subagent (≤5 trivial PRs/session cap) to sweep. Per feedback_session_2026_05_31_lessons.
-6. **MVP-3 W9 replay+diff harness** — ships AFTER W6/W7/W8 land; substrate-default `DurableHistory` impl, Temporal-backed impl gated behind refined P2.5 trigger — spec `docs/engineer/specs/2026-06-01-w9-temporal-vs-bespoke-redteam.md` picks option C (hybrid).
-7. **MVP-4 wedges + P3.8 swap-out adapters** — specs SHIPPED: W10 Sigstore #284, W11 blackboard #281, W12 billing #280. Plan + dispatch unblocked once W7 Wave 1 lands. P3.8 adapters spec at `docs/engineer/specs/2026-06-01-adapter-contracts-design.md`; trigger = first customer ask for hosted backend.
+PRIORITY (top-down, skip if blocked) — driven by docs/engineer/briefs/2026-06-01-self-host-first.md §3
+
+PHASE S1 — dogfood-ready core (acceptance: regatta dispatches itself on a real [autonomous]-labeled issue → opens PR → green gates → operator merges)
+1. **S1-T2 — close #282 spawner-callback wiring** — wire `spend.SpawnerCallback` into `cmd/regatta/serve.go::buildSpawner`. Single PR. Smallest unblock.
+2. **S1-T4 — Cost-governor Wave 3 dispatch** — T5 (operator CLI doc) + T6 (ops runbook) + T7 (dashboard reference) per plan #267. Caps-spend safety for unattended dispatch. File-disjoint trio, single batch.
+3. **S1-T1 — regatta.yaml for THIS repo** — design subagent picks markdown adapter (against `docs/engineer/briefs/*.md`) vs GH-issue adapter (against `[autonomous]` label). Default markdown per brief §8. NEW.
+4. **S1-T3 — boot-prompt → work_item brief converter** — script converts this prompt's PRIORITY block into briefs the markdown adapter ingests. NEW.
+5. **S1-T5 — self-host smoke test** — end-to-end fixture: regatta picks one `[followup]` issue → PR → green gates → operator merges. Acceptance gate for Phase S1. NEW.
+
+PHASE S2 — trust-the-loop (acceptance: leave `regatta serve` running overnight; adversarial-reviewer gate catches bad PRs, cost caps stop runaway spend, replay-diff debugs flaky decisions)
+6. **S2-T1 — W9 replay+diff harness, substrate-default `DurableHistory` impl ONLY**. Promoted from MVP-3 rank #4 to S2 rank #1 for self-host. Skip Temporal-backed variant (Phase X). Spec `docs/engineer/specs/2026-06-01-w9-temporal-vs-bespoke-redteam.md` option C, substrate path only.
+7. **S2-T2 — adversarial reviewer as first-class L4 gate** — bake the Claude-Code-side reviewer prompt into `internal/gates/`. Today it lives only in dispatch prompts. NEW. Default model: Sonnet 4.6, escape hatch via `regatta.yaml: gates.l4.model`.
+8. **S2-T3 — followup-issue auto-triage** — regatta reads its own `[followup]`-tagged GH issues, self-files plan briefs back into the markdown adapter directory. NEW.
+9. **S2-T4 — mutation testing on cost-governor + scheduler** — top 2 A+ rubric items from prior waves. FILED.
+
+PHASE S3 — durability (acceptance: survives crashes, key rotations, schema migrations without operator hand-holding)
+10. **S3-T1 — W8 T-remaining slim** — OPA Authorizer impl + policy hot-reload. SKIP multi-tenant `tenant_id` propagation (Phase X). Slim W8 by ~60%. Spec #266 stays valid; subset only.
+11. **S3-T2 — substrate Phase B+C cutover** — shadow-write + read-from-substrate for cost-gov + approvals only. Skip everything-else cutover.
+12. **S3-T3 — key-rotation drill + recovery doc**. FILED.
+13. **S3-T4 — crash-recovery property test** — 200 random crash-points × scheduler tick. NEW.
+
+PHASE X — deferred until external customer ask OR 30-day self-host-green trigger (≥10 PRs/day green-merge ≥30 days unattended)
+- W7 Waves 1-3 htmx UI (PR #268 plan stays open as design artifact; do NOT dispatch implementers)
+- W8 multi-tenant `tenant_id` scoping
+- W10 Sigstore #284 / W11 blackboard #281 / W12 billing #280 (specs stay tracked)
+- P3.8 swap-out adapters (5 contracts)
+- W9 Temporal-backed `DurableHistory` impl
+
+OPEN FOLLOWUPS (sweep when between phase items, ≤5 trivial PRs/session cap)
+- A+ rubric checkboxes from prior waves — fuzz, mutation testing, key-rotation drill
+- Session-C followups #272 #273 #274 #275 #276 #277 (cost-gov) + #265 (approval)
 
 Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -40`:
 - **MVP-3 W6 OTel backbone COMPLETE** (#159 umbrella) — T1 #172 (SDK setup) · T2 #169 (slog bridge) · T3 #209 (migration 0005 trace_id) · T4 #213 (GenAI semconv parser) · T5 #210 (Config.Tracer × 8 components) · T6+T7 #215 (Jaeger E2E + operator doc)
@@ -52,7 +75,8 @@ RULES (memory-bound; do not re-derive)
 - Unaddressed load-bearing items in PR body → file tracking issues + cite numbers in PR before merge (memory/feedback_unaddressed_load_bearing)
 - Research + design: prefer adopting proven OSS over reimplementation. Priority order: user experience first, then quality bar matching reference systems, then ecosystem conventions, then long-term repo + user benefit (memory/feedback_research_design_principles). Every design-subagent prompt must cite this rule.
 - Spec deviations require design-subagent re-spawn (memory/feedback_spec_pattern_authority); never let implementer pick alternative
-- **W9 substrate-choice locked = option C hybrid** (memory/wedge_roadmap_assessment §"Substrate + W9 substrate-choice locked 2026-06-01"): ship W9 against `DurableHistory` Go interface, default impl on substrate `events`, Temporal-backed impl gated behind refined P2.5 trigger (sqlite contention >5% OR ≥30 concurrent OR replay-recovery >60s — any one, two consecutive 24h windows). W9 ships AFTER W6/W7/W8 land; substrate ships BEFORE W7. Never re-litigate during implementer dispatch.
+- **W9 substrate-choice locked = option C hybrid, self-host scope = substrate-default impl ONLY** (memory/wedge_roadmap_assessment §"Substrate + W9 substrate-choice locked 2026-06-01" + self-host-first brief §3 S2-T1): ship W9 against `DurableHistory` Go interface, default impl on substrate `events`. Temporal-backed impl is Phase X — gated behind refined P2.5 trigger (sqlite contention >5% OR ≥30 concurrent OR replay-recovery >60s — any one, two consecutive 24h windows) AND external customer ask. W9 promoted ahead of W7/W8 for self-host loop closure. Never re-litigate during implementer dispatch.
+- **Self-host-first filter** (per docs/engineer/briefs/2026-06-01-self-host-first.md §1): every wedge filtered by "does the sole internal operator need this to dispatch regatta-the-binary at this repo unattended?". Keep → in scope. Defer → Phase X. Single-tenant, single-operator, single-repo, CLI-only, deterministic CI, human-merge via GH branch protection. No RBAC for tenancy. No billing. No htmx UI. No Sigstore. No blackboard. Reopen Phase X on external customer ask OR 30-day-green trigger.
 - root-cause only, no workarounds
 - max parallel fan-out (memory/feedback_parallel_dispatch)
 - Cap parallel implementer subagents at 3-4 per feedback_session_limit_dispatch; shared API quota dies at 5+. Heavy-context sessions reduce cap to 2-3.
