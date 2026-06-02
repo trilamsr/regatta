@@ -3,7 +3,7 @@
 // adapter ingests them as WorkItems.
 //
 // Spec: docs/engineer/specs/2026-06-02-s2-t3-followup-triage.md
-// Sibling of cmd/boot-prompt-to-items (S1-T3, PR #331).
+// Sibling of cmd/boot-prompt-to-items (S1-T3).
 package main
 
 import (
@@ -200,7 +200,7 @@ func bodySha(body string) string {
 
 // renderItem produces the on-disk bytes for one open issue.
 // Format mirrors S1-T3 (sentinel placed in body region — root-cause
-// lesson from PR #331; placing under '## Acceptance criteria' breaks
+// lesson from cmd/boot-prompt-to-items; placing under '## Acceptance criteria' breaks
 // criterionRE).
 func renderItem(iss ghIssue) []byte {
 	var buf bytes.Buffer

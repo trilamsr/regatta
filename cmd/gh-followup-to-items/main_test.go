@@ -18,8 +18,8 @@ import (
 var fixtureIssues = []ghIssue{
 	{
 		Number: 333,
-		Title:  "[followup] doc-check reviewer-tag regex over-matches 'Reviewer <Capital>' prose",
-		Body:   "Trigger: a reviewer-named follow-up token like `Reviewer Bob` matches the doc-check banned-phrase regex.\n\nFix: anchor the regex more tightly.",
+		Title:  "[followup] doc-check reviewer-tag regex over-matches reviewer-Capital prose",
+		Body:   "Trigger: a reviewer-named follow-up token like `reviewer-Bob` matches the doc-check banned-phrase regex.\n\nFix: anchor the regex more tightly.",
 		URL:    "https://github.com/trilamsr/regatta/issues/333",
 		State:  "OPEN",
 		Labels: []ghLabel{{Name: "followup"}, {Name: "W6-followup"}},
@@ -103,7 +103,7 @@ func TestParse_FrontmatterIsAdapterIngestable(t *testing.T) {
 		t.Fatalf("readdir: %v", err)
 	}
 	wantTitles := map[string]string{
-		"GH-ISSUE-333": "doc-check reviewer-tag regex over-matches 'Reviewer <Capital>' prose",
+		"GH-ISSUE-333": "doc-check reviewer-tag regex over-matches reviewer-Capital prose",
 		"GH-ISSUE-329": "cost-governor history estimator lane scope",
 		"GH-ISSUE-324": "tech debt: dedupe slug helper across cmd/* sibling tools",
 	}
