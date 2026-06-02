@@ -2,7 +2,7 @@
 # Multi-stage build for regatta. Follows the official Go Docker pattern:
 # https://docs.docker.com/language/golang/build-images/
 
-# ---------- Stage 1: builder ----------
+# Stage 1 builder
 FROM golang:1.25-alpine AS builder
 
 WORKDIR /src
@@ -18,7 +18,7 @@ COPY . .
 ENV CGO_ENABLED=0
 RUN go build -trimpath -o /regatta ./cmd/regatta
 
-# ---------- Stage 2: runtime ----------
+# Stage 2 runtime
 FROM alpine:3.20
 
 # git + github-cli — the spawner shells to both.
