@@ -73,6 +73,37 @@ func TestGateResultSchemaLockstep(t *testing.T) {
 		}
 	}
 
+	// Auto-fix mode: when AutoFixable=true + Patch non-empty, both
+	// fields must serialize so a downstream PR-comment poster can
+	// render the unified-diff verbatim (closes #358).
+	af := Finding{
+		ID:          "L4-REF-NAMING",
+		Severity:    FindingMedium,
+		Claim:       "renaming candidate",
+		AutoFixable: true,
+		Patch:       "--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n",
+	}
+	afraw, err := json.Marshal(af)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range []string{`"auto_fixable"`, `"patch"`} {
+		if !strings.Contains(string(afraw), req) {
+			t.Fatalf("missing %s in auto-fix finding: %s", req, afraw)
+		}
+	}
+	// Zero-value Finding must omit both (omitempty discipline keeps
+	// the audit payload small for the 99% no-patch case).
+	zraw, err := json.Marshal(Finding{ID: "F", Severity: FindingLow, Claim: "c"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, banned := range []string{`"auto_fixable"`, `"patch"`} {
+		if strings.Contains(string(zraw), banned) {
+			t.Fatalf("zero-value finding must omit %s: %s", banned, zraw)
+		}
+	}
+
 	// Verdict + GateKind values must match the schema enums.
 	for _, v := range []Verdict{VerdictPass, VerdictFail, VerdictAdvisory} {
 		if _, err := json.Marshal(v); err != nil {

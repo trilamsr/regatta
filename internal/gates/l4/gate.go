@@ -139,6 +139,16 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 		gr.Telemetry.TokensInput += resp.TokensIn
 		gr.Telemetry.TokensOutput += resp.TokensOut
 	}
+	if !cfg.AutoFix {
+		// Operator opt-in is load-bearing per issue #358 — a
+		// rogue model that surfaces a patch without the gate
+		// being configured for AutoFix must not leak the diff
+		// into the audit payload.
+		for i := range gr.Findings {
+			gr.Findings[i].AutoFixable = false
+			gr.Findings[i].Patch = ""
+		}
+	}
 
 	if severity.Blocks(rules, gr.Findings) {
 		if cfg.AdvisoryMode {
