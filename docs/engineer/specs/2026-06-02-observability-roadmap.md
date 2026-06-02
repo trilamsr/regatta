@@ -54,7 +54,7 @@ OTel Go SDK + GenAI semconv + Jaeger E2E shipped in 2026-05. Not re-litigated; t
 | grafonnet (jsonnet DSL) | 3 (Grafana Labs; slower release cadence) | 3 (jsonnet adoption uneven) | 3 (adds jsonnet toolchain) | 4 | 13/20 | reject — extra toolchain |
 | Terraform `grafana_dashboard` | 4 | 4 | 3 (terraform state for one tool) | 3 | 14/20 | reject — state overhead |
 
-**Decision:** Plain Grafana JSON in repo at `dashboards/grafana/*.json`. CI lints against the Grafana JSON schema. Single `make provision-dashboards` calls the Grafana HTTP API.
+**Decision:** Plain Grafana JSON in repo at `docs/operator/dashboards/*.json`. CI lints against the Grafana JSON schema. Single `make provision-dashboards` calls the Grafana HTTP API.
 
 ### 1.5 Log aggregation — Loki vs Fluent-bit vs Vector
 
@@ -240,18 +240,18 @@ Each is a design-time rule. Reviewer subagents check the diff against this list.
 3. **Metric for what should be a log** — sparse one-shot events (chain break, divergence detected) get BOTH a counter (for alarm) AND a log event (for forensic detail). Never a metric alone for sparse events.
 4. **Log for what should be a metric** — high-volume numeric measurements (LLM token counts, tick latency) MUST be metrics. Counting log records to derive a metric is forbidden — extract it.
 5. **Time-series for what should be a profile** — CPU/memory continuous-state goes through `runtime/pprof`, not metrics. Out of scope for this spec; documented as a follow-up trigger ("profile-on-demand" wedge).
-6. **Drift between metric name and dashboard query** — every dashboard JSON references metric names by string. CI test `TestDashboardMetricNames_MatchEmitted` greps `dashboards/grafana/*.json` for `regatta.*` patterns and asserts each one exists as a `meter.*` call in `internal/`.
+6. **Drift between metric name and dashboard query** — every dashboard JSON references metric names by string. CI test `TestDashboardMetricNames_MatchEmitted` greps `docs/operator/dashboards/*.json` for `regatta.*` patterns and asserts each one exists as a `meter.*` call in `internal/`.
 7. **Alarm fatigue** — every alarm has a severity tier (`info`/`warn`/`critical`) and a rate-limit (no alarm fires more than once per 5 min for the same `(name, instance)` pair). Sloth-generated PromQL handles this via standard `for: 5m` clauses.
 8. **Vanity metrics** — counter with no operator-facing decision. Every metric on the §3 table answers a named question for the operator (e.g. "is the L4 cache helping?" → `regatta.l4.cache.hits`/`misses`). If no question, drop the metric.
 9. **Missing metric for a known failure surface** — a new gate or adapter is added without a `regatta.<gate>.invocations` counter, so a failure mode that should be visible silently isn't. Enforced by `TestEveryGateAdapterHasInvocationsCounter` (new in A-T0a) — AST walk that asserts every type implementing the `Gate` interface (in `internal/gates/`) or the `Adapter` interface (in `internal/adapters/`) has a `meter.*Counter("regatta.<gate>.invocations")` or `meter.*Counter("regatta.<adapter>.invocations")` call somewhere in its package. Failure mode: the test names the gate/adapter and points at the missing counter line.
-10. **Dashboard UI drift** — operator edits a Grafana dashboard in the web UI to debug an incident, never round-trips the change back to `dashboards/grafana/*.json`. Real-world this is the #1 source of dashboard rot. `make provision-dashboards` upserts the JSON → Grafana, but no reverse-diff path exists. Mitigation: nightly job (filed as `[OBS-followup]` — see §9; ships in Wave-D) exports every dashboard from Grafana via HTTP API, normalizes JSON (strip mutable IDs/timestamps), and `diff` against `dashboards/grafana/*.json`; any non-empty diff opens a `[OBS-drift]` issue with the diff inline.
-11. **Cardinality cost telemetry** — the §2.2 budget caps cardinality but doesn't measure it. Operators with metered backends (Honeycomb, Datadog) want a "metric series count over time" KPI so they see the cost-of-cardinality before the bill arrives. Mitigation: `dashboards/grafana/meta.json` (filed as `[OBS-followup]` — see §9; ships in Wave-D) hosts an "active series count by metric" panel sourced from Prom's `count(count by (__name__)({__name__=~"regatta_.*"}))` query.
+10. **Dashboard UI drift** — operator edits a Grafana dashboard in the web UI to debug an incident, never round-trips the change back to `docs/operator/dashboards/*.json`. Real-world this is the #1 source of dashboard rot. `make provision-dashboards` upserts the JSON → Grafana, but no reverse-diff path exists. Mitigation: nightly job (filed as `[OBS-followup]` — see §9; ships in Wave-D) exports every dashboard from Grafana via HTTP API, normalizes JSON (strip mutable IDs/timestamps), and `diff` against `docs/operator/dashboards/*.json`; any non-empty diff opens a `[OBS-drift]` issue with the diff inline.
+11. **Cardinality cost telemetry** — the §2.2 budget caps cardinality but doesn't measure it. Operators with metered backends (Honeycomb, Datadog) want a "metric series count over time" KPI so they see the cost-of-cardinality before the bill arrives. Mitigation: `docs/operator/dashboards/meta.json` (filed as `[OBS-followup]` — see §9; ships in Wave-D) hosts an "active series count by metric" panel sourced from Prom's `count(count by (__name__)({__name__=~"regatta_.*"}))` query.
 
 ---
 
 ## §5 SLO + alarm policy (OpenSLO YAML + Sloth-compiled Prom rules)
 
-Four SLOs (was five — SLO-3 PR-merge-rate demoted to operator KPI tile per the converged amendments; subsequent SLOs renumbered). One OpenSLO YAML per SLO at `slo/*.yaml`. Sloth compiles to Prom recording + alerting rules at `dashboards/prometheus/rules/*.yaml`. Each SLO ships with a one-line dashboard tile on `dashboards/grafana/slo.json`.
+Four SLOs (was five — SLO-3 PR-merge-rate demoted to operator KPI tile per the converged amendments; subsequent SLOs renumbered). One OpenSLO YAML per SLO at `slo/*.yaml`. Sloth compiles to Prom recording + alerting rules at `dashboards/prometheus/rules/*.yaml`. Each SLO ships with a one-line dashboard tile on `docs/operator/dashboards/slo.json`.
 
 ### SLO-1 — Scheduler tick latency
 
@@ -293,7 +293,7 @@ Four SLOs (was five — SLO-3 PR-merge-rate demoted to operator KPI tile per the
 
 PR-merge-rate is a velocity target (team shipping cadence), not a user-visible reliability signal. Calling it an SLO conflates "service is healthy" with "team is shipping" and burns the error budget on planned slow weeks (operator vacation, Phase-S relaxation hold). The metric remains valuable as the **trigger-clock source** (`30_day_green` derivation in D-T3) and as an operator dashboard KPI — just not as a paging alarm.
 
-PR-merge-rate ships as a KPI tile on `dashboards/grafana/digest.json` (operator-glance), tile spec: stat-panel showing 24h merged count + 7d-trailing avg + 30d-trailing avg. Source PromQL: `sum(increase(regatta_pr_stage_duration_seconds_count{stage="ci_green_to_merge"}[24h]))`. No alarm rule. D-T3's `30_day_green` trigger still reads this same series.
+PR-merge-rate ships as a KPI tile on `docs/operator/dashboards/digest.json` (operator-glance), tile spec: stat-panel showing 24h merged count + 7d-trailing avg + 30d-trailing avg. Source PromQL: `sum(increase(regatta_pr_stage_duration_seconds_count{stage="ci_green_to_merge"}[24h]))`. No alarm rule. D-T3's `30_day_green` trigger still reads this same series.
 
 ### Alarm-policy net effect
 
@@ -303,7 +303,7 @@ PR-merge-rate ships as a KPI tile on `dashboards/grafana/digest.json` (operator-
 | SLO-2 L4 latency | unchanged | critical | budget-widen followup filed |
 | SLO-3 substrate event-rate (was SLO-4) | renumbered | warn-tier (was critical) | quantile-rewrite followup filed |
 | SLO-4 cost-cap fire rate (was SLO-5) | renumbered | info-tier | unchanged |
-| ~~SLO-3 PR-merge-rate~~ | REMOVED | n/a | demoted to KPI tile on `dashboards/grafana/digest.json` |
+| ~~SLO-3 PR-merge-rate~~ | REMOVED | n/a | demoted to KPI tile on `docs/operator/dashboards/digest.json` |
 
 Total SLOs: 4. Critical-tier paging alarms: 2. Warn-tier: 1. Info-tier: 1.
 
@@ -451,7 +451,7 @@ Sibling subcommand `cmd/regatta/triggers.go` — one stat-line per trigger ("`30
 
 ### 6.4 Dashboards-as-code commitment
 
-Every dashboard tile in §3 ships as a JSON file under `dashboards/grafana/*.json`, version-controlled. `make provision-dashboards` calls the Grafana HTTP API to upsert. CI test `TestDashboardJSON_LintsAgainstSchema` validates every JSON against Grafana's schema (vendored at `tools/grafana-schema/`).
+Every dashboard tile in §3 ships as a JSON file under `docs/operator/dashboards/*.json`, version-controlled. `make provision-dashboards` calls the Grafana HTTP API to upsert. CI test `TestDashboardJSON_LintsAgainstSchema` validates every JSON against Grafana's schema (vendored at `tools/grafana-schema/`).
 
 The Wave-C cost-per-agent rollup is the one panel that uses a Grafana template variable (`$rollup_dim` ∈ {`pr_number`, `agent_id`, `task_type`}) so a single base dashboard JSON renders three views — per-PR (operator-facing, ties cost+latency to merge-able units), per-agent (debugger-facing, isolates flakey agents), per-task-type (strategy-facing, "which dispatch templates are slow"). Same dense-event store, three sparse projections at query time — no schema migration to add a fourth view later (per §11 RISK-B + §9 follow-up #3).
 
@@ -469,11 +469,11 @@ Goal: prove the canonical stack end-to-end with the 4 metrics that pay back fast
 |---|---|---|---|---|
 | **A-T0a** | impl-A0a | `internal/obs/otel/meter.go` + `meter_test.go`; extend `internal/obs/otel/setup.go` to init MeterProvider; OTLP-metric exporter wiring; Prom exporter wiring (`OTEL_METRICS_PROMETHEUS_PORT`); mutual-exclusion validator (`ErrOTelMetricExporterConflict`); new lint test `TestEveryGateAdapterHasInvocationsCounter` (covers §4 trap #9). Adds `Config.Meter metric.Meter` field to the 2 Config structs A-T1/A-T2 touch first (`cost/spend`, `gates/l4`) **on the Config struct only** — `writer.go` and gate-decide-path edits stay out of A-T0a's scope (see "Open at impl time" RISK-A). | — | M |
 | **A-T0b** | impl-A0b | adds `Config.Meter metric.Meter` field to the remaining 6 Config structs (`orchestrator/scheduler`, `orchestrator/spawner`, `orchestrator/state/substrate`, `history`, `orchestrator/followup`, plus the spawner-failure-taxonomy ctor that lands in Wave-C) + retrofits constructors + updates every existing test that constructs each component | A-T0a | M |
-| **A-T1** (item #1) | impl-A1 | instrument `internal/cost/spend/writer.go` with `meter.Float64Counter("regatta.cost.usd")` + `meter.Int64Counter("regatta.cost.tokens")` calls; add `dashboards/grafana/cost.json` | A-T0a | S |
-| **A-T2** (item #2) | impl-A2 | instrument `internal/gates/l4/gate.go` + `percategory.go` + `reload.go` with counter + histogram + cache-hit/miss + second-opinion-fire counters; add `dashboards/grafana/l4.json` | A-T0a | M |
-| **A-T3** (item #4) | impl-A3 | instrument `internal/orchestrator/scheduler/scheduler.go` Tick path with tick-latency histogram + per-step duration histogram (tag=`step`); add `dashboards/grafana/scheduler.json` | A-T0b | M |
+| **A-T1** (item #1) | impl-A1 | instrument `internal/cost/spend/writer.go` with `meter.Float64Counter("regatta.cost.usd")` + `meter.Int64Counter("regatta.cost.tokens")` calls; add `docs/operator/dashboards/per-dag-cost.json` | A-T0a | S |
+| **A-T2** (item #2) | impl-A2 | instrument `internal/gates/l4/gate.go` + `percategory.go` + `reload.go` with counter + histogram + cache-hit/miss + second-opinion-fire counters; add `docs/operator/dashboards/l4-gate.json` | A-T0a | M |
+| **A-T3** (item #4) | impl-A3 | instrument `internal/orchestrator/scheduler/scheduler.go` Tick path with tick-latency histogram + per-step duration histogram (tag=`step`); add `docs/operator/dashboards/scheduler-tick.json` | A-T0b | M |
 | **A-T4** (item #14) | impl-A4 | new `cmd/regatta/digest.go` subcommand + `scripts/cron/daily-digest.sh`; first digest at `docs/digests/2026-06-03.md`; ships placeholder sections + YAML front-matter per §6.2 | A-T1 thru A-T3 | M |
-| **A-T5** | impl-A5 | `slo/scheduler-tick.yaml` (SLO-1) + `slo/l4-latency.yaml` (SLO-2) + Sloth compile to `dashboards/prometheus/rules/`; `dashboards/grafana/slo.json`; `docs/operator/runbooks/scheduler-tick.md` + `docs/operator/runbooks/l4-latency.md` | A-T1 thru A-T3 | M |
+| **A-T5** | impl-A5 | `slo/scheduler-tick.yaml` (SLO-1) + `slo/l4-latency.yaml` (SLO-2) + Sloth compile to `dashboards/prometheus/rules/`; `docs/operator/dashboards/slo.json`; `docs/operator/runbooks/scheduler-tick.md` + `docs/operator/runbooks/l4-latency.md` | A-T1 thru A-T3 | M |
 | **A-T6** | impl-A6 | `docs/operator/observability-metrics.md` — operator-facing doc for the metric layer | A-T5 | S |
 
 Wave-A exit gate: `make check` clean; `regatta digest` produces a valid markdown file (with placeholder lines for sections 2 + 3 + YAML front-matter); 4 dashboards provision and render; SLO-1 and SLO-2 fire correctly on synthetic load; adversarial reviewer subagent clears.
@@ -484,10 +484,10 @@ A-T0a → A-T0b MUST be sequenced serially (same implementer or sequential dispa
 
 | ID | Owner | Path (exclusive) | Depends-on | Effort |
 |---|---|---|---|---|
-| **B-T1** (item #5) | impl-B1 | instrument `internal/orchestrator/state/substrate/event.go` Append + emit `regatta.substrate.events.appended`; `slo/substrate-event-rate.yaml` (SLO-3 renumbered, warn-tier); `dashboards/grafana/substrate-events.json` | A-T0b | S |
-| **B-T2** (item #6) | impl-B2 | instrument `internal/orchestrator/state/substrate/sign.go` chain-verify + emit `regatta.substrate.chain.break`; alarm rule (critical, any non-zero); `dashboards/grafana/substrate-chain.json` | A-T0b | S |
-| **B-T3** (item #7) | impl-B3 | divergence-audit-table reader emits `regatta.substrate.divergence.detected` (tag `layer`); `dashboards/grafana/substrate-divergence.json`; surface lives in `internal/orchestrator/state/substrate/divergence_emit.go` (new file, separate from existing audit writers) | A-T0b | S |
-| **B-T4** (item #8) | impl-B4 | instrument `internal/history/substrate_impl.go` Replay path + emit `regatta.replay.latency_ms` (tag `impl`); `dashboards/grafana/replay.json`; `slo/replay-latency.yaml` | A-T0b | S |
+| **B-T1** (item #5) | impl-B1 | instrument `internal/orchestrator/state/substrate/event.go` Append + emit `regatta.substrate.events.appended`; `slo/substrate-event-rate.yaml` (SLO-3 renumbered, warn-tier); `docs/operator/dashboards/substrate-event-rate.json` | A-T0b | S |
+| **B-T2** (item #6) | impl-B2 | instrument `internal/orchestrator/state/substrate/sign.go` chain-verify + emit `regatta.substrate.chain.break`; alarm rule (critical, any non-zero); `docs/operator/dashboards/substrate-chain.json` | A-T0b | S |
+| **B-T3** (item #7) | impl-B3 | divergence-audit-table reader emits `regatta.substrate.divergence.detected` (tag `layer`); `docs/operator/dashboards/substrate-divergence.json`; surface lives in `internal/orchestrator/state/substrate/divergence_emit.go` (new file, separate from existing audit writers) | A-T0b | S |
+| **B-T4** (item #8) | impl-B4 | instrument `internal/history/substrate_impl.go` Replay path + emit `regatta.replay.latency_ms` (tag `impl`); `docs/operator/dashboards/replay.json`; `slo/replay-latency.yaml` | A-T0b | S |
 
 Wave-B exit gate: 4 dashboards green; SLO-3 fires warn-tier on synthetic burst; chain-break critical alarm verified via synthetic break in a test fixture; reviewer clears.
 
@@ -495,12 +495,12 @@ Wave-B exit gate: 4 dashboards green; SLO-3 fires warn-tier on synthetic burst; 
 
 | ID | Owner | Path (exclusive) | Depends-on | Effort |
 |---|---|---|---|---|
-| **C-T1** (item #9) | impl-C1 | instrument `internal/orchestrator/spawner/spawner.go` Spawn path + emit `regatta.dispatch.subagents` (tag `template`, `task_type`, `agent_id`); `dashboards/grafana/dispatch.json` | A-T0b | S |
+| **C-T1** (item #9) | impl-C1 | instrument `internal/orchestrator/spawner/spawner.go` Spawn path + emit `regatta.dispatch.subagents` (tag `template`, `task_type`, `agent_id`); `docs/operator/dashboards/dispatch.json` | A-T0b | S |
 | **C-T2** (item #10) | impl-C2 | new `internal/obs/prlifecycle/collector.go` correlates dispatch span → GitHub PR events via `pr_number` → emits histogram `regatta.pr.stage_duration_seconds` (tag `stage`); reads GitHub API via existing `gh` shell or a new minimal client. **Removes the A-T4 placeholder line for the PRs-landed digest section** as part of the landing PR (per §6.2 first-digest degraded contract). | A-T0b, C-T1 | M |
 | **C-T3** (item #11) | impl-C3 | extend `internal/cost/spend/writer.go` (touched by A-T1; coordinate via shared-primitive-owner per `feedback_shared_primitive_owner` — **A-T1 OWNS this file across Waves A+C**) to also emit a log event with `pr_number` correlation + unlabeled aggregate counter `regatta.pr.cost_usd_total` | A-T1 (shared owner) | S |
-| **C-T4** (item #12) | impl-C4 | new `internal/orchestrator/spawner/failure_taxonomy.go` parses CI failure logs into `mode` enum; emits `regatta.dispatch.failure` (tag `mode`); `dashboards/grafana/failure-modes.json` | A-T0b, C-T1 | M |
+| **C-T4** (item #12) | impl-C4 | new `internal/orchestrator/spawner/failure_taxonomy.go` parses CI failure logs into `mode` enum; emits `regatta.dispatch.failure` (tag `mode`); `docs/operator/dashboards/failure-modes.json` | A-T0b, C-T1 | M |
 
-Wave-C exit gate: 4 dashboards green; PR-lifecycle stage histogram populates on real PRs; failure-mode counter covers ≥ 8 known mode buckets from the last 30d of CI history; reviewer clears.
+Wave-C exit gate: 3 dashboards green (C-T1 `dispatch.json`, C-T2 `pr-lifecycle.json`, C-T4 `failure-modes.json`; C-T3 extends `writer.go` + adds log event, no new dashboard); PR-lifecycle stage histogram populates on real PRs; failure-mode counter covers ≥ 8 known mode buckets from the last 30d of CI history; reviewer clears.
 
 **Shared-primitive-owner note**: per `feedback_shared_primitive_owner` — A-T1 owns `internal/cost/spend/writer.go` across both Wave A and Wave C. C-T3's dispatch brief MUST cite A-T1 as the file owner; coordinate edits via a single follow-up PR sequence. A-T0a explicitly fences its retrofit to the Config struct (`config.go` only), not `writer.go` — see "Open at impl time" RISK-A.
 
@@ -508,9 +508,9 @@ Wave-C exit gate: 4 dashboards green; PR-lifecycle stage histogram populates on 
 
 | ID | Owner | Path (exclusive) | Depends-on | Effort |
 |---|---|---|---|---|
-| **D-T1** (item #3) | impl-D1 | new `internal/orchestrator/followup/triage.go` instruments follow-up triage decisions (filed/dismissed/auto_fixed/superseded); emits `regatta.adversarial.findings` (tag `fate`, `severity`); `dashboards/grafana/adversarial.json`. **Removes the A-T4 placeholder line for the Adversarial-findings digest section** as part of the landing PR (per §6.2 first-digest degraded contract). | A-T0a | M |
+| **D-T1** (item #3) | impl-D1 | new `internal/orchestrator/followup/triage.go` instruments follow-up triage decisions (filed/dismissed/auto_fixed/superseded); emits `regatta.adversarial.findings` (tag `fate`, `severity`); `docs/operator/dashboards/adversarial.json`. **Removes the A-T4 placeholder line for the Adversarial-findings digest section** as part of the landing PR (per §6.2 first-digest degraded contract). | A-T0a | M |
 | **D-T2** (item #13) | impl-D2 | new `cmd/regatta/status.go` TUI subcommand using bubbletea (**add to go.mod** — not currently present); 5 panels per §6.1 budget table (drops Triggers panel — relocated to `regatta triggers`); reads Prom HTTP API + sqlite | Waves A+B+C all merged (TUI panels reference all metrics) | L |
-| **D-T3** (item #15) | impl-D3 | new `internal/obs/triggers/clock.go` emits gauge `regatta.trigger.days_remaining` (tag `trigger`); new sibling subcommand `cmd/regatta/triggers.go` (one stat-line per trigger); `dashboards/grafana/triggers.json`; trigger thresholds live in `slo/triggers.yaml` | A-T0a, **C-T2** (30_day_green reads the PR-stage histogram emitted by C-T2 — DO NOT DISPATCH D-T3 BEFORE C-T2 MERGES or the gauge reads zero) | S |
+| **D-T3** (item #15) | impl-D3 | new `internal/obs/triggers/clock.go` emits gauge `regatta.trigger.days_remaining` (tag `trigger`); new sibling subcommand `cmd/regatta/triggers.go` (one stat-line per trigger); `docs/operator/dashboards/trigger-clock.json`; trigger thresholds live in `slo/triggers.yaml` | A-T0a, **C-T2** (30_day_green reads the PR-stage histogram emitted by C-T2 — DO NOT DISPATCH D-T3 BEFORE C-T2 MERGES or the gauge reads zero) | S |
 
 Wave-D exit gate: `regatta status` renders in < 3 s cold on 80×24 terminal; `regatta triggers` prints one line per trigger; trigger-clock panel shows days remaining for all 3 triggers; adversarial dismissal-rate alarm fires correctly on synthetic dismissal-burst test fixture; reviewer clears.
 
@@ -536,7 +536,7 @@ Wave D:
   D-T2 after Waves A+B+C all merged
 ```
 
-Total tasks: **18** (was 17 in PR #400; A-T0 split into A-T0a + A-T0b adds 1).
+Total tasks: **19** (was 17 in PR #400; A-T0 split into A-T0a + A-T0b adds 1; the original count omitted A-T0b). Breakdown: Wave A = 8 (A-T0a, A-T0b, A-T1, A-T2, A-T3, A-T4, A-T5, A-T6); Wave B = 4 (B-T1..B-T4); Wave C = 4 (C-T1..C-T4); Wave D = 3 (D-T1, D-T2, D-T3).
 
 ---
 
@@ -548,7 +548,7 @@ Per `feedback_grade_rubric`. Applies to every PR in every wave. Implementer scor
 
 - B1. All §3 tasks for the wave have green tests + lints clean. Verify: `make check`.
 - B2. Metric naming follows §2.1; no `pr_number`/`run_id`/`work_item_id` labels on any metric. Verify: `TestMetricCardinality_PRNumberLabelBanned` AST walk passes.
-- B3. Every metric has a dashboard tile checked into `dashboards/grafana/`. Verify: `TestDashboardMetricNames_MatchEmitted` greps emitted vs referenced.
+- B3. Every metric has a dashboard tile checked into `docs/operator/dashboards/`. Verify: `TestDashboardMetricNames_MatchEmitted` greps emitted vs referenced.
 - B4. PR body carries release-notes fence + `[FEATURE]`/`[DOCS]` category. Verify: `scripts/pr-lint.sh` exit 0.
 - B5. Test godocs are 1-line max per `feedback_test_godoc_one_line`. Verify: `make check` includes `scripts/doc-check.sh` test-godoc gate.
 - B6. D-T3 PR body MUST show C-T2's PR-stage histogram is present BEFORE D-T3 lands (per §7 D-T3 dep fix). Verify: D-T3 PR body cites C-T2 PR number + shows `prom http GET /api/v1/query?query=regatta_pr_stage_duration_seconds_count` returns non-zero series.
@@ -580,7 +580,7 @@ Per `feedback_unaddressed_load_bearing` — every load-bearing leftover gets a t
 
 1. **`[OBS-followup] SLO-2 budget widen (5% OR 28d window) + SLO-3 quantile rewrite (P99 of 30d trailing)`** — owner: TBD at Wave-B kickoff; trigger: 30 days of real burn-rate data from Wave-B in the warehouse. Linked from §5 SLO-2 + SLO-3 entries.
 
-2. **`[OBS-followup] Dashboard-UI-drift nightly diff job (Grafana HTTP export vs checked-in JSON) + cardinality-cost "active series count" panel on dashboards/grafana/meta.json`** — owner: TBD at Wave-D kickoff. Linked from §4 trap #10 + trap #11. Bundles two related concerns into one issue because both ship on the meta-dashboard surface.
+2. **`[OBS-followup] Dashboard-UI-drift nightly diff job (Grafana HTTP export vs checked-in JSON) + cardinality-cost "active series count" panel on docs/operator/dashboards/meta.json`** — owner: TBD at Wave-D kickoff. Linked from §4 trap #10 + trap #11. Bundles two related concerns into one issue because both ship on the meta-dashboard surface.
 
 3. **`[OBS-followup] Cost-per-agent rollup (Prom recording rule OR sqlite view joining event_token_spend × dispatch trace tree on trace_id → agent_id)`** — owner: C-T3 by default; reassign at Wave-C kickoff if scope grows. Linked from §11 RISK-B. Filed because adding `agent_id` to the cost-counter labels would breach the cardinality budget; the rollup ships as a derived view, not as a new label.
 
@@ -696,15 +696,15 @@ Each brief below is ready to drop into an implementer-subagent dispatch prompt. 
 
 ### A-T1 (item #1 — cost dashboard tile)
 
-> **Task**: instrument `internal/cost/spend/writer.go` (existing #283 writer; A-T1 OWNS this file across Waves A + C) — after the event row is appended, also call `meter.Float64Counter("regatta.cost.usd").Add(ctx, usd, ...)` + `meter.Int64Counter("regatta.cost.tokens").Add(ctx, n, attribute.String("direction", dir))`. Tags: `dag_id`, `operator_id`, `direction`. Add `dashboards/grafana/cost.json` — stacked-bar panel "Cost USD by DAG run" + line panel "Tokens by direction." Cite `feedback_research_design_principles`. A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: instrument `internal/cost/spend/writer.go` (existing #283 writer; A-T1 OWNS this file across Waves A + C) — after the event row is appended, also call `meter.Float64Counter("regatta.cost.usd").Add(ctx, usd, ...)` + `meter.Int64Counter("regatta.cost.tokens").Add(ctx, n, attribute.String("direction", dir))`. Tags: `dag_id`, `operator_id`, `direction`. Add `docs/operator/dashboards/per-dag-cost.json` — stacked-bar panel "Cost USD by DAG run" + line panel "Tokens by direction." Cite `feedback_research_design_principles`. A+ rubric scorecard + release-notes + `--body-file`.
 
 ### A-T2 (item #2 — L4 metrics)
 
-> **Task**: instrument `internal/gates/l4/gate.go` + `percategory.go` + `reload.go`: counter `regatta.l4.invocations` (tag `verdict`, `category`); histogram `regatta.l4.latency_ms`; counter `regatta.l4.cache.hits` + `regatta.l4.cache.misses`; counter `regatta.l4.second_opinion.fired`. Existing L4 paths #381 #380 #388 already hold the labels — wire from existing slog event fields. Add `dashboards/grafana/l4.json` with 5 panels per §3 tile shape. `slo/l4-latency.yaml` ships in A-T5 — don't duplicate. A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: instrument `internal/gates/l4/gate.go` + `percategory.go` + `reload.go`: counter `regatta.l4.invocations` (tag `verdict`, `category`); histogram `regatta.l4.latency_ms`; counter `regatta.l4.cache.hits` + `regatta.l4.cache.misses`; counter `regatta.l4.second_opinion.fired`. Existing L4 paths #381 #380 #388 already hold the labels — wire from existing slog event fields. Add `docs/operator/dashboards/l4-gate.json` with 5 panels per §3 tile shape. `slo/l4-latency.yaml` ships in A-T5 — don't duplicate. A+ rubric scorecard + release-notes + `--body-file`.
 
 ### A-T3 (item #4 — scheduler tick histogram)
 
-> **Task**: instrument `internal/orchestrator/scheduler/scheduler.go` Tick path. Open histogram `regatta.scheduler.tick.latency_ms` on tick-span close (use existing W6 tick-span lifecycle hook). Open histogram `regatta.scheduler.tick.step_duration_ms` with tag `step` for each of the 8 named steps (`dispatch`, `gate_l0`, `gate_l4`, `gate_approval`, `gate_cost`, `reaper`, `fold`, `persist`). Use ONE span around the step loop with iteration counter — NOT one span per iteration (per spec §4 anti-pattern). Add `dashboards/grafana/scheduler.json`. A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: instrument `internal/orchestrator/scheduler/scheduler.go` Tick path. Open histogram `regatta.scheduler.tick.latency_ms` on tick-span close (use existing W6 tick-span lifecycle hook). Open histogram `regatta.scheduler.tick.step_duration_ms` with tag `step` for each of the 8 named steps (`dispatch`, `gate_l0`, `gate_l4`, `gate_approval`, `gate_cost`, `reaper`, `fold`, `persist`). Use ONE span around the step loop with iteration counter — NOT one span per iteration (per spec §4 anti-pattern). Add `docs/operator/dashboards/scheduler-tick.json`. A+ rubric scorecard + release-notes + `--body-file`.
 
 ### A-T4 (item #14 — daily digest)
 
@@ -712,7 +712,7 @@ Each brief below is ready to drop into an implementer-subagent dispatch prompt. 
 
 ### A-T5 (SLO compilation)
 
-> **Task**: write OpenSLO YAML for SLO-1 (scheduler tick) + SLO-2 (L4 latency) at `slo/scheduler-tick.yaml` + `slo/l4-latency.yaml`. `make slo-compile` (new Make target) invokes Sloth (vendor version pin at `tools/sloth/version`) and writes Prom recording + alert rules to `dashboards/prometheus/rules/`. Runbooks at `docs/operator/runbooks/scheduler-tick.md` + `docs/operator/runbooks/l4-latency.md` per the SLO. Grafana panel `dashboards/grafana/slo.json` shows SLO burn-rate. A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: write OpenSLO YAML for SLO-1 (scheduler tick) + SLO-2 (L4 latency) at `slo/scheduler-tick.yaml` + `slo/l4-latency.yaml`. `make slo-compile` (new Make target) invokes Sloth (vendor version pin at `tools/sloth/version`) and writes Prom recording + alert rules to `dashboards/prometheus/rules/`. Runbooks at `docs/operator/runbooks/scheduler-tick.md` + `docs/operator/runbooks/l4-latency.md` per the SLO. Grafana panel `docs/operator/dashboards/slo.json` shows SLO burn-rate. A+ rubric scorecard + release-notes + `--body-file`.
 
 ### A-T6 (operator metrics doc)
 
@@ -720,27 +720,27 @@ Each brief below is ready to drop into an implementer-subagent dispatch prompt. 
 
 ### B-T1 (item #5 — substrate event-rate)
 
-> **Task**: instrument `internal/orchestrator/state/substrate/event.go` Append path with `meter.Int64Counter("regatta.substrate.events.appended").Add(ctx, 1, attribute.String("kind", string(kind)))`. Add `dashboards/grafana/substrate-events.json` per §3 tile shape. SLO at `slo/substrate-event-rate.yaml` with ±3σ bounds (SLO-3 renumbered, **warn-tier** per §5 amendment). A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: instrument `internal/orchestrator/state/substrate/event.go` Append path with `meter.Int64Counter("regatta.substrate.events.appended").Add(ctx, 1, attribute.String("kind", string(kind)))`. Add `docs/operator/dashboards/substrate-event-rate.json` per §3 tile shape. SLO at `slo/substrate-event-rate.yaml` with ±3σ bounds (SLO-3 renumbered, **warn-tier** per §5 amendment). A+ rubric scorecard + release-notes + `--body-file`.
 
 ### B-T2 (item #6 — HMAC chain break)
 
-> **Task**: instrument `internal/orchestrator/state/substrate/sign.go` chain-verify path with `meter.Int64Counter("regatta.substrate.chain.break").Add(ctx, 1)` on any non-OK verify result. Critical-tier alarm rule (any non-zero increment fires immediately). `dashboards/grafana/substrate-chain.json` showing 0-line + alarm history. Runbook at `docs/operator/runbooks/substrate-chain-break.md`. A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: instrument `internal/orchestrator/state/substrate/sign.go` chain-verify path with `meter.Int64Counter("regatta.substrate.chain.break").Add(ctx, 1)` on any non-OK verify result. Critical-tier alarm rule (any non-zero increment fires immediately). `docs/operator/dashboards/substrate-chain.json` showing 0-line + alarm history. Runbook at `docs/operator/runbooks/substrate-chain-break.md`. A+ rubric scorecard + release-notes + `--body-file`.
 
 ### B-T3 (item #7 — divergence audit)
 
-> **Task**: new file `internal/orchestrator/state/substrate/divergence_emit.go` reads from `substrate_divergence_audit` tables (#369 + #378) on insert and emits `meter.Int64Counter("regatta.substrate.divergence.detected").Add(ctx, 1, attribute.String("layer", layer))`. `dashboards/grafana/substrate-divergence.json` shows rate by layer. A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: new file `internal/orchestrator/state/substrate/divergence_emit.go` reads from `substrate_divergence_audit` tables (#369 + #378) on insert and emits `meter.Int64Counter("regatta.substrate.divergence.detected").Add(ctx, 1, attribute.String("layer", layer))`. `docs/operator/dashboards/substrate-divergence.json` shows rate by layer. A+ rubric scorecard + release-notes + `--body-file`.
 
 ### B-T4 (item #8 — replay latency)
 
-> **Task**: instrument `internal/history/substrate_impl.go` Replay path with `meter.Float64Histogram("regatta.replay.latency_ms")` (tag `impl=substrate` here; Temporal impl tags `impl=temporal` when it lands). `slo/replay-latency.yaml` for p99 ≤ 30s. `dashboards/grafana/replay.json`. A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: instrument `internal/history/substrate_impl.go` Replay path with `meter.Float64Histogram("regatta.replay.latency_ms")` (tag `impl=substrate` here; Temporal impl tags `impl=temporal` when it lands). `slo/replay-latency.yaml` for p99 ≤ 30s. `docs/operator/dashboards/replay.json`. A+ rubric scorecard + release-notes + `--body-file`.
 
 ### C-T1 (item #9 — dispatch attribution)
 
-> **Task**: instrument `internal/orchestrator/spawner/spawner.go` Spawn path with `meter.Int64Counter("regatta.dispatch.subagents").Add(ctx, 1, attribute.String("template", tmpl), attribute.String("task_type", ttype), attribute.String("agent_id", aid))`. Template + task_type pulled from existing spawn metadata. `dashboards/grafana/dispatch.json`. A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: instrument `internal/orchestrator/spawner/spawner.go` Spawn path with `meter.Int64Counter("regatta.dispatch.subagents").Add(ctx, 1, attribute.String("template", tmpl), attribute.String("task_type", ttype), attribute.String("agent_id", aid))`. Template + task_type pulled from existing spawn metadata. `docs/operator/dashboards/dispatch.json`. A+ rubric scorecard + release-notes + `--body-file`.
 
 ### C-T2 (item #10 — PR lifecycle)
 
-> **Task**: new package `internal/obs/prlifecycle/collector.go` — correlates dispatch span (W6 trace tree) with GitHub PR events via `pr_number` extracted from PR body fence. Emits `meter.Float64Histogram("regatta.pr.stage_duration_seconds")` (tag `stage` ∈ {`dispatch_to_first_commit`, `first_commit_to_pr_open`, `pr_open_to_ci_green`, `ci_green_to_merge`}). Reads GitHub via minimal client (or shells `gh`). `dashboards/grafana/pr-lifecycle.json`. **C-T2's PR also removes the placeholder line in A-T4's digest for the PRs-landed section** (per §6.2 first-digest degraded contract). A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: new package `internal/obs/prlifecycle/collector.go` — correlates dispatch span (W6 trace tree) with GitHub PR events via `pr_number` extracted from PR body fence. Emits `meter.Float64Histogram("regatta.pr.stage_duration_seconds")` (tag `stage` ∈ {`dispatch_to_first_commit`, `first_commit_to_pr_open`, `pr_open_to_ci_green`, `ci_green_to_merge`}). Reads GitHub via minimal client (or shells `gh`). `docs/operator/dashboards/pr-lifecycle.json`. **C-T2's PR also removes the placeholder line in A-T4's digest for the PRs-landed section** (per §6.2 first-digest degraded contract). A+ rubric scorecard + release-notes + `--body-file`.
 
 ### C-T3 (item #11 — per-PR cost; SHARED-OWNER WITH A-T1)
 
@@ -748,11 +748,11 @@ Each brief below is ready to drop into an implementer-subagent dispatch prompt. 
 
 ### C-T4 (item #12 — failure taxonomy)
 
-> **Task**: new `internal/orchestrator/spawner/failure_taxonomy.go` — parses CI failure logs from existing spawner exit-classification into `mode` enum (`pr_lint_trip`, `doc_check_trip`, `check_tdd_trip`, `build_fail`, `test_fail`, `vet_fail`, `lint_fail`, `merge_conflict`, `timeout`, `panic`, `other`). Emits `meter.Int64Counter("regatta.dispatch.failure").Add(ctx, 1, attribute.String("mode", mode), attribute.String("template", tmpl))`. `dashboards/grafana/failure-modes.json` shows mode distribution. A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: new `internal/orchestrator/spawner/failure_taxonomy.go` — parses CI failure logs from existing spawner exit-classification into `mode` enum (`pr_lint_trip`, `doc_check_trip`, `check_tdd_trip`, `build_fail`, `test_fail`, `vet_fail`, `lint_fail`, `merge_conflict`, `timeout`, `panic`, `other`). Emits `meter.Int64Counter("regatta.dispatch.failure").Add(ctx, 1, attribute.String("mode", mode), attribute.String("template", tmpl))`. `docs/operator/dashboards/failure-modes.json` shows mode distribution. A+ rubric scorecard + release-notes + `--body-file`.
 
 ### D-T1 (item #3 — adversarial findings)
 
-> **Task**: new `internal/orchestrator/followup/triage.go` instruments follow-up triage decisions (filed/dismissed/auto_fixed/superseded). Emits `meter.Int64Counter("regatta.adversarial.findings").Add(ctx, 1, attribute.String("fate", fate), attribute.String("severity", sev))`. `dashboards/grafana/adversarial.json` shows survival rate + dismissal-rate alarm tile. Runbook `docs/operator/runbooks/adversarial-dismissal.md` defines fate-enum semantics + quarterly audit. **D-T1's PR also removes the placeholder line in A-T4's digest for the Adversarial-findings section** (per §6.2 first-digest degraded contract). A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: new `internal/orchestrator/followup/triage.go` instruments follow-up triage decisions (filed/dismissed/auto_fixed/superseded). Emits `meter.Int64Counter("regatta.adversarial.findings").Add(ctx, 1, attribute.String("fate", fate), attribute.String("severity", sev))`. `docs/operator/dashboards/adversarial.json` shows survival rate + dismissal-rate alarm tile. Runbook `docs/operator/runbooks/adversarial-dismissal.md` defines fate-enum semantics + quarterly audit. **D-T1's PR also removes the placeholder line in A-T4's digest for the Adversarial-findings section** (per §6.2 first-digest degraded contract). A+ rubric scorecard + release-notes + `--body-file`.
 
 ### D-T2 (item #13 — `regatta status` TUI)
 
@@ -760,7 +760,7 @@ Each brief below is ready to drop into an implementer-subagent dispatch prompt. 
 
 ### D-T3 (item #15 — trigger clock)
 
-> **Task**: new `internal/obs/triggers/clock.go` exports `DaysRemaining(trigger string) int` over `30_day_green` (derives from the PR-stage histogram `regatta_pr_stage_duration_seconds_count{stage="ci_green_to_merge"}` emitted by **C-T2 — DO NOT DISPATCH D-T3 BEFORE C-T2 MERGES** or the gauge reads zero) + `external_customer_signal` (sealed input from `slo/triggers.yaml`) + `phase_g_gate`. Register `meter.Int64ObservableGauge("regatta.trigger.days_remaining")` with a callback that records `DaysRemaining(t)` for each trigger. (OTel Go SDK ≥ v1.32 ships sync `Float64Gauge`/`Int64Gauge`; the **observable** gauge is still the correct pick here because `DaysRemaining(t)` is a sampled derivation, not a write-on-event measurement — async gauge is the OTel-blessed shape for this.) `dashboards/grafana/triggers.json` stat-tile per trigger. **Also ships in D-T3 (relocated from §6.1)**: new sibling subcommand `cmd/regatta/triggers.go` — one stat-line per trigger ("`30_day_green: 17 days remaining`"). No bubbletea, no TUI; plain stdout. Coordinates with D-T2's `regatta status` (which links to `regatta triggers` in a footer line). No manual gauge override per R10 mitigation. A+ rubric scorecard + release-notes + `--body-file`.
+> **Task**: new `internal/obs/triggers/clock.go` exports `DaysRemaining(trigger string) int` over `30_day_green` (derives from the PR-stage histogram `regatta_pr_stage_duration_seconds_count{stage="ci_green_to_merge"}` emitted by **C-T2 — DO NOT DISPATCH D-T3 BEFORE C-T2 MERGES** or the gauge reads zero) + `external_customer_signal` (sealed input from `slo/triggers.yaml`) + `phase_g_gate`. Register `meter.Int64ObservableGauge("regatta.trigger.days_remaining")` with a callback that records `DaysRemaining(t)` for each trigger. (OTel Go SDK ≥ v1.32 ships sync `Float64Gauge`/`Int64Gauge`; the **observable** gauge is still the correct pick here because `DaysRemaining(t)` is a sampled derivation, not a write-on-event measurement — async gauge is the OTel-blessed shape for this.) `docs/operator/dashboards/trigger-clock.json` stat-tile per trigger. **Also ships in D-T3 (relocated from §6.1)**: new sibling subcommand `cmd/regatta/triggers.go` — one stat-line per trigger ("`30_day_green: 17 days remaining`"). No bubbletea, no TUI; plain stdout. Coordinates with D-T2's `regatta status` (which links to `regatta triggers` in a footer line). No manual gauge override per R10 mitigation. A+ rubric scorecard + release-notes + `--body-file`.
 
 ---
 

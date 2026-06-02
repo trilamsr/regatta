@@ -29,15 +29,15 @@ Resolve meter from followup `Config.Meter` field (A-T0b retrofit lands this Conf
 
 Tag set: `fate` (4 enums), `severity` (3 enums). Cardinality safe (≤ 12 cells).
 
-Add `dashboards/grafana/adversarial.json`:
+Add `docs/operator/dashboards/adversarial.json`:
 
 1. Stacked-bar panel "Findings by fate (7d)" — `sum by (fate) (increase(regatta_adversarial_findings_total[7d]))`.
 2. Stat panel "Dismissal rate (7d)" — `sum(increase(regatta_adversarial_findings_total{fate="dismissed"}[7d])) / sum(increase(regatta_adversarial_findings_total[7d]))`.
 3. Time-series panel "Findings by severity" — `sum by (severity) (rate(regatta_adversarial_findings_total[1h]))`.
 
-**Dismissal-rate alarm** (per spec §7 Wave-D exit gate): warn-tier alarm fires when dismissal rate > 50% over 7-d trailing window AND finding count > 20 (avoids low-sample noise). Thresholds rationale: 50% dismissal means the reviewer is no longer load-bearing — half its findings get rejected, so the prompt or routing needs recalibration before more compute spends; the count > 20 floor blocks the alarm from firing on slow weeks (1 finding × 1 dismissal = 100% rate but zero signal). Lives in `slo/adversarial-dismissal.yaml` (alarm-only). Operator runbook `docs/operator/runbooks/adversarial-dismissal.md` covers triage (recalibrate reviewer prompt? reviewer disagreement with house style? real false-positive surge?).
+**Dismissal-rate alarm** (per spec §7 Wave-D exit gate): warn-tier alarm fires when dismissal rate > 50 % over 7-d trailing window AND finding count > 20 (avoids low-sample noise). Thresholds rationale: 50 % dismissal means the reviewer is no longer load-bearing — half its findings get rejected, so the prompt or routing needs recalibration before more compute spends; the count > 20 floor blocks the alarm from firing on slow weeks (1 finding × 1 dismissal = 100 % rate but zero signal). Lives in `slo/adversarial-dismissal.yaml` (alarm-only). Operator runbook `docs/operator/runbooks/adversarial-dismissal.md` covers triage (recalibrate reviewer prompt? reviewer disagreement with house style? real false-positive surge?).
 
-<!-- FOLLOWUP: re-tune the 50% threshold once 4 weeks of dismissal-rate data accumulate post-D-T1 merge; the current 50% is a guess against the existing manual-review baseline. Owner: D-T1 author at Wave-D exit. -->
+**Threshold lock (closed):** the 50 % warn threshold ships as the **week-1 default** and is re-tuned in-band at the end of week-2 post-D-T1 merge. D-T1's PR body adds a `RE-TUNE-AFTER-WEEK-2` marker so the Wave-D exit reviewer surfaces the re-tune (no separate `[OBS-followup]` issue needed). Re-tune rule: if week-2 dismissal rate falls in the 35-65 % band the 50 % threshold holds; if < 35 % drop warn to 30 %; if > 65 % the reviewer prompt is the root cause and a `[reviewer-prompt-recalibrate]` issue files instead of moving the threshold. Owner: D-T1 author at Wave-D exit gate; re-tune lands as the D-T1 follow-up PR (single commit edits `slo/adversarial-dismissal.yaml` only).
 
 **A-T4 placeholder removal (per spec §6.2 first-digest degraded contract):** This PR also removes the placeholder line for the "Adversarial-findings" section in A-T4's `cmd/regatta/digest.go` so the digest renders live finding-counter data. Cite the contract handoff in the PR body.
 
@@ -53,7 +53,7 @@ Per `feedback_research_design_principles`: lean on OTel SDK + existing followup-
 
 - [planned] c1: New `internal/orchestrator/followup/triage.go` emits `regatta.adversarial.findings` Int64Counter (spec §3 item #3).
 - [planned] c2: Tag set strictly `fate` + `severity`; AST-walk lint stays green (spec §2.2).
-- [planned] c3: `dashboards/grafana/adversarial.json` checked in with three panels (spec §9 R2).
+- [planned] c3: `docs/operator/dashboards/adversarial.json` checked in with three panels (spec §9 R2).
 - [planned] c4: Dismissal-rate warn-tier alarm fires on synthetic dismissal-burst test fixture (spec §7 Wave-D exit gate).
 - [planned] c5: Operator runbook `docs/operator/runbooks/adversarial-dismissal.md` covers triage (spec §8 A3).
 - [planned] c6: A-T4 placeholder line for "Adversarial-findings" digest section removed (spec §6.2 first-digest degraded contract).

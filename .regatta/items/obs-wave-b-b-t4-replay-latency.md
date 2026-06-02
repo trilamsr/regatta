@@ -28,9 +28,9 @@ Ship `slo/replay-latency.yaml`: tracks P95 replay latency per `impl`; warn-tier 
 
 Threshold rationale: 500 ms warn is set so a 100-event replay (typical DAG resume) finishes in < 5 s perceived latency at P95; 2 s critical correlates to the scheduler-tick SLO (SLO-1) — when replay tail goes above 2 s, the tick loop starves and the dispatch surface degrades. Both thresholds carried over from the pre-substrate sqlite-only baseline measured against the existing replay test fixtures.
 
-<!-- FOLLOWUP: re-measure the baseline P95/P99 against a real substrate-backed replay corpus once B-T1/B-T2/B-T3 land; if measured P95 < 200 ms steady-state, tighten warn to 300 ms (current 500 ms is the sqlite-baseline ceiling). Owner: B-T4 author at Wave-B exit. -->
+**Baseline lock (closed):** the operational baseline for the warn threshold is the **first-week post-merge P95 median** of `regatta_replay_latency_ms` against real substrate-backed replays. B-T4's PR body captures the dispatch-time P95 against the existing replay test fixture (sqlite-baseline ceiling). At Wave-B exit (all four B-T* merged + week-1 of digests in), the B-T4 author re-reads the live week-1 P95 median: if < 200 ms drop warn to 300 ms (single-commit edit to `slo/replay-latency.yaml`, no follow-up issue); if 200-450 ms the 500 ms warn stays; if ≥ 450 ms file `[OBS-followup] B-T4 re-tune` (warn too tight given real workload). Owner: B-T4 author at Wave-B exit gate.
 
-Add `dashboards/grafana/replay.json`:
+Add `docs/operator/dashboards/replay.json`:
 
 1. Line panel "Replay P50/P95/P99 by impl" — `histogram_quantile(0.95, sum by (le, impl) (rate(regatta_replay_latency_ms_bucket[5m])))`.
 2. Heatmap panel "Latency distribution" — `sum by (le) (rate(regatta_replay_latency_ms_bucket[5m]))`.
@@ -48,6 +48,6 @@ Per `feedback_research_design_principles`: lean on OTel SDK histogram primitives
 - [planned] c1: `internal/history/substrate_impl.go` Replay emits `regatta.replay.latency_ms` Float64Histogram (spec §3 item #8).
 - [planned] c2: Tag set strictly `impl`; AST-walk lint stays green (spec §2.2).
 - [planned] c3: `slo/replay-latency.yaml` compiles via `make slo-compile`; warn + critical tiers fire on synthetic load (spec §5).
-- [planned] c4: `dashboards/grafana/replay.json` checked in with two panels (spec §9 R2).
+- [planned] c4: `docs/operator/dashboards/replay.json` checked in with two panels (spec §9 R2).
 - [planned] c5: Operator runbook `docs/operator/runbooks/replay-latency.md` covers triage (spec §8 A3).
 - [planned] c6: PR body carries A+ rubric scorecard + release-notes fence; submitted via `--body-file`.

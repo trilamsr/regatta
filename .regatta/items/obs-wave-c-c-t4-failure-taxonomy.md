@@ -27,7 +27,7 @@ Tag set: `mode` (≤ 15 enums), `template` (≤ 20 enums, mirrors C-T1). Cardina
 
 Nil-meter fallback covered by `TestFailureTaxonomy_NilMeterFallback`.
 
-Add `dashboards/grafana/failure-modes.json`:
+Add `docs/operator/dashboards/failure-modes.json`:
 
 1. Stacked-bar panel "Failures by mode (1h rolling)" — `sum by (mode) (increase(regatta_dispatch_failure_total[1h]))`.
 2. Heatmap panel "Mode × template" — `sum by (mode, template) (rate(regatta_dispatch_failure_total[5m]))`.
@@ -46,5 +46,5 @@ Per `feedback_research_design_principles`: prefer regex-table over a custom pars
 - [planned] c1: New `internal/orchestrator/spawner/failure_taxonomy.go` parses CI failure logs + emits `regatta.dispatch.failure` (spec §3 item #12).
 - [planned] c2: Tag set strictly `mode` + `template`; AST-walk lint stays green (spec §2.2).
 - [planned] c3: `mode` enum covers ≥ 8 known buckets from 30-d CI history; `other` reserved bucket catches unparseable logs (spec §7 Wave-C exit gate).
-- [planned] c4: `dashboards/grafana/failure-modes.json` checked in with three panels (spec §9 R2).
+- [planned] c4: `docs/operator/dashboards/failure-modes.json` checked in with three panels (spec §9 R2).
 - [planned] c5: PR body carries A+ rubric scorecard + release-notes fence; submitted via `--body-file`.

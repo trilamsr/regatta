@@ -27,7 +27,7 @@ Nil-meter fallback path: when `Config.Meter == nil`, resolve via `otel.Meter("or
 
 Ship `slo/substrate-event-rate.yaml` (SLO-3, warn-tier per §5): tracks events/sec rolling-rate; warn-tier alarm fires on > 2× 24-h trailing P95 (substrate-event-storm signal). Sloth compile to `dashboards/prometheus/rules/`.
 
-Add `dashboards/grafana/substrate-events.json`:
+Add `docs/operator/dashboards/substrate-event-rate.json`:
 
 1. Line panel "Events/sec by layer" — `sum by (layer) (rate(regatta_substrate_events_appended_total[1m]))`.
 2. Heatmap panel "Events by kind over time" — `sum by (kind) (rate(regatta_substrate_events_appended_total[5m]))`.
@@ -45,5 +45,5 @@ Per `feedback_research_design_principles`: lean on OTel SDK + Sloth verbatim; no
 - [planned] c1: `internal/orchestrator/state/substrate/event.go` Append emits `regatta.substrate.events.appended` Int64Counter (spec §3 item #5).
 - [planned] c2: Tag set strictly `layer` + `kind`; unknown `kind` strings route to `"other"` (bounded-enum guard); AST-walk lint stays green (spec §2.2).
 - [planned] c3: `slo/substrate-event-rate.yaml` SLO-3 warn-tier compiles + fires on synthetic burst (spec §5 SLO-3).
-- [planned] c4: `dashboards/grafana/substrate-events.json` checked in with two panels referencing emitted names (spec §9 R2).
+- [planned] c4: `docs/operator/dashboards/substrate-event-rate.json` checked in with two panels referencing emitted names (spec §9 R2).
 - [planned] c5: PR body carries A+ rubric scorecard + release-notes fence; submitted via `--body-file`.

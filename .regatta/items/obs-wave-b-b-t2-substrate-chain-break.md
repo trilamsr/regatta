@@ -28,7 +28,7 @@ Critical-tier alarm rule (spec §3 row 6): fires on any non-zero increment (`inc
 
 A chain break is a tamper signal — any non-zero increment is load-bearing. The dedup safeguard against alert-fatigue is at the notifier (Alertmanager `group_wait` / `repeat_interval`), NOT at the rule (do not soften to `> N` thresholds; that hides the first incident). Document the Alertmanager group config in the runbook.
 
-Add `dashboards/grafana/substrate-chain.json`:
+Add `docs/operator/dashboards/substrate-chain.json`:
 
 1. Stat panel "Chain breaks (last 24h)" — `sum(increase(regatta_substrate_chain_break_total[24h]))`.
 2. Time-series panel "Breaks by layer" — `sum by (layer) (rate(regatta_substrate_chain_break_total[5m]))`.

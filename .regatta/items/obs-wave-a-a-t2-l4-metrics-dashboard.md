@@ -27,7 +27,7 @@ meter.Int64Counter("regatta.l4.second_opinion.fired").Add(ctx, 1)
 
 Existing L4 paths (#381 #380 #388) already carry the labels in slog events — wire from the existing event-field set. Do NOT introduce new label dimensions; cardinality cap is 5 verdicts × 12 categories × 3 cache_outcomes = 180 cells (spec §3 row 2, "safe").
 
-Add `dashboards/grafana/l4.json` with 5 panels per spec §3 tile shape:
+Add `docs/operator/dashboards/l4-gate.json` with 5 panels per spec §3 tile shape:
 
 1. "L4 — invocations/sec by verdict" — `sum by (verdict) (rate(regatta_l4_invocations_total[5m]))`.
 2. "L4 — p50/p95/p99 latency" — `histogram_quantile({0.50, 0.95, 0.99}, rate(regatta_l4_latency_ms_bucket[5m]))`.
@@ -43,12 +43,12 @@ Per the trap-9 lint shipped in A-T0a (`TestEveryGateAdapterHasInvocationsCounter
 
 - **B (floor):** `make check` clean; all 5 emitters land; `TestMetricCardinality_PRNumberLabelBanned` (from A-T0a) green; dashboard JSON exists with 5 panels; B1+B2+B3+B4+B5 from spec §8.
 - **A (target):** B + adversarial reviewer subagent clears; A1 + A2 + A4 from spec §8; `TestDashboardMetricNames_MatchEmitted` green for all 5 panels (spec §9 R2 drift gate); `TestEveryGateAdapterHasInvocationsCounter` (trap-9 lint) passes against L4.
-- **A+ (stretch):** A + `TestDashboardJSON_LintsAgainstSchema` exit 0 on `dashboards/grafana/l4.json` (A+1); cache-hit-ratio panel verified against a synthetic load fixture (10 hits + 10 misses → 0.5 ratio).
+- **A+ (stretch):** A + `TestDashboardJSON_LintsAgainstSchema` exit 0 on `docs/operator/dashboards/l4-gate.json` (A+1); cache-hit-ratio panel verified against a synthetic load fixture (10 hits + 10 misses → 0.5 ratio).
 
 ## Acceptance criteria
 
 - [planned] c1: 5 emitters land on `internal/gates/l4/gate.go` + `percategory.go` + `reload.go` with exact metric names per spec §3 (spec §2.1 naming convention).
 - [planned] c2: Tag set scoped to `verdict` + `category` only on `regatta.l4.invocations`; AST-walk lint stays green (spec §2.2 + §9 R1).
-- [planned] c3: `dashboards/grafana/l4.json` checked in with the 5 panels; PromQL refs resolve to emitted metric names (spec §9 R2).
+- [planned] c3: `docs/operator/dashboards/l4-gate.json` checked in with the 5 panels; PromQL refs resolve to emitted metric names (spec §9 R2).
 - [planned] c4: `TestEveryGateAdapterHasInvocationsCounter` (trap-9 lint from A-T0a) green for the L4 path (amendment review §5 L6 closure).
 - [planned] c5: PR body carries A+ rubric scorecard + release-notes fence; submitted via `--body-file`.

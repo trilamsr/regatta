@@ -28,7 +28,7 @@ The eight named steps (per spec §3 row 4): `dispatch`, `gate_l0`, `gate_l4`, `g
 
 Use the existing W6 tick-span lifecycle hook to record `regatta.scheduler.tick.latency_ms` on span close (do NOT duplicate timing — span-close timestamp minus span-start is the same number).
 
-Add `dashboards/grafana/scheduler.json` per spec §3 tile shape:
+Add `docs/operator/dashboards/scheduler-tick.json` per spec §3 tile shape:
 
 1. "Scheduler tick — p50/p95/p99 over time" — `histogram_quantile({0.50, 0.95, 0.99}, rate(regatta_scheduler_tick_latency_ms_bucket[5m]))`.
 2. "Tick step breakdown — stacked histogram" — `sum by (step) (rate(regatta_scheduler_tick_step_duration_ms_sum[5m]))`.
@@ -46,5 +46,5 @@ Add `dashboards/grafana/scheduler.json` per spec §3 tile shape:
 - [planned] c1: `regatta.scheduler.tick.latency_ms` Float64Histogram emits on tick-span close; `regatta.scheduler.tick.step_duration_ms` Float64Histogram emits per step with `step` label (spec §3 item #4).
 - [planned] c2: ONE span around the step loop with iteration counter — no per-iteration spans (spec §4 trap #2 — reviewer-enforced).
 - [planned] c3: `step` label restricted to the 8 named enums; AST-walk lint stays green.
-- [planned] c4: `dashboards/grafana/scheduler.json` checked in with 2 panels; PromQL refs resolve to emitted names (spec §9 R2).
+- [planned] c4: `docs/operator/dashboards/scheduler-tick.json` checked in with 2 panels; PromQL refs resolve to emitted names (spec §9 R2).
 - [planned] c5: PR body carries A+ rubric scorecard + release-notes fence; submitted via `--body-file`.

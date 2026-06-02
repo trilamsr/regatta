@@ -28,7 +28,7 @@ Resolve meter from substrate `Config.Meter` (A-T0b retrofit) — nil-meter fallb
 
 **Critical-tier alarm rule** (parity with B-T2 chain-break — divergence is the substrate-tamper sibling signal): fires on any non-zero increment (`increase(regatta_substrate_divergence_detected_total[5m]) > 0`). Lives in `slo/substrate-divergence.yaml` (alarm-only, no SLO). Operator runbook `docs/operator/runbooks/substrate-divergence.md` covers triage (cross-layer compare, audit-trail walk, recovery vs replay-from-snapshot). Alert dedup at Alertmanager, not the rule (mirrors B-T2 — first incident must page).
 
-Add `dashboards/grafana/substrate-divergence.json`:
+Add `docs/operator/dashboards/substrate-divergence.json`:
 
 1. Stat panel "Divergences detected (last 24h)" — `sum(increase(regatta_substrate_divergence_detected_total[24h]))`.
 2. Stacked-bar panel "Divergences by layer" — `sum by (layer) (rate(regatta_substrate_divergence_detected_total[5m]))`.
@@ -47,7 +47,7 @@ Per `feedback_research_design_principles`: lean on the OTel SDK + existing audit
 
 - [planned] c1: New `internal/orchestrator/state/substrate/divergence_emit.go` reads divergence-audit table + emits `regatta.substrate.divergence.detected` (spec §3 item #7).
 - [planned] c2: Tag set strictly `layer`; AST-walk lint stays green (spec §2.2).
-- [planned] c3: `dashboards/grafana/substrate-divergence.json` checked in with two panels (spec §9 R2).
+- [planned] c3: `docs/operator/dashboards/substrate-divergence.json` checked in with two panels (spec §9 R2).
 - [planned] c4: Trace span on divergence carries `error.type=divergence`; sampler always-on override captures it (spec §2.5).
 - [planned] c5: PR diff touches `divergence_emit.go` + dashboard JSON + `slo/substrate-divergence.yaml` + `docs/operator/runbooks/substrate-divergence.md` only; no edits to existing audit-writer files.
 - [planned] c6: Critical-tier alarm rule fires on any non-zero increment; synthetic divergence-row insertion test fixture proves it (parity with B-T2 chain-break).

@@ -31,7 +31,7 @@ Resolve meter from a new `internal/obs/prlifecycle/config.go` Config struct (Con
 
 GitHub API rate-limit handling: `gh` CLI inherits the operator's auth token and surfaces HTTP 403 / 429 on rate-limit hit. The collector retries with exponential backoff (`time.Sleep(1s, 2s, 4s, 8s)`) up to 4 attempts; on persistent failure, log a warn + increment a `regatta.pr.lifecycle.gh_rate_limited` counter (no tags — single series) so the operator can spot a quota-burn against the steady-state event rate. Tracked + alarmed via the same A-T6 operator doc surface — no new dashboard.
 
-Add `dashboards/grafana/dispatch.json` panels (extends C-T1's dashboard — coordinate edit ordering: C-T1 lands first, C-T2 extends):
+Add `docs/operator/dashboards/dispatch.json` panels (extends C-T1's dashboard — coordinate edit ordering: C-T1 lands first, C-T2 extends):
 
 1. Line panel "PR stage P50/P95 by stage" — `histogram_quantile(0.95, sum by (le, stage) (rate(regatta_pr_stage_duration_seconds_bucket[5m])))`.
 2. Heatmap panel "Stage distribution" — `sum by (le, stage) (rate(regatta_pr_stage_duration_seconds_bucket[1h]))`.
@@ -50,7 +50,7 @@ Per `feedback_research_design_principles`: prefer existing `gh` CLI shell over a
 
 - [planned] c1: New `internal/obs/prlifecycle/collector.go` correlates dispatch span → GitHub PR events + emits `regatta.pr.stage_duration_seconds` (spec §3 item #10).
 - [planned] c2: Tag set strictly `stage`; `pr_number` flows via span attribute / exemplar only; AST-walk lint stays green (spec §2.2).
-- [planned] c3: `dashboards/grafana/dispatch.json` extended with two PR-stage panels (spec §9 R2).
+- [planned] c3: `docs/operator/dashboards/dispatch.json` extended with two PR-stage panels (spec §9 R2).
 - [planned] c4: A-T4 placeholder line for "PRs-landed" digest section removed (spec §6.2 first-digest degraded contract).
 - [planned] c5: B6 precondition met — PR body cites C-T1 dep + shows non-zero stage_count series (spec §8 B6, satisfies D-T3 gate).
 - [planned] c6: PR body carries A+ rubric scorecard + release-notes fence; submitted via `--body-file`.

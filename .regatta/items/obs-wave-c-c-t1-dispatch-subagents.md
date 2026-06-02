@@ -24,7 +24,7 @@ Resolve meter from spawner `Config.Meter` field (A-T0b retrofit). Nil falls back
 
 Tag set per spec §2.2 budget: `template` (≤ 20 enums), `task_type` (≤ 15 enums), `agent_id` (≤ 100). Cardinality ceiling = 20 × 15 × 100 = 30k cells — safe vs. the spec §2.2 750k breach threshold. Steady-state cross-product is much smaller because `template` × `task_type` is not a full Cartesian set (most templates serve one task type); a property test (A+ rubric) measures real cross-product against the bound. **DO NOT** add `pr_number`/`run_id`/`work_item_id` — banned per spec §2.2. C-T2 ships the per-PR correlation via the PR-lifecycle collector.
 
-Add `dashboards/grafana/dispatch.json`:
+Add `docs/operator/dashboards/dispatch.json`:
 
 1. Stacked-bar panel "Dispatches/min by template" — `sum by (template) (rate(regatta_dispatch_subagents_total[1m]))`.
 2. Heatmap panel "Dispatches by task_type" — `sum by (task_type) (rate(regatta_dispatch_subagents_total[5m]))`.
@@ -42,6 +42,6 @@ Per `feedback_research_design_principles`: lean on OTel SDK + spawner's existing
 
 - [planned] c1: `internal/orchestrator/spawner/spawner.go` Spawn emits `regatta.dispatch.subagents` Int64Counter (spec §3 item #9).
 - [planned] c2: Tag set strictly `template` + `task_type` + `agent_id`; AST-walk lint stays green (spec §2.2).
-- [planned] c3: `dashboards/grafana/dispatch.json` checked in with three panels (spec §9 R2).
+- [planned] c3: `docs/operator/dashboards/dispatch.json` checked in with three panels (spec §9 R2).
 - [planned] c4: Exemplar attached to counter so operators drill counter → trace → span (spec §10 R8 drill path).
 - [planned] c5: PR body carries A+ rubric scorecard + release-notes fence; submitted via `--body-file`.

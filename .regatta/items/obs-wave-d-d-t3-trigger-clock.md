@@ -35,7 +35,7 @@ external_customer:  trigger pending (no customer set)
 self_host_30:       8 days remaining (22 elapsed)
 ```
 
-Add `dashboards/grafana/triggers.json`:
+Add `docs/operator/dashboards/trigger-clock.json`:
 1. Stat-row panel "Days remaining by trigger" — `regatta_trigger_days_remaining`.
 2. Time-series panel "Trigger countdown" — same metric over 30-d window.
 
@@ -73,6 +73,6 @@ Per `feedback_research_design_principles`: lean on OTel SDK ObservableGauge — 
 - [planned] c2: Tag set strictly `trigger`; AST-walk lint stays green (spec §2.2).
 - [planned] c3: `30_day_green` trigger reads C-T2's PR-stage histogram for last-anomaly timestamp (spec §7 D-T3 dep).
 - [planned] c4: New `cmd/regatta/triggers.go` subcommand renders one stat-line per trigger.
-- [planned] c5: `dashboards/grafana/triggers.json` + `slo/triggers.yaml` checked in.
+- [planned] c5: `docs/operator/dashboards/trigger-clock.json` + `slo/triggers.yaml` checked in.
 - [planned] c6: Dispatches AFTER C-T2 merges; PR body cites C-T2 PR number + shows non-zero `regatta_pr_stage_duration_seconds_count` (spec §8 B6).
 - [planned] c7: PR body carries A+ rubric scorecard + release-notes fence; submitted via `--body-file`.

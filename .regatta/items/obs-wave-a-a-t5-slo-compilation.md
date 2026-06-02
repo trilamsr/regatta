@@ -31,7 +31,7 @@ Runbooks (one per SLO) at:
 
 Each runbook is ≤ 200 lines, falsifiable steps only — no banned phrases per `feedback_doc_check_banned_phrases` (pre-push grep mandatory). Per `feedback_decision_priority` UX > velocity: every step answers "what does the operator do in the next 60 seconds?"
 
-Grafana panel `dashboards/grafana/slo.json` shows SLO burn-rate over time for both SLOs (one panel per SLO, plus a combined "error-budget-remaining" stat tile per SLO).
+Grafana panel `docs/operator/dashboards/slo.json` shows SLO burn-rate over time for both SLOs (one panel per SLO, plus a combined "error-budget-remaining" stat tile per SLO).
 
 **Renumber + deferral (amendment §5 L4):**
 
@@ -50,6 +50,6 @@ Grafana panel `dashboards/grafana/slo.json` shows SLO burn-rate over time for bo
 - [planned] c1: `slo/scheduler-tick.yaml` (SLO-1) + `slo/l4-latency.yaml` (SLO-2) check in with multi-burn-rate alerts per spec §5.
 - [planned] c2: `make slo-compile` Make target invokes pinned Sloth; outputs to `dashboards/prometheus/rules/`; `tools/sloth/version` pinned (spec §9 R3).
 - [planned] c3: Runbooks at `docs/operator/runbooks/scheduler-tick.md` + `docs/operator/runbooks/l4-latency.md`; banned-phrase grep clean (`feedback_doc_check_banned_phrases`).
-- [planned] c4: `dashboards/grafana/slo.json` with burn-rate panels checked in; PromQL refs resolve to emitted metric names (spec §9 R2).
+- [planned] c4: `docs/operator/dashboards/slo.json` with burn-rate panels checked in; PromQL refs resolve to emitted metric names (spec §9 R2).
 - [planned] c5: `[OBS-followup] #1` tracking issue filed at merge for SLO-2 widen + quantile rewrite (amendment §5 L4 deferral).
 - [planned] c6: PR body carries A+ rubric scorecard + release-notes fence; submitted via `--body-file`.
