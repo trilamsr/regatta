@@ -10,7 +10,7 @@ Source: docs/engineer/autonomous-session-prompt.md#L37
 
 . FILED.
 
-<!-- source-sha256: 3abf0a60634f6124164b6b750da14b6d25f791569cd5d46d5d350deb39c17f90 -->
+<!-- source-sha256: 337574c7c2d9c6ad2921bd7eb71df947189b72bf1e93e2aafb0d48f8726a03e9 -->
 
 ## Acceptance criteria
 

@@ -10,7 +10,7 @@ Source: docs/engineer/autonomous-session-prompt.md#L23
 
 T5 (operator CLI doc) + T6 (ops runbook) + T7 (dashboard reference) per plan #267. Caps-spend safety for unattended dispatch. File-disjoint trio, single batch.
 
-<!-- source-sha256: e9faefb52035742d28d74504e36ecbdd83b17d521e883fddaf757f77344a8e8e -->
+<!-- source-sha256: a7ef583273b63ae2684267927ddf8a5ba497a8c414c5bb8eb705c7d6b36b918e -->
 
 ## Acceptance criteria
 

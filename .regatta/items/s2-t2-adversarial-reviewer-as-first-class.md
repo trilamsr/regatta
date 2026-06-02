@@ -10,7 +10,7 @@ Source: docs/engineer/autonomous-session-prompt.md#L30
 
 bake the Claude-Code-side reviewer prompt into `internal/gates/`. Today it lives only in dispatch prompts. NEW. Default model: Sonnet 4.6, escape hatch via `regatta.yaml: gates.l4.model`.
 
-<!-- source-sha256: 9eb857e5e75d4198008174c343f5c8d774ac9ad925e6899d2a7caf3419e09324 -->
+<!-- source-sha256: bc24a45f036021e2a24485afc4e361742a4f76e75ef876d36a53621113fd104f -->
 
 ## Acceptance criteria
 

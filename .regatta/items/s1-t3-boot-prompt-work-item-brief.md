@@ -10,7 +10,7 @@ Source: docs/engineer/autonomous-session-prompt.md#L25
 
 script converts this prompt's PRIORITY block into briefs the markdown adapter ingests. NEW.
 
-<!-- source-sha256: 121e89e54964413cf5b24c7fe22fe8dd209e114a5d469e789b73de97a248fe6a -->
+<!-- source-sha256: 749af829533f6b18edd4de0db3c2eea886d3e3424aec5b9c6e3ea5c7adfb745f -->
 
 ## Acceptance criteria
 
