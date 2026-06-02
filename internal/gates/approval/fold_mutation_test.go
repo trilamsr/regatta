@@ -11,7 +11,7 @@ import (
 
 // Mutation-survival coverage for the reaper's tier-comparison helpers
 // (`nextChainTier`, `replayVotes`, `tallyReplay`) extracted into
-// `fold.go` by PR #444 (issues #145+#146). Spec §7 A+ rubric (issue
+// `fold.go` consolidated by issues #145+#146. Spec §7 A+ rubric (issue
 // #147) requires that commenting out any single guard in those helpers
 // flips at least one assertion red. The triad below is structured so
 // each helper is exercised twice: once with a deterministic table that
