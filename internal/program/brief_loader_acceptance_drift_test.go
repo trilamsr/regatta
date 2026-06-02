@@ -59,8 +59,7 @@ func TestBriefLoaderSync_AcceptanceDriftWarnsForInflightChildren(t *testing.T) {
 	}
 }
 
-// TestBriefLoaderSync_AcceptanceDriftQuietForPlannedChildren — staleness only
-// matters for spawned (post-planned) children; planned rows just snap forward.
+// TestBriefLoaderSync_AcceptanceDriftQuietForPlannedChildren — staleness only matters for spawned (post-planned) children; planned rows just s
 func TestBriefLoaderSync_AcceptanceDriftQuietForPlannedChildren(t *testing.T) {
 	db := newBriefTestDB(t)
 	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
@@ -91,8 +90,7 @@ func TestBriefLoaderSync_AcceptanceDriftQuietForPlannedChildren(t *testing.T) {
 	}
 }
 
-// TestBriefLoaderSync_AcceptanceDriftQuietWhenIdentical — re-sync of a
-// byte-identical brief is operator no-op; warning must not fire.
+// TestBriefLoaderSync_AcceptanceDriftQuietWhenIdentical — re-sync of a byte-identical brief is operator no-op; warning must not fire.
 func TestBriefLoaderSync_AcceptanceDriftQuietWhenIdentical(t *testing.T) {
 	db := newBriefTestDB(t)
 	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
