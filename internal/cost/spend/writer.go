@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/trilamsr/regatta/internal/cost/pricing"
@@ -32,13 +33,16 @@ const AttrCostError = attribute.Key("regatta.cost.error")
 
 // WriteOptions carries the cross-cutting deps RecordCall needs that
 // the CallRecord input does NOT carry: HMAC key for substrate signing
-// (R3-mitigation), keyID for keyring rotation, and an injectable
-// clock for replay-determinism. Wave-1 single-writer keeps key+keyID
-// in-process; W9 will swap for a keyring lookup.
+// (R3-mitigation), keyID for keyring rotation, an injectable clock
+// for replay-determinism, and the package telemetry Config so the
+// emitter resolves the OTel meter under the spend scope. Wave-1
+// single-writer keeps key+keyID in-process; W9 will swap for a
+// keyring lookup.
 type WriteOptions struct {
 	Key   []byte
 	KeyID string
 	Now   func() time.Time
+	Cfg   Config
 }
 
 // RecordCall prices one LLM call, builds a TokenSpendPayload, and
@@ -111,7 +115,55 @@ func RecordCall(ctx context.Context, tx *sql.Tx, r CallRecord, opt WriteOptions)
 	if err := substrate.AppendEvent(ctx, tx, ev, opt.Key, opt.KeyID); err != nil {
 		return fmt.Errorf("spend: append token_spend: %w", err)
 	}
+	emitMetrics(ctx, opt.Cfg, r, usd)
 	return nil
+}
+
+// emitMetrics fires the spec §3 Tier-1 row-#1 instruments after a
+// successful substrate append. Counters are cumulative per process —
+// the SDK aggregator handles temporality so emit-on-write is the only
+// per-call cost. Instrument creation errors are dropped: the metric
+// surface MUST NOT take down the writer (R4 — substrate row already
+// landed, refusing here would create a silent ledger / metric drift).
+//
+// Cardinality fence: only dag_id + operator_id + direction reach the
+// label set. pr_number / run_id / work_item_id / tenant_id / model are
+// banned per spec §2.2 (lint enforces; see
+// internal/obs/otel/cardinality_lint_test.go).
+func emitMetrics(ctx context.Context, cfg Config, r CallRecord, usd float64) {
+	meter := cfg.ResolveMeter()
+
+	usdCtr, err := meter.Float64Counter("regatta.cost.usd")
+	if err == nil {
+		usdCtr.Add(ctx, usd,
+			metric.WithAttributes(
+				attribute.String("dag_id", r.DAGID),
+				attribute.String("operator_id", r.OperatorID),
+			))
+	}
+
+	tokCtr, err := meter.Int64Counter("regatta.cost.tokens")
+	if err != nil {
+		return
+	}
+	// Direction enum is closed at 3 values per spec §2.2 cardinality
+	// budget: input | output | cache_read. CacheCreationTokens fold
+	// into cache_read so we stay within the 3-enum cap (≤ 50 dag ×
+	// ≤ 100 op × 3 dir = 15k cells).
+	addToken := func(dir string, n int64) {
+		if n <= 0 {
+			return
+		}
+		tokCtr.Add(ctx, n,
+			metric.WithAttributes(
+				attribute.String("dag_id", r.DAGID),
+				attribute.String("operator_id", r.OperatorID),
+				attribute.String("direction", dir),
+			))
+	}
+	addToken("input", r.InputTokens)
+	addToken("output", r.OutputTokens)
+	addToken("cache_read", r.CacheReadTokens+r.CacheCreationTokens)
 }
 
 // tokensToUSD converts a per-million-token rate to a per-token cost.
