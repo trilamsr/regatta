@@ -529,12 +529,46 @@ func TestReconciler_Network5xx_KeepsTickingAndNeverPanics(t *testing.T) {
 	// Issue #289 — the failing emit must carry period_start +
 	// attempt_count so the OTel bridge surfaces the same join keys to
 	// Honeycomb/Loki/Datadog as the happy-path BudgetReconciledPayload.
+	// Issue #439 — exhausted-retry path reports the full attempt budget.
 	wantStart, _ := WindowForTick(fixedTime(), time.Hour)
-	assertFailingEventAttrs(t, capH.snapshot(), wantStart.UnixMilli(), "upstream_down")
+	assertFailingEventAttrs(t, capH.snapshot(), wantStart.UnixMilli(), "upstream_down", int64(defaultRetryAttempts))
+}
+
+// TestReconciler_ImmediateFail_AttemptCountIsActual pins issue #439: non-exhaustion failures report the real attempt count, not defaultRetryAttempts.
+func TestReconciler_ImmediateFail_AttemptCountIsActual(t *testing.T) {
+	t.Setenv(adminKeyEnv, adminKeyFixture)
+	// HTTP 200 + malformed JSON triggers a decode error inside
+	// FetchCost. fetchWithBackoff treats unknown errors as non-retryable
+	// and returns after the first attempt — attempt_count must be 1.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "not-json{")
+	}))
+	t.Cleanup(srv.Close)
+
+	app := &fakeAppender{}
+	logger, capH := mkCapturingLogger()
+	r := NewReconciler(Config{
+		Clock:                  frozenClock(fixedTime()),
+		HTTPClient:             srv.Client(),
+		BaseURL:                srv.URL,
+		BucketWidth:            time.Hour,
+		DriftAlertThresholdPct: 10,
+		UsageAPIKeyEnv:         adminKeyEnv,
+		Appender:               app,
+		RecordedReader:         mkRecorder(t, 0),
+		TenantID:               "default",
+		Logger:                 logger,
+		Sleep:                  func(time.Duration) {},
+	})
+	if err := r.Tick(context.Background()); err == nil {
+		t.Fatal("Tick err=nil want non-nil (decode failure path)")
+	}
+	wantStart, _ := WindowForTick(fixedTime(), time.Hour)
+	assertFailingEventAttrs(t, capH.snapshot(), wantStart.UnixMilli(), "upstream_down", 1)
 }
 
 // assertFailingEventAttrs scans capH for the cost.reconcile_failing record and pins period_start, reason, attempt_count.
-func assertFailingEventAttrs(t *testing.T, recs []slog.Record, wantStart int64, wantReason string) {
+func assertFailingEventAttrs(t *testing.T, recs []slog.Record, wantStart int64, wantReason string, wantAttempts int64) {
 	t.Helper()
 	for _, r := range recs {
 		if r.Message != string(obs.EventCostReconcileFailing) {
@@ -548,8 +582,8 @@ func assertFailingEventAttrs(t *testing.T, recs []slog.Record, wantStart int64, 
 		if v, ok := attrs[string(obs.KeyPeriodStart)]; !ok || v.Int64() != wantStart {
 			t.Errorf("period_start attr: want %d got (%v, found=%v)", wantStart, v, ok)
 		}
-		if v, ok := attrs[string(obs.KeyAttemptCount)]; !ok || v.Int64() != int64(defaultRetryAttempts) {
-			t.Errorf("attempt_count attr: want %d got (%v, found=%v)", defaultRetryAttempts, v, ok)
+		if v, ok := attrs[string(obs.KeyAttemptCount)]; !ok || v.Int64() != wantAttempts {
+			t.Errorf("attempt_count attr: want %d got (%v, found=%v)", wantAttempts, v, ok)
 		}
 		if v, ok := attrs[string(obs.KeyReason)]; !ok || v.String() != wantReason {
 			t.Errorf("reason attr: want %q got (%v, found=%v)", wantReason, v, ok)

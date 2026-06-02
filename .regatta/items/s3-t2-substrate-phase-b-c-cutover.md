@@ -10,7 +10,7 @@ Source: docs/engineer/autonomous-session-prompt.md#L36
 
 shadow-write + read-from-substrate for cost-gov + approvals only. Skip everything-else cutover.
 
-<!-- source-sha256: 23427f0ea492a66935c4a43596860cf00ebc0e54e50acd526cfef1b4a788cf0d -->
+<!-- source-sha256: a42dd974fc297a521563da78673a92dc2c6d2def2b7390a61603824d7eeadd09 -->
 
 ## Acceptance criteria
 

@@ -14,6 +14,7 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -24,6 +25,7 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
@@ -191,6 +193,14 @@ type Config struct {
 	// §3.3 + feedback_spec_pattern_authority.
 	Tracer trace.Tracer
 
+	// Meter is the OTel instrument factory for scheduler telemetry.
+	// Nil resolves to otel.Meter("scheduler") at the first
+	// ResolveMeter() call so the global MeterProvider Setup wires (or
+	// a noop when Setup was skipped) wins by default. Mirrors the W6
+	// Config.Tracer pattern so callers stay on one DI seam across
+	// trace + metric. A-T3 wires the tick-histogram instrument here.
+	Meter metric.Meter
+
 	// CostGate evaluates the cost-governor pre-call deny gate per spec
 	// §3.2 step 0.6. Nil disables the cost-pass — applyCostGovernor
 	// short-circuits to identity (zero overhead per spec §8 row 1 + I6).
@@ -219,6 +229,17 @@ type Config struct {
 	L4GateResolver L4GateResolver
 }
 
+// ResolveMeter returns the configured meter or falls back to the
+// global provider's scoped meter. The fallback is lazy so a global
+// provider swap (e.g. test injection of a noop provider) takes effect
+// on the next call. Matches the W6 Config.Tracer nil-fallback shape.
+func (c Config) ResolveMeter() metric.Meter {
+	if c.Meter != nil {
+		return c.Meter
+	}
+	return otel.Meter("scheduler")
+}
+
 // schedulerDB is the seam between Scheduler and state.DB. The
 // production constructor accepts *state.DB (which satisfies this
 // interface by method set), and crash-injection tests wrap the real
@@ -244,14 +265,18 @@ type schedulerDB interface {
 	MarkEdgeFired(ctx context.Context, edgeID int64, fired, contentSHA string) error
 	GetLatestOutput(ctx context.Context, workItemID string) (state.OutputJournalEntry, error)
 	WithTx(ctx context.Context, fn func(*sql.Tx) error) error
-	// SQL escapes the seam for the gate-pass's raw-SQL CAS write that
-	// transitions a rejected work_item to status='rejected'. Spec §3.1
-	// step 0.5 spells this as state.TransitionWorkItem, but state has no
-	// typed transition for work_items yet; the precedent from
-	// internal/program/brief_loader.go (the archive-on-archived-dep path)
-	// is to use db.SQL() directly. Promoting this to a typed method on
-	// *state.DB is tracked as a followup so the next wave can consolidate.
-	SQL() *sql.DB
+	// TransitionWorkItem CAS-updates work_items.status. Spec §3.1
+	// step 0.5 names this for the approval-gate rejected path; the
+	// brief_loader cascade-archive uses the same primitive. Both
+	// previously issued raw-SQL UPDATEs through *state.DB.SQL();
+	// consolidating here keeps the CAS shape in one place.
+	TransitionWorkItem(ctx context.Context, id string, from, to state.WorkItemStatus) error
+	// GetAgentByWorkItemID + RecordEvent are the seam applyL4Gate uses
+	// to emit `gate_rejected` audit rows the RejectionRouter drains
+	// (issue #479). agent_id=NULL when no row exists yet — the gate
+	// can fire pre-spawn, so audit visibility cannot wait on UpsertPending.
+	GetAgentByWorkItemID(ctx context.Context, workItemID string) (*state.Agent, error)
+	RecordEvent(ctx context.Context, agentID int64, kind, payloadJSON string) error
 }
 
 // Scheduler is single-caller: Tick must not be invoked concurrently.
@@ -265,6 +290,14 @@ type Scheduler struct {
 	cfg    Config
 	log    *slog.Logger
 	tracer trace.Tracer
+
+	// tickLatency + stepDuration are the §3 row 4 / A-T3 histograms.
+	// Pre-created at constructor time so the hot path is a single
+	// Record() call with no per-tick allocation. tickLatency carries
+	// no labels (spec §3); stepDuration carries the 8-enum `step`
+	// label only.
+	tickLatency  metric.Float64Histogram
+	stepDuration metric.Float64Histogram
 
 	// multiDefaultLogged dedupes the edge.multiple_defaults_per_from
 	// warn so a misconfigured brief logs once per (program_id, from_id)
@@ -308,7 +341,21 @@ func newScheduler(db schedulerDB, cfg Config) *Scheduler {
 	if tracer == nil {
 		tracer = otel.Tracer("scheduler")
 	}
-	return &Scheduler{db: db, cfg: cfg, log: log, tracer: tracer}
+	meter := cfg.ResolveMeter()
+	tickLatency, err := meter.Float64Histogram("regatta.scheduler.tick.latency_ms")
+	if err != nil {
+		// Histogram-construction failure on a noop or in-process SDK is not
+		// recoverable here; fall back to the noop meter so Tick stays hot.
+		tickLatency, _ = otel.Meter("scheduler-fallback").Float64Histogram("regatta.scheduler.tick.latency_ms")
+	}
+	stepDuration, err := meter.Float64Histogram("regatta.scheduler.tick.step_duration_ms")
+	if err != nil {
+		stepDuration, _ = otel.Meter("scheduler-fallback").Float64Histogram("regatta.scheduler.tick.step_duration_ms")
+	}
+	return &Scheduler{
+		db: db, cfg: cfg, log: log, tracer: tracer,
+		tickLatency: tickLatency, stepDuration: stepDuration,
+	}
 }
 
 // activeStates lists agent states that count against a lane's
@@ -349,60 +396,122 @@ var activeStates = []state.AgentState{
 //     was upserted as pending but never transitioned (lane-capped
 //     last tick, hotspot-blocked, or a future failure mode), letting
 //     the next tick retry the reservation tx.
-func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
+func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
+	tickStart := time.Now()
+	defer func() {
+		s.tickLatency.Record(ctx, float64(time.Since(tickStart).Microseconds())/1000.0)
+	}()
+
 	tc := &tickCtx{}
-	if s.cfg.Evaluator != nil {
-		if err := s.evalPendingEdges(ctx, tc); err != nil {
-			return nil, fmt.Errorf("scheduler: eval edges: %w", err)
+	var spawnable []state.WorkItem
+	var occupancy map[string]int
+	var attempted map[int64]struct{}
+
+	// Per spec §2.3 + §4 trap #2: ONE span around the step loop with an
+	// iteration counter — NOT one span per step. The histogram records
+	// per-step latency; the span scopes the whole loop. Step ordering
+	// matches the pre-refactor straight-line shape so behavioural tests
+	// stay green.
+	steps := []struct {
+		name string
+		fn   func() error
+	}{
+		// fold: evalPendingEdges folds work_item_events into the edge-fired
+		// state so ListSpawnable observes the updated fired column.
+		{"fold", func() error {
+			if s.cfg.Evaluator == nil {
+				return nil
+			}
+			if e := s.evalPendingEdges(ctx, tc); e != nil {
+				return fmt.Errorf("scheduler: eval edges: %w", e)
+			}
+			return nil
+		}},
+		// reaper: ExpireStaleLocks releases hotspot locks past their TTL.
+		{"reaper", func() error {
+			if _, e := s.db.ExpireStaleLocks(ctx, s.cfg.LockTTL); e != nil {
+				return fmt.Errorf("scheduler: expire stale locks: %w", e)
+			}
+			return nil
+		}},
+		// gate_l0: universal-queue source-of-truth read (spec §2.8).
+		{"gate_l0", func() error {
+			sp, e := s.db.ListSpawnable(ctx)
+			if e != nil {
+				return fmt.Errorf("scheduler: list spawnable: %w", e)
+			}
+			spawnable = sp
+			return nil
+		}},
+		// gate_approval: HITL gate-pass between edge-eval and reserve
+		// (spec §3.1 step 0.5). Filters in-place.
+		{"gate_approval", func() error {
+			sp, e := s.applyApprovalGates(ctx, tc, spawnable)
+			if e != nil {
+				return fmt.Errorf("scheduler: apply approval gates: %w", e)
+			}
+			spawnable = sp
+			return nil
+		}},
+		// gate_cost: cost-governor pre-call deny (spec §3.2 step 0.6).
+		// Runs BEFORE l4 so we never pay model tokens for cost-denied wi.
+		{"gate_cost", func() error {
+			sp, e := s.applyCostGovernor(ctx, spawnable)
+			if e != nil {
+				return fmt.Errorf("scheduler: apply cost governor: %w", e)
+			}
+			spawnable = sp
+			return nil
+		}},
+		// gate_l4: adversarial-reviewer gate (spec §3.2 step 0.7).
+		{"gate_l4", func() error {
+			sp, e := s.applyL4Gate(ctx, spawnable)
+			if e != nil {
+				return fmt.Errorf("scheduler: apply l4 gate: %w", e)
+			}
+			spawnable = sp
+			return nil
+		}},
+		// dispatch: lane-occupancy read + per-wi reservation tx through
+		// the gate-pass-filtered slice (spec §3.2 step 0.8).
+		{"dispatch", func() error {
+			occ, e := s.db.CountAgentsByLane(ctx, activeStates...)
+			if e != nil {
+				return e
+			}
+			occupancy = occ
+			r, att, e := s.reserveFromSpawnable(ctx, tc, spawnable, occupancy)
+			reserved = r
+			attempted = att
+			return e
+		}},
+		// persist: orphan re-reservation pass — lane-capped and
+		// lock-held pending rows from prior ticks (spec §3.2 step 0.9).
+		{"persist", func() error {
+			rest, e := s.reserveOrphans(ctx, tc, occupancy, attempted)
+			if e != nil {
+				return e
+			}
+			reserved = append(reserved, rest...)
+			return nil
+		}},
+	}
+
+	loopCtx, loopSpan := s.tracer.Start(ctx, "tick_steps",
+		trace.WithAttributes(attribute.Int("step_count", len(steps))))
+	defer loopSpan.End()
+
+	for _, step := range steps {
+		stepStart := time.Now()
+		stepErr := step.fn()
+		s.stepDuration.Record(loopCtx,
+			float64(time.Since(stepStart).Microseconds())/1000.0,
+			metric.WithAttributes(attribute.String("step", step.name)))
+		if stepErr != nil {
+			return reserved, stepErr
 		}
 	}
-	if _, err := s.db.ExpireStaleLocks(ctx, s.cfg.LockTTL); err != nil {
-		return nil, fmt.Errorf("scheduler: expire stale locks: %w", err)
-	}
-
-	spawnable, err := s.db.ListSpawnable(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: list spawnable: %w", err)
-	}
-	// Spec §3.1 step 0.5 — HITL gate-pass between edge-eval and reserve.
-	// Filters spawnable in-place: Proceed keeps the wi, Pause drops it
-	// from this tick (re-evaluated next tick because status stays
-	// planned), Reject flips status to 'rejected' so future ticks no
-	// longer surface it via ListSpawnable.
-	spawnable, err = s.applyApprovalGates(ctx, tc, spawnable)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: apply approval gates: %w", err)
-	}
-	// Spec §3.2 step 0.6 — cost-governor pre-call deny. Slots in
-	// between approval-gate and reserve, BEFORE laneHasCapacity is
-	// consulted. Identity short-circuit when CostGate is nil.
-	spawnable, err = s.applyCostGovernor(ctx, spawnable)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: apply cost governor: %w", err)
-	}
-	// Spec §3.2 step 0.7 — adversarial-reviewer gate. Cost-deny
-	// short-circuits BEFORE L4 fires so we never pay model tokens for
-	// a wi the cheap deterministic gate already rejected.
-	spawnable, err = s.applyL4Gate(ctx, spawnable)
-	if err != nil {
-		return nil, fmt.Errorf("scheduler: apply l4 gate: %w", err)
-	}
-
-	occupancy, err := s.db.CountAgentsByLane(ctx, activeStates...)
-	if err != nil {
-		return nil, err
-	}
-
-	reserved, attempted, err := s.reserveFromSpawnable(ctx, tc, spawnable, occupancy)
-	if err != nil {
-		return reserved, err
-	}
-
-	rest, err := s.reserveOrphans(ctx, tc, occupancy, attempted)
-	if err != nil {
-		return reserved, err
-	}
-	return append(reserved, rest...), nil
+	return reserved, nil
 }
 
 // tickCtx threads the per-tick WriteHook counter through Tick's
@@ -791,6 +900,7 @@ func (s *Scheduler) applyL4Gate(ctx context.Context, spawnable []state.WorkItem)
 				string(obs.KeyVerdict), string(gr.Verdict),
 				string(obs.KeyReason), reason,
 			)
+			s.emitGateRejected(ctx, wi.ID, in.PRSHA, reason)
 			continue
 		}
 		kept = append(kept, wi)
@@ -798,34 +908,66 @@ func (s *Scheduler) applyL4Gate(ctx context.Context, spawnable []state.WorkItem)
 	return kept, nil
 }
 
+// emitGateRejected writes the audit row the RejectionRouter drains
+// (issue #479). agent_id resolves to the existing agents row when one
+// exists; sql.ErrNoRows → agent_id=NULL audit-only row so the gate can
+// fire before the wi is ever reserved (planned → spawning happens AFTER
+// applyL4Gate per spec §3.2 step 0.7). Emit errors warn rather than
+// abort the tick: a missed audit row is recoverable on re-evaluation,
+// but a failed tick drops every wi behind this one.
+func (s *Scheduler) emitGateRejected(ctx context.Context, workItemID, prSHA, reason string) {
+	var agentID int64
+	a, err := s.db.GetAgentByWorkItemID(ctx, workItemID)
+	switch {
+	case err == nil:
+		agentID = a.ID
+	case errors.Is(err, sql.ErrNoRows):
+		// audit-only: no agent yet
+	default:
+		s.log.Warn("scheduler.l4_gate_emit_lookup_error",
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyErr), err.Error(),
+		)
+		return
+	}
+	payload, err := json.Marshal(struct {
+		PRSHA  string `json:"pr_sha"`
+		Reason string `json:"reason"`
+	}{PRSHA: prSHA, Reason: reason})
+	if err != nil {
+		// Hand-built struct; marshal cannot fail in practice.
+		s.log.Warn("scheduler.l4_gate_emit_marshal_error",
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyErr), err.Error(),
+		)
+		return
+	}
+	if err := s.db.RecordEvent(ctx, agentID, eventKindGateRejected, string(payload)); err != nil {
+		s.log.Warn("scheduler.l4_gate_emit_record_error",
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyErr), err.Error(),
+		)
+	}
+}
+
+// eventKindGateRejected duplicates rejectionrouter.EventKindGateRejected
+// to avoid a scheduler → rejectionrouter import (rejectionrouter is the
+// downstream consumer of scheduler-emitted events, so the dependency
+// must stay one-way). The constant's value is the contract; both
+// packages assert it against the same string literal.
+const eventKindGateRejected = "gate_rejected"
+
 // markWorkItemRejected flips work_items.status='rejected' atomically
-// against the planned-source state. CAS predicate (`status='planned'`)
-// is load-bearing: a concurrent writer that already moved the row
-// (cancel/archive) must win — the gate cannot resurrect a terminal wi.
-//
-// Spec §3.1 calls this state.TransitionWorkItem; state has no typed
-// work_item transition yet, so the raw-SQL pattern matches the
-// brief_loader.go archive-on-archived-dep precedent. A followup will
-// consolidate both into a state-package API.
+// against the planned-source state via state.TransitionWorkItem. The
+// CAS predicate inside the typed call is load-bearing: a concurrent
+// writer that already moved the row (cancel/archive) must win — the
+// gate cannot resurrect a terminal wi. ErrInvalidWorkItemTransition
+// surfaces unwrapped so the caller can errors.Is on the lost race.
 func (s *Scheduler) markWorkItemRejected(ctx context.Context, tc *tickCtx, id string) error {
 	if err := s.fireWriteHook(tc); err != nil {
 		return err
 	}
-	now := time.Now().UTC().Unix()
-	res, err := s.db.SQL().ExecContext(ctx,
-		`UPDATE work_items SET status = ?, updated_at = ? WHERE id = ? AND status = ?`,
-		"rejected", now, id, string(state.WorkStatusPlanned))
-	if err != nil {
-		return err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		return fmt.Errorf("scheduler: work_item %s no longer in status=planned", id)
-	}
-	return nil
+	return s.db.TransitionWorkItem(ctx, id, state.WorkStatusPlanned, state.WorkStatusRejected)
 }
 
 func (s *Scheduler) laneHasCapacity(lane string, occupancy map[string]int) bool {

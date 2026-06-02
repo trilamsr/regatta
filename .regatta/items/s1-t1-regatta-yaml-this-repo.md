@@ -10,7 +10,7 @@ Source: docs/engineer/autonomous-session-prompt.md#L24
 
 design subagent picks markdown adapter (against `docs/engineer/briefs/*.md`) vs GH-issue adapter (against `[autonomous]` label). Default markdown per brief §8. NEW.
 
-<!-- source-sha256: 428991c9a8f1e4a572217e3bf6ac60af1419389be7965a60049fd42bcdd355a4 -->
+<!-- source-sha256: cd1ff16ba250071eee36d20dd360e47e1b3d8aac6acd572800e4aac26bc8d9c0 -->
 
 ## Acceptance criteria
 

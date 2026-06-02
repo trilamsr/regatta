@@ -23,8 +23,6 @@ type Principal struct {
 var (
 	// ErrCookieMissing signals no regatta_approval_token cookie on the request.
 	ErrCookieMissing = errors.New("web: approval token cookie missing")
-	// ErrReviewerMissing signals the redeem URL lacked the reviewer hint param `r`.
-	ErrReviewerMissing = errors.New("web: redeem URL missing reviewer hint")
 	// ErrTokenInvalid wraps canon.ErrTokenInvalid (framing / b64 / kid scan).
 	ErrTokenInvalid = errors.New("web: approval token invalid")
 	// ErrTokenExpired wraps canon.ErrTokenExpired (now >= window).
@@ -39,25 +37,25 @@ var (
 	ErrSelfReview = errors.New("web: self-review blocked by policy")
 )
 
-// reviewerHintCookieName carries the reviewer claim across the redeem
-// → /approve/<aid> hop. The hint is non-authoritative; the HMAC token
-// is the sole source of trust. See PR body for the follow-up that
-// folds the hint into the token's claim once canon supports
-// reviewer-from-claim verification.
+// reviewerHintCookieName retains its server-set lifecycle for operator
+// UX (browser dev-tools surface a human-readable reviewer slug next to
+// the opaque HMAC token). The cookie is NOT load-bearing for
+// verification — canon.VerifyToken derives reviewer from the signed
+// claim (issue #305). Removing the cookie would not weaken auth; it is
+// kept solely so operators can eyeball "who is this token for?" without
+// decoding the wire bytes.
 const reviewerHintCookieName = "regatta_reviewer_hint"
 
-// PrincipalFromRequest authenticates the cookie-bound approval token via canon.VerifyToken and returns the Principal claim.
+// PrincipalFromRequest authenticates the cookie-bound approval token via canon.VerifyToken and returns the Principal claim derived from the HMAC-signed reviewer field.
 func PrincipalFromRequest(r *http.Request, kr canon.Keyring, now time.Time) (Principal, canon.TokenPayload, error) {
 	c, err := r.Cookie(ApprovalTokenCookieName)
 	if err != nil || c.Value == "" {
 		return Principal{}, canon.TokenPayload{}, ErrCookieMissing
 	}
-	hint, err := r.Cookie(reviewerHintCookieName)
-	reviewer := ""
-	if err == nil {
-		reviewer = hint.Value
-	}
-	payload, verr := canon.VerifyToken(kr, c.Value, reviewer, now)
+	// Empty expectReviewer → derive identity from the signed claim
+	// (issue #305). HMAC compare inside canon.VerifyToken runs first,
+	// so a forged token still fails before the derivation branch.
+	payload, verr := canon.VerifyToken(kr, c.Value, "", now)
 	if verr != nil {
 		return Principal{}, canon.TokenPayload{}, mapCanonErr(verr)
 	}
@@ -80,7 +78,7 @@ func mapCanonErr(err error) error {
 	}
 }
 
-// RedeemHandler verifies ?t=<wire>&r=<reviewer>, sets HMAC + CSRF cookies (spec §3.6.1), and 303s to /approve/<aid>.
+// RedeemHandler verifies ?t=<wire> (the reviewer is derived from the signed claim per issue #305), sets HMAC + CSRF cookies (spec §3.6.1), and 303s to /approve/<aid>.
 func RedeemHandler(deps Dependencies) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		wire := r.URL.Query().Get("t")
@@ -88,16 +86,14 @@ func RedeemHandler(deps Dependencies) http.Handler {
 			writeSentinelError(w, "token_invalid", http.StatusBadRequest)
 			return
 		}
-		reviewer := r.URL.Query().Get("r")
-		if reviewer == "" {
-			writeSentinelError(w, "reviewer_missing", http.StatusBadRequest)
-			return
-		}
 		now := time.Now()
 		if deps.Clock != nil {
 			now = deps.Clock()
 		}
-		payload, err := canon.VerifyToken(deps.Keyring, wire, reviewer, now)
+		// Empty expectReviewer → derive identity from claim (issue #305).
+		// HMAC verify inside canon.VerifyToken precedes the derivation
+		// branch, so a forged wire still trips ErrUnverifiable.
+		payload, err := canon.VerifyToken(deps.Keyring, wire, "", now)
 		if err != nil {
 			writeSentinelError(w, sentinelSlug(mapCanonErr(err)), errStatus(err))
 			return

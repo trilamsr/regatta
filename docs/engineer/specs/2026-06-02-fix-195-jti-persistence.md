@@ -111,3 +111,7 @@ remains a no-op (graceful degradation — they age out via `decision_window`).
   suppression (do not weaken the reaper)
 - `feedback_decision_priority` — long-term security primitive > short-term LoC
 - `feedback_tdd_discipline` — failing test FIRST
+
+## Resolution (2026-06-02)
+
+Shipped via #332 (`fix(approval-gates): persist per-JTI token_minted rows so reaper revocation reaches the event log`). Closes #195; reaper revocation branch is now reachable.

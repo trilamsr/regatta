@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/trilamsr/regatta/internal/obs"
@@ -259,6 +260,13 @@ type BriefLoaderConfig struct {
 	// §3.3 + feedback_spec_pattern_authority.
 	Tracer trace.Tracer
 
+	// Meter is the OTel instrument factory for brief-loader telemetry.
+	// Nil resolves to otel.Meter("program") at the first ResolveMeter()
+	// call so the global MeterProvider Setup wires (or a noop when
+	// Setup was skipped) wins by default. Mirrors the W6 Config.Tracer
+	// pattern so callers stay on one DI seam across trace + metric.
+	Meter metric.Meter
+
 	// Audit is the substrate-sink config for durable rejection records
 	// (issue #80). Zero value disables the sink; an operator without
 	// REGATTA_HMAC_KEY keeps the slog-only behaviour. When enabled,
@@ -266,6 +274,17 @@ type BriefLoaderConfig struct {
 	// substrate.AppendEvent so the record outlives log rotation +
 	// restart.
 	Audit BriefAuditConfig
+}
+
+// ResolveMeter returns the configured meter or falls back to the
+// global provider's scoped meter. The fallback is lazy so a global
+// provider swap (e.g. test injection of a noop provider) takes effect
+// on the next call. Matches the W6 Config.Tracer nil-fallback shape.
+func (c BriefLoaderConfig) ResolveMeter() metric.Meter {
+	if c.Meter != nil {
+		return c.Meter
+	}
+	return otel.Meter("program")
 }
 
 // BriefLoader is the recurring sync. Construct once at orchestrator
@@ -675,7 +694,6 @@ func (b *BriefLoader) cascadeDependencyArchiveOnce(ctx context.Context, at time.
 		return false, scanErr
 	}
 
-	stamp := at.UTC().Unix()
 	applied := false
 	for _, r := range rowsList {
 		for _, dep := range r.deps {
@@ -689,9 +707,27 @@ func (b *BriefLoader) cascadeDependencyArchiveOnce(ctx context.Context, at time.
 			if depItem.Status != state.WorkStatusArchived {
 				continue
 			}
-			if _, err := b.db.SQL().ExecContext(ctx,
-				`UPDATE work_items SET status = ?, updated_at = ? WHERE id = ?`,
-				string(state.WorkStatusArchived), stamp, r.id); err != nil {
+			// Fetch the child's current status to CAS-from. The outer
+			// SELECT excluded status=archived, but two BriefLoader
+			// passes can race on the same row: the typed transition
+			// wins exactly once (whichever pass commits first), the
+			// loser observes ErrInvalidWorkItemTransition and treats
+			// the row as already archived. Idempotent against the
+			// fixed-point retry loop.
+			child, err := b.db.GetWorkItem(ctx, r.id)
+			if err != nil {
+				if errors.Is(err, state.ErrWorkItemNotFound) {
+					continue
+				}
+				return false, err
+			}
+			if child.Status == state.WorkStatusArchived {
+				continue
+			}
+			if err := b.db.TransitionWorkItemAt(ctx, r.id, child.Status, state.WorkStatusArchived, at); err != nil {
+				if errors.Is(err, state.ErrInvalidWorkItemTransition) {
+					continue
+				}
 				return false, err
 			}
 			applied = true

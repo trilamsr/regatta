@@ -10,7 +10,7 @@ Source: docs/engineer/autonomous-session-prompt.md#L32
 
 top 2 A+ rubric items from prior waves. FILED.
 
-<!-- source-sha256: 08184665141d83d3575dc3afac6d15e97f4a355a246a171047fc8d75a776d8b8 -->
+<!-- source-sha256: 13541bb7ab1a1504f467cb3b4b219acbac336c6b28a19367d3f55ca6dbf7bb26 -->
 
 ## Acceptance criteria
 

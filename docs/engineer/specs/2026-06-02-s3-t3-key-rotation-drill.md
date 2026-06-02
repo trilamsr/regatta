@@ -224,3 +224,7 @@ This PR is spec-only. Implementation phasing:
 ## 8. Open questions
 
 - **Resign sweep granularity** (S3-T3-D, separate spec): one-shot batch (`regatta keys resign`) vs incremental during normal ticks. Decision deferred to that spec; current S3-T3 land does not need it because the multi-key window is open-ended by design.
+
+## Resolution (2026-06-02)
+
+Shipped across #379 (`feat(s3-t3): multi-key HMAC parser for brief keyring + active resolver`), #393 (`feat(keys): re-sign-briefs subcommand for HMAC rotation`), with operator recovery doc tracked in `docs/operator/quickstart.md` Troubleshooting. CLI: `regatta keys rotate` + `regatta keys resign-briefs`.

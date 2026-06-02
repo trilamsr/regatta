@@ -1,0 +1,119 @@
+{
+  "uid": "regatta-per-dag-cost",
+  "title": "Regatta — Per-DAG Cost",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["regatta", "cost", "wave-a", "tier-1"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      },
+      {
+        "name": "dag_id",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(regatta_cost_usd_total, dag_id)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2
+      },
+      {
+        "name": "operator_id",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(regatta_cost_usd_total, operator_id)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2
+      },
+      {
+        "name": "lane",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(regatta_cost_usd_total, lane)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "barchart",
+      "title": "Cost USD by DAG (rate over 5m, stacked)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 0 },
+      "options": { "stacking": { "mode": "normal" }, "legend": { "displayMode": "table" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (dag_id) (rate(regatta_cost_usd_total{dag_id=~\"$dag_id\",operator_id=~\"$operator_id\",lane=~\"$lane\"}[5m]))",
+          "legendFormat": "{{dag_id}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Total USD spend (selected window)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(regatta_cost_usd_total{dag_id=~\"$dag_id\",operator_id=~\"$operator_id\",lane=~\"$lane\"}[$__range]))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Cost by operator_id",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (operator_id) (rate(regatta_cost_usd_total{dag_id=~\"$dag_id\",operator_id=~\"$operator_id\",lane=~\"$lane\"}[5m]))",
+          "legendFormat": "{{operator_id}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Cost by lane",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (lane) (rate(regatta_cost_usd_total{dag_id=~\"$dag_id\",operator_id=~\"$operator_id\",lane=~\"$lane\"}[5m]))",
+          "legendFormat": "{{lane}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Tokens by direction (input/output/cache_read)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 17 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (direction) (rate(regatta_cost_tokens_total{dag_id=~\"$dag_id\",operator_id=~\"$operator_id\",lane=~\"$lane\"}[5m]))",
+          "legendFormat": "{{direction}}"
+        }
+      ]
+    }
+  ]
+}
