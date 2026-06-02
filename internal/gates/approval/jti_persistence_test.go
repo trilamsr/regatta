@@ -18,10 +18,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// TestGate_PersistsTokenMintedPerJTI — first-sighting Evaluate must
-// append one `token_minted` row per reviewer's JTI. Pre-fix: zero such
-// rows exist. Pinning the producer side of the contract that
-// reaper.outstandingJTIs already presumes.
+// TestGate_PersistsTokenMintedPerJTI — first-sighting Evaluate must append one `token_minted` row per reviewer's JTI. Pre-fix: zero such rows 
 func TestGate_PersistsTokenMintedPerJTI(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	db := newGateTestDB(t, func() time.Time { return now })
@@ -77,9 +74,7 @@ func TestGate_PersistsTokenMintedPerJTI(t *testing.T) {
 	}
 }
 
-// TestGate_PostEscalationPersistsFreshJTIs — notifyEscalatedTier mints
-// tier-N tokens; the same `token_minted` invariant must hold so a
-// subsequent escalate also has revocable JTIs.
+// TestGate_PostEscalationPersistsFreshJTIs — notifyEscalatedTier mints tier-N tokens; the same `token_minted` invariant must hold so a subsequ
 func TestGate_PostEscalationPersistsFreshJTIs(t *testing.T) {
 	t0 := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	clockT := t0
@@ -140,12 +135,7 @@ func TestGate_PostEscalationPersistsFreshJTIs(t *testing.T) {
 	}
 }
 
-// TestGate_ReaperRevokesMintedTokens_RevokedTokenIsUnusable — full
-// revocation E2E: gate mints, reaper escalates and revokes, the
-// originally-minted token can no longer be consumed (replay = single-use
-// UNIQUE collision against the revoke row → ErrTokenReplay). Closes the
-// loop from #195's repro: persisted mint markers make revocation
-// reachable AND observable through the decide-path.
+// TestGate_ReaperRevokesMintedTokens_RevokedTokenIsUnusable — full revocation E2E: gate mints, reaper escalates and revokes, the originally-mi
 func TestGate_ReaperRevokesMintedTokens_RevokedTokenIsUnusable(t *testing.T) {
 	t0 := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	clockT := t0
@@ -230,11 +220,7 @@ func TestGate_ReaperRevokesMintedTokens_RevokedTokenIsUnusable(t *testing.T) {
 	}
 }
 
-// TestReaperMintInvariant_Property (A+) — for any K reviewers (1..6),
-// the gate's first-sighting Evaluate plus the reaper's escalate-sweep
-// must produce exactly K token_consumed-with-reason=escalated rows
-// whose JTIs are a permutation of the JTIs the gate minted. Property
-// captures the reaper-vs-mint invariant the dead-code bug violated.
+// TestReaperMintInvariant_Property (A+) — for any K reviewers (1..6), the gate's first-sighting Evaluate plus the reaper's escalate-sweep must
 func TestReaperMintInvariant_Property(t *testing.T) {
 	if testing.Short() {
 		t.Skip("property test; skipped in -short")

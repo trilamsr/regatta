@@ -274,12 +274,7 @@ func TestGate_TimedOutReturnsReject(t *testing.T) {
 	}
 }
 
-// Concurrent first-evaluation: scheduler tick is single-writer in
-// production (state.go:9 pool=1), but the gate's create+events sequence
-// is also exposed to a UNIQUE-collision race if two callers reach the
-// CreateApproval step concurrently. Both must terminate cleanly; one
-// gets ResultPause (the winner), the other observes the existing row
-// and returns ResultPause too. No errors leak.
+// Concurrent first-evaluation: scheduler tick is single-writer in production (state.go:9 pool=1), but the gate's create+events sequence is als
 func TestGate_ConcurrentFirstEvaluationsSerialise(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	db := newGateTestDB(t, func() time.Time { return now })
@@ -350,9 +345,7 @@ func TestGate_TokensVerifyableAgainstKeyring(t *testing.T) {
 	}
 }
 
-// Token signer is fallback-injectable for deterministic tests of the
-// gate's token-mint loop; production wires crypto/rand.Reader directly.
-// This test simply asserts that a non-default jti source is honoured.
+// Token signer is fallback-injectable for deterministic tests of the gate's token-mint loop; production wires crypto/rand.Reader directly. Thi
 func TestGate_HonorsJTISource(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	db := newGateTestDB(t, func() time.Time { return now })
@@ -475,9 +468,7 @@ func TestGate_PostEscalationMintAndNotify(t *testing.T) {
 	}
 }
 
-// Gate refuses to evaluate when given an invalid keyring kid: token
-// mint surfaces ErrUnknownKeyID; the gate must propagate the typed
-// sentinel rather than papering over with a generic wrap.
+// Gate refuses to evaluate when given an invalid keyring kid: token mint surfaces ErrUnknownKeyID; the gate must propagate the typed sentinel 
 func TestGate_UnknownKeyIDPropagates(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	db := newGateTestDB(t, func() time.Time { return now })
