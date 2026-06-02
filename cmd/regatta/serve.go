@@ -32,6 +32,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 	"github.com/trilamsr/regatta/internal/program"
 	"github.com/trilamsr/regatta/internal/web"
 )
@@ -215,6 +216,16 @@ func runServe(args []string) int {
 		Keyring:   loadBriefKeyring(),
 		Evaluator: evaluator,
 		Logger:    slogger,
+		// Issue #80: durable audit sink under the existing brief HMAC
+		// key. Zero-key deployments (no REGATTA_HMAC_KEY) fall back to
+		// slog-only retention; the BriefAuditConfig.enabled() guard
+		// inside the loader keeps the cost zero in that case.
+		Audit: program.BriefAuditConfig{
+			Key:      costKey,
+			KeyID:    costKeyID,
+			TenantID: substrate.DefaultTenantID,
+			RunID:    "brief-loader",
+		},
 	})
 	if err != nil {
 		logger.Printf("brief loader: %v", err)

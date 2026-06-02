@@ -209,6 +209,30 @@ func validateHeartbeat(raw json.RawMessage) error {
 	return nil
 }
 
+// briefRejectedPayload mirrors the audit-row shape brief_loader writes
+// for issue #80. Path is the on-disk artifact the operator can re-read;
+// Reason is the freeform error class (`hmac`, `unknown_parent`,
+// `stale_produced_at`, `feature_id_collision`, etc.) — truncated to fit
+// the 1024-byte payload CHECK at the writer.
+type briefRejectedPayload struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+
+func validateBriefRejected(raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return fmt.Errorf("%w: brief_rejected payload empty", ErrInvalidPayload)
+	}
+	var p briefRejectedPayload
+	if err := strictUnmarshal(raw, &p); err != nil {
+		return fmt.Errorf("%w: brief_rejected: %w", ErrInvalidPayload, err)
+	}
+	if p.Path == "" || p.Reason == "" {
+		return fmt.Errorf("%w: brief_rejected missing path|reason", ErrInvalidPayload)
+	}
+	return nil
+}
+
 // strictUnmarshal forbids unknown fields. Pins payload shape per
 // spec §S4 (typed Go structs, no JSON Schema files). A producer
 // emitting extra fields silently is a forward-version-compat trap.
@@ -231,5 +255,6 @@ func init() {
 	RegisterPayloadValidator(KindTokenSpend, validateTokenSpend)
 	RegisterPayloadValidator(KindBudgetReconciled, validateBudgetReconciled)
 	RegisterPayloadValidator(KindHeartbeat, validateHeartbeat)
+	RegisterPayloadValidator(KindBriefRejected, validateBriefRejected)
 	// KindGateVerdict: registered by T-S2 in gate_verdict_payload.go init().
 }
