@@ -31,9 +31,6 @@ func TestCSRFMiddleware_RejectsOnMismatch(t *testing.T) {
 	}
 }
 
-// TestCSRFMiddleware_ConstantTimeCompare pins the source dependency on
-// crypto/subtle.ConstantTimeCompare via source grep + a runtime sanity
-// check that bit-1 and last-byte mismatches both reject.
 func TestCSRFMiddleware_ConstantTimeCompare(t *testing.T) {
 	src, err := readFileForGrep("csrf.go")
 	if err != nil {
