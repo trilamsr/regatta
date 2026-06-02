@@ -4,16 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"sort"
-	"sync"
 	"testing"
 	"time"
 
 	"pgregory.net/rapid"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
 // errCrashSim is the package-private fault-injection sentinel surfaced by WriteHook (spec §3.3 R6).
@@ -152,71 +150,13 @@ type crashHarness struct {
 	hotspot func(string) []string // nil → scheduler skips locks
 }
 
-// goldenDB builds a migrated sqlite file once per test, then copyGoldenDB
-// returns a fresh path for each case — bypassing goose's ~6ms migration
-// cost per open and dropping per-case wallclock from ~50ms to ~10ms (spec
-// §3.4 per-case budget). Guarded by sync.Once so the migration runs once
-// even though the property body invokes openCrashDB twice per case.
-var (
-	goldenOnce  sync.Once
-	goldenPath  string
-	goldenBytes []byte
-	goldenErr   error
-)
-
-func ensureGolden(t testing.TB) {
-	t.Helper()
-	goldenOnce.Do(func() {
-		f, err := os.CreateTemp("", "scheduler-crash-recovery-golden-*.db")
-		if err != nil {
-			goldenErr = fmt.Errorf("create golden: %w", err)
-			return
-		}
-		goldenPath = f.Name()
-		_ = f.Close()
-		db, err := state.Open(context.Background(), state.DSN(goldenPath))
-		if err != nil {
-			goldenErr = fmt.Errorf("open golden: %w", err)
-			return
-		}
-		// Disable WAL autocheckpoint at the golden so every clone inherits
-		// the setting (spec R5).
-		if _, err := db.SQL().ExecContext(context.Background(), `PRAGMA wal_autocheckpoint=0`); err != nil {
-			goldenErr = fmt.Errorf("golden pragma: %w", err)
-			return
-		}
-		// Force a WAL checkpoint then close so the on-disk file is
-		// fully self-contained (no stale -wal sidecar pointing at the
-		// closed conn).
-		if _, err := db.SQL().ExecContext(context.Background(), `PRAGMA wal_checkpoint(TRUNCATE)`); err != nil {
-			goldenErr = fmt.Errorf("golden checkpoint: %w", err)
-			return
-		}
-		if err := db.Close(); err != nil {
-			goldenErr = fmt.Errorf("close golden: %w", err)
-			return
-		}
-		goldenBytes, goldenErr = os.ReadFile(goldenPath)
-	})
-	if goldenErr != nil {
-		t.Fatalf("ensureGolden: %v", goldenErr)
-	}
-}
-
+// openCrashDB returns a fresh *state.DB cloned from the golden post-
+// migration file via statetest.GoldenClone — same primitive consumed by
+// the cost-governor + approval-reaper crash-recovery property tests
+// (#384). Factored out of this file when those tests landed.
 func openCrashDB(t testing.TB) *state.DB {
 	t.Helper()
-	ensureGolden(t)
-	dir := t.TempDir()
-	path := filepath.Join(dir, "state.db")
-	if err := os.WriteFile(path, goldenBytes, 0o600); err != nil {
-		t.Fatalf("openCrashDB: clone golden: %v", err)
-	}
-	db, err := state.Open(context.Background(), state.DSN(path))
-	if err != nil {
-		t.Fatalf("openCrashDB: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db
+	return statetest.GoldenClone(t, nil)
 }
 
 func (h *crashHarness) seedQ(t testing.TB, db *state.DB) {

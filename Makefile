@@ -26,10 +26,14 @@ go-check-full:  ## Full race sweep without -short. Run weekly + before any tag. 
 property-test:  ## Run rapid property tests. PHASE-S-RELAX: 50 checks in CI/local; spec-mandated 200 via `make property-test-full`.
 	go test -race -run 'TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty' ./internal/orchestrator/state/... -rapid.checks=50
 	go test -race -run 'TestSchedulerCrashRecoveryProperty' ./internal/orchestrator/scheduler/... -rapid.checks=50
+	go test -race -run 'TestSpendCrashRecoveryProperty' ./internal/cost/spend/... -rapid.checks=50
+	go test -race -run 'TestReaperCrashRecoveryProperty' ./internal/gates/approval/... -rapid.checks=50
 
 property-test-full:  ## Full 200/2000-check property sweep. Run weekly + before any tag. PHASE-S-RELAX restoration target — fold back into `property-test` at end of self-host phase (memory/feedback_gate_relaxation_phase_s).
 	go test -race -run 'TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty' ./internal/orchestrator/state/... -rapid.checks=200
 	go test -race -run 'TestSchedulerCrashRecoveryProperty' ./internal/orchestrator/scheduler/... -rapid.checks=2000 -timeout=5m
+	go test -race -run 'TestSpendCrashRecoveryProperty' ./internal/cost/spend/... -rapid.checks=200
+	go test -race -run 'TestReaperCrashRecoveryProperty' ./internal/gates/approval/... -rapid.checks=200
 
 mutation-test-install:  ## Install pinned gremlins binary into $GOPATH/bin. Idempotent.
 	go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
