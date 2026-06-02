@@ -54,6 +54,15 @@ type Config struct {
 	// Invoker is the model call-site. Tests inject a stub here.
 	// Nil panics at Run time so the wiring contract is explicit.
 	Invoker Invoker
+
+	// CategoryModels overrides the per-category model assignment.
+	// Keys are the spec §3.4 hunt-list category names (e.g.
+	// "security", "refactor"). When set, Run buckets categories by
+	// distinct resolved model and emits one Invoker call per bucket;
+	// findings merge into the gate result before severity routing.
+	// Unmapped categories fall back to the primary Model via
+	// ResolveCategoryModel (yaml > env > primary).
+	CategoryModels map[string]string
 }
 
 // Input is what the gate runs against. Constructed by the gate
