@@ -96,6 +96,19 @@ type Finding struct {
 	Evidence    *FindingEvidence `json:"evidence,omitempty"`
 	Remediation string           `json:"remediation,omitempty"`
 	TrapPattern string           `json:"trap_pattern,omitempty"` // "P1" .. "P13"
+
+	// AutoFixable signals the model is confident enough in the
+	// remediation to ship it as a unified-diff Patch. Downstream
+	// PR-comment posters render Patch verbatim inside a fenced
+	// diff block when AutoFixable is true; the operator opts in
+	// via the gate config's AutoFix knob. Zero value omits the
+	// field from the audit payload (omitempty).
+	AutoFixable bool `json:"auto_fixable,omitempty"`
+
+	// Patch is the unified-diff body to apply (no surrounding
+	// fence). Set iff AutoFixable is true. The gate never applies
+	// the patch — it surfaces in the GateResult for human review.
+	Patch string `json:"patch,omitempty"`
 }
 
 // FindingEvidence is the schema-required nested location block for

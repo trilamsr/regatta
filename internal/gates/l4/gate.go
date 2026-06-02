@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/gates/severity"
 	"github.com/trilamsr/regatta/internal/obs"
 )
 
 // defaultSeverityBlock matches examples/full/regatta.yaml gates[1]
 // and the spec §3.6 R1/R2 baseline: any critical OR >=2 high blocks.
-var defaultSeverityBlock = []string{RuleCritical, RuleTwoHigh}
+var defaultSeverityBlock = []string{severity.Critical, severity.TwoHigh}
 
 // Invoker is the model call-site seam. The real implementation
 // (stream-json adapter + prompt-template render + JSON-output parse)
@@ -22,11 +23,18 @@ var defaultSeverityBlock = []string{RuleCritical, RuleTwoHigh}
 type Invoker func(ctx context.Context, req InvokeRequest) (InvokeResponse, error)
 
 // InvokeRequest is what the gate hands the model adapter.
+//
+// Categories lists the hunt-list categories the prompt should scope
+// for this call. Empty means all categories (single-bucket / no
+// CategoryModels override). Adapters render this into the prompt's
+// hunt-list section so the bucket model is only asked about its
+// assigned categories.
 type InvokeRequest struct {
-	Model    string
-	Input    Input
-	GateID   string
-	MaxChars int
+	Model      string
+	Input      Input
+	GateID     string
+	MaxChars   int
+	Categories []string
 }
 
 // InvokeResponse is what the adapter returns. Findings flow straight
@@ -89,29 +97,82 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 		return gr, err
 	}
 
-	resp, err := cfg.Invoker(ctx, InvokeRequest{
-		Model:    resolvedModel,
-		Input:    in,
-		GateID:   cfg.GateID,
-		MaxChars: maxChars,
-	})
-	if err != nil {
-		gr.Findings = append(gr.Findings, schemas.Finding{
-			ID:       "L4-INVOKE-ERR",
-			Severity: schemas.FindingMedium,
-			Claim:    fmt.Sprintf("model invocation errored: %v", err),
-		})
-		gr.Verdict = schemas.VerdictAdvisory
-		finalize(&gr, started)
-		emitVerdict(gr)
-		return gr, nil
+	buckets := categoryBuckets(resolvedModel, cfg.CategoryModels)
+	for _, bucketModel := range bucketModelsSorted(buckets, resolvedModel) {
+		req := InvokeRequest{
+			Model:    bucketModel,
+			Input:    in,
+			GateID:   cfg.GateID,
+			MaxChars: maxChars,
+		}
+		// Carry per-bucket categories only when there is more than
+		// one bucket; a single bucket means "all categories" and the
+		// adapter renders the full hunt list unchanged.
+		if len(buckets) > 1 {
+			req.Categories = buckets[bucketModel]
+		}
+		resp, err := cfg.Invoker(ctx, req)
+		if err != nil {
+			// Bucket-level error degrades the whole gate run to
+			// advisory and short-circuits to avoid partial-result
+			// blocking — a single category model outage cannot
+			// silently flip a clean pass to a fail, nor hide an
+			// earlier bucket's critical behind an advisory mask.
+			// We keep findings from successful buckets so audit
+			// replay sees what the gate already learned.
+			gr.Findings = append(gr.Findings, schemas.Finding{
+				ID:       "L4-INVOKE-ERR",
+				Severity: schemas.FindingMedium,
+				Claim:    fmt.Sprintf("model invocation errored (model=%s): %v", bucketModel, err),
+			})
+			gr.Verdict = schemas.VerdictAdvisory
+			finalize(&gr, started)
+			emitVerdict(gr)
+			return gr, nil
+		}
+		gr.Findings = append(gr.Findings, resp.Findings...)
+		// Telemetry pins primary-bucket prompt SHA + accumulates
+		// tokens across buckets so cost reporting is the union.
+		if bucketModel == resolvedModel {
+			gr.Telemetry.PromptSHA = resp.PromptSHA
+		}
+		gr.Telemetry.TokensInput += resp.TokensIn
+		gr.Telemetry.TokensOutput += resp.TokensOut
 	}
-	gr.Findings = append(gr.Findings, resp.Findings...)
-	gr.Telemetry.PromptSHA = resp.PromptSHA
-	gr.Telemetry.TokensInput = resp.TokensIn
-	gr.Telemetry.TokensOutput = resp.TokensOut
+	if !cfg.AutoFix {
+		// Operator opt-in is load-bearing per issue #358 — a
+		// rogue model that surfaces a patch without the gate
+		// being configured for AutoFix must not leak the diff
+		// into the audit payload.
+		for i := range gr.Findings {
+			gr.Findings[i].AutoFixable = false
+			gr.Findings[i].Patch = ""
+		}
+	}
 
-	if Blocks(rules, gr.Findings) {
+	// Second-opinion loop (issue #353): if the PR body disputes a
+	// finding the primary actually returned, re-invoke with the alt
+	// model and drop any disputed finding the second opinion did NOT
+	// confirm. Second-opinion error fails-closed (keeps primary).
+	if disputed := ParseDisputes(in.PRBody); len(disputed) > 0 {
+		toReview := intersect(disputed, gr.Findings)
+		if len(toReview) > 0 {
+			soModel := ResolveSecondOpinionModel(cfg.SecondOpinionModel)
+			soResp, soErr := cfg.Invoker(ctx, InvokeRequest{
+				Model:    soModel,
+				Input:    in,
+				GateID:   cfg.GateID,
+				MaxChars: maxChars,
+			})
+			if soErr == nil {
+				gr.Findings = mergeDisputed(gr.Findings, toReview, soResp.Findings)
+				gr.Telemetry.TokensInput += soResp.TokensIn
+				gr.Telemetry.TokensOutput += soResp.TokensOut
+			}
+		}
+	}
+
+	if severity.Blocks(rules, gr.Findings) {
 		if cfg.AdvisoryMode {
 			gr.Verdict = schemas.VerdictAdvisory
 		} else {
