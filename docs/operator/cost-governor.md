@@ -119,8 +119,8 @@ three bugs and silent correction would mask the diagnosis:
 3. Anthropic billed for something regatta did not see (rare; usually
    a cache_creation row regatta's parser missed).
 
-Recovery walks via the
-[cost-governor-incidents playbook](../engineer/runbooks/cost-governor-incidents.md)
+Recovery walks via the cost-governor-incidents playbook
+(`docs/engineer/runbooks/cost-governor-incidents.md`, lands in #300)
 "EventCostDriftAlert fires" section.
 
 ## Soft caps — WARN by default, opt-in downgrade
@@ -177,8 +177,8 @@ Step-by-step.
    Renovate-bot does NOT auto-bump; human-in-the-loop required.
 
 Rollback procedure for a bad-pricing PR is in
-[cost-governor-incidents](../engineer/runbooks/cost-governor-incidents.md)
-§"Pricing-table rollback".
+cost-governor-incidents (`docs/engineer/runbooks/cost-governor-incidents.md`,
+lands in #300) §"Pricing-table rollback".
 
 ## OTel cardinality
 
@@ -198,8 +198,8 @@ fires once per `reconcile_interval` — default 1/hour — so it is
 unaffected by the sampler and operators should NEVER drop those
 spans.
 
-Per-panel attribute breakdown lives in
-[cost-governor-dashboards](./cost-governor-dashboards.md) — read it
+Per-panel attribute breakdown lives in cost-governor-dashboards
+(`docs/operator/cost-governor-dashboards.md`, lands in #301) — read it
 when wiring Honeycomb / Grafana / Jaeger dashboards.
 
 ## Cost API vs Usage API fallback
@@ -239,9 +239,9 @@ What IS logged at boot:
   succeeded without exposing the key.
 
 Rotation procedure (rolling restart required in MVP-2) is in
-[cost-governor-incidents](../engineer/runbooks/cost-governor-incidents.md)
-§"Anthropic admin key rotation procedure". In-process SIGHUP-style
-rotation is deferred per `[cost-governor-followup]` #249.
+cost-governor-incidents (`docs/engineer/runbooks/cost-governor-incidents.md`,
+lands in #300) §"Anthropic admin key rotation procedure". In-process
+SIGHUP-style rotation is deferred per `[cost-governor-followup]` #249.
 
 ## Substrate shadow phase
 
@@ -329,10 +329,12 @@ The major gaps operators commonly expect:
 ## Where to look next
 
 - Incident playbook for on-call response —
-  [docs/engineer/runbooks/cost-governor-incidents.md](../engineer/runbooks/cost-governor-incidents.md).
+  `docs/engineer/runbooks/cost-governor-incidents.md` (sibling runbook,
+  lands in #300; link restored in post-merge follow-up PR).
 - Dashboard cite mapping every `regatta.cost.*` span attr +
   `obs.EventCost*` event to Honeycomb / Grafana / Jaeger queries —
-  [docs/operator/cost-governor-dashboards.md](./cost-governor-dashboards.md).
+  `docs/operator/cost-governor-dashboards.md` (sibling cite, lands in
+  #301; link restored in post-merge follow-up PR).
 - Design spec (engineers) —
   [docs/engineer/specs/2026-06-01-cost-governor-design.md](../engineer/specs/2026-06-01-cost-governor-design.md).
 - OTel wiring + sampler customization —
