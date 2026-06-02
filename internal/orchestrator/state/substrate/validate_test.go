@@ -40,15 +40,15 @@ func TestSubstrate_KindPayloadValidation(t *testing.T) {
 		{
 			name:         "token_spend",
 			kind:         substrate.KindTokenSpend,
-			wellFormed:   `{"llm_call_id":"L1","spend_usd":0.01,"tokens":100}`,
-			malformed:    `{"llm_call_id":""}`,
+			wellFormed:   `{"usd":0.01,"model":"claude-sonnet-4-7","input_tokens":100,"output_tokens":10,"cache_read_tokens":0,"cache_creation_tokens":0,"operator_id":"agent-1","dag_id":"DAG-A","work_item_id":"WI-1","pricing_rev":"anthropic@2026-06-01","call_id":"msg_01"}`,
+			malformed:    `{"usd":0.01,"model":"claude-sonnet-4-7","input_tokens":0,"output_tokens":0,"cache_read_tokens":0,"cache_creation_tokens":0,"operator_id":"","dag_id":"","work_item_id":"","pricing_rev":"","call_id":""}`,
 			wantStrategy: substrate.StrategyAppend,
 		},
 		{
 			name:         "budget_reconciled",
 			kind:         substrate.KindBudgetReconciled,
-			wellFormed:   `{"tenant_id":"t","period_start":1,"spend_usd":1.0}`,
-			malformed:    `{"tenant_id":""}`,
+			wellFormed:   `{"period_start":1,"period_end":2,"actual_usd":10.0,"recorded_usd":9.5,"delta_usd":0.5,"drift_pct":0.05,"model_breakdown":[],"api_response_sig":"sha256:abc"}`,
+			malformed:    `{"period_start":0,"period_end":0,"actual_usd":0,"recorded_usd":0,"delta_usd":0,"drift_pct":0,"model_breakdown":[],"api_response_sig":""}`,
 			wantStrategy: substrate.StrategyLWW,
 		},
 		{

@@ -115,10 +115,23 @@ func validateApprovalEvent(raw json.RawMessage) error {
 	return nil
 }
 
+// tokenSpendPayload mirrors cost-governor design spec §3.5 lines 264-276
+// verbatim. Cost-governor (P8) owns the field set per
+// feedback_shared_primitive_owner; substrate hosts the validator only.
+// The unused field on this struct flags a field-name drift between
+// spec §3.5 and the writer (spend.TokenSpendPayload).
 type tokenSpendPayload struct {
-	LLMCallID string  `json:"llm_call_id"`
-	SpendUSD  float64 `json:"spend_usd"`
-	Tokens    int     `json:"tokens"`
+	USD                 float64 `json:"usd"`
+	Model               string  `json:"model"`
+	InputTokens         int64   `json:"input_tokens"`
+	OutputTokens        int64   `json:"output_tokens"`
+	CacheReadTokens     int64   `json:"cache_read_tokens"`
+	CacheCreationTokens int64   `json:"cache_creation_tokens"`
+	OperatorID          string  `json:"operator_id"`
+	DAGID               string  `json:"dag_id"`
+	WorkItemID          string  `json:"work_item_id"`
+	PricingRev          string  `json:"pricing_rev"`
+	CallID              string  `json:"call_id"`
 }
 
 func validateTokenSpend(raw json.RawMessage) error {
@@ -129,16 +142,33 @@ func validateTokenSpend(raw json.RawMessage) error {
 	if err := strictUnmarshal(raw, &p); err != nil {
 		return fmt.Errorf("%w: token_spend: %w", ErrInvalidPayload, err)
 	}
-	if p.LLMCallID == "" {
-		return fmt.Errorf("%w: token_spend missing llm_call_id", ErrInvalidPayload)
+	if p.CallID == "" || p.Model == "" || p.WorkItemID == "" {
+		return fmt.Errorf("%w: token_spend missing call_id|model|work_item_id", ErrInvalidPayload)
 	}
 	return nil
 }
 
+// budgetReconciledPayload mirrors cost-governor design spec §3.5 lines
+// 278-289 verbatim. Reconciler (T4) writes one row per tenant per
+// period; reducer is LWW per (tenant_id, period_start).
 type budgetReconciledPayload struct {
-	TenantID    string  `json:"tenant_id"`
-	PeriodStart int64   `json:"period_start"`
-	SpendUSD    float64 `json:"spend_usd"`
+	PeriodStart    int64                            `json:"period_start"`
+	PeriodEnd      int64                            `json:"period_end"`
+	ActualUSD      float64                          `json:"actual_usd"`
+	RecordedUSD    float64                          `json:"recorded_usd"`
+	DeltaUSD       float64                          `json:"delta_usd"`
+	DriftPct       float64                          `json:"drift_pct"`
+	ModelBreakdown []modelBreakdownPayloadRow       `json:"model_breakdown"`
+	APIResponseSig string                           `json:"api_response_sig"`
+}
+
+type modelBreakdownPayloadRow struct {
+	Model               string  `json:"model"`
+	InputTokens         int64   `json:"input_tokens"`
+	OutputTokens        int64   `json:"output_tokens"`
+	CacheReadTokens     int64   `json:"cache_read_tokens"`
+	CacheCreationTokens int64   `json:"cache_creation_tokens"`
+	USD                 float64 `json:"usd"`
 }
 
 func validateBudgetReconciled(raw json.RawMessage) error {
@@ -149,8 +179,8 @@ func validateBudgetReconciled(raw json.RawMessage) error {
 	if err := strictUnmarshal(raw, &p); err != nil {
 		return fmt.Errorf("%w: budget_reconciled: %w", ErrInvalidPayload, err)
 	}
-	if p.TenantID == "" {
-		return fmt.Errorf("%w: budget_reconciled missing tenant_id", ErrInvalidPayload)
+	if p.PeriodStart == 0 || p.PeriodEnd == 0 {
+		return fmt.Errorf("%w: budget_reconciled missing period_start|period_end", ErrInvalidPayload)
 	}
 	return nil
 }
