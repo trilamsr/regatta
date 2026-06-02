@@ -1,0 +1,14 @@
+{
+  "verdict": "advisory",
+  "findings": [
+    {
+      "id": "L4-REFACTOR-DUP",
+      "severity": "high",
+      "category": "refactor",
+      "claim": "shared serialization helper duplicated across pkg/foo and pkg/bar",
+      "evidence": {"path": "pkg/foo/serialize.go", "line_start": 22, "line_end": 38},
+      "remediation": "extract to internal/serialize and import from both packages"
+    }
+  ],
+  "notes": "one high finding alone does not trip the 2*high block rule"
+}

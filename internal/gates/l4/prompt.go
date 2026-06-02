@@ -53,7 +53,9 @@ func parseSlot(body string) (*promptSlot, error) {
 // RenderPrompt returns the fully-substituted prompt text + the SHA-256
 // pin of the active template body. Diff is clipped to maxChars before
 // substitution so the model never sees the unclipped blob even when the
-// caller forgot to apply MaxDiffChars upstream.
+// caller forgot to apply MaxDiffChars upstream. The active slot is
+// loaded atomically so a concurrent hot-reload swap is observed without
+// torn reads — the SHA returned always matches the body just rendered.
 func RenderPrompt(in Input, maxChars int) (string, string, error) {
 	slot := active.Load()
 	diff := in.Diff
@@ -80,11 +82,13 @@ func RenderPrompt(in Input, maxChars int) (string, string, error) {
 }
 
 // PromptSHA exposes the active template SHA so callers stamping
-// telemetry (gate.go) match the body the model actually saw.
+// telemetry (gate.go) or building prompts manually (adapter dry-runs)
+// match the body the model actually saw, even after a hot-reload swap.
 func PromptSHA() string { return active.Load().sha }
 
 // indent prefixes every line of s with n spaces. Used by the
-// adversarial template to nest the diff + spec + scorecard blocks.
+// adversarial template to nest the diff + spec + scorecard blocks
+// under their section headers.
 func indent(n int, s string) string {
 	pad := strings.Repeat(" ", n)
 	if s == "" {
