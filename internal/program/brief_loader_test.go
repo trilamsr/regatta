@@ -483,14 +483,58 @@ func TestBriefLoaderSync_StaleBriefRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := logs.String()
-	if !strings.Contains(out, "stale_produced_at") {
-		t.Fatalf("expected stale_produced_at rejection: %s", out)
+	// Either replay-defence layer is acceptable: the HMAC layer (#92)
+	// catches exact-replay before the produced_at watermark fires.
+	if !strings.Contains(out, "stale_produced_at") && !strings.Contains(out, "brief_already_processed") {
+		t.Fatalf("expected replay rejection: %s", out)
 	}
 	// Children should NOT have been re-stamped on the replay — so the
 	// later sweep (no actual upsert during the replay) must not tombstone them.
 	children, _ := db.ListByParent(context.Background(), "PROG-1")
 	if len(children) != 3 {
 		t.Fatalf("children=%d want 3 (no churn from stale replay)", len(children))
+	}
+}
+
+// Issue #92: cross-restart-persistent brief replay protection.
+func TestBriefLoaderSync_ReplayAcrossWorkItemsWipeRejected(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", t0)
+
+	_, raw := mustSignedBrief(t, key) // ProducedAt = t0
+	files := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+
+	loader := mustNewLoader(t, BriefLoaderConfig{FS: files, DB: db, Keyring: map[string][]byte{"key-1": key}})
+	if err := loader.Sync(context.Background(), t0); err != nil {
+		t.Fatalf("seed Sync: %v", err)
+	}
+
+	// Attack: operator deletes brief-source children (or wipes them via
+	// a malformed cleanup script). Pre-fix, this drops the
+	// MaxUpdatedAtForBriefChildren watermark to zero so the same brief
+	// can be re-ingested on the next poll.
+	if _, err := db.SQL().ExecContext(context.Background(),
+		`DELETE FROM work_items WHERE source = ? AND parent_program_id = ?`,
+		string(state.SourceBrief), "PROG-1"); err != nil {
+		t.Fatalf("delete brief children: %v", err)
+	}
+
+	logs := captureLogs(t)
+	// Simulate next-tick Sync after the wipe. Same brief on disk.
+	t1 := t0.Add(5 * time.Minute)
+	if err := loader.Sync(context.Background(), t1); err != nil {
+		t.Fatalf("replay Sync: %v", err)
+	}
+
+	out := logs.String()
+	if !strings.Contains(out, "stale_produced_at") && !strings.Contains(out, "brief_already_processed") {
+		t.Fatalf("expected replay rejection after work_items wipe; logs: %s", out)
+	}
+	children, _ := db.ListByParent(context.Background(), "PROG-1")
+	if len(children) != 0 {
+		t.Fatalf("children=%d want 0 (replay must NOT re-inject after wipe)", len(children))
 	}
 }
 
