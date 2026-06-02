@@ -19,7 +19,7 @@ import (
 //  1. len(Receipt.DeliveredTo) == len(req.Reviewers) on nil error.
 //  2. Emitted obs event carries the canonical four attrs
 //     (approval_id, work_item_id, gate_id, reviewer_count).
-//  3. Zero-reviewer Request returns ErrNoReviewers (fail-closed).
+//  3. zero-reviewer request returns ErrNoReviewers (fail-closed).
 //  4. ctx-cancelled Notify returns ctx.Err() before any side effect.
 func TestNotifier_InterfaceContract(t *testing.T) {
 	cases := []struct {
