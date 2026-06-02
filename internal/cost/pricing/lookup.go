@@ -20,12 +20,23 @@ package pricing
 
 import (
 	"errors"
+	"fmt"
 	"time"
 )
 
 // ErrPricingMissing is returned by Lookup when the model SKU is unknown or
 // retired. Callers MUST hard-fail; silent-zero is the Portkey trap.
 var ErrPricingMissing = errors.New("pricing missing for model")
+
+// ErrPricingZeroRow is returned by Validate when an active row in an
+// in-tree pricing table carries a non-positive rate. Spec §3.8 + §7 B7:
+// silent-zero is the Portkey trap, so the boot validator MUST hard-fail
+// before any Lookup can return the bad row. Distinct from
+// ErrOverrideInvalid — that sentinel guards operator-supplied overrides;
+// this one guards the in-tree source-of-truth tables (Anthropic, Bedrock,
+// Vertex) which are the rollback target named in the cost-governor
+// runbook §"Pricing-table rollback".
+var ErrPricingZeroRow = errors.New("pricing table has zero-rate active row")
 
 // Row holds per-million-token USD rates for one model SKU plus a sunset
 // marker. The zero value of RetiredAfter means the SKU is still active.
@@ -91,4 +102,57 @@ func Catalog() map[string]Row {
 		out[k] = v
 	}
 	return out
+}
+
+// Validate scans an in-tree pricing table for the Portkey-trap invariant
+// (no active SKU may carry a non-positive rate) and returns an
+// ErrPricingZeroRow-wrapped error on the first violation. The provider
+// label is folded into the error message so operators reading the boot
+// log can jump to the right table without re-deriving which file failed.
+//
+// Retired rows are exempt — operators may pin historical snapshots for
+// replay or backfill recipes. Active = RetiredAfter.IsZero() OR in the
+// future at validation time.
+//
+// Called from init() against each per-provider table so a bad rebase /
+// merge that lands a zero rate panics the process before the first
+// Lookup. The runbook "Pricing-table rollback" procedure assumes this
+// guarantee; the fixture at testdata/anthropic_bad_zero_row.go is the
+// falsifier.
+func Validate(provider string, table map[string]Row) error {
+	for model, row := range table {
+		if !row.RetiredAfter.IsZero() && now().After(row.RetiredAfter) {
+			continue
+		}
+		if row.InputUSDPerMTok <= 0 {
+			return fmt.Errorf("%w: %s.%s InputUSDPerMTok=%v", ErrPricingZeroRow, provider, model, row.InputUSDPerMTok)
+		}
+		if row.CacheReadUSDPerMTok <= 0 {
+			return fmt.Errorf("%w: %s.%s CacheReadUSDPerMTok=%v", ErrPricingZeroRow, provider, model, row.CacheReadUSDPerMTok)
+		}
+		if row.CacheCreationUSDPerMTok <= 0 {
+			return fmt.Errorf("%w: %s.%s CacheCreationUSDPerMTok=%v", ErrPricingZeroRow, provider, model, row.CacheCreationUSDPerMTok)
+		}
+		if row.OutputUSDPerMTok <= 0 {
+			return fmt.Errorf("%w: %s.%s OutputUSDPerMTok=%v", ErrPricingZeroRow, provider, model, row.OutputUSDPerMTok)
+		}
+	}
+	return nil
+}
+
+// init runs the boot validator against each in-tree pricing table.
+// Panic is the correct response: a zero-rate active row is a Portkey
+// trap (§3.1) and silent-zero accounting is worse than a fail-fast crash
+// the operator can grep from the boot log. Override-file rows go through
+// validateRow + ErrOverrideInvalid in LoadOverride.
+func init() {
+	if err := Validate("anthropic", Anthropic); err != nil {
+		panic(err)
+	}
+	if err := Validate("bedrock", Bedrock); err != nil {
+		panic(err)
+	}
+	if err := Validate("vertex", Vertex); err != nil {
+		panic(err)
+	}
 }
