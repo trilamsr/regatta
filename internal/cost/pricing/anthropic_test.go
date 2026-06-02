@@ -9,10 +9,23 @@ import (
 
 // TestPricing_AllActiveSKUsHavePositiveRows pins B7 Portkey-trap defense.
 func TestPricing_AllActiveSKUsHavePositiveRows(t *testing.T) {
-	if len(pricing.Anthropic) == 0 {
-		t.Fatal("pricing.Anthropic table is empty")
+	catalog := pricing.Catalog()
+	if len(catalog) == 0 {
+		t.Fatal("pricing.Catalog() is empty")
 	}
-	for model, row := range pricing.Anthropic {
+	// Each per-provider source-of-truth table MUST be non-empty so a
+	// silent table-deletion regression cannot pass review by hiding
+	// behind another provider's coverage.
+	if len(pricing.Anthropic) == 0 {
+		t.Error("pricing.Anthropic table is empty")
+	}
+	if len(pricing.Bedrock) == 0 {
+		t.Error("pricing.Bedrock table is empty")
+	}
+	if len(pricing.Vertex) == 0 {
+		t.Error("pricing.Vertex table is empty")
+	}
+	for model, row := range catalog {
 		if !row.RetiredAfter.IsZero() {
 			continue
 		}
