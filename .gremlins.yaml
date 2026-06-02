@@ -1,0 +1,43 @@
+# Gremlins mutation-testing config — S2-T4 wave 1.
+# Spec: docs/engineer/specs/2026-06-02-s2-t4-mutation-testing.md
+#
+# Per-package efficacy floors live in scripts/mutation/run-gremlins.sh.
+# Gremlins' CLI exposes a single --threshold-efficacy flag (global only);
+# per-package enforcement therefore lives in the wrapper script that
+# invokes gremlins once per allowlisted package.
+
+unleash:
+  # Run go test in non-integration mode (one mutation per test invocation,
+  # not the full suite per mutation). 10x faster on the §3.2 allowlist.
+  integration: false
+
+  # Timeout coefficient. The default (3x) is below what `go test -race`
+  # needs on the cost + scheduler packages — TIMED-OUT mutants would
+  # otherwise dominate the score. 10x lands cleanly within go-test
+  # wall-clock on every package in the §3.2 allowlist.
+  timeout-coefficient: 10
+
+  # File-level exclusions per spec §3.3 — test files, generated code, mocks.
+  # Single regexp; gremlins applies it across the in-scope path.
+  exclude-files:
+    - ".*_test\\.go$"
+    - ".*\\.pb\\.go$"
+    - ".*_gen\\.go$"
+    - ".*_generated\\.go$"
+    - "mock_.*\\.go$"
+
+  # Mutator coverage — spec §2.1 lists 11 operator families.
+  # Defaults-on: arithmetic-base, conditionals-boundary, conditionals-negation,
+  # increment-decrement, invert-negatives. Defaults-off (opt-in below) raise
+  # the operator surface to the 11-family target.
+  arithmetic-base: true
+  conditionals-boundary: true
+  conditionals-negation: true
+  increment-decrement: true
+  invert-negatives: true
+  invert-assignments: true
+  invert-bitwise: true
+  invert-bwassign: true
+  invert-logical: true
+  invert-loopctrl: true
+  remove-self-assignments: true

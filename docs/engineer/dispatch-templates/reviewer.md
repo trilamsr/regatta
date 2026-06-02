@@ -37,12 +37,6 @@ OUTPUT FORMAT
 NO SIGNATURES
 - Per `feedback_no_signatures`.
 
-## RECURRING-FAILURE TRAPS (2026-06-02 session)
-
-1. When posting reviewer output via `gh pr comment` / `gh pr review`, use `--body-file <path>` — HEREDOC bodies escape backticks and break the release-notes fence detector if the comment is later promoted to a PR body. Per `feedback_pr_body_file_only`.
-
-2. Comment-noise trip-traps to flag in author diffs: `[Rr]eviewer\s+[A-Z]` (e.g. "reviewer-Request") and `# --- Section ---` banner comments — both over-match legitimate prose. Suggest hyphenation / lowercase / plain `# Section.` rewrites in review comments instead of failing the gate.
-
 ## Per-dispatch payload
 - Target: `<TARGET>`
 - Spec: `<SPEC-PATH>`
@@ -56,3 +50,8 @@ NO SIGNATURES
 - [ ] verdict line present
 - [ ] Risk-tier+ findings have a disposition (inline-fix OR tracking issue #)
 - [ ] memory rules cited
+
+## RECURRING-FAILURE TRAPS
+
+1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `feedback_pr_body_file_only` when posting review summary.
+2. **Comment-noise trip-traps** per #333 (regex tightened in #371): flag legitimate "Reviewer-Capital" prose in author diffs only if the regex still over-matches.

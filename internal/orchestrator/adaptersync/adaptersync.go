@@ -84,8 +84,8 @@ func New(cfg Config) (*Syncer, error) {
 // Empty adapter.List skips the tombstone sweep (transient upstream
 // hiccups must not wipe the queue). Unmappable items are warn-logged
 // through the injected sink and skipped — one bad row must not stop
-// a poll. Per spec §3 any DB error returns immediately; per-item
-// upserts are individual txs.
+// a poll. Per spec §3 any DB error returns immediately; mapped items
+// land in one BatchUpsertWorkItems call (issue #89: was N round-trips).
 func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	// W6 spec §8 T5: open a span at the main entry function so the
 	// adapter→state mirror activity shows up in the trace tree.
@@ -102,6 +102,7 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	}
 
 	seen := map[string]bool{}
+	staged := make([]state.WorkItem, 0, len(items))
 	for _, it := range items {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -129,16 +130,16 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 			continue
 		}
 
-		wi := state.WorkItem{
+		staged = append(staged, state.WorkItem{
 			ID:     id,
 			Kind:   kind,
 			Title:  it.Title,
 			Lane:   lane,
 			Status: status,
-		}
-		if err := s.db.UpsertWorkItem(ctx, wi, state.SourceAdapter, pollStartedAt); err != nil {
-			return fmt.Errorf("adaptersync: upsert %s: %w", id, err)
-		}
+		})
+	}
+	if err := s.db.BatchUpsertWorkItems(ctx, staged, state.SourceAdapter, pollStartedAt); err != nil {
+		return fmt.Errorf("adaptersync: batch upsert: %w", err)
 	}
 
 	archived, err := s.db.TombstoneBySource(ctx, state.SourceAdapter, pollStartedAt)

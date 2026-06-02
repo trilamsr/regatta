@@ -388,9 +388,30 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 			}
 			return fmt.Errorf("brief_loader: probe parent %s: %w", brief.ParentWorkItemID, err)
 		}
+		// Issue #92: processed_briefs is the durable replay-defence
+		// floor; work_items watermark is fallback-only because the row
+		// set is mutable by operators. Two-layer probe so an exact MAC
+		// re-presentation is rejected even at equal/earlier produced_at.
+		if seen, err := b.db.HasProcessedBriefHMAC(ctx, brief.Signature.MAC); err != nil {
+			return fmt.Errorf("brief_loader: probe hmac for %s: %w", brief.ParentWorkItemID, err)
+		} else if seen {
+			b.log.Warn(string(obs.EventBriefRejected), "path", path,
+				"reason", "brief_already_processed",
+				"parent", brief.ParentWorkItemID)
+			continue
+		}
+		recorded, hasRecorded, err := b.db.GetProcessedBrief(ctx, brief.ParentWorkItemID)
+		if err != nil {
+			return fmt.Errorf("brief_loader: probe processed_briefs for %s: %w", brief.ParentWorkItemID, err)
+		}
 		watermark, err := b.db.MaxUpdatedAtForBriefChildren(ctx, brief.ParentWorkItemID)
 		if err != nil {
 			return fmt.Errorf("brief_loader: freshness watermark for %s: %w", brief.ParentWorkItemID, err)
+		}
+		// MAX over both layers — the durable floor cannot regress when
+		// work_items rows are deleted (the original #92 attack).
+		if hasRecorded && recorded.LastProducedAt.After(watermark) {
+			watermark = recorded.LastProducedAt
 		}
 		if !watermark.IsZero() && !brief.ProducedAt.After(watermark) {
 			b.log.Warn(string(obs.EventBriefRejected), "path", path,
@@ -403,6 +424,13 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		for _, c := range brief.ParentCriteria {
 			acceptanceByFulfilled[c.ID] = c.Text
 		}
+		// Stage this brief's surviving children, then flush in one
+		// BatchUpsertWorkItems call (issue #89). Per-brief flush preserves
+		// the cross-brief CycleCheck contract: the next brief sees the
+		// prior brief's rows in work_items before its own CycleCheck runs.
+		// Intra-brief cycles are already rejected by brief.Validate /
+		// checkDAG before this loop.
+		staged := make([]state.WorkItem, 0, len(brief.Features))
 		for _, feat := range brief.Features {
 			if firstPath, dup := seenFeature[feat.ID]; dup {
 				b.log.Warn(string(obs.EventBriefRejected), "path", path,
@@ -430,9 +458,10 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 				b.log.Warn(string(obs.EventBriefRejected), "path", path, "reason", cycErr.Error())
 				continue
 			}
-			if upErr := b.db.UpsertWorkItem(ctx, child, state.SourceBrief, pollStartedAt); upErr != nil {
-				return fmt.Errorf("brief_loader: upsert %s: %w", feat.ID, upErr)
-			}
+			staged = append(staged, child)
+		}
+		if err := b.db.BatchUpsertWorkItems(ctx, staged, state.SourceBrief, pollStartedAt); err != nil {
+			return fmt.Errorf("brief_loader: batch upsert children of %s: %w", brief.ParentWorkItemID, err)
 		}
 		if v2 != nil {
 			if err := b.materialiseEdges(ctx, v2, pollStartedAt); err != nil {
@@ -446,6 +475,14 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 				freshSchemas[f.ID] = f.OutputsSchema
 				freshProgramBy[f.ID] = v2.ProgramID
 			}
+		}
+		// Issue #92: persist replay-defence watermark independent of
+		// work_items so an operator deleting brief children cannot reset
+		// the floor to zero. Written last so a partial-failure brief
+		// (any return above) never records as accepted.
+		if err := b.db.RecordProcessedBrief(ctx, brief.ParentWorkItemID,
+			brief.ProducedAt, brief.Signature.MAC, pollStartedAt); err != nil {
+			return fmt.Errorf("brief_loader: record processed_brief %s: %w", brief.ParentWorkItemID, err)
 		}
 	}
 

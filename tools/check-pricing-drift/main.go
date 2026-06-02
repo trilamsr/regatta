@@ -83,7 +83,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		Threshold: *threshold,
 		Now:       time.Now(),
 		TenantID:  *tenantID,
-		Pricing:   pricing.Anthropic,
+		Pricing:   pricing.Catalog(),
 	})
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "check-pricing-drift:", err)

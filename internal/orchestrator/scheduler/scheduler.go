@@ -26,8 +26,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/cost/gate"
 	"github.com/trilamsr/regatta/internal/gates/approval"
+	"github.com/trilamsr/regatta/internal/gates/l4"
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -46,6 +48,28 @@ type CostGate interface {
 // regime). Mirrors GateResolver shape so the scheduler treats both
 // gate-passes uniformly.
 type CostGateResolver func(wi state.WorkItem) (gate.WorkItemScope, bool)
+
+// L4Gate is the scheduler-side seam to the adversarial-reviewer gate.
+// Production wires a thin shim over internal/gates/l4.Run; tests inject
+// a fake without pulling in the model adapter. The seam keeps the
+// scheduler ↔ l4 coupling to one method so the gate's transitive deps
+// (model adapter, prompt template loader, OTel emitter) stay invisible
+// to scheduler tests. Spec §3.2 step 0.7.
+type L4Gate interface {
+	Evaluate(ctx context.Context, cfg l4.Config, in l4.Input) (schemas.GateResult, error)
+}
+
+// L4GateResolver maps a planned work_item to its L4 gate config + the
+// Input the gate runs against (diff, spec, scorecard). Returns
+// (_, _, false) when the wi is out-of-scope (e.g. doc-only PRs that
+// bypass adversarial review). Mirrors GateResolver / CostGateResolver
+// shape so the scheduler treats all three gate-passes uniformly.
+//
+// Construction of Input (git diff vs base, binding-spec lookup,
+// scorecard extraction from PR body) lives in the production wiring;
+// the scheduler stays policy-agnostic and consumes whatever the
+// resolver hands back.
+type L4GateResolver func(wi state.WorkItem) (l4.Config, l4.Input, bool)
 
 // DowngradeHook lets the production wiring surface a soft-cap-induced
 // model swap to the spawner. Scheduler-side we record the intent;
@@ -181,6 +205,18 @@ type Config struct {
 	// opted in via AllowDowngrade. Wave 1 surfaces the intent; the
 	// spawner-side ModelOverride consumer lands in Wave 2.
 	OnDowngrade DowngradeHook
+
+	// L4Gate evaluates the adversarial-reviewer gate-pass per spec
+	// §3.2 step 0.7. Nil disables the pass — applyL4Gate short-circuits
+	// to identity so callers that have not wired the model adapter pay
+	// zero overhead.
+	L4Gate L4Gate
+
+	// L4GateResolver maps a planned work_item to its L4 config + Input.
+	// Nil disables the pass; same semantics as L4Gate=nil so an
+	// operator who forgets one of the two gets a clean "L4 disabled"
+	// rather than a half-wired runtime.
+	L4GateResolver L4GateResolver
 }
 
 // schedulerDB is the seam between Scheduler and state.DB. The
@@ -234,6 +270,14 @@ type Scheduler struct {
 	// warn so a misconfigured brief logs once per (program_id, from_id)
 	// per scheduler-process lifetime instead of every tick.
 	multiDefaultLogged sync.Map
+
+	// WriteHook is test-only; see
+	// docs/engineer/specs/2026-06-02-s3-t4-crash-recovery-property.md §3.3.
+	// Fires before every substrate-bound write inside Tick with a
+	// monotonically-incrementing writeIndex. Returning non-nil aborts
+	// Tick mid-flight, simulating a crash at write index k.
+	// Production wires nil — the field stays out of the hot path.
+	WriteHook func(writeIndex int) error
 }
 
 // New constructs a Scheduler. The Config is copied; later mutations to
@@ -306,8 +350,9 @@ var activeStates = []state.AgentState{
 //     last tick, hotspot-blocked, or a future failure mode), letting
 //     the next tick retry the reservation tx.
 func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
+	tc := &tickCtx{}
 	if s.cfg.Evaluator != nil {
-		if err := s.evalPendingEdges(ctx); err != nil {
+		if err := s.evalPendingEdges(ctx, tc); err != nil {
 			return nil, fmt.Errorf("scheduler: eval edges: %w", err)
 		}
 	}
@@ -324,7 +369,7 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 	// from this tick (re-evaluated next tick because status stays
 	// planned), Reject flips status to 'rejected' so future ticks no
 	// longer surface it via ListSpawnable.
-	spawnable, err = s.applyApprovalGates(ctx, spawnable)
+	spawnable, err = s.applyApprovalGates(ctx, tc, spawnable)
 	if err != nil {
 		return nil, fmt.Errorf("scheduler: apply approval gates: %w", err)
 	}
@@ -335,22 +380,61 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scheduler: apply cost governor: %w", err)
 	}
+	// Spec §3.2 step 0.7 — adversarial-reviewer gate. Cost-deny
+	// short-circuits BEFORE L4 fires so we never pay model tokens for
+	// a wi the cheap deterministic gate already rejected.
+	spawnable, err = s.applyL4Gate(ctx, spawnable)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: apply l4 gate: %w", err)
+	}
 
 	occupancy, err := s.db.CountAgentsByLane(ctx, activeStates...)
 	if err != nil {
 		return nil, err
 	}
 
-	reserved, attempted, err := s.reserveFromSpawnable(ctx, spawnable, occupancy)
+	reserved, attempted, err := s.reserveFromSpawnable(ctx, tc, spawnable, occupancy)
 	if err != nil {
 		return reserved, err
 	}
 
-	rest, err := s.reserveOrphans(ctx, occupancy, attempted)
+	rest, err := s.reserveOrphans(ctx, tc, occupancy, attempted)
 	if err != nil {
 		return reserved, err
 	}
 	return append(reserved, rest...), nil
+}
+
+// tickCtx threads the per-tick WriteHook counter through Tick's
+// substrate-bound write sites. Heap-once-per-tick allocation cost is
+// negligible vs. sqlite-tx overhead; pointer keeps the counter shared
+// across the helpers reserveFromSpawnable, reserveOrphans, etc.
+type tickCtx struct{ writeIndex int }
+
+// writeHookErr wraps a non-nil WriteHook return so the per-item err
+// swallow inside reserveFromSpawnable can errors.Is-detect the
+// crash-sim path and propagate it up to Tick's caller. Production
+// WriteHook=nil never constructs this.
+type writeHookErr struct{ inner error }
+
+func (e *writeHookErr) Error() string { return "scheduler: write-hook aborted: " + e.inner.Error() }
+func (e *writeHookErr) Unwrap() error { return e.inner }
+
+// fireWriteHook is the test-only crash-injection seam (spec §3.3). Nil
+// hook short-circuits the production path with one branch + one
+// pointer-deref, no allocs. Each call increments writeIndex even when
+// the hook is nil so the counter's meaning is independent of test
+// wiring.
+func (s *Scheduler) fireWriteHook(tc *tickCtx) error {
+	idx := tc.writeIndex
+	tc.writeIndex++
+	if s.WriteHook == nil {
+		return nil
+	}
+	if err := s.WriteHook(idx); err != nil {
+		return &writeHookErr{inner: err}
+	}
+	return nil
 }
 
 // reserveFromSpawnable walks the gate-pass-filtered spawnable slice
@@ -359,7 +443,7 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 // Lane-capped items still get their pending row materialized
 // (committed in a no-transition tx) so the next tick's reserveOrphans
 // pass picks them up once capacity frees.
-func (s *Scheduler) reserveFromSpawnable(ctx context.Context, spawnable []state.WorkItem, occupancy map[string]int) (reserved []int64, attempted map[int64]struct{}, err error) {
+func (s *Scheduler) reserveFromSpawnable(ctx context.Context, tc *tickCtx, spawnable []state.WorkItem, occupancy map[string]int) (reserved []int64, attempted map[int64]struct{}, err error) {
 	attempted = map[int64]struct{}{}
 	var failures int
 	for _, w := range spawnable {
@@ -375,9 +459,16 @@ func (s *Scheduler) reserveFromSpawnable(ctx context.Context, spawnable []state.
 				attribute.String("regatta.kind", string(w.Kind)),
 			))
 		hasCap := s.laneHasCapacity(w.Lane, occupancy)
-		agentID, transitioned, err := s.reserveOne(itemCtx, w.ID, w.Lane, hasCap)
+		agentID, transitioned, err := s.reserveOne(itemCtx, tc, w.ID, w.Lane, hasCap)
 		itemSpan.End()
 		if err != nil {
+			// WriteHook crash-sim error MUST abort the tick (spec §3.3) —
+			// bypass the per-item swallow that protects against production
+			// row-shape errors.
+			var hookErr *writeHookErr
+			if errors.As(err, &hookErr) {
+				return reserved, attempted, err
+			}
 			if errors.Is(err, state.ErrLockHeld) {
 				// The full reservation tx rolled back, so the pending
 				// row is not yet materialized for this work_item.
@@ -387,6 +478,9 @@ func (s *Scheduler) reserveFromSpawnable(ctx context.Context, spawnable []state.
 				// rather than the rolled-back rowid. Mark the agent as
 				// already-attempted so reserveOrphans does not re-try
 				// the same lock acquisition this same tick.
+				if hookErr := s.fireWriteHook(tc); hookErr != nil {
+					return reserved, attempted, hookErr
+				}
 				if a, upErr := s.db.UpsertPending(ctx, w.ID, w.Lane); upErr == nil {
 					agentID = a.ID
 					attempted[a.ID] = struct{}{}
@@ -438,7 +532,7 @@ func (s *Scheduler) reserveFromSpawnable(ctx context.Context, spawnable []state.
 // recovery requeue). Each gets a single-tx reservation (locks +
 // transition). The agent row already exists, so the tx omits the
 // upsert step.
-func (s *Scheduler) reserveOrphans(ctx context.Context, occupancy map[string]int, attempted map[int64]struct{}) ([]int64, error) {
+func (s *Scheduler) reserveOrphans(ctx context.Context, tc *tickCtx, occupancy map[string]int, attempted map[int64]struct{}) ([]int64, error) {
 	pending, err := s.db.ListAgentsByState(ctx, state.AgentPending)
 	if err != nil {
 		return nil, fmt.Errorf("scheduler: list pending: %w", err)
@@ -456,7 +550,13 @@ func (s *Scheduler) reserveOrphans(ctx context.Context, occupancy map[string]int
 		}
 		locks := s.resolveLocks(a.WorkItemID)
 		err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
+			if err := s.fireWriteHook(tc); err != nil {
+				return err
+			}
 			if err := s.db.TryAcquireLocksTx(ctx, tx, locks, a.ID, s.cfg.LockTTL); err != nil {
+				return err
+			}
+			if err := s.fireWriteHook(tc); err != nil {
 				return err
 			}
 			_, err := s.db.TransitionAgentTx(ctx, tx, a.ID, state.AgentSpawning, state.AgentMutation{})
@@ -484,9 +584,12 @@ func (s *Scheduler) reserveOrphans(ctx context.Context, occupancy map[string]int
 // pending and the next tick's reserveOrphans retries the
 // locks+transition portion. Returns transitioned=true only when the
 // agent left pending for spawning inside this tx.
-func (s *Scheduler) reserveOne(ctx context.Context, workItemID, lane string, hasCap bool) (agentID int64, transitioned bool, err error) {
+func (s *Scheduler) reserveOne(ctx context.Context, tc *tickCtx, workItemID, lane string, hasCap bool) (agentID int64, transitioned bool, err error) {
 	locks := s.resolveLocks(workItemID)
 	err = s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if hookErr := s.fireWriteHook(tc); hookErr != nil {
+			return hookErr
+		}
 		a, upErr := s.db.UpsertPendingTx(ctx, tx, workItemID, lane)
 		if upErr != nil {
 			return upErr
@@ -495,8 +598,14 @@ func (s *Scheduler) reserveOne(ctx context.Context, workItemID, lane string, has
 		if !hasCap {
 			return nil
 		}
+		if hookErr := s.fireWriteHook(tc); hookErr != nil {
+			return hookErr
+		}
 		if lockErr := s.db.TryAcquireLocksTx(ctx, tx, locks, a.ID, s.cfg.LockTTL); lockErr != nil {
 			return lockErr
+		}
+		if hookErr := s.fireWriteHook(tc); hookErr != nil {
+			return hookErr
 		}
 		if _, trErr := s.db.TransitionAgentTx(ctx, tx, a.ID, state.AgentSpawning, state.AgentMutation{}); trErr != nil {
 			return trErr
@@ -523,7 +632,7 @@ func (s *Scheduler) reserveOne(ctx context.Context, workItemID, lane string, has
 // healthy. Reject-transition failures DO halt the tick because a wi
 // stuck in 'planned' after a reject verdict would silently retry until
 // the operator notices.
-func (s *Scheduler) applyApprovalGates(ctx context.Context, spawnable []state.WorkItem) ([]state.WorkItem, error) {
+func (s *Scheduler) applyApprovalGates(ctx context.Context, tc *tickCtx, spawnable []state.WorkItem) ([]state.WorkItem, error) {
 	if s.cfg.Gate == nil || s.cfg.GateResolver == nil {
 		return spawnable, nil
 	}
@@ -559,7 +668,7 @@ func (s *Scheduler) applyApprovalGates(ctx context.Context, spawnable []state.Wo
 		case approval.ResultProceed:
 			kept = append(kept, wi)
 		case approval.ResultReject:
-			if err := s.markWorkItemRejected(ctx, wi.ID); err != nil {
+			if err := s.markWorkItemRejected(ctx, tc, wi.ID); err != nil {
 				return nil, fmt.Errorf("mark %s rejected: %w", wi.ID, err)
 			}
 			s.log.Info(string(obs.EventApprovalDecided),
@@ -634,6 +743,61 @@ func (s *Scheduler) applyCostGovernor(ctx context.Context, spawnable []state.Wor
 	return kept, nil
 }
 
+// applyL4Gate filters spawnable through the adversarial-reviewer gate
+// per spec §3.2 step 0.7. Returns the surviving slice: Blocking=false
+// (pass / advisory) keeps the wi for the reservation loop, Blocking=true
+// drops the wi from this tick (status stays 'planned' so the next tick
+// re-evaluates once the implementer pushes a new SHA).
+//
+// Disabled (L4Gate or L4GateResolver nil) returns spawnable byte-equal
+// so callers that have not wired the model adapter pay zero overhead —
+// matches the cost-governor identity-short-circuit posture.
+//
+// Per-wi Evaluate errors warn on the injected logger and treat the wi
+// as denied for this tick — fail-closed posture matches the cost gate's:
+// a misconfigured model adapter must not silently allow.
+//
+// Severity-block routing lives inside l4.Run; the scheduler consumes
+// GateResult.Blocking as the single boolean drop signal so the yaml
+// severity_block DSL stays a property of the gate, not the scheduler.
+func (s *Scheduler) applyL4Gate(ctx context.Context, spawnable []state.WorkItem) ([]state.WorkItem, error) {
+	if s.cfg.L4Gate == nil || s.cfg.L4GateResolver == nil {
+		return spawnable, nil
+	}
+	kept := make([]state.WorkItem, 0, len(spawnable))
+	for _, wi := range spawnable {
+		cfg, in, gated := s.cfg.L4GateResolver(wi)
+		if !gated {
+			kept = append(kept, wi)
+			continue
+		}
+		gr, err := s.cfg.L4Gate.Evaluate(ctx, cfg, in)
+		if err != nil {
+			s.log.Warn("scheduler.l4_gate_error",
+				string(obs.KeyWorkItemID), wi.ID,
+				string(obs.KeyGateID), cfg.GateID,
+				string(obs.KeyErr), err.Error(),
+			)
+			continue
+		}
+		if gr.Blocking {
+			reason := string(gr.Verdict)
+			if len(gr.Findings) > 0 {
+				reason = gr.Findings[0].ID
+			}
+			s.log.Info("scheduler.l4_gate_blocked",
+				string(obs.KeyWorkItemID), wi.ID,
+				string(obs.KeyGateID), cfg.GateID,
+				string(obs.KeyVerdict), string(gr.Verdict),
+				string(obs.KeyReason), reason,
+			)
+			continue
+		}
+		kept = append(kept, wi)
+	}
+	return kept, nil
+}
+
 // markWorkItemRejected flips work_items.status='rejected' atomically
 // against the planned-source state. CAS predicate (`status='planned'`)
 // is load-bearing: a concurrent writer that already moved the row
@@ -643,7 +807,10 @@ func (s *Scheduler) applyCostGovernor(ctx context.Context, spawnable []state.Wor
 // work_item transition yet, so the raw-SQL pattern matches the
 // brief_loader.go archive-on-archived-dep precedent. A followup will
 // consolidate both into a state-package API.
-func (s *Scheduler) markWorkItemRejected(ctx context.Context, id string) error {
+func (s *Scheduler) markWorkItemRejected(ctx context.Context, tc *tickCtx, id string) error {
+	if err := s.fireWriteHook(tc); err != nil {
+		return err
+	}
 	now := time.Now().UTC().Unix()
 	res, err := s.db.SQL().ExecContext(ctx,
 		`UPDATE work_items SET status = ?, updated_at = ? WHERE id = ? AND status = ?`,
@@ -688,7 +855,7 @@ func (s *Scheduler) laneHasCapacity(lane string, occupancy map[string]int) bool 
 // journal sha. BriefLoader validation (W2-A CheckReachability) has
 // already pinned the default's target as a live feature, so the
 // fallback never strands flow.
-func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
+func (s *Scheduler) evalPendingEdges(ctx context.Context, tc *tickCtx) error {
 	edges, err := s.db.ListPendingEdgesFromMerged(ctx)
 	if err != nil {
 		return fmt.Errorf("list pending edges: %w", err)
@@ -737,6 +904,9 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 			firedStr := edgeFiredFalse
 			if fired {
 				firedStr = edgeFiredTrue
+			}
+			if err := s.fireWriteHook(tc); err != nil {
+				return err
 			}
 			if err := s.db.MarkEdgeFired(ctx, e.ID, firedStr, journal.ContentSHA); err != nil {
 				s.log.Warn(string(obs.EventEdgeMarkFailed),
@@ -793,6 +963,9 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 		}
 		if agg.AnyNonDefaultTrue || agg.AnyNonDefaultPending || agg.NonDefaultCount == 0 {
 			continue
+		}
+		if err := s.fireWriteHook(tc); err != nil {
+			return err
 		}
 		if err := s.db.MarkEdgeFired(ctx, agg.DefaultEdgeID, edgeFiredTrue, journal.ContentSHA); err != nil {
 			s.log.Warn("edge.default_mark_failed",

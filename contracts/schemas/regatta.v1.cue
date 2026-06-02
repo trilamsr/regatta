@@ -161,6 +161,29 @@ import "list"
 	spend_cap_usd_per_day:   *200 | int & >=0
 	canary_rate:             *0.05 | float & >=0 & <=0.2
 	cost?:                   #CostGovernor
+	authz?:                  #Authz
+}
+
+// #Authz configures the OPA policy hot-reload surface. Slim single-tenant
+// W8 spec (docs/engineer/specs/2026-06-02-s3-t1-w8-opa-slim.md §3.5).
+// All fields optional; empty block ⇒ embed.FS default-deny only, no
+// watcher, no SIGHUP handler.
+#Authz: {
+	// Absolute or repo-relative path to <policy_dir>/regatta/v1/default/.
+	// Empty ⇒ serve embed.FS bundle and skip both reload triggers.
+	policy_dir?:      string
+
+	// fsnotify event coalesce window. Vim atomic-rename + multi-file
+	// saves emit storms that 250 ms collapses safely.
+	reload_debounce?: *"250ms" | =~"^[0-9]+(ms|s)$"
+
+	// SIGHUP trigger toggle. Operator opts out for windows / CI / any
+	// process that already owns SIGHUP (HR3 mitigation).
+	reload_sighup?:   *true | bool
+
+	// fsnotify watcher toggle. Operator opts out on filesystems where
+	// inotify / kqueue is unreliable (NFS, certain container overlays).
+	reload_fsnotify?: *true | bool
 }
 
 // #CostGovernor is the optional MVP-4 cost-governor block (spec §3.6).
@@ -176,6 +199,13 @@ import "list"
 	reconcile_interval:         *"1h" | "5m" | "15m" | "30m" | "6h" | "24h"
 	drift_alert_threshold_pct:  *10 | int & >=0 & <=100
 	usage_api_key_env:          *"ANTHROPIC_ADMIN_KEY" | string
+	// estimation_strategy is the opt-in flag from spec §10 S1
+	// (issue #238). Default upper_bound matches Wave-1 behaviour
+	// byte-for-byte; setting `history` switches to p95-of-cohort
+	// estimation with cold-start fallback to upper_bound when
+	// fewer than ~10 prior (tenant, operator, model) samples
+	// exist. Additive — no breaking change for existing configs.
+	estimation_strategy:        *"upper_bound" | "history"
 	// Optional path to a JSON file that overrides or extends the
 	// hardcoded pricing table at boot. Per-key merge — each model in
 	// the override file replaces the corresponding hardcoded row;

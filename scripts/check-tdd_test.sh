@@ -22,7 +22,7 @@ run_case() {
   tmp=$(mktemp -d)
   pushd "$tmp" >/dev/null
 
-  git init -q
+  git init -q -b main
   git config user.email t@t
   git config user.name t
 
@@ -35,6 +35,10 @@ EOF
   git add go.mod
   git commit -q -m base
   base=$(git rev-parse HEAD)
+  # Pin origin/main at base so the script's live merge-base resolution
+  # has a fixed anchor; the feature branch then diverges below.
+  git update-ref refs/remotes/origin/main HEAD
+  git checkout -q -b feature
 
   # Setup function builds the head state.
   "$setup"
@@ -225,6 +229,77 @@ package foo
 EOF
 }
 
+# Stale BASE_SHA: the env var points at an older origin/main than the
+# current merge-base. Simulates the GitHub Actions failure mode where
+# main moved (an unrelated PR landed a prod file) between PR open and
+# pr-lint re-run. The script must prefer the live merge-base over the
+# stale env input so the unrelated file does not appear in the diff
+# window. Implemented as a custom test path because run_case wraps the
+# standard base/head selection.
+run_stale_base_case() {
+  local name="stale_base_sha_ignores_unrelated_main_move"
+  local want_exit=0
+  local want_stdout_match="no production"
+
+  tmp=$(mktemp -d)
+  pushd "$tmp" >/dev/null
+
+  git init -q -b main
+  git config user.email t@t
+  git config user.name t
+
+  cat > go.mod <<EOF
+module example.com/x
+
+go 1.22
+EOF
+  git add go.mod
+  git commit -q -m base
+  stale_base=$(git rev-parse HEAD)
+
+  # Simulate an unrelated PR landing prod code on main AFTER stale_base
+  # was snapshotted (this is the commit that pollutes the stale diff
+  # window in the real failure mode).
+  mkdir -p cmd/regatta
+  cat > cmd/regatta/serve.go <<EOF
+package main
+
+func Serve() int { return 1 }
+EOF
+  git add cmd/regatta/serve.go
+  git commit -q -m unrelated-main-move
+
+  # origin/main is now at the post-move commit; the feature branch
+  # forks from here with a docs-only diff.
+  git update-ref refs/remotes/origin/main HEAD
+  git checkout -q -b feature
+  mkdir -p docs
+  echo "spec body" > docs/spec.md
+  git add docs/spec.md
+  git commit -q -m spec-only
+  head=$(git rev-parse HEAD)
+
+  # Drive the script with the STALE base (pre-move). Without the fix
+  # the diff window includes cmd/regatta/serve.go and trips the gate.
+  out=$(BASE_SHA="$stale_base" HEAD_SHA="$head" BODY="" "$check" 2>&1) && got_exit=0 || got_exit=$?
+
+  if [ "$got_exit" != "$want_exit" ]; then
+    echo "FAIL $name: exit=$got_exit want $want_exit"
+    echo "  output: $out"
+    failed=$((failed + 1))
+  elif [ -n "$want_stdout_match" ] && ! echo "$out" | grep -q "$want_stdout_match"; then
+    echo "FAIL $name: stdout missing '$want_stdout_match'"
+    echo "  output: $out"
+    failed=$((failed + 1))
+  else
+    pass=$((pass + 1))
+    echo "PASS $name"
+  fi
+
+  popd >/dev/null
+  rm -rf "$tmp"
+}
+
 run_case prod_only_fails                        1 "without a matching" case_prod_only_fails
 run_case prod_with_test_passes                  0 "every production"   case_prod_with_test_passes
 run_case test_only_passes                       0 "no production"      case_test_only_passes
@@ -239,6 +314,7 @@ run_case test_with_benchmark_satisfies          0 "every production"   case_test
 # within a shared ancestor; cmd/ and internal/ have no shared ancestor
 # below the repo root. Expected: FAIL.
 run_case prod_cmd_test_internal_fails          1 "without a matching" case_cmd_test_in_internal_passes
+run_stale_base_case
 
 echo
 echo "summary: $pass passed, $failed failed"

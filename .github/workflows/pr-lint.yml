@@ -33,7 +33,17 @@ jobs:
           # user-visible runtime behavior (docs, CI, build system, tooling
           # pins). A release-notes block on those is theatre. Exiting 0 here
           # marks the required check passing.
-          mapfile -t changed < <(git diff --name-only "${BASE_SHA}" "${HEAD_SHA}")
+          # BASE_SHA from the event payload snapshots at PR-open and
+          # only refreshes on PR events; if main moved between events
+          # the diff window pulls in unrelated commits and the skip
+          # heuristic flips off. Recompute the live merge-base when
+          # origin/main is fetched (this checkout uses fetch-depth: 0).
+          base="${BASE_SHA}"
+          if git rev-parse --verify origin/main >/dev/null 2>&1; then
+            live_base="$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null || echo "")"
+            if [ -n "$live_base" ]; then base="$live_base"; fi
+          fi
+          mapfile -t changed < <(git diff --name-only "$base" "${HEAD_SHA}")
           if [ "${#changed[@]}" -gt 0 ]; then
             skip=1
             for f in "${changed[@]}"; do

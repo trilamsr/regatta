@@ -26,6 +26,31 @@ var FS embed.FS
 // stability test asserts this constant equals a hard-coded hex string.
 var DefaultBundleSHA256 = computeBundleSHA256()
 
+// Files returns the default-deny bundle as a path->body map. Disk-loader
+// fallback path (slim hot-reload: policy_dir empty/missing) and any future
+// in-process consumer reuse this instead of re-walking FS.
+func Files() (map[string]string, error) {
+	out := map[string]string{}
+	err := fs.WalkDir(FS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		b, rerr := fs.ReadFile(FS, path)
+		if rerr != nil {
+			return rerr
+		}
+		out[path] = string(b)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // computeBundleSHA256 hashes a sorted [path, content] slice; the slice
 // shape (not a map) guarantees byte-stable order across Go versions.
 func computeBundleSHA256() string {

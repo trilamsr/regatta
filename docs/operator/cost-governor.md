@@ -48,6 +48,7 @@ which carry defaults. An empty `safety.cost: {}` is rejected at boot
     reconcile_interval:         *"1h" | "5m" | "15m" | "30m" | "6h" | "24h"
     drift_alert_threshold_pct:  *10 | int & >=0 & <=100
     usage_api_key_env:          *"ANTHROPIC_ADMIN_KEY" | string
+    estimation_strategy:        *"upper_bound" | "history"
     pricing_override_path?:     string
 }
 ```
@@ -62,6 +63,7 @@ which carry defaults. An empty `safety.cost: {}` is rejected at boot
 | `reconcile_interval` | `1h` | Reconciler cron cadence. Hourly is the smallest stable Anthropic bucket. |
 | `drift_alert_threshold_pct` | `10` | Drift threshold for `obs.EventCostDriftAlert`. `abs(actual - recorded) / max(actual, 0.01)`. |
 | `usage_api_key_env` | `ANTHROPIC_ADMIN_KEY` | Env-var name holding the Anthropic admin key. NEVER the key value itself. |
+| `estimation_strategy` | `upper_bound` | Pre-call USD estimator. `upper_bound` (default) is deterministic + conservative — `(input × price_in + max × price_out)`. `history` is the opt-in p95-of-cohort estimator (spec §10 S1, issue #238): reads recent `token_spend` rows for the `(tenant, operator, model)` cohort, falls back to `upper_bound` on cold-start (< 10 samples). Switch only if upper-bound's pessimism triggers soft-cap thrash. |
 | `pricing_override_path` | unset | Optional path to a JSON file that overrides or extends the hardcoded pricing table at boot. Per-key merge — each model key replaces the corresponding hardcoded row; siblings untouched; new SKUs (Bedrock/Vertex) added. See **Pricing refresh** below for format + file-mode requirements. |
 
 ## Precedence — most-restrictive-wins
@@ -153,26 +155,38 @@ rolls. No flapping between WARN and clean within a single bucket.
 
 ## Pricing refresh
 
-The pricing table at `internal/cost/pricing/anthropic.go` is the
-hermetic source-of-truth. Anthropic does not expose a programmatic
+The pricing tables under `internal/cost/pricing/` are the hermetic
+source-of-truth. None of the three providers expose a programmatic
 pricing endpoint, so refreshes are operator-mediated PRs.
 
-**Cadence: quarterly + ad-hoc on any Anthropic pricing-page diff.**
+- `anthropic.go` — bare SKU keys (`claude-opus-4-7`, ...).
+- `bedrock.go` — `bedrock.<sku>` keys, Standard / On-Demand tier.
+- `vertex.go` — `vertex.<sku>` keys, Standard tier.
+
+Operators on the non-Standard tier (Bedrock Batch / Provisioned
+Throughput, Vertex Provisioned Throughput) MUST use
+`safety.cost.pricing_override_path` instead of editing this table —
+see the dedicated section below.
+
+**Cadence: quarterly + ad-hoc on any provider pricing-page diff.**
 
 Step-by-step.
 
-1. Visit https://www.anthropic.com/pricing (or the
-   `anthropic.com/pricing` page current at refresh time).
+1. Visit the source page for the provider you are refreshing:
+   - Anthropic: https://www.anthropic.com/pricing
+   - Bedrock: https://aws.amazon.com/bedrock/pricing/ (Anthropic tab)
+   - Vertex: https://cloud.google.com/vertex-ai/generative-ai/pricing
+     (Partner models > Anthropic section)
 2. Diff each active SKU's input / cache-read / cache-write / output
-   rate against `internal/cost/pricing/anthropic.go`.
+   rate against the matching `internal/cost/pricing/<provider>.go`.
 3. Edit the table. New rows for new SKUs; `RetiredAfter` set for
    sunsetted SKUs.
 4. Bump the `pricing_rev` constant — increment by one. Every
    `token_spend` payload now carries the new rev.
-5. Open a PR titled `feat(cost/pricing): refresh Anthropic rates
-   YYYY-MM-DD`. Body MUST cite the Anthropic pricing-page URL pinned
+5. Open a PR titled `feat(cost/pricing): refresh <provider> rates
+   YYYY-MM-DD`. Body MUST cite the provider pricing-page URL pinned
    at the PR's commit time AND list the diff lines verbatim
-   (`+claude-opus-4-7: 15.00 → 16.00`).
+   (`+bedrock.claude-opus-4-7: 15.00 → 16.00`).
 6. CI runs `TestPricing_AllActiveSKUsHavePositiveRows` (no zero rows
    for active SKUs — Portkey-trap defense per spec §3.1).
 7. Reviewer confirms the URL cite resolves at the pinned commit time.
@@ -186,16 +200,19 @@ lands in #300) §"Pricing-table rollback".
 
 The default refresh-via-PR flow is the right answer for ≥95% of
 operators. The `pricing_override_path` config field is the escape
-hatch for operators who run claude through Bedrock, Vertex, or a
-marketplace re-seller whose rates the upstream pricing table cannot
-mirror.
+hatch for operators on non-Standard Bedrock / Vertex tiers (Batch,
+Provisioned Throughput, regional quotas), marketplace resellers, or
+anyone whose contract rates the upstream pricing table cannot mirror.
 
 Format. JSON object keyed on model SKU; each row mirrors
-`internal/cost/pricing.Row`.
+`internal/cost/pricing.Row`. Override keys reuse the in-tree
+namespace convention: bare for native Anthropic, `bedrock.<sku>` for
+Bedrock-tier, `vertex.<sku>` for Vertex-tier. Override keys MAY be
+fresh SKU strings the in-tree tables do not list.
 
 ```json
 {
-  "bedrock-claude-sonnet-4-7": {
+  "bedrock.claude-sonnet-4-7": {
     "InputUSDPerMTok": 3.30,
     "CacheReadUSDPerMTok": 0.33,
     "CacheCreationUSDPerMTok": 4.10,
@@ -368,10 +385,12 @@ The major gaps operators commonly expect:
   pattern) — would require regatta to proxy Anthropic API calls.
   Out-of-scope; pre-call deny at scheduler tick is the regatta-native
   equivalent.
-- **Bedrock / Vertex first-class pricing** — first-class hardcoded
-  rows still deferred; the `pricing_override_path` escape hatch (see
-  **Pricing refresh** above) lets operators load their own JSON table
-  in the meantime.
+- **Bedrock / Vertex non-Standard tier pricing** — Standard /
+  On-Demand tiers ship first-class as of #240 (sibling `bedrock.go` +
+  `vertex.go` tables, dotted-prefix SKU keys). Bedrock Batch (-50%) /
+  Provisioned Throughput and Vertex Provisioned Throughput tiers
+  remain out of scope; use `safety.cost.pricing_override_path` (see
+  **Pricing refresh** above for the JSON format) for those.
 - **In-process admin-key rotation without restart** — rolling restart
   is the MVP-2 procedure.
 
