@@ -35,6 +35,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
+	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -280,6 +281,12 @@ func runServe(args []string) int {
 			Logger: slogger,
 		}))
 	}
+	// RejectionRouter wakes agents on AI-gate rejections and labels the
+	// PR `needs-human` after K=3. Defaults match docs/design.md §Failure
+	// modes; no regatta.yaml keys are introduced for MVR-1 — operators
+	// who want richer routing land it when a real customer use-case
+	// shows up.
+	o.SetRejectionRouter(buildRejectionRouter(db, rejectionrouter.GHLabeler{}, slogger))
 
 	if err := o.Recover(ctx); err != nil {
 		logger.Printf("recover: %v", err)
@@ -355,6 +362,12 @@ func runServe(args []string) int {
 		}
 		if err := o.ScheduleOnce(ctx); err != nil {
 			logger.Printf("schedule: %v", err)
+			return 1
+		}
+		// Mirror the Run loop order so `--tick-once` is a faithful
+		// single-shot rehearsal of one daemon tick.
+		if err := o.RouteRejections(ctx); err != nil {
+			logger.Printf("route rejections: %v", err)
 			return 1
 		}
 		if err := o.ReapTerminal(ctx); err != nil {
@@ -531,6 +544,20 @@ func parseBriefKeyring(raw string) (map[string][]byte, []string, error) {
 		return nil, nil, fmt.Errorf("keyring is empty")
 	}
 	return keys, order, nil
+}
+
+// buildRejectionRouter wires the RejectionRouter the orchestrator
+// drives per tick. Defaults — K=3 + label=needs-human — come from the
+// router package; we pass them implicitly by leaving the Config
+// zero-valued. The labeler is injected so tests can substitute a
+// capturing fake without spawning gh; serve.go production wiring hands
+// in rejectionrouter.GHLabeler{} which shells out to gh.
+func buildRejectionRouter(db *state.DB, labeler rejectionrouter.PRLabeler, logger *slog.Logger) *rejectionrouter.Router {
+	return rejectionrouter.New(rejectionrouter.Config{
+		DB:      db,
+		Labeler: labeler,
+		Logger:  logger,
+	})
 }
 
 // buildApprovalGate constructs the scheduler-side HITL gate seam from

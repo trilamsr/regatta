@@ -152,6 +152,22 @@ func (d *DB) GetAgent(ctx context.Context, id int64) (*Agent, error) {
 	return &a, nil
 }
 
+// GetAgentByWorkItemID fetches the agent row whose work_item_id equals
+// workItemID. Returns sql.ErrNoRows (unwrapped) when no agent has been
+// upserted yet — callers (e.g. scheduler.applyL4Gate emit path) use
+// errors.Is(err, sql.ErrNoRows) to fall back to an audit-only event
+// row (agent_id=NULL) without short-circuiting their own error path.
+func (d *DB) GetAgentByWorkItemID(ctx context.Context, workItemID string) (*Agent, error) {
+	row := d.sql.QueryRowContext(ctx,
+		`SELECT id, work_item_id, lane, state, pid, session_id, pr_sha, rejection_count, created_at, updated_at
+		 FROM agents WHERE work_item_id = ?`, workItemID)
+	var a Agent
+	if err := scanAgent(row, &a); err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
 // ListAgentsByState returns all agents currently in any of the given
 // states. Ordering is by id ascending so callers see a stable order.
 func (d *DB) ListAgentsByState(ctx context.Context, states ...AgentState) ([]Agent, error) {

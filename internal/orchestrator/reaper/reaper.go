@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/trilamsr/regatta/internal/obs"
@@ -54,6 +55,24 @@ type Config struct {
 	// global provider — noop until obs/otel.Setup runs. Per W6 spec
 	// §3.3 + feedback_spec_pattern_authority.
 	Tracer trace.Tracer
+
+	// Meter is the OTel instrument factory for reaper telemetry.
+	// Nil resolves to otel.Meter("reaper") at the first ResolveMeter()
+	// call so the global MeterProvider Setup wires (or a noop when
+	// Setup was skipped) wins by default. Mirrors the W6 Config.Tracer
+	// pattern so callers stay on one DI seam across trace + metric.
+	Meter metric.Meter
+}
+
+// ResolveMeter returns the configured meter or falls back to the
+// global provider's scoped meter. The fallback is lazy so a global
+// provider swap (e.g. test injection of a noop provider) takes effect
+// on the next call. Matches the W6 Config.Tracer nil-fallback shape.
+func (c Config) ResolveMeter() metric.Meter {
+	if c.Meter != nil {
+		return c.Meter
+	}
+	return otel.Meter("reaper")
 }
 
 // Reaper owns the post-terminal cleanup path.

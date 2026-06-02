@@ -321,6 +321,42 @@ status: planned
 	}
 }
 
+// TestMarkdownCatalogParsesClosedResolved anchors the terminal-via-supersession status (issue #482).
+func TestMarkdownCatalogParsesClosedResolved(t *testing.T) {
+	dir := t.TempDir()
+	writeItem(t, dir, "nit.md", `---
+id: NIT-1
+title: nit resolved via supersession
+lane: self-host
+status: closed-resolved
+---
+
+## Acceptance criteria
+
+- [closed] c1: verified — superseded by parent brief
+- [closed] c2: WAVE-X owns the surface now
+`)
+	a, _ := NewMarkdownCatalog(MarkdownCatalogConfig{Root: dir})
+	items, err := a.List(context.Background())
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].Status != schemas.StatusClosedResolved {
+		t.Fatalf("expected status=closed-resolved, got %q", items[0].Status)
+	}
+	if len(items[0].AcceptanceCriteria) != 2 {
+		t.Fatalf("expected 2 criteria, got %d", len(items[0].AcceptanceCriteria))
+	}
+	for _, c := range items[0].AcceptanceCriteria {
+		if c.State != schemas.CriterionClosed {
+			t.Fatalf("criterion %s: expected state=closed, got %q", c.ID, c.State)
+		}
+	}
+}
+
 func TestMarkdownCatalogCapabilities(t *testing.T) {
 	dir := t.TempDir()
 	a, _ := NewMarkdownCatalog(MarkdownCatalogConfig{Root: dir})

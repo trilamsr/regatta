@@ -9,7 +9,17 @@
 // via [l4-followup] GH issues filed at PR-open.
 package l4
 
-import "os"
+import (
+	"os"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
+)
+
+// scopeName is the OTel instrumentation scope the l4 package emits
+// metrics under. A-T2 wires gate-decide instruments against this name
+// so the per-scope query slice ("gates/l4") stays grep-able.
+const scopeName = "github.com/trilamsr/regatta/internal/gates/l4"
 
 // DefaultModel is the spec-binding default. Override via
 // regatta.yaml gates[].model or the EnvModel env var. The
@@ -78,6 +88,24 @@ type Config struct {
 	// Unmapped categories fall back to the primary Model via
 	// ResolveCategoryModel (yaml > env > primary).
 	CategoryModels map[string]string
+
+	// Meter is the OTel instrument factory for gate-decide telemetry.
+	// Nil resolves to otel.Meter(scopeName) at the first ResolveMeter()
+	// call so the global MeterProvider Setup wires (or a noop when
+	// Setup was skipped) wins by default. Matches the W6 Config.Tracer
+	// pattern so callers stay on one DI seam across trace + metric.
+	Meter metric.Meter
+}
+
+// ResolveMeter returns the configured meter or falls back to the
+// global provider's scoped meter. The fallback is lazy so a global
+// provider swap (e.g. test injection of a noop provider) takes effect
+// on the next call.
+func (c Config) ResolveMeter() metric.Meter {
+	if c.Meter != nil {
+		return c.Meter
+	}
+	return otel.Meter(scopeName)
 }
 
 // Input is what the gate runs against. Constructed by the gate

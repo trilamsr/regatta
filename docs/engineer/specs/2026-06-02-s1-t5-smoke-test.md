@@ -104,3 +104,7 @@ Per `feedback_grade_rubric`. Scorecard MUST appear verbatim in the PR body.
 ## 8. Open questions
 
 None. Spec is implementation-ready.
+
+## Resolution (2026-06-02)
+
+Shipped via #348 (`feat(self-host): S1-T5 — end-to-end smoke test for the Phase S1 loop`). Stub spawner exit-zero path drives `SMOKE-001` to `WorkStatusMerged` under `go test -short -tags=smoke ./cmd/regatta/...`.
