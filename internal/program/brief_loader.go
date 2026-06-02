@@ -444,6 +444,25 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 			if mErr != nil {
 				return fmt.Errorf("brief_loader: marshal snapshot for %s: %w", feat.ID, mErr)
 			}
+			// Issue #78: warn the operator when a re-loaded brief's
+			// acceptance criteria diverge from an in-flight child's
+			// snapshot. Snapshot semantics stay intentional per spec §2.4
+			// + §2.5 Locked decision #5 (no auto-resync) — this is the
+			// visibility seam so silent re-snapshots no longer surprise
+			// agents whose gate bar just shifted. Skip planned + archived:
+			// planned rows snap forward harmlessly on this same upsert;
+			// archived rows are no longer gating anything.
+			if existing, gErr := b.db.GetWorkItem(ctx, feat.ID); gErr == nil &&
+				existing.Status != state.WorkStatusPlanned &&
+				existing.Status != state.WorkStatusArchived &&
+				existing.AcceptanceJSON != "" &&
+				existing.AcceptanceJSON != string(snapshot) {
+				b.log.Warn(string(obs.EventBriefCriteriaDrift),
+					string(obs.KeyProgramID), brief.ParentWorkItemID,
+					string(obs.KeyWorkItemID), feat.ID,
+					"prior_status", string(existing.Status),
+					"path", path)
+			}
 			child := state.WorkItem{
 				ID:                feat.ID,
 				Kind:              state.KindFeature,
