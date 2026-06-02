@@ -3,15 +3,15 @@ id: S1-T3
 title: boot-prompt → work_item brief converter
 lane: self-host
 status: planned
-linked_artifact: docs/engineer/autonomous-session-prompt.md#L25
+linked_artifact: docs/engineer/autonomous-session-prompt.md#L27
 ---
 
-Source: docs/engineer/autonomous-session-prompt.md#L25
+Source: docs/engineer/autonomous-session-prompt.md#L27
 
-script converts this prompt's PRIORITY block into briefs the markdown adapter ingests. NEW.
+SHIPPED #331 (boot-prompt→items) + #368 (gh-followup→items).
 
-<!-- source-sha256: 121e89e54964413cf5b24c7fe22fe8dd209e114a5d469e789b73de97a248fe6a -->
+<!-- source-sha256: 0bd2a5f5dc326893ac379f329985dc5b10426829704f6dbeb3b5b90fdfa305b8 -->
 
 ## Acceptance criteria
 
-- [planned] c1: Land the PRIORITY entry "S1-T3 boot-prompt → work_item brief converter" per the boot prompt; see source line 25.
+- [planned] c1: Land the PRIORITY entry "S1-T3 boot-prompt → work_item brief converter" per the boot prompt; see source line 27.

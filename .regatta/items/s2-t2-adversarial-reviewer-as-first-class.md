@@ -3,15 +3,15 @@ id: S2-T2
 title: adversarial reviewer as first-class L4 gate
 lane: self-host
 status: planned
-linked_artifact: docs/engineer/autonomous-session-prompt.md#L30
+linked_artifact: docs/engineer/autonomous-session-prompt.md#L32
 ---
 
-Source: docs/engineer/autonomous-session-prompt.md#L30
+Source: docs/engineer/autonomous-session-prompt.md#L32
 
-bake the Claude-Code-side reviewer prompt into `internal/gates/`. Today it lives only in dispatch prompts. NEW. Default model: Sonnet 4.6, escape hatch via `regatta.yaml: gates.l4.model`.
+SHIPPED #351+#370+#373+#380+#381+#385+#387+#388. Anthropic adapter + second-opinion + cache + auto-fix + prompt-SIGHUP + per-category.
 
-<!-- source-sha256: 9eb857e5e75d4198008174c343f5c8d774ac9ad925e6899d2a7caf3419e09324 -->
+<!-- source-sha256: 32b0a8d8a671dfcebcec1fadd5b7740beaaa239f9bf20fdf91377cd1d68ed416 -->
 
 ## Acceptance criteria
 
-- [planned] c1: Land the PRIORITY entry "S2-T2 adversarial reviewer as first-class L4 gate" per the boot prompt; see source line 30.
+- [planned] c1: Land the PRIORITY entry "S2-T2 adversarial reviewer as first-class L4 gate" per the boot prompt; see source line 32.
