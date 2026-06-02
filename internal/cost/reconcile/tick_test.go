@@ -526,6 +526,37 @@ func TestReconciler_Network5xx_KeepsTickingAndNeverPanics(t *testing.T) {
 	if capH.eventCounts()[string(obs.EventCostReconcileFailing)] == 0 {
 		t.Errorf("expected EventCostReconcileFailing; got=%v", capH.eventCounts())
 	}
+	// Issue #289 — the failing emit must carry period_start +
+	// attempt_count so the OTel bridge surfaces the same join keys to
+	// Honeycomb/Loki/Datadog as the happy-path BudgetReconciledPayload.
+	wantStart, _ := WindowForTick(fixedTime(), time.Hour)
+	assertFailingEventAttrs(t, capH.snapshot(), wantStart.UnixMilli(), "upstream_down")
+}
+
+// assertFailingEventAttrs scans capH for the cost.reconcile_failing record and pins period_start, reason, attempt_count.
+func assertFailingEventAttrs(t *testing.T, recs []slog.Record, wantStart int64, wantReason string) {
+	t.Helper()
+	for _, r := range recs {
+		if r.Message != string(obs.EventCostReconcileFailing) {
+			continue
+		}
+		attrs := map[string]slog.Value{}
+		r.Attrs(func(a slog.Attr) bool {
+			attrs[a.Key] = a.Value
+			return true
+		})
+		if v, ok := attrs[string(obs.KeyPeriodStart)]; !ok || v.Int64() != wantStart {
+			t.Errorf("period_start attr: want %d got (%v, found=%v)", wantStart, v, ok)
+		}
+		if v, ok := attrs[string(obs.KeyAttemptCount)]; !ok || v.Int64() != int64(defaultRetryAttempts) {
+			t.Errorf("attempt_count attr: want %d got (%v, found=%v)", defaultRetryAttempts, v, ok)
+		}
+		if v, ok := attrs[string(obs.KeyReason)]; !ok || v.String() != wantReason {
+			t.Errorf("reason attr: want %q got (%v, found=%v)", wantReason, v, ok)
+		}
+		return
+	}
+	t.Errorf("no %q record in capture", obs.EventCostReconcileFailing)
 }
 
 // TestReconciler_AnthropicResponseSig_IsSHA256OfCanonicalBody pins A2 audit-replay invariant.
