@@ -93,6 +93,14 @@
             "type": "string",
             "pattern": "^P([1-9]|10)$",
             "description": "If this finding maps to a Trap Catalog pattern, the pattern ID (P1–P10)."
+          },
+          "auto_fixable": {
+            "type": "boolean",
+            "description": "Model is confident the remediation can ship as a unified-diff patch. Downstream PR-comment posters render `patch` verbatim when true. Operator opts in via the gate config AutoFix knob (issue #358)."
+          },
+          "patch": {
+            "type": "string",
+            "description": "Unified-diff body to apply (no surrounding fence). Populated iff auto_fixable=true. The gate never applies the patch — it surfaces in the GateResult for human review."
           }
         }
       }

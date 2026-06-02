@@ -108,6 +108,16 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 		return gr, nil
 	}
 	gr.Findings = append(gr.Findings, resp.Findings...)
+	if !cfg.AutoFix {
+		// Operator opt-in is load-bearing per issue #358 — a
+		// rogue model that surfaces a patch without the gate
+		// being configured for AutoFix must not leak the diff
+		// into the audit payload.
+		for i := range gr.Findings {
+			gr.Findings[i].AutoFixable = false
+			gr.Findings[i].Patch = ""
+		}
+	}
 	gr.Telemetry.PromptSHA = resp.PromptSHA
 	gr.Telemetry.TokensInput = resp.TokensIn
 	gr.Telemetry.TokensOutput = resp.TokensOut
