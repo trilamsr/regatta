@@ -60,12 +60,8 @@ func TestReloader_SighupTriggersReload(t *testing.T) {
 	defer cancel()
 	startReloader(t, r, ctx)
 
-	// Pre-write the new policy (fsnotify would see this too, but SIGHUP
-	// races ahead of debounce).
 	writeRego(t, dir, "approval.rego", "package regatta.v1.approval.view\n\ndefault decision := {\"allow\": false, \"reason\": \"sighup-loaded\"}\n")
 	revBefore := az.CurrentRevision(authz.DefaultTenant)
-
-	// Replace content so SIGHUP actually swaps something.
 	writeRego(t, dir, "approval.rego", "package regatta.v1.approval.view\n\ndefault decision := {\"allow\": true, \"reason\": \"sighup-v2\"}\n")
 
 	if err := syscall.Kill(syscall.Getpid(), syscall.SIGHUP); err != nil {
@@ -93,7 +89,6 @@ func TestReloader_HalfWrittenFileRetainsLastGood(t *testing.T) {
 	revBefore := az.CurrentRevision(authz.DefaultTenant)
 	writeRego(t, dir, "approval.rego", "this is NOT valid rego\n")
 
-	// Wait past debounce + compile budget; revision MUST stay pinned.
 	time.Sleep(500 * time.Millisecond)
 	if got := az.CurrentRevision(authz.DefaultTenant); got != revBefore {
 		t.Fatalf("revision advanced past broken bundle: was %q now %q", revBefore, got)
@@ -149,13 +144,12 @@ func TestReloader_NoOpReloadOnSameSHA(t *testing.T) {
 	defer cancel()
 	startReloader(t, r, ctx)
 
-	// Trigger initial reload via fsnotify.
 	revBefore := az.CurrentRevision(authz.DefaultTenant)
 	writeRego(t, dir, "approval.rego", "package regatta.v1.approval.view\n\ndefault decision := {\"allow\": true, \"reason\": \"v1\"}\n")
 	waitForRevisionChange(t, az, revBefore, 2*time.Second)
 	gotReloads := reloadCount.Load()
 
-	// Re-write SAME bytes — touch event fires but SHA matches.
+	// Same bytes again — fsnotify still fires but SHA short-circuit elides the swap.
 	writeRego(t, dir, "approval.rego", "package regatta.v1.approval.view\n\ndefault decision := {\"allow\": true, \"reason\": \"v1\"}\n")
 	time.Sleep(200 * time.Millisecond)
 	if delta := reloadCount.Load() - gotReloads; delta != 0 {
@@ -182,7 +176,6 @@ func TestReloader_ConcurrentSighupAndFsnotifyStoreConsistent(t *testing.T) {
 
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	// Two writers churning policy bytes; one signal sender.
 	for i := 0; i < 2; i++ {
 		i := i
 		wg.Add(1)
@@ -219,8 +212,7 @@ func TestReloader_ConcurrentSighupAndFsnotifyStoreConsistent(t *testing.T) {
 		}
 	}()
 
-	// Drive Check callers concurrently — every Decision MUST carry a
-	// non-empty revision (never read a half-built store).
+	// CurrentRevision must never go empty mid-storm (torn-read guard).
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -257,7 +249,6 @@ func TestReloader_RunReturnsOnContextCancel(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- r.Run(ctx) }()
 
-	// Give the watcher a moment to start.
 	time.Sleep(50 * time.Millisecond)
 	cancel()
 
@@ -271,10 +262,7 @@ func TestReloader_RunReturnsOnContextCancel(t *testing.T) {
 	}
 }
 
-// --- helpers ---
-
-// setupAuthz returns a temp policy dir + a Hydrated OPAAuthorizer pointed at
-// disk loader with embed.FS fallback.
+// setupAuthz hydrates an OPAAuthorizer against a fresh policy_dir + embed fallback.
 func setupAuthz(t *testing.T) (string, *authz.OPAAuthorizer) {
 	t.Helper()
 	dir := t.TempDir()
