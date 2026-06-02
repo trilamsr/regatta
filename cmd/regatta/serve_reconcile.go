@@ -135,13 +135,14 @@ func loadCostReconcileSettingsFromFile(path string) (validateconfig.CostReconcil
 // loadCostReconcileSettingsFor returns the parsed safety.cost reconcile
 // settings for the repo rooted at repoRoot. Returns zero settings when
 // no regatta.yaml exists — opt-in semantics per spec §3.6.
+//
+// Yaml-decode errors are dropped silently because every serve callsite
+// invokes buildApprovalGate against the SAME regatta.yaml earlier in
+// boot; a malformed file fails loud there and never reaches this call.
+// The defensive drop keeps unit tests file-disjoint from buildApprovalGate.
 func loadCostReconcileSettingsFor(repoRoot string) validateconfig.CostReconcileSettings {
 	s, err := loadCostReconcileSettingsFromFile(filepath.Join(repoRoot, "regatta.yaml"))
 	if err != nil {
-		// Fail-soft: yaml-decode errors here would already have failed
-		// CUE validation upstream (buildApprovalGate runs the same yaml
-		// through LoadApprovalGates). Drop silently rather than block
-		// boot — the reconciler is opt-in.
 		return validateconfig.CostReconcileSettings{}
 	}
 	return s

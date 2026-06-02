@@ -68,11 +68,12 @@ const writtenByReconciler = "cost-reconciler"
 // Event with the spec §3.5 shape, hands it to substrate.AppendEvent,
 // commits on success.
 //
-// Nonce derivation: sha256(period_start || written_at) would be
-// reproducible but ties replay-protection to the payload shape. Mint()
-// produces a ULID seeded by writtenAt + a process-local counter — the
-// UNIQUE(run_id, written_by, nonce) constraint catches genuine replays
-// at the substrate layer.
+// Nonce = `rec-<unix_nano>-<seq>` rather than a payload-derived hash:
+// payload-hash nonces tie replay-protection to canonicalised JSON
+// bytes, which means a hostile writer who flips one whitespace-
+// insensitive byte ships a "different" row past the UNIQUE constraint.
+// The per-process seq counter guarantees uniqueness even when two
+// ad-hoc Ticks share the same wall-clock millisecond.
 func (a *SubstrateAppender) Append(ctx context.Context, tenantID, kind string, payload json.RawMessage, writtenAt time.Time) error {
 	if a.db == nil {
 		return errors.New("reconcile.SubstrateAppender: DB nil — wiring missing")
