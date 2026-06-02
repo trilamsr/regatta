@@ -236,6 +236,12 @@ func (g *Gate) notifyEscalatedTier(ctx context.Context, a state.Approval, cfg Co
 	if err != nil {
 		return err
 	}
+	// Issue #195: persist tier-N JTI markers BEFORE Notify so a
+	// subsequent escalate of this same tier finds them via
+	// outstandingJTIs. Mirrors the first-sighting path's ordering.
+	if err := g.persistTokenMintedRows(ctx, a.ID, jtis, now); err != nil {
+		return err
+	}
 	req := Request{
 		ApprovalID:       a.ID,
 		WorkItemID:       a.WorkItemID,
@@ -375,6 +381,14 @@ func (g *Gate) createApprovalAndNotify(ctx context.Context, wi state.WorkItem, c
 		return nil, err
 	}
 
+	// Issue #195: persist one token_minted row per JTI so reaper's
+	// outstandingJTIs (which already drives escalate-revocation per spec
+	// §3.3.1.3) is reachable. Without this, the reaper's per-JTI
+	// token_consumed-reason=escalated loop runs zero times.
+	if err := g.persistTokenMintedRows(ctx, approvalID, jtis, now); err != nil {
+		return nil, err
+	}
+
 	req := Request{
 		ApprovalID:       approvalID,
 		WorkItemID:       wi.ID,
@@ -416,6 +430,30 @@ func (g *Gate) createApprovalAndNotify(ctx context.Context, wi state.WorkItem, c
 func (g *Gate) mintReviewerTokens(cfg Config, approvalID, workItemID string, now time.Time) (map[string]string, []string, error) {
 	snap := state.ReviewerSet{Reviewers: cfg.Reviewers}
 	return g.mintTierTokens(snap, approvalID, workItemID, cfg.DecisionWindow, now)
+}
+
+// persistTokenMintedRows appends one approval_events row per JTI so
+// reaper.outstandingJTIs can find them. Issue #195 root cause: the
+// reaper's revocation branch is dead code until this producer side
+// exists. Per-row append (rather than a single batched tx) matches
+// existing recordEvent shape; reaper isTerminal + UNIQUE-on-consume
+// absorb a partial-mint trail if a later append fails mid-loop.
+func (g *Gate) persistTokenMintedRows(ctx context.Context, approvalID string, jtis []string, now time.Time) error {
+	for _, jti := range jtis {
+		if err := recordEvent(ctx, recordEventOpts{
+			DB:         g.db,
+			Logger:     g.log,
+			ApprovalID: approvalID,
+			Event:      obs.EventApprovalTokenMinted,
+			Kind:       EventKindTokenMinted,
+			Actor:      ActorOrchestrator,
+			Now:        now,
+			TokenJTI:   jti,
+		}); err != nil {
+			return fmt.Errorf("approval: persist token_minted %q: %w", jti, err)
+		}
+	}
+	return nil
 }
 
 // newApprovalID mints the typed-prefix id per spec §5.1 ("a-<12 hex>").

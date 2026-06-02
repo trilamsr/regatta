@@ -88,9 +88,15 @@ const (
 	// Approval gate lifecycle events (spec §4.1, §5.7). The gate
 	// handler emits these via the single recordEvent helper so the
 	// slog stream and approval_events row carry byte-equal payloads.
-	EventApprovalRequested EventName = "approval.requested"
-	EventApprovalNotified  EventName = "approval.notified"
-	EventApprovalDecided   EventName = "approval.decided"
+	EventApprovalRequested   EventName = "approval.requested"
+	EventApprovalNotified    EventName = "approval.notified"
+	EventApprovalDecided     EventName = "approval.decided"
+	// EventApprovalTokenMinted fires once per reviewer when the gate
+	// hands a signed token over to Notify. The corresponding
+	// approval_events row carries the per-JTI token_jti column so the
+	// reaper's escalate-revocation branch (spec §3.3.1.3) can find
+	// outstanding tokens. Issue #195.
+	EventApprovalTokenMinted EventName = "approval.token_minted"
 
 	// Approval-gate reaper sweep events (spec §3.3 / §5.9). Emitted
 	// per-row when a pending approval crosses its timeout_at. The
@@ -212,6 +218,7 @@ func AllEventNames() []EventName {
 		EventApprovalRequested,
 		EventApprovalNotified,
 		EventApprovalDecided,
+		EventApprovalTokenMinted,
 		EventApprovalTimedOut,
 		EventApprovalAutoApproved,
 		EventApprovalEscalated,

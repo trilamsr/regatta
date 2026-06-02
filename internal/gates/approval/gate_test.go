@@ -115,14 +115,18 @@ func TestGate_FirstEvaluationCreatesApprovalAndNotifies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListApprovalEvents: %v", err)
 	}
-	if len(events) != 2 {
-		t.Fatalf("len(events)=%d; want 2 (requested, notified); events=%+v", len(events), events)
+	// Per #195: gate persists one token_minted row per reviewer between
+	// the requested + notified pair so reaper.outstandingJTIs is non-empty.
+	wantEvents := 2 + len(cfg.Reviewers)
+	if len(events) != wantEvents {
+		t.Fatalf("len(events)=%d; want %d (requested, %d×token_minted, notified); events=%+v",
+			len(events), wantEvents, len(cfg.Reviewers), events)
 	}
 	if events[0].Kind != EventKindRequested {
 		t.Errorf("events[0].Kind=%q; want %q", events[0].Kind, EventKindRequested)
 	}
-	if events[1].Kind != EventKindNotified {
-		t.Errorf("events[1].Kind=%q; want %q", events[1].Kind, EventKindNotified)
+	if events[len(events)-1].Kind != EventKindNotified {
+		t.Errorf("events[last].Kind=%q; want %q", events[len(events)-1].Kind, EventKindNotified)
 	}
 
 	if len(notifier.requests) != 1 {
@@ -171,8 +175,9 @@ func TestGate_PendingReturnsPause(t *testing.T) {
 	}
 	approval, _ := db.GetApprovalForWorkItem(ctx, wi.ID, cfg.Name)
 	events, _ := db.ListApprovalEvents(ctx, approval.ID)
-	if len(events) != 2 {
-		t.Errorf("len(events)=%d; want 2 (no new events on second pending tick)", len(events))
+	wantEvents := 2 + len(cfg.Reviewers) // requested + N×token_minted + notified (#195)
+	if len(events) != wantEvents {
+		t.Errorf("len(events)=%d; want %d (no new events on second pending tick)", len(events), wantEvents)
 	}
 }
 
@@ -311,9 +316,10 @@ func TestGate_ConcurrentFirstEvaluationsSerialise(t *testing.T) {
 		t.Fatalf("approval row missing post-race: %v", err)
 	}
 	events, _ := db.ListApprovalEvents(ctx, approval.ID)
-	// Exactly one (requested, notified) pair — race losers do not re-emit.
-	if len(events) != 2 {
-		t.Errorf("len(events)=%d; want 2 (one winner emits requested+notified)", len(events))
+	// Exactly one (requested, N×token_minted, notified) — race losers do not re-emit.
+	wantEvents := 2 + len(cfg.Reviewers) // #195: per-JTI token_minted rows
+	if len(events) != wantEvents {
+		t.Errorf("len(events)=%d; want %d (one winner emits requested+token_minted×N+notified)", len(events), wantEvents)
 	}
 }
 
