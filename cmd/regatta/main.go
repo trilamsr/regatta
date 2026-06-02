@@ -92,6 +92,7 @@ func usage(w io.Writer) {
   regatta keys list                                   List configured HMAC keyring (active marked)
   regatta keys rotate --new-key-env E --new-key-id I  Validate new key + print next-step env line
   regatta keys retire --key-id I [--db PATH]          Pre-flight row-scan; blocks if rows still signed by I
+  regatta keys recover [--extra-key ID:ENVNAME] ...   Re-sign rows under active key (recovery drill)
   regatta init                                        Scaffold regatta.yaml + run L0 demo
   regatta version                                     Print build info
   regatta help                                        This message

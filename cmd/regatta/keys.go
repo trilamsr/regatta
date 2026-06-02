@@ -28,6 +28,7 @@ import (
 
 	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/orchestrator/state/substraterecovery"
 )
 
 // keysDeps injects every side-effect the keys path touches so tests
@@ -55,7 +56,7 @@ func runKeysWith(deps keysDeps, args []string) int {
 		deps.Stderr = os.Stderr
 	}
 	if len(args) == 0 {
-		_, _ = fmt.Fprintln(deps.Stderr, "regatta keys: expected sub-subcommand (list|rotate|retire)")
+		_, _ = fmt.Fprintln(deps.Stderr, "regatta keys: expected sub-subcommand (list|rotate|retire|recover)")
 		return 2
 	}
 	// Subcommand literals: goconst exemption is intentional — the test
@@ -69,6 +70,8 @@ func runKeysWith(deps keysDeps, args []string) int {
 		return runKeysRotate(deps, args[1:])
 	case "retire": //nolint:goconst
 		return runKeysRetire(deps, args[1:])
+	case "recover": //nolint:goconst
+		return runKeysRecover(deps, args[1:])
 	default:
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta keys: unknown subcommand %q\n", args[0])
 		return 2
@@ -219,6 +222,159 @@ func runKeysRetire(deps keysDeps, args []string) int {
 	_, _ = fmt.Fprintln(deps.Stdout, "")
 	_, _ = fmt.Fprintln(deps.Stdout, "Operator next step: remove the entry from REGATTA_HMAC_KEYRING and restart `regatta serve`.")
 	return 0
+}
+
+// runKeysRecover re-signs every substrate_events row whose sig_key_id
+// is NOT in the live keyring (or matches an explicit --extra-key entry)
+// under the current active key. Recovery is an explicit operator
+// action — no env-var bypass, no silent verify-skip. Operator supplies
+// the recovered key material via repeatable --extra-key=ID:ENVNAME so
+// each retired key is named in the shell history (audit trail) and
+// the row-verify step still runs (rules out silent rewrite of
+// tampered rows). Dry-run previews without UPDATE; concrete run rolls
+// every UPDATE into a single transaction so a partial sweep cannot
+// leave the substrate in a mixed-key state.
+func runKeysRecover(deps keysDeps, args []string) int {
+	fs := flag.NewFlagSet("keys recover", flag.ContinueOnError)
+	fs.SetOutput(deps.Stderr)
+	var extraSpecs stringSlice
+	fs.Var(&extraSpecs, "extra-key", "Retired key to verify-only under (repeatable): ID:ENVNAME")
+	dryRun := fs.Bool("dry-run", false, "Preview rows that would be re-signed; do not write")
+	_ = fs.String("db", "regatta.db", "Path to sqlite state DB")
+	fs.Usage = func() {
+		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta keys recover [--extra-key ID:ENVNAME]... [--dry-run] [--db PATH]")
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	live, active := loadBriefKeyringWithActive()
+	if len(live) == 0 || active == "" {
+		_, _ = fmt.Fprintln(deps.Stderr, "regatta keys recover: no live keyring (set REGATTA_HMAC_KEYRING or REGATTA_HMAC_KEY)")
+		return 1
+	}
+
+	verifyKeyring := make(map[string][]byte, len(live)+len(extraSpecs))
+	for id, k := range live {
+		verifyKeyring[id] = k
+	}
+	extraIDs := make([]string, 0, len(extraSpecs))
+	for _, spec := range extraSpecs {
+		id, envName, ok := strings.Cut(spec, ":")
+		if !ok || id == "" || envName == "" {
+			_, _ = fmt.Fprintf(deps.Stderr, "regatta keys recover: --extra-key %q must be ID:ENVNAME\n", spec)
+			return 2
+		}
+		rawHex := os.Getenv(envName)
+		if rawHex == "" {
+			_, _ = fmt.Fprintf(deps.Stderr, "regatta keys recover: --extra-key %s: env %s empty/unset\n", id, envName)
+			return 1
+		}
+		decoded, err := hex.DecodeString(rawHex)
+		if err != nil {
+			_, _ = fmt.Fprintf(deps.Stderr, "regatta keys recover: --extra-key %s: hex decode: %v\n", id, err)
+			return 1
+		}
+		if len(decoded) < schemas.MinKeyLen {
+			_, _ = fmt.Fprintf(deps.Stderr, "regatta keys recover: --extra-key %s: weak key (%d bytes < MinKeyLen=%d)\n", id, len(decoded), schemas.MinKeyLen)
+			return 1
+		}
+		verifyKeyring[id] = decoded
+		extraIDs = append(extraIDs, id)
+	}
+
+	dsn := deps.DSN
+	if dsn == "" {
+		dsn = state.DSN(defaultDBPath(args))
+	}
+	ctx := context.Background()
+	db, err := state.Open(ctx, dsn)
+	if err != nil {
+		_, _ = fmt.Fprintln(deps.Stderr, "regatta keys recover: open db:", err)
+		return 1
+	}
+	defer func() { _ = db.Close() }()
+
+	// Target set: rows whose sig_key_id is foreign to the live keyring.
+	// We enumerate the foreign IDs by listing rows under each extra key,
+	// then add any row whose sig_key_id is missing from BOTH live and
+	// extras — those surface as ErrUnverifiable below and fail recover.
+	foreignIDs, err := substraterecovery.ForeignSigKeyIDs(ctx, db.SQL(), live)
+	if err != nil {
+		_, _ = fmt.Fprintln(deps.Stderr, "regatta keys recover: scan foreign sig_key_ids:", err)
+		return 1
+	}
+	if len(foreignIDs) == 0 {
+		_, _ = fmt.Fprintln(deps.Stdout, "regatta keys recover: nothing to do (every row already verifies under live keyring)")
+		return 0
+	}
+	sort.Strings(foreignIDs)
+
+	rowIDs, err := substraterecovery.ListRowsBySigKeyID(ctx, db.SQL(), foreignIDs)
+	if err != nil {
+		_, _ = fmt.Fprintln(deps.Stderr, "regatta keys recover: list rows:", err)
+		return 1
+	}
+
+	// Sanity check: every foreign sig_key_id must be covered by --extra-key.
+	// Otherwise the row is unverifiable and recover MUST refuse — the
+	// operator forgot to supply the key OR the row is tampered.
+	missing := missingExtras(foreignIDs, extraIDs)
+	if len(missing) > 0 {
+		_, _ = fmt.Fprintf(deps.Stderr,
+			"regatta keys recover: %d row(s) unverifiable — missing --extra-key for: %s\n",
+			len(rowIDs), strings.Join(missing, ","))
+		return 1
+	}
+
+	if *dryRun {
+		_, _ = fmt.Fprintf(deps.Stdout, "regatta keys recover: dry-run would re-sign %d row(s) under active key %s\n", len(rowIDs), active)
+		return 0
+	}
+
+	tx, err := db.SQL().BeginTx(ctx, nil)
+	if err != nil {
+		_, _ = fmt.Fprintln(deps.Stderr, "regatta keys recover: begin tx:", err)
+		return 1
+	}
+	newKey := verifyKeyring[active]
+	resigned := 0
+	for _, id := range rowIDs {
+		if err := substraterecovery.ResignRow(ctx, tx, id, verifyKeyring, newKey, active); err != nil {
+			_ = tx.Rollback()
+			_, _ = fmt.Fprintf(deps.Stderr, "regatta keys recover: row %s: %v\n", id, err)
+			return 1
+		}
+		resigned++
+	}
+	if err := tx.Commit(); err != nil {
+		_, _ = fmt.Fprintln(deps.Stderr, "regatta keys recover: commit:", err)
+		return 1
+	}
+	_, _ = fmt.Fprintf(deps.Stdout, "regatta keys recover: re-signed %d row(s) under active key %s\n", resigned, active)
+	return 0
+}
+
+// stringSlice is a flag.Value adapter for repeatable --extra-key flags.
+type stringSlice []string
+
+func (s *stringSlice) String() string     { return strings.Join(*s, ",") }
+func (s *stringSlice) Set(v string) error { *s = append(*s, v); return nil }
+
+// missingExtras returns the foreign keyIDs that the operator did not
+// cover with --extra-key. Empty result ⇒ recover can proceed.
+func missingExtras(foreign, extras []string) []string {
+	covered := make(map[string]bool, len(extras))
+	for _, e := range extras {
+		covered[e] = true
+	}
+	var missing []string
+	for _, f := range foreign {
+		if !covered[f] {
+			missing = append(missing, f)
+		}
+	}
+	return missing
 }
 
 // countRowsSignedBy returns the count of substrate_events rows whose

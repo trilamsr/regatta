@@ -214,3 +214,157 @@ func TestKeys_NoSubcommand(t *testing.T) {
 		t.Fatalf("exit=0 want non-zero on empty args")
 	}
 }
+
+// landRowSignedBy appends one substrate_events row signed by keyID with
+// the supplied raw key material. Used by recover tests below to plant a
+// fixture row whose key was "lost" before the test runs.
+func landRowSignedBy(t *testing.T, dbPath, keyID string, keyHex string) {
+	t.Helper()
+	now := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	substrate.ResetClockForTesting()
+	tx, err := db.SQL().Begin()
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	keyMat, _ := hex.DecodeString(keyHex)
+	ev := substrate.Event{
+		ID:            substrate.Mint(now),
+		RunID:         "run-recover",
+		TenantID:      substrate.DefaultTenantID,
+		Kind:          substrate.KindFact,
+		Key:           "recover-fixture-" + keyID,
+		PayloadJSON:   []byte(`{"key":"recover-fixture","value":{}}`),
+		WrittenBy:     "tester",
+		WrittenAt:     now.UnixMilli(),
+		SchemaVersion: 1,
+		Nonce:         strings.Repeat("0", 15) + keyID[len(keyID)-1:],
+	}
+	if err := substrate.AppendEvent(context.Background(), tx, ev, keyMat, keyID); err != nil {
+		_ = tx.Rollback()
+		t.Fatalf("append: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+}
+
+// TestKeysRecover_ResignsRowsUnderActiveKey is the recovery happy path.
+func TestKeysRecover_ResignsRowsUnderActiveKey(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "recover.db")
+	oldHex := strings.Repeat("aa", 32)
+	newHex := strings.Repeat("bb", 32)
+	landRowSignedBy(t, dbPath, "k_old", oldHex)
+
+	t.Setenv("REGATTA_HMAC_KEY", "")
+	t.Setenv("REGATTA_HMAC_KEY_ID", "")
+	t.Setenv("REGATTA_HMAC_KEYRING", "k_new:"+newHex)
+	t.Setenv("K_OLD_BACKUP", oldHex)
+
+	var out, errOut bytes.Buffer
+	code := runKeysWith(keysDeps{Stdout: &out, Stderr: &errOut, DSN: state.DSN(dbPath)},
+		[]string{"recover", "--extra-key=k_old:K_OLD_BACKUP"})
+	if code != 0 {
+		t.Fatalf("exit=%d want 0; stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "1") {
+		t.Fatalf("stdout missing resigned row count: %q", out.String())
+	}
+
+	// Post-condition: retire(k_old) MUST now pass since recover rewrote
+	// every k_old-signed row's sig_key_id to k_new.
+	var out2, err2 bytes.Buffer
+	code2 := runKeysWith(keysDeps{Stdout: &out2, Stderr: &err2, DSN: state.DSN(dbPath)},
+		[]string{"retire", "--key-id=k_old"})
+	if code2 != 0 {
+		t.Fatalf("retire after recover failed: exit=%d stderr=%s", code2, err2.String())
+	}
+	if !strings.Contains(out2.String(), "safe to retire") {
+		t.Fatalf("retire stdout missing safe signal: %q", out2.String())
+	}
+}
+
+// TestKeysRecover_WithoutExtraKey_LeavesRowsUnchanged is the no-bypass guard.
+func TestKeysRecover_WithoutExtraKey_LeavesRowsUnchanged(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "recover-noextra.db")
+	oldHex := strings.Repeat("aa", 32)
+	newHex := strings.Repeat("bb", 32)
+	landRowSignedBy(t, dbPath, "k_old", oldHex)
+
+	t.Setenv("REGATTA_HMAC_KEY", "")
+	t.Setenv("REGATTA_HMAC_KEY_ID", "")
+	t.Setenv("REGATTA_HMAC_KEYRING", "k_new:"+newHex)
+
+	var out, errOut bytes.Buffer
+	code := runKeysWith(keysDeps{Stdout: &out, Stderr: &errOut, DSN: state.DSN(dbPath)},
+		[]string{"recover"})
+	// Without extra keys, k_old rows cannot be verified — recover MUST
+	// either refuse (exit 1) or report 0 resigned. Either way, retire
+	// pre-flight still fails because the row's sig_key_id is unchanged.
+	_ = code
+
+	var out2, err2 bytes.Buffer
+	code2 := runKeysWith(keysDeps{Stdout: &out2, Stderr: &err2, DSN: state.DSN(dbPath)},
+		[]string{"retire", "--key-id=k_old"})
+	if code2 == 0 {
+		t.Fatalf("retire passed without recover ever supplying k_old material; auto-bypass leak: stdout=%s", out2.String())
+	}
+}
+
+// TestKeysRecover_RejectsUnverifiableRowsWithoutKey blocks silent rewrite.
+func TestKeysRecover_RejectsUnverifiableRowsWithoutKey(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "recover-reject.db")
+	oldHex := strings.Repeat("aa", 32)
+	newHex := strings.Repeat("bb", 32)
+	landRowSignedBy(t, dbPath, "k_old", oldHex)
+
+	t.Setenv("REGATTA_HMAC_KEY", "")
+	t.Setenv("REGATTA_HMAC_KEY_ID", "")
+	t.Setenv("REGATTA_HMAC_KEYRING", "k_new:"+newHex)
+
+	var out, errOut bytes.Buffer
+	code := runKeysWith(keysDeps{Stdout: &out, Stderr: &errOut, DSN: state.DSN(dbPath)},
+		[]string{"recover"})
+	if code == 0 {
+		t.Fatalf("exit=0 want non-zero — recover MUST refuse when rows fail verify under supplied keyring; stdout=%s", out.String())
+	}
+	if !strings.Contains(errOut.String(), "k_old") && !strings.Contains(errOut.String(), "unverifiable") {
+		t.Fatalf("stderr missing unverifiable-row signal: %q", errOut.String())
+	}
+}
+
+// TestKeysRecover_DryRunDoesNotMutate previews without writing.
+func TestKeysRecover_DryRunDoesNotMutate(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "recover-dry.db")
+	oldHex := strings.Repeat("aa", 32)
+	newHex := strings.Repeat("bb", 32)
+	landRowSignedBy(t, dbPath, "k_old", oldHex)
+
+	t.Setenv("REGATTA_HMAC_KEY", "")
+	t.Setenv("REGATTA_HMAC_KEY_ID", "")
+	t.Setenv("REGATTA_HMAC_KEYRING", "k_new:"+newHex)
+	t.Setenv("K_OLD_BACKUP", oldHex)
+
+	var out, errOut bytes.Buffer
+	code := runKeysWith(keysDeps{Stdout: &out, Stderr: &errOut, DSN: state.DSN(dbPath)},
+		[]string{"recover", "--extra-key=k_old:K_OLD_BACKUP", "--dry-run"})
+	if code != 0 {
+		t.Fatalf("dry-run exit=%d want 0; stderr=%s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "dry-run") && !strings.Contains(out.String(), "would") {
+		t.Fatalf("dry-run stdout missing preview marker: %q", out.String())
+	}
+
+	// Retire pre-flight MUST still fail — dry-run didn't mutate.
+	var out2, err2 bytes.Buffer
+	code2 := runKeysWith(keysDeps{Stdout: &out2, Stderr: &err2, DSN: state.DSN(dbPath)},
+		[]string{"retire", "--key-id=k_old"})
+	if code2 == 0 {
+		t.Fatalf("retire passed after dry-run; dry-run mutated DB: stdout=%s", out2.String())
+	}
+}
