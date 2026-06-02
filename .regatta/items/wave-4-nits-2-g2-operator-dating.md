@@ -2,7 +2,7 @@
 id: WAVE-4-NIT-2
 title: brief §7 Operator-row dating — RESOLVED in unified brief
 lane: self-host
-status: closed-resolved
+status: done
 linked_artifact: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md
 source_ref: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md §7.3
 ---
@@ -13,5 +13,5 @@ Status: closed-resolved (no row remains to re-date in the unified brief).
 
 ## Acceptance criteria
 
-- [closed] c1: Verified — no "OpenAI Operator GA Jan 2025" row exists in the unified brief §7.3.
-- [closed] c2: WAVE-4-07 owns the Operator standing-track surface; dating discipline carries through there.
+- [done] c1: Verified — no "OpenAI Operator GA Jan 2025" row exists in the unified brief §7.3.
+- [done] c2: WAVE-4-07 owns the Operator standing-track surface; dating discipline carries through there.

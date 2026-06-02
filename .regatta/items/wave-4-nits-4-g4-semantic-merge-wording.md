@@ -2,7 +2,7 @@
 id: WAVE-4-NIT-4
 title: semantic-merge wording — RESOLVED via §7.5 G4 reframe in unified brief
 lane: self-host
-status: closed-resolved
+status: done
 linked_artifact: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md
 source_ref: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md §7.5 G4 + §7.1 24-mo row
 ---
@@ -13,5 +13,5 @@ Status: closed-resolved (reframe stronger than parallel wording).
 
 ## Acceptance criteria
 
-- [closed] c1: Verified — unified brief §7.5 G4 carries the "blackboard reducer layer" reframe.
-- [closed] c2: WAVE-4-06 carries the reframed term in its title + body.
+- [done] c1: Verified — unified brief §7.5 G4 carries the "blackboard reducer layer" reframe.
+- [done] c2: WAVE-4-06 carries the reframed term in its title + body.

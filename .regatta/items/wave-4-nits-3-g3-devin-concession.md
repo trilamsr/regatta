@@ -2,7 +2,7 @@
 id: WAVE-4-NIT-3
 title: Devin re-plan-loop concession — RESOLVED inline in unified brief §7.3
 lane: self-host
-status: closed-resolved
+status: done
 linked_artifact: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md
 source_ref: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md §7.3 Devin row
 ---
@@ -13,5 +13,5 @@ Status: closed-resolved.
 
 ## Acceptance criteria
 
-- [closed] c1: Verified — unified brief §7.3 Devin row contains the "more constrained than more sophisticated" concession framing.
-- [closed] c2: `bash scripts/doc-check.sh` exits 0 with the brief as-is (verified at consolidation merge time).
+- [done] c1: Verified — unified brief §7.3 Devin row contains the "more constrained than more sophisticated" concession framing.
+- [done] c2: `bash scripts/doc-check.sh` exits 0 with the brief as-is (verified at consolidation merge time).

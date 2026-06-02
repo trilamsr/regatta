@@ -2,7 +2,7 @@
 id: WAVE-4-NIT-5
 title: tier-2 vendor-signal caveat — RESOLVED (row not retained in unified brief)
 lane: self-host
-status: closed-resolved
+status: done
 linked_artifact: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md
 source_ref: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md §7.4 (Bet against)
 ---
@@ -13,5 +13,5 @@ Status: closed-resolved (row not retained; caveat is moot).
 
 ## Acceptance criteria
 
-- [closed] c1: Verified — unified brief §7.4 carries no vendor-announcement-as-failure-signal row needing tier-2 annotation.
-- [closed] c2: WAVE-4-01 c2 captures the measurement-discipline equivalent (install-count over vendor-announcement).
+- [done] c1: Verified — unified brief §7.4 carries no vendor-announcement-as-failure-signal row needing tier-2 annotation.
+- [done] c2: WAVE-4-01 c2 captures the measurement-discipline equivalent (install-count over vendor-announcement).
