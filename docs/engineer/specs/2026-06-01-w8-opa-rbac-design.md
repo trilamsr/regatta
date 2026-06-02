@@ -101,7 +101,7 @@ ctx-bound principal: `web.WithPrincipal(ctx, p)` / `web.PrincipalFromContext(ctx
 
 ### 3.2 OPA embedding via `github.com/open-policy-agent/opa/rego`
 
-Per `feedback_research_design_principles` — **adopt proven OSS, do NOT reimplement policy eval**. The Rego language, its compiler, evaluator, and decision-log surface are battle-tested in production at scale; rebuilding any of that is pure cost.
+Per `feedback_research_design_principles` — **adopt proven OSS, do NOT reimplement policy eval**. Rego's compiler, evaluator, and decision-log surface ship with OPA upstream; rebuilding any of that adds maintenance cost without UX gain.
 
 - Import path: `github.com/open-policy-agent/opa/rego` (Apache-2.0).
 - One `rego.PreparedEvalQuery` per `(tenant_id, action)`. Compile once at bundle load; reuse across requests.
