@@ -53,7 +53,7 @@ func runApproval(args []string) int {
 	switch args[0] {
 	case "decide":
 		return runApprovalDecide(args[1:])
-	case "list":
+	case "list": //nolint:goconst // sibling subcommand tree (`keys list` in keys.go) re-uses the verb at its own dispatch site; a shared const would couple two independent trees.
 		return runApprovalList(args[1:])
 	default:
 		_, _ = fmt.Fprintf(os.Stderr, "regatta approval: unknown subcommand %q\n", args[0])
