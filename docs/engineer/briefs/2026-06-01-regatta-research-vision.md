@@ -23,7 +23,7 @@ Today the primitives that drive code work (deterministic test as success signal,
 - **No methodology gates.** The L0-L5 stack (L0 shipped today; L1-L5 deferred per `docs/design.md`) targets spec-immutability, repo CI, PR-body conformance, spec-conformance (Opus), adversarial review (Sonnet), drift (Haiku). None of them, even once L1-L5 ship, catch p-hacking, train/test leakage, underpowered N, or wrong statistical test selection.
 - **No reproducibility lifecycle.** A code PR merges when CI is green. A research result needs K=10 fresh-seed re-runs to bound variance — a process that takes hours and cannot block PR merge.
 - **No refutation-as-deliverable.** `Criterion.State` today is `{planned, in_progress, done}`. A confirmatory study that fails is the most important thing research mode produces; it has no representation.
-- **No content-addressed dataset pin.** Datasets exist outside the repo. A leakage gate without a dataset CID is security theater. W11's `BlobDigest` solves this; research-mode is one of its first consumers.
+- **No content-addressed dataset pin.** Datasets exist outside the repo. A leakage gate without a dataset CID is security theater. The `prereg.dataset.sha256` + `prereg.baselines[].artifact_sha256` fields declared in spec §2.2 close this gap for self-host scope (byte-equality against the prereg-locked value). When W11 blackboard CAS exits Phase X the underlying storage migrates to `BlobDigest`; the comparison shape is preserved.
 - **No methodology-trap catalog.** `docs/incidents.md` enumerates AI-agent code incidents. Research-mode needs the methodology analog: HARKing, garden-of-forking-paths, optional stopping, base-rate neglect, Simpson's paradox, dataset overfit, prompt-sensitivity, eval-leakage, citation laundering.
 
 ## 3. Next-level vision
@@ -41,7 +41,7 @@ This is NOT a pivot from code orchestration. Code work and research work share t
 - **Why first**: every downstream gate reads the prereg sub-block; nothing else dispatches until this lands.
 - **UX-first**: operator adds `kind: research` + a `prereg:` block to their existing `.regatta/items/*.md`. No new file shape, no new directory.
 - **Reference bar**: matches AsPredicted floor; deviation tracked per `feedback_spec_pattern_authority`.
-- **Dependencies**: substrate Wave 1, W10 Sigstore (for signing the locked prereg).
+- **Dependencies**: substrate Wave 1 (Phase S3-T2 cutover); HMAC signing via existing `contracts/schemas/sign.go` primitive.
 - **Slot**: MVR-1 Wave 1.
 - **Effort**: small — single PR, file-disjoint.
 
@@ -63,7 +63,7 @@ This is NOT a pivot from code orchestration. Code work and research work share t
 - **Why now**: research-mode WorkItem becomes publishable iff (a) all four gates PASS at PR-merge AND (b) latest `kind=repro_verdict` has `reproduced=true`. The cron decouples slow K=10 confirmation from fast PR merge.
 - **UX-first**: publishability is a binary signal in the operator UI; the K=10 latency is invisible to PR review.
 - **Reference bar**: matches Bouthillier's variance accounting; cost-gov ties reproducibility spend to the same budget surface as code work.
-- **Dependencies**: Task 0; at least 2 of Tasks 1-4 merged; W11 CAS (dataset pins).
+- **Dependencies**: Task 0; at least 2 of Tasks 1-4 merged. Dataset pinning uses `prereg.dataset.sha256` (declared in Task 0 schema); W11 CAS is NOT a dependency.
 - **Slot**: MVR-1 Wave 3.
 - **Effort**: small — single subcommand + cost-gov reader registration + one substrate writer.
 
@@ -87,7 +87,7 @@ Auto-LLM Methods, related-work, discussion: out of scope, never.
 ## 6. What this brief is NOT
 
 - A pivot. Code orchestration remains the primary surface. Research-mode is a thin overlay.
-- A commitment. Research-mode dispatches ONLY after substrate Wave 1 + W8 + W10 + W11 + the architecture-simplification pass all land. If a wedge needs to ship sooner, re-litigate the spec.
+- A commitment. Research-mode dispatches ONLY after substrate Wave 1 + W8 slim authorizer + Phase S2-T1 W9 substrate-default impl + the architecture-simplification pass land AND the Phase-X trigger fires. W10 / W11 / W12 are NOT in the dependency chain. If a wedge needs to ship sooner, re-litigate the spec.
 - A claim that LLMs do science. The orchestrator enforces methodology. Whether a hypothesis is worth running is a human call.
 - A bootstrap roadmap. Stages 3-6 of the original synthesis (spec-drafter, roadmap-proposer, self-modifying scheduler) violate Trap P11 (agent artifact pipelines as attack surface) and are deleted. Stages 0-2 (reactive janitor, doc/test surgeon, spec-implementer) fit inside the existing autonomous-session-prompt flow and do not need a separate roadmap.
 

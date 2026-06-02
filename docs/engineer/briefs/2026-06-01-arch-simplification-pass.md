@@ -125,7 +125,7 @@ The self-host-first brief (`2026-06-01-self-host-first.md`) supersedes the prior
 | **Phase S2** (self-host-first) | W9 substrate-default `DurableHistory` impl (Temporal variant deferred), adversarial-reviewer-as-L4 gate, followup auto-triage, mutation testing. ~2-3 weeks. |
 | **Phase S3** (self-host-first) | W8 OPA slim authorizer (multi-tenant deferred), substrate Phase B+C cutover for cost-gov + approvals, key-rotation drill, crash-recovery property test. ~3-4 weeks. |
 | **Phase X** | W7 htmx UI, W8 multi-tenant scoping, W10 Sigstore, W11 blackboard CAS, W12 billing, P3.8 swap-out adapters, W9 Temporal-backed impl. Reopen on first external-customer ask OR 30-day-self-host-green trigger. |
-| **MVR-1** (Phase X wedge) | Research-mode (per `2026-06-01-research-mode-extension-design.md`). Gated on substrate Wave 1 + W8 slim authorizer + Phase S2-T1 W9 substrate-default impl + this simplification pass + the Phase-X trigger. W10 / W11 / W12 are NOT in the dependency chain — research-mode rides existing HMAC + `SourceRef.SHA` + local-publish primitives. |
+| **MVR-1** (Phase X wedge) | Research-mode (per `2026-06-01-research-mode-extension-design.md`). Gated on substrate Wave 1 + W8 slim authorizer + Phase S2-T1 W9 substrate-default impl + this simplification pass + the Phase-X trigger. W10 / W11 / W12 are NOT in the dependency chain — research-mode rides existing `contracts/schemas/sign.go` HMAC + `prereg.dataset.sha256` byte-pinning + local-publish primitives. |
 
 ## 7. Bootstrap roadmap collapse (regatta-builds-regatta)
 

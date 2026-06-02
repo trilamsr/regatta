@@ -2,9 +2,9 @@
 
 _Author: design subagent, 2026-06-01 (v1). Source-of-truth: `docs/wedges/research-mode.md` (thesis) + `docs/engineer/briefs/2026-06-01-regatta-research-vision.md` (vision) + adversarial review of original 6-component synthesis (70% cut by reviewer subagent)._
 
-This spec is an **additive Phase X wedge** per `docs/engineer/briefs/2026-06-01-self-host-first.md`, NOT a pivot. It sits alongside the self-host-first roadmap and ships AFTER Phase S1 → S2 → S3 land (substrate Wave 1 + W8 slim authorizer + W9 substrate-default `DurableHistory` impl + the Phase-X trigger), AND after the repo-wide architecture-simplification pass described in `2026-06-01-arch-simplification-pass.md`. Phase X wedges (W10 Sigstore, W11 blackboard CAS, W12 billing) are NOT in the dependency chain — research-mode rides existing primitives (HMAC, `SourceRef.SHA`, local publish) and drop-in-upgrades when each exits Phase X. Two parallel adversarial reviews (research-mode synthesis review + arch-simplification review) cut the original 6-component proposal to **one CUE enum extension + four gate packages + one cron + four Rego rules**. This spec locks the cut version. The deleted 70% of the original proposal is enumerated in §11 ("What got smaller").
+This spec is an **additive Phase X wedge** per `docs/engineer/briefs/2026-06-01-self-host-first.md`, NOT a pivot. It sits alongside the self-host-first roadmap and ships AFTER Phase S1 → S2 → S3 land (substrate Wave 1 + W8 slim authorizer + W9 substrate-default `DurableHistory` impl + the Phase-X trigger), AND after the repo-wide architecture-simplification pass described in `2026-06-01-arch-simplification-pass.md`. Phase X wedges (W10 Sigstore, W11 blackboard CAS, W12 billing) are NOT in the dependency chain — research-mode rides existing primitives (HMAC via `contracts/schemas/sign.go`, the `prereg.dataset.sha256` + `prereg.baselines[].artifact_sha256` fields declared in §2.2, local publish) and the migration shape for each Phase X swap is documented in the relevant section (writer canonicalization stays for the HMAC→Sigstore swap; storage backend changes for the prereg-sha256→BlobDigest swap). Two parallel adversarial reviews (research-mode synthesis review + arch-simplification review) cut the original 6-component proposal to **one CUE enum extension + four gate packages + one cron + four Rego rules**. This spec locks the cut version. The deleted 70% of the original proposal is enumerated in §11 ("What got smaller").
 
-This spec locks the schema discriminator, gate package layout, cron contract, RBAC rules, cost-governor integration, negative-result lifecycle, dataset-pin enforcement, performance budget, and grade rubric for **research-mode** — a `WorkItem.kind="research"` discriminator that routes through four new methodology gates (p-hack, statistical-power, leakage, statistical-test) plus a nightly reproducibility cron, all riding on existing primitives: SpecAdapter, substrate event log, whatever gates exist in the L0-L5 stack at dispatch time (L0 shipped today; L1-L5 deferred per `docs/design.md`), W8 OPA, W10 Sigstore, W11 blackboard CAS, cost-governor.
+This spec locks the schema discriminator, gate package layout, cron contract, RBAC rules, cost-governor integration, negative-result lifecycle, dataset-pin enforcement, performance budget, and grade rubric for **research-mode** — a `WorkItem.kind="research"` discriminator that routes through four new methodology gates (p-hack, statistical-power, leakage, statistical-test) plus a nightly reproducibility cron, all riding on existing primitives: SpecAdapter, substrate event log, whatever gates exist in the L0-L5 stack at dispatch time (L0 shipped today; L1-L5 deferred per `docs/design.md`), W8 OPA slim authorizer, `contracts/schemas/sign.go` HMAC primitive, `prereg.dataset.sha256` byte-pinning (declared in §2.2), cost-governor.
 
 **Zero new schemas. Zero new adapters. Zero new tables. One new CLI subcommand.**
 
@@ -22,7 +22,7 @@ This spec locks the schema discriminator, gate package layout, cron contract, RB
 **No dependency on Phase X wedges** — research-mode does NOT block on W10 Sigstore, W11 blackboard CAS, or W12 billing. Each of those is deferred to Phase X by the self-host-first brief and research-mode rides existing primitives instead:
 
 - Signing: existing HMAC canonicalization in `contracts/schemas/sign.go` (substrate Wave 1 uses this today). Sigstore upgrade lands in Phase X.
-- Dataset / model / canary pins: existing `SourceRef.SHA` on `WorkItem`. W11 CAS upgrade lands in Phase X.
+- Dataset / model / canary pins: the `prereg.dataset.sha256` and `prereg.baselines[].artifact_sha256` fields declared in §2.2 (locked at prereg time; byte-equality comparison). `SourceRef.SHA` on `WorkItem` is the brief-pointer commit-SHA / opaque ETag per `contracts/schemas/spec_adapter.go:114-122` and is NOT used as a dataset content-hash. When W11 blackboard CAS ships, the prereg sha256 fields migrate to `BlobDigest` references; storage shape changes, equality-check shape preserved.
 - Publication: local `regatta export-bundle` to disk. W12 billing webhook lands in Phase X.
 
 **Until the trigger fires, research-mode is forbidden to dispatch.** If a wedge needs to ship sooner because of an external research-customer ask (per self-host-first §7), re-litigate this spec; do not ship around it.
@@ -46,12 +46,12 @@ Per `memory/feedback_research_design_principles`, every primitive cites a proven
 | Statistical-test menu | [Dror et al., "Hitchhiker's Guide", ACL P18-1128](https://aclanthology.org/P18-1128/) + [Bouthillier et al., arXiv:2103.03098](https://arxiv.org/abs/2103.03098) | paired-bootstrap / McNemar / Wilcoxon / Friedman+Nemenyi dispatched by claim type | Canonical NLP-stats decision tree + variance-aware ML extension |
 | Reproducibility variance bound | [Bouthillier et al.](https://arxiv.org/abs/2103.03098) | K=10 fresh seeds, sigma + 95% CI; single-seed claims unreliable below rank-correlation 0.7 | Canonical ML variance-decomposition result |
 | Append-only signed research events | `internal/orchestrator/state/substrate/` (this repo) | Wave 1 substrate carries `kind=gate_verdict`, `kind=node_output`, `kind=token_spend`; research adds `kind=repro_verdict` only | Substrate spec §11 locks "every MVP-3+MVP-4 wedge consumes the substrate"; research is no exception |
-| Signing primitive | `contracts/schemas/sign.go` (HMAC; substrate uses this today) | HMAC-SHA256 canonicalization on the `kind=repro_verdict` event row | Self-host scope = single operator trusts own git history per `2026-06-01-self-host-first.md` §1. W10 Sigstore is Phase X — research-mode upgrades to Sigstore + Rekor whenever W10 lands (single import-swap; same canonicalization). |
+| Signing primitive | `contracts/schemas/sign.go` (HMAC; substrate uses this today) | HMAC-SHA256 canonicalization on the `kind=repro_verdict` event row | Self-host scope = single operator trusts own git history per `2026-06-01-self-host-first.md` §1. Phase X swap policy lives in §0. |
 | Authorization primitive | W8 OPA `Authorizer` slim variant (`docs/engineer/briefs/2026-06-01-self-host-first.md` §3 S3-T1) — interface + Rego policy hot-reload, single-tenant default | Rego rules for `promote_criterion`, `override_gate`, `publish_bundle`, `retract_claim` | W8 slim is in-scope for self-host. Multi-tenant `tenant_id` propagation is Phase X. Research-mode rules apply to single-tenant operator; tenant scoping ships if/when Phase X opens. |
 | Cost enforcement | `internal/cost/spend/` writer + W2 cost-governor | `kind=repro_verdict` event carries `usd_cents`; cost-gov sums + denies | Repro K=10 is LLM-expensive; cost-gov is the existing budget primitive |
-| Content-addressed evidence | Existing `SourceRef.SHA` on `WorkItem` for the self-host scope | Dataset / model / canary fingerprints live in `prereg.dataset.sha256` and `prereg.baselines[].artifact_sha256`. Comparison is byte-equality against the prereg-locked sha. | W11 blackboard CAS is Phase X per `2026-06-01-self-host-first.md`. Solo operator single-repo scope does not need a shared CAS table. Research-mode upgrades to `BlobDigest` CAS whenever W11 lands (drop-in swap; same comparison shape). |
+| Content-addressed evidence | `prereg.dataset.sha256` + `prereg.baselines[].artifact_sha256` fields declared in §2.2 (locked at prereg time) | Sha256 byte-equality against the prereg-locked value. NOT `SourceRef.SHA` (that field is the brief-pointer commit-SHA / opaque ETag per `spec_adapter.go:114-122`, not a content-hash). | W11 blackboard CAS is Phase X. Solo operator single-repo scope does not need a shared CAS table. When W11 ships, the sha256 fields migrate to `BlobDigest` references — storage shape changes, equality-check shape preserved. |
 
-**Rejected alternatives (defended below):** parallel `HypothesisAdapter` (SpecAdapter is sufficient); parallel `Workspace`/`Driver`/`Job` interface refactor (out of scope — `Spawner` today is one focused package whose declared next step per `README.md` Next-steps §3 is a `claude --resume` worktree launcher, NOT Kubernetes); OpenTimestamps Bitcoin anchor (HMAC + git history are sufficient for self-host scope; Sigstore + Rekor upgrade lands whenever W10 exits Phase X); nanopub-shaped JSON-LD Claim DSL (no consumer demands RDF reasoning); ResultBundle as a new storage primitive (substrate event fold renders RO-Crate); separate "Protocol DSL" YAML (`.regatta/items/*.md` + `kind="research"` + a small `prereg:` sub-block is the protocol).
+**Rejected alternatives (defended below):** parallel `HypothesisAdapter` (SpecAdapter is sufficient); parallel `Workspace`/`Driver`/`Job` interface refactor (out of scope — `Spawner` today is one focused package whose declared next step per `README.md` Next-steps §3 is a `claude --resume` worktree launcher, NOT Kubernetes); OpenTimestamps Bitcoin anchor (HMAC + git history are sufficient for self-host scope); nanopub-shaped JSON-LD Claim DSL (no consumer demands RDF reasoning); ResultBundle as a new storage primitive (substrate event fold renders RO-Crate); separate "Protocol DSL" YAML (`.regatta/items/*.md` + `kind="research"` + a small `prereg:` sub-block is the protocol).
 
 **Deferred to later waves (NOT this spec):** k8s-job + slurm-rest workspace drivers (defer until a real research-customer ask); confirmatory→exploratory promotion workflow (defer until W7 panel scope is added); cross-paper citation graph (defer until 2nd research repo); auto-paper-generator (Galactica lesson — never; renderer-only when scoped); LiteLLM proxy for non-Claude validators (P2.8 — already deferred by the roadmap).
 
@@ -136,7 +136,7 @@ Payload schema (JSON, <= 1 KiB per substrate Wave 1 budget):
 }
 ```
 
-Cost-gov reads `usd_cents` and sums per `work_item_id` per day. Row is HMAC-signed at write time using the existing `contracts/schemas/sign.go` canonicalization (substrate Wave 1 uses this primitive). Sigstore + Rekor upgrade lands whenever W10 exits Phase X.
+Cost-gov reads `usd_cents` and sums per `work_item_id` per day. Row is HMAC-signed at write time using the existing `contracts/schemas/sign.go` canonicalization (substrate Wave 1 uses this primitive).
 
 ### 2.4 New Criterion state: `refuted` + criterion kind
 
@@ -222,7 +222,7 @@ torch            # deterministic flags only — no model loading in gates
 
 ### 3.3 `leakage` — train/test contamination scan
 
-**Input contract:** `{train_manifest_sha, eval_set_sha, model_artifact_sha?, canary_set_sha?}` — each is a sha256 byte-pinned at prereg time via `SourceRef.SHA` (self-host scope). When W11 blackboard CAS exits Phase X, these upgrade to `BlobDigest` references; the comparison shape is unchanged.
+**Input contract:** `{train_manifest_sha, eval_set_sha, model_artifact_sha?, canary_set_sha?}` — each is a sha256 byte-pinned at prereg time via the `prereg.dataset.sha256` + `prereg.baselines[].artifact_sha256` fields declared in §2.2 (NOT `SourceRef.SHA`, which is the brief-pointer commit-SHA / opaque ETag per `spec_adapter.go:114-122`).
 
 **Algorithm:**
 1. **MinHash-LSH dedup:** 13-gram shingles, Jaccard >= 0.8 → flag pair.
@@ -270,7 +270,7 @@ New subcommand: `regatta research repro --work-item <id> --k 10`.
 4. Compute sigma + 95% CI of mean across seeds.
 5. CUDA-nondeterminism leak check: re-run seed 0 twice with `torch.use_deterministic_algorithms(True)`; delta > 0 → `reproduced=false`.
 6. PASS iff `sigma <= prereg.declared_variance_bound` AND CI excludes the "no-improvement-over-baseline" point.
-7. Write `kind=repro_verdict` event to substrate (HMAC-signed via `contracts/schemas/sign.go` for the self-host scope; Sigstore upgrade lands whenever W10 exits Phase X). Payload per §2.3.
+7. Write `kind=repro_verdict` event to substrate (HMAC-signed via `contracts/schemas/sign.go`). Payload per §2.3.
 8. Cost-gov reads `usd_cents` from payload and sums per work-item per day; denies further repro runs that breach cap.
 
 ### 4.2 Publishability rule
@@ -363,7 +363,7 @@ Rego rule sources live at `policies/research/*.rego` (deferred substrate-policie
 `cmd/regatta export-bundle <work_item_id>` renders:
 
 1. **RO-Crate `ro-crate-metadata.json`** — generated from the substrate fold (`kind=node_output` + `kind=gate_verdict` + `kind=repro_verdict`).
-2. **BagIt sha256 manifest** — per-file checksums of all `SourceRef.SHA`-pinned artifacts (self-host scope; upgrades to `BlobDigest` CAS whenever W11 exits Phase X).
+2. **BagIt sha256 manifest** — per-file checksums of all `prereg.dataset.sha256` + `prereg.baselines[].artifact_sha256`-pinned artifacts declared in §2.2.
 3. **Pandoc template substitution** — `templates/paper.tex.j2` reads explicit `{{claim_id}}` placeholders; Pandoc render fails on any unsubstituted placeholder. No model-mediated sentence rejection.
 
 Paper LaTeX template lives in `contracts/templates/`. Sample structure:
@@ -394,7 +394,7 @@ regatta research publish <work_item_id> [--refutation]
 regatta export-bundle <work_item_id> [--output-dir <path>]
 ```
 
-`regatta research` and `regatta export-bundle` are new top-level verbs. `regatta research publish` writes the rendered bundle to a local directory for the self-host scope (no remote upload, no billing webhook). When W12 billing exits Phase X, the publish verb gains a `--metered` flag that emits a Stripe usage event alongside the local write; today that path is structurally precluded.
+`regatta research` and `regatta export-bundle` are new top-level verbs. `regatta research publish` writes the rendered bundle to a local directory for the self-host scope (no remote upload, no billing webhook). Phase X swap policy lives in §0.
 
 ---
 
@@ -408,7 +408,7 @@ These items appeared in the original synthesis proposal and were cut by the adve
 - **Claim DSL (nanopub JSON-LD)** — `Criterion` + `gate_verdict` event is the claim.
 - **ResultBundle as a storage primitive** — substrate event fold + RO-Crate renderer is sufficient.
 - **Lineage DAG with typed edges (refines/contradicts/extends/replicates)** — `WorkItem.Dependencies` is acyclic + Kahn-checked; reuse with an edge-label field if needed.
-- **OpenTimestamps Bitcoin anchor** — W10 Sigstore + Rekor transparency log is sufficient.
+- **OpenTimestamps Bitcoin anchor** — HMAC via `contracts/schemas/sign.go` + git history are sufficient for self-host scope.
 - **25-field CUE schema** — seven-or-fewer prereg fields + Criterion kind/state extension is sufficient.
 - **Auto-paper LLM generator** — Galactica was withdrawn in three days. Renderer-only, never generator.
 - **Bootstrap stages 3-6** (spec-drafter, roadmap-proposer, self-modifying scheduler) — hypothetical-future scaffolding; forbidden by `feedback_drop_ceremony`. Stage 0-2 (reactive-janitor, doc/test surgeon, spec-implementer) are the only stages this spec entertains — and even those land **separately** under the existing autonomous-session-prompt flow, NOT in this spec.
@@ -456,7 +456,7 @@ Ships first. Merge unlocks Tasks 1-4 (parallel) and Task 5 (sequential).
 
 - New subcommand under `cmd/regatta/research.go` (single file).
 - Spawns K=10 via existing `Spawner` (no new abstraction).
-- Emits `kind=repro_verdict` event signed via W10 Sigstore adapter.
+- Emits `kind=repro_verdict` event HMAC-signed via existing `contracts/schemas/sign.go` primitive (matches the §0 self-host signing decision).
 - Cost-gov registers a reader for the new event kind (single line in `internal/cost/spend/`).
 - Repro CLI doc: `docs/operator/research-repro.md` (~50 lines, runbook style per `feedback_doc_check_banned_phrases`).
 
@@ -498,7 +498,7 @@ This spec is the deletion-default verdict applied to the original synthesis prop
 | `ResultBundle` artifact primitive | **DELETED** | substrate event fold + `regatta export-bundle` RO-Crate renderer |
 | Claim DSL (nanopub JSON-LD) | **DELETED** | `Criterion` (state=done\|refuted) + linked `gate_verdict` event |
 | Typed lineage DAG (refines/contradicts/...) | **DELETED** | `WorkItem.Dependencies` + edge-label field if/when needed |
-| 3-layer immutability (git + Sigstore + OpenTimestamps) | **CUT TO 1 LAYER** | W10 Sigstore + Rekor only; git is implicit |
+| 3-layer immutability (git + Sigstore + OpenTimestamps) | **CUT TO 1 LAYER** | HMAC via `contracts/schemas/sign.go` only (matches substrate Wave 1); git is implicit. W10 Sigstore is Phase X; swap policy in §0. |
 | 7-stage bootstrap roadmap | **CUT TO 0-2** | Stages 0-2 live in the existing autonomous-session-prompt flow, NOT this spec; 3-6 deleted |
 | TCB-enforcement L0 sub-gate prerequisite | **DELETED** | Re-litigate when a threat model names a specific tamper path L0 misses |
 | Bootstrap stage 6 self-modifying scheduler | **DELETED** | Trap P11 (agent artifact pipelines are themselves attack surface) |
@@ -507,7 +507,7 @@ This spec is the deletion-default verdict applied to the original synthesis prop
 | 5-tier methodology gate suite | **CUT TO 4 PR-gates + 1 cron** | Repro is a cron, not a gate (PR-latency invariant) |
 | New schemas (HypothesisBrief, Protocol, ResultBundle, Claim) | **CUT TO 0** | One enum extension + seven-or-fewer-field sub-block |
 | New tables | **CUT TO 0** | Substrate carries everything |
-| New adapters | **CUT TO 0** | Reuse W10 Sigstore, W8 OPA, SpecAdapter, Spawner |
+| New adapters | **CUT TO 0** | Reuse `contracts/schemas/sign.go` HMAC, W8 slim OPA, SpecAdapter, Spawner. W10 Sigstore is Phase X (swap policy in §0). |
 
 **Net delta:** ~2,500-4,500 LoC added (4 gates × 400-800 LoC each per vision-brief budget = 1,600-3,200 for gates alone, plus Task 0 schema extensions, Task 5 cron + cost-gov wiring, Task 6 Rego rules, and the trap corpus fixtures — NOT the 15-25k a parallel-architecture build would require); zero new schemas, adapters, tables; one new CLI subcommand; one new event kind; one new CUE enum value; one new criterion state; one new optional criterion kind field.
 
@@ -523,7 +523,7 @@ This spec is the deletion-default verdict applied to the original synthesis prop
 | p-hack gate false positive on legitimate bug-fix amendments | Important | `protocol_amendment` field with pre-results commit reference; amendments before run start permitted |
 | Operator confusion: confirmatory vs exploratory promotion path | Important | W7 panel additions deferred per §8; named `[research-followup]` issue file at this spec land time |
 | Refutation publishing flow surprises authors | Important | `regatta publish --refutation` is an explicit, separate CLI verb; never auto-promoted |
-| Substrate not yet shipped → research-mode dispatches against legacy tables | **Risk (blocking)** | Status §0 explicitly forbids dispatch until substrate Wave 1 + W8 + W10 + W11 all land |
+| Substrate not yet shipped → research-mode dispatches against legacy tables | **Risk (blocking)** | Status §0 explicitly forbids dispatch until the self-host-phase gates land (substrate Wave 1 + W8 slim + W9 substrate-default + arch-simp + Phase-X trigger). W10 / W11 / W12 are NOT in the dispatch gate. |
 | Mutation-test corpus drift across the 4 gates | Important | Mutation testing >= 80% kill rate enforced per gate per `feedback_grade_rubric` |
 | Pandoc template breakage in the renderer | Simplification | Pandoc render fails on unsubstituted placeholders; CI gate runs `regatta export-bundle` on a fixture work-item per release |
 
@@ -567,7 +567,7 @@ This spec **must not dispatch** until the Phase-X trigger fires per `docs/engine
 3. Phase S2-T1 W9 substrate-default `DurableHistory` impl (research-mode reuses this for K=10 reproducibility sweeps; the Temporal-backed variant remains Phase X).
 4. Repo-wide simplification pass per `2026-06-01-arch-simplification-pass.md`: audit the sibling-package `Estimator` seam-vs-impl split during the cost-package flatten; flatten `orchestrator/{adapter,adaptersync,lockfile}` and `cost/{estimate,gate,pricing,reconcile,spend}`; pick-one between `planner.go` / `planner_v2.go` / `planner_stub.go`.
 
-Phase X wedges (W10 Sigstore, W11 blackboard CAS, W12 billing) are NOT in the dependency chain — research-mode rides existing primitives (`contracts/schemas/sign.go` HMAC, `SourceRef.SHA`, local `regatta research publish`) and upgrades drop-in when each Phase X wedge lands.
+Phase X wedges (W10 Sigstore, W11 blackboard CAS, W12 billing) are NOT in the dependency chain — research-mode rides existing primitives (`contracts/schemas/sign.go` HMAC, `prereg.dataset.sha256` + `prereg.baselines[].artifact_sha256` byte-pinning, local `regatta research publish`). The migration shape for each Phase X swap is documented in the relevant section.
 
 When the gating items land, re-validate this spec against the then-current state of the substrate, gate stack, and signing primitive. Spec amendments (per `feedback_spec_pattern_authority`) require a fresh design-subagent re-spawn, not main-thread guesswork.
 

@@ -10,8 +10,9 @@ machine-readable research backlog asks AND substrate Wave 1 + W8
 slim authorizer + Phase S2 W9 substrate-default `DurableHistory`
 impl all landed. Phase X wedges (W10 Sigstore, W11 blackboard
 CAS, W12 billing) are NOT in the dependency chain — research-
-mode rides existing primitives (HMAC, `SourceRef.SHA`, local
-publish) and drop-in-upgrades when those wedges exit Phase X.
+mode rides existing primitives (`contracts/schemas/sign.go`
+HMAC, the `prereg.dataset.sha256` field declared on `WorkItem`,
+local publish). Migration shapes documented in the spec.
 
 ## Thesis
 
@@ -167,17 +168,22 @@ It does NOT ship until ALL of the following land:
 
 **Phase X wedges NOT in the dependency chain:** W10 Sigstore, W11
 blackboard CAS, W12 billing. Research-mode rides existing primitives
-instead and upgrades drop-in when each exits Phase X:
+instead; the migration shape for each Phase X swap is documented in
+the spec:
 
-- Signing: HMAC canonicalization in `contracts/schemas/sign.go` (W10
-  upgrade swaps to Sigstore + Rekor without changing the canonical
-  byte representation).
-- Dataset / model / canary pins: `SourceRef.SHA` byte-comparison (W11
-  upgrade swaps to `BlobDigest` references; comparison shape
-  unchanged).
+- Signing: HMAC canonicalization in `contracts/schemas/sign.go`. If
+  W10 ships, writer-side canonical bytes stay the same; verifier-side
+  gains a Rekor transparency-log lookup + an OIDC trust root.
+  Different verification contract; spec amendment required.
+- Dataset / model / canary pins: the `prereg.dataset.sha256` and
+  `prereg.baselines[].artifact_sha256` fields declared on `WorkItem`
+  (NOT `SourceRef.SHA`, which is the brief-pointer commit-SHA per
+  `contracts/schemas/spec_adapter.go:114-122`). If W11 ships, those
+  prereg fields migrate to `BlobDigest` references. Storage backend
+  changes; equality-check shape preserved.
 - Publication: local `regatta research publish` writes the rendered
-  bundle to disk (W12 upgrade adds a `--metered` flag that emits a
-  Stripe usage event alongside the local write).
+  bundle to disk. If W12 ships, the verb gains a `--metered` flag
+  that emits a Stripe usage event alongside the local write.
 
 Until the gating items land, research-mode is forbidden to dispatch.
 If a wedge needs to ship sooner because of an external research-
