@@ -27,10 +27,21 @@ import (
 // Request carries the inputs a Spawner needs to launch an agent.
 // Additional fields (prompt template, worktree path, credentials)
 // land as the real Spawner takes shape.
+//
+// OperatorID/DAGID/RunID are the cost-governor identifier triple stamped
+// onto every token_spend row by SpawnerCallback (#295). The orchestrator
+// populates them from agent + work_item context; the substrate row carries
+// three distinct columns so the T4 reconciler and per-DAG/per-operator
+// USD rollups can group correctly. Empty values are accepted — callers
+// that have not yet been threaded fall back to the WorkItemID-derived
+// shortcut at the writer seam, preserving the wave-2 byte-equal contract.
 type Request struct {
 	AgentID    int64
 	WorkItemID string
 	Lane       string
+	OperatorID string
+	DAGID      string
+	RunID      string
 }
 
 // Result reports the spawned process identifiers the orchestrator
