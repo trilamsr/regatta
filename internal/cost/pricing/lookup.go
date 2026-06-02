@@ -54,6 +54,10 @@ var now = time.Now
 
 // Lookup returns the priced row for a model SKU. ErrPricingMissing when the
 // SKU is unknown OR retired (RetiredAfter non-zero and in the past).
+// ErrPricingZeroRow when an active row carries a non-positive rate — the
+// boot Validate (init) catches this for in-tree tables, but a mid-process
+// mutation (test code, future LoadOverride re-entry) would otherwise let
+// Lookup return zero rates and trip the Portkey trap (§3.1, #447).
 //
 // Resolution order: Anthropic (bare keys) → Bedrock (`bedrock.*`) → Vertex
 // (`vertex.*`). The provider prefix is part of the key string; namespaces
@@ -65,6 +69,9 @@ func Lookup(model string) (Row, error) {
 	}
 	if !row.RetiredAfter.IsZero() && now().After(row.RetiredAfter) {
 		return Row{}, ErrPricingMissing
+	}
+	if field, value, ok := rowFieldNonPositive(row); ok {
+		return Row{}, fmt.Errorf("%w: %s %s=%v", ErrPricingZeroRow, model, field, value)
 	}
 	return row, nil
 }
@@ -105,10 +112,15 @@ func Catalog() map[string]Row {
 }
 
 // Validate scans an in-tree pricing table for the Portkey-trap invariant
-// (no active SKU may carry a non-positive rate) and returns an
-// ErrPricingZeroRow-wrapped error on the first violation. The provider
-// label is folded into the error message so operators reading the boot
-// log can jump to the right table without re-deriving which file failed.
+// (no active SKU may carry a non-positive rate, table is non-empty) and
+// returns an ErrPricingZeroRow-wrapped error on the first violation. The
+// provider label is folded into the error message so operators reading
+// the boot log can jump to the right table without re-deriving which
+// file failed.
+//
+// Empty / nil tables are rejected (#445): a rebase that truncates
+// anthropic.go to `var Anthropic = map[string]Row{}` would otherwise pass
+// the per-row scan and silently zero every Anthropic-routed call's spend.
 //
 // Retired rows are exempt — operators may pin historical snapshots for
 // replay or backfill recipes. Active = RetiredAfter.IsZero() OR in the
@@ -120,24 +132,40 @@ func Catalog() map[string]Row {
 // guarantee; the fixture at testdata/anthropic_bad_zero_row.go is the
 // falsifier.
 func Validate(provider string, table map[string]Row) error {
+	if len(table) == 0 {
+		return fmt.Errorf("%w: %s table is empty", ErrPricingZeroRow, provider)
+	}
 	for model, row := range table {
 		if !row.RetiredAfter.IsZero() && now().After(row.RetiredAfter) {
 			continue
 		}
-		if row.InputUSDPerMTok <= 0 {
-			return fmt.Errorf("%w: %s.%s InputUSDPerMTok=%v", ErrPricingZeroRow, provider, model, row.InputUSDPerMTok)
-		}
-		if row.CacheReadUSDPerMTok <= 0 {
-			return fmt.Errorf("%w: %s.%s CacheReadUSDPerMTok=%v", ErrPricingZeroRow, provider, model, row.CacheReadUSDPerMTok)
-		}
-		if row.CacheCreationUSDPerMTok <= 0 {
-			return fmt.Errorf("%w: %s.%s CacheCreationUSDPerMTok=%v", ErrPricingZeroRow, provider, model, row.CacheCreationUSDPerMTok)
-		}
-		if row.OutputUSDPerMTok <= 0 {
-			return fmt.Errorf("%w: %s.%s OutputUSDPerMTok=%v", ErrPricingZeroRow, provider, model, row.OutputUSDPerMTok)
+		if field, value, ok := rowFieldNonPositive(row); ok {
+			return fmt.Errorf("%w: %s.%s %s=%v", ErrPricingZeroRow, provider, model, field, value)
 		}
 	}
 	return nil
+}
+
+// rowFieldNonPositive returns the first non-positive rate field on row,
+// its value, and ok=true. ok=false means every priced field is > 0.
+// Single source of truth for the Portkey-trap field scan — Validate,
+// validateRow (override path), and Lookup share it so a future field
+// addition cannot leave one call site checking three rates and another
+// checking four (the drift PR #290 reviewer flagged).
+func rowFieldNonPositive(row Row) (field string, value float64, ok bool) {
+	if row.InputUSDPerMTok <= 0 {
+		return "InputUSDPerMTok", row.InputUSDPerMTok, true
+	}
+	if row.CacheReadUSDPerMTok <= 0 {
+		return "CacheReadUSDPerMTok", row.CacheReadUSDPerMTok, true
+	}
+	if row.CacheCreationUSDPerMTok <= 0 {
+		return "CacheCreationUSDPerMTok", row.CacheCreationUSDPerMTok, true
+	}
+	if row.OutputUSDPerMTok <= 0 {
+		return "OutputUSDPerMTok", row.OutputUSDPerMTok, true
+	}
+	return "", 0, false
 }
 
 // init runs the boot validator against each in-tree pricing table.

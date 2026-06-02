@@ -34,3 +34,25 @@ func TestPricing_BootAcceptsRealTables(t *testing.T) {
 		}
 	}
 }
+
+// TestPricing_ValidateRejectsNilTable pins #445: a truncated table MUST fail boot.
+func TestPricing_ValidateRejectsNilTable(t *testing.T) {
+	err := pricing.Validate("anthropic", nil)
+	if err == nil {
+		t.Fatal("Validate(nil) returned nil; want ErrPricingZeroRow (empty-table guard)")
+	}
+	if !errors.Is(err, pricing.ErrPricingZeroRow) {
+		t.Fatalf("Validate(nil) returned %v; want wrapped ErrPricingZeroRow", err)
+	}
+}
+
+// TestPricing_ValidateRejectsEmptyTable pins #445: an empty map MUST fail boot.
+func TestPricing_ValidateRejectsEmptyTable(t *testing.T) {
+	err := pricing.Validate("anthropic", map[string]pricing.Row{})
+	if err == nil {
+		t.Fatal("Validate(empty) returned nil; want ErrPricingZeroRow (empty-table guard)")
+	}
+	if !errors.Is(err, pricing.ErrPricingZeroRow) {
+		t.Fatalf("Validate(empty) returned %v; want wrapped ErrPricingZeroRow", err)
+	}
+}
