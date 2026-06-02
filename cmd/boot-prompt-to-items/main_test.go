@@ -55,8 +55,7 @@ func writeFixture(t *testing.T, dir, name, content string) string {
 	return full
 }
 
-// TestParse_EmitsOnePerPriorityEntry — fixture has 2 S1 + 1 S2 + 1 S3 = 4 entries.
-// Spec §2.1: Phase X is skipped.
+// TestParse_EmitsOnePerPriorityEntry — fixture has 2 S1 + 1 S2 + 1 S3 = 4 entries. Spec §2.1: Phase X is skipped.
 func TestParse_EmitsOnePerPriorityEntry(t *testing.T) {
 	dir := t.TempDir()
 	src := writeFixture(t, dir, "boot.md", fixtureBootPrompt)
@@ -90,9 +89,7 @@ func TestParse_EmitsOnePerPriorityEntry(t *testing.T) {
 	}
 }
 
-// TestParse_FrontmatterIsAdapterIngestable — round-trip through the
-// real adapter parser; this is the load-bearing assertion. If the
-// converter emits frontmatter the adapter rejects, this test fails.
+// TestParse_FrontmatterIsAdapterIngestable — round-trip through the real adapter parser; this is the load-bearing assertio
 func TestParse_FrontmatterIsAdapterIngestable(t *testing.T) {
 	dir := t.TempDir()
 	src := writeFixture(t, dir, "boot.md", fixtureBootPrompt)
@@ -175,8 +172,7 @@ func snapshotMtimes(t *testing.T, dir string) map[string]time.Time {
 	return out
 }
 
-// TestParse_SourceChange_Rewrites — when the source prose changes,
-// the generated file is rewritten. New sha256 embedded.
+// TestParse_SourceChange_Rewrites — when the source prose changes, the generated file is rewritten. New sha256 embedded.
 func TestParse_SourceChange_Rewrites(t *testing.T) {
 	dir := t.TempDir()
 	src := writeFixture(t, dir, "boot.md", fixtureBootPrompt)
@@ -217,8 +213,7 @@ func TestParse_SourceChange_Rewrites(t *testing.T) {
 	}
 }
 
-// TestParse_HandEdit_Skipped — file with no source-sha256 sentinel
-// is treated as hand-authored and skipped.
+// TestParse_HandEdit_Skipped — file with no source-sha256 sentinel is treated as hand-authored and skipped.
 func TestParse_HandEdit_Skipped(t *testing.T) {
 	dir := t.TempDir()
 	src := writeFixture(t, dir, "boot.md", fixtureBootPrompt)
@@ -286,8 +281,7 @@ func TestParse_PhaseXSkipped(t *testing.T) {
 	}
 }
 
-// TestParse_DuplicateID_Errors — duplicate IDs in the source are a
-// hard error; no files written.
+// TestParse_DuplicateID_Errors — duplicate IDs in the source are a hard error; no files written.
 func TestParse_DuplicateID_Errors(t *testing.T) {
 	dupSource := `PHASE S1 — x
 1. **S1-T2 — first dup** — body one.
@@ -309,8 +303,7 @@ func TestParse_DuplicateID_Errors(t *testing.T) {
 	}
 }
 
-// TestParse_NoEntries_Errors — a source with zero PRIORITY entries
-// errors loudly. No silent success.
+// TestParse_NoEntries_Errors — a source with zero PRIORITY entries errors loudly. No silent success.
 func TestParse_NoEntries_Errors(t *testing.T) {
 	dir := t.TempDir()
 	src := writeFixture(t, dir, "boot.md", "# Just a doc with no priority block\n")
@@ -338,9 +331,7 @@ func TestParse_DryRun(t *testing.T) {
 	}
 }
 
-// TestParse_RealBootPrompt — the actual checked-in boot prompt MUST
-// parse and every emitted file MUST round-trip through the adapter.
-// This is the A+ "live drift" guard.
+// TestParse_RealBootPrompt — the actual checked-in boot prompt MUST parse and every emitted file MUST round-trip through t
 func TestParse_RealBootPrompt(t *testing.T) {
 	// repo root is two levels up from cmd/boot-prompt-to-items/
 	wd, err := os.Getwd()
