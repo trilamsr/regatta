@@ -35,6 +35,12 @@ const (
 	KindGateVerdict EventKind = "gate_verdict"
 	// KindHeartbeat is running-agent liveness (lww per work_item_id).
 	KindHeartbeat EventKind = "heartbeat"
+	// KindBriefRejected records a durable audit row for every brief
+	// the loader rejects (HMAC fail, schema invalid, replay, unknown
+	// parent, feature-id collision). Issue #80 — substrate replaces
+	// slog-only retention so an operator running `regatta` for months
+	// keeps the rejection history under the HMAC chain.
+	KindBriefRejected EventKind = "brief_rejected"
 )
 
 // AllKinds returns the canonical kind list in declaration order. Used
@@ -43,6 +49,7 @@ func AllKinds() []EventKind {
 	return []EventKind{
 		KindNodeOutput, KindFact, KindApprovalEvent, KindTokenSpend,
 		KindBudgetReconciled, KindGateVerdict, KindHeartbeat,
+		KindBriefRejected,
 	}
 }
 

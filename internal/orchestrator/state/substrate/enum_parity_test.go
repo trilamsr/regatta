@@ -5,21 +5,22 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
 // TestSubstrate_EventKindEnumMatchesSQLCheck pins spec §6 / §9 A-tier N1: Go EventKind constants ↔ SQL CHECK kind whitelist parity.
+//
+// Scans every migration whose body declares a `CHECK (kind IN (...))`
+// clause on substrate_events and takes the highest-numbered migration's
+// list as canonical — recreate-rename migrations (0012 widens 0006)
+// supersede the original whitelist. Spec §6 N1.
 func TestSubstrate_EventKindEnumMatchesSQLCheck(t *testing.T) {
 	t.Parallel()
 
-	migrationPath := findMigration(t, "0006_substrate.sql")
-	body, err := os.ReadFile(migrationPath)
-	if err != nil {
-		t.Fatalf("read migration: %v", err)
-	}
-	sqlKinds := parseKindCheck(t, string(body))
+	sqlKinds := latestKindCheck(t)
 
 	kinds := substrate.AllKinds()
 	goKinds := make([]string, 0, len(kinds))
@@ -35,31 +36,83 @@ func TestSubstrate_EventKindEnumMatchesSQLCheck(t *testing.T) {
 	}
 }
 
-// parseKindCheck pulls the CHECK (kind IN (...)) literal list out of
-// the migration body. Robust to: leading/trailing whitespace inside the
-// parens; SQL comments on the same line; quoting style (single quotes);
-// multi-line argument lists.
-func parseKindCheck(t *testing.T, body string) []string {
+// latestKindCheck walks migrations/ in lexicographic order and returns
+// the kind set declared by the last file that contains a substrate_events
+// kind CHECK. Lexicographic == version-ordered because goose migrations
+// use 4-digit zero-padded prefixes.
+func latestKindCheck(t *testing.T) []string {
 	t.Helper()
+	migDir := migrationsDir(t)
+	entries, err := os.ReadDir(migDir)
+	if err != nil {
+		t.Fatalf("read %s: %v", migDir, err)
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	var latest []string
+	for _, name := range names {
+		body, err := os.ReadFile(filepath.Join(migDir, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		// Only the substrate_events table carries a kind CHECK; skip
+		// other migrations even if they happen to use the word "kind".
+		s := stripSQLComments(string(body))
+		if !strings.Contains(s, "substrate_events") {
+			continue
+		}
+		re := regexp.MustCompile(`(?is)CHECK\s*\(\s*kind\s+IN\s*\(([^)]*)\)\s*\)`)
+		m := re.FindStringSubmatch(s)
+		if m == nil {
+			continue
+		}
+		litRE := regexp.MustCompile(`'([^']+)'`)
+		matches := litRE.FindAllStringSubmatch(m[1], -1)
+		if len(matches) == 0 {
+			continue
+		}
+		latest = latest[:0]
+		for _, mm := range matches {
+			latest = append(latest, mm[1])
+		}
+	}
+	if len(latest) == 0 {
+		t.Fatalf("no substrate_events kind CHECK found across migrations")
+	}
+	return latest
+}
 
-	body = stripSQLComments(body)
-
-	re := regexp.MustCompile(`(?is)CHECK\s*\(\s*kind\s+IN\s*\(([^)]*)\)\s*\)`)
-	m := re.FindStringSubmatch(body)
-	if m == nil {
-		t.Fatalf("CHECK (kind IN ...) not found in migration")
+// migrationsDir resolves the migrations/ path relative to this test's
+// package directory, falling back to a go.mod walk when the test runs
+// from an unexpected cwd (e.g. `go test ./...` from repo root).
+func migrationsDir(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd: %v", err)
 	}
-	inner := m[1]
-	litRE := regexp.MustCompile(`'([^']+)'`)
-	matches := litRE.FindAllStringSubmatch(inner, -1)
-	if len(matches) == 0 {
-		t.Fatalf("CHECK clause has no quoted literals: %q", inner)
+	candidate := filepath.Join(wd, "..", "migrations")
+	if _, err := os.Stat(candidate); err == nil {
+		return candidate
 	}
-	out := make([]string, 0, len(matches))
-	for _, mm := range matches {
-		out = append(out, mm[1])
+	dir := wd
+	for i := 0; i < 6; i++ {
+		dir = filepath.Dir(dir)
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			c := filepath.Join(dir, "internal", "orchestrator", "state", "migrations")
+			if _, err := os.Stat(c); err == nil {
+				return c
+			}
+			break
+		}
 	}
-	return out
+	t.Fatalf("migrations dir not found; cwd=%s", wd)
+	return ""
 }
 
 // stripSQLComments removes `-- ...` to end-of-line and `/* ... */` blocks
@@ -82,34 +135,4 @@ func equalStringSlices(a, b []string) bool {
 		}
 	}
 	return true
-}
-
-// findMigration locates the named migration file. The substrate package
-// directory's sibling is migrations/.
-func findMigration(t *testing.T, name string) string {
-	t.Helper()
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Getwd: %v", err)
-	}
-	candidate := filepath.Join(wd, "..", "migrations", name)
-	if _, err := os.Stat(candidate); err == nil {
-		return candidate
-	}
-	// Fall back to walking upward to find go.mod, then descend.
-	dir := wd
-	for i := 0; i < 6; i++ {
-		dir = filepath.Dir(dir)
-		gm := filepath.Join(dir, "go.mod")
-		if _, err := os.Stat(gm); err == nil {
-			c := filepath.Join(dir,
-				"internal", "orchestrator", "state", "migrations", name)
-			if _, err := os.Stat(c); err == nil {
-				return c
-			}
-			break
-		}
-	}
-	t.Fatalf("migration %s not found; cwd=%s", name, wd)
-	return ""
 }
