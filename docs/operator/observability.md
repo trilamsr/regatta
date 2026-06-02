@@ -205,6 +205,14 @@ The E2E gate `go test -tags e2e_otel ./internal/obs/otel/...` runs
 the same handshake end-to-end against the same docker-compose file;
 keep that test green when adjusting the fixture.
 
+## Metrics, dashboards, SLOs
+
+This doc covers the trace + log pipe shipped in W6. The metric layer
+(env-var contract for OTLP push vs Prom pull, the seven Grafana
+dashboards, SLO-1 + SLO-2 alert wiring, the cardinality budget, and
+trace head-sampling knobs) lives in
+[observability-metrics.md](observability-metrics.md).
+
 ## Where the spec lives
 
 The single source of truth for what regatta emits, what env vars it
