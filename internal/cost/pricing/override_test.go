@@ -41,8 +41,7 @@ func writeOverride(t *testing.T, body string) string {
 	return path
 }
 
-// TestLoadOverride_EmptyPathIsNoOp pins the zero-config branch — unset
-// pricing_override_path MUST NOT touch the hardcoded table.
+// TestLoadOverride_EmptyPathIsNoOp pins the zero-config branch — unset pricing_override_path MUST NOT touch the hardcoded table.
 func TestLoadOverride_EmptyPathIsNoOp(t *testing.T) {
 	snapshotTable(t)
 	before := pricing.Anthropic["claude-sonnet-4-7"]
@@ -55,9 +54,7 @@ func TestLoadOverride_EmptyPathIsNoOp(t *testing.T) {
 	}
 }
 
-// TestLoadOverride_OverridesExistingSKU pins the merge contract: a key
-// in the override file replaces the hardcoded row for that SKU only;
-// other rows stay untouched.
+// TestLoadOverride_OverridesExistingSKU pins the merge contract: a key in the override file replaces the hardcoded row for that SKU only; othe
 func TestLoadOverride_OverridesExistingSKU(t *testing.T) {
 	snapshotTable(t)
 	path := writeOverride(t, `{
@@ -94,8 +91,7 @@ func TestLoadOverride_OverridesExistingSKU(t *testing.T) {
 	}
 }
 
-// TestLoadOverride_AddsNewSKU pins the Bedrock/Vertex use case: an
-// override key that is NOT in the hardcoded table is added.
+// TestLoadOverride_AddsNewSKU pins the Bedrock/Vertex use case: an override key that is NOT in the hardcoded table is added.
 func TestLoadOverride_AddsNewSKU(t *testing.T) {
 	snapshotTable(t)
 	path := writeOverride(t, `{
@@ -120,8 +116,7 @@ func TestLoadOverride_AddsNewSKU(t *testing.T) {
 	}
 }
 
-// TestLoadOverride_MalformedJSON_HardFails pins the malformed-input
-// branch — a parse error MUST surface, not silently drop the override.
+// TestLoadOverride_MalformedJSON_HardFails pins the malformed-input branch — a parse error MUST surface, not silently drop the override.
 func TestLoadOverride_MalformedJSON_HardFails(t *testing.T) {
 	snapshotTable(t)
 	path := writeOverride(t, `{not valid json`)
@@ -131,10 +126,7 @@ func TestLoadOverride_MalformedJSON_HardFails(t *testing.T) {
 	}
 }
 
-// TestLoadOverride_UnknownField_HardFails pins the DisallowUnknownFields
-// invariant — a JSON key that does NOT (even case-insensitively) match
-// any Row field MUST surface, not silently no-op. Without strict-decode,
-// operator typos like adding an "AmazonBedrockRate" key are lost.
+// TestLoadOverride_UnknownField_HardFails pins the DisallowUnknownFields invariant — a JSON key that does NOT (even case-insensitively) match 
 func TestLoadOverride_UnknownField_HardFails(t *testing.T) {
 	snapshotTable(t)
 	path := writeOverride(t, `{
@@ -152,9 +144,7 @@ func TestLoadOverride_UnknownField_HardFails(t *testing.T) {
 	}
 }
 
-// TestLoadOverride_NonPositiveRate_Rejected pins the B7 Portkey-trap
-// extension to overrides — zero or negative rates MUST hard-fail, never
-// silently price a real call at $0.
+// TestLoadOverride_NonPositiveRate_Rejected pins the B7 Portkey-trap extension to overrides — zero or negative rates MUST hard-fail, never sil
 func TestLoadOverride_NonPositiveRate_Rejected(t *testing.T) {
 	snapshotTable(t)
 	path := writeOverride(t, `{
@@ -174,8 +164,7 @@ func TestLoadOverride_NonPositiveRate_Rejected(t *testing.T) {
 	}
 }
 
-// TestLoadOverride_MissingFile_HardFails pins the operator-typo branch:
-// if pricing_override_path points at nothing, fail loud, not silent.
+// TestLoadOverride_MissingFile_HardFails pins the operator-typo branch: if pricing_override_path points at nothing, fail loud, not silent.
 func TestLoadOverride_MissingFile_HardFails(t *testing.T) {
 	snapshotTable(t)
 	err := pricing.LoadOverride(filepath.Join(t.TempDir(), "nope.json"))
@@ -184,9 +173,7 @@ func TestLoadOverride_MissingFile_HardFails(t *testing.T) {
 	}
 }
 
-// TestLoadOverride_WorldWritable_Rejected pins R14 (override-tampering
-// surface): a 0o666 override file MUST be rejected. Unix-only; Windows
-// permission bits don't map cleanly to POSIX modes.
+// TestLoadOverride_WorldWritable_Rejected pins R14 (override-tampering surface): a 0o666 override file MUST be rejected. Unix-only; Windows pe
 func TestLoadOverride_WorldWritable_Rejected(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX file modes — skipped on Windows")
