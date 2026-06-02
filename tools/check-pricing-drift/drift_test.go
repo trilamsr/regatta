@@ -89,11 +89,7 @@ func tokenSpendPayload(model string, in, out, cr, cc int64, usd float64) string 
 	}`, usd, model, in, out, cr, cc)
 }
 
-// TestDetect_NoDrift_TableMatchesActualRate confirms a clean run when the
-// implied rate from substrate matches pricing.Anthropic within threshold.
-// Pricing for claude-sonnet-4-7: input=3.00, output=15.00 per Mtok.
-// 1M input + 1M output tokens at table rates = $18.00. We emit actual=$18.00.
-// Implied/expected ratio = 1.0; drift = 0%; below 5% threshold; exit 0.
+// TestDetect_NoDrift_TableMatchesActualRate exits clean when implied rate matches the table within threshold.
 func TestDetect_NoDrift_TableMatchesActualRate(t *testing.T) {
 	db := openTestDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -122,9 +118,7 @@ func TestDetect_NoDrift_TableMatchesActualRate(t *testing.T) {
 	}
 }
 
-// TestDetect_Drift_TableUnderprices simulates Anthropic charging 20% more
-// than our table predicts — operator overshoots cap silently. The script
-// MUST flag this so the table refresh runbook fires.
+// TestDetect_Drift_TableUnderprices flags a +20% drift so the refresh runbook fires before cap overshoot.
 func TestDetect_Drift_TableUnderprices(t *testing.T) {
 	db := openTestDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -159,8 +153,7 @@ func TestDetect_Drift_TableUnderprices(t *testing.T) {
 	}
 }
 
-// TestDetect_BelowThreshold confirms a sub-threshold drift does NOT fire.
-// 3% drift with 5% threshold = clean.
+// TestDetect_BelowThreshold confirms a sub-threshold drift (3% vs 5%) does not fire.
 func TestDetect_BelowThreshold(t *testing.T) {
 	db := openTestDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -189,10 +182,7 @@ func TestDetect_BelowThreshold(t *testing.T) {
 	}
 }
 
-// TestDetect_SkipUsageFallbackRows pins spec A+5: Usage API path is
-// self-referential (both sides applied the same pricing table) so its
-// reconciled rows MUST be skipped, leaving no findings even when the
-// embedded model_breakdown looks off.
+// TestDetect_SkipUsageFallbackRows pins spec §7 A+5: Usage API rows are skipped (self-referential pricing).
 func TestDetect_SkipUsageFallbackRows(t *testing.T) {
 	db := openTestDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -231,9 +221,7 @@ func TestDetect_SkipUsageFallbackRows(t *testing.T) {
 	}
 }
 
-// TestDetect_WindowExcludesStale pins the configurable window — events
-// outside it are ignored, so the script does not flag drift from
-// pre-table-refresh history.
+// TestDetect_WindowExcludesStale ignores events outside the lookback so pre-refresh history does not flag.
 func TestDetect_WindowExcludesStale(t *testing.T) {
 	db := openTestDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -264,9 +252,7 @@ func TestDetect_WindowExcludesStale(t *testing.T) {
 	}
 }
 
-// TestDetect_MissingPricingRow surfaces a finding when the substrate has
-// reconciled rows for a model that pricing.go does not know about — that is
-// itself a drift class: pricing table is missing a row Anthropic billed.
+// TestDetect_MissingPricingRow flags a billed SKU that the pricing table does not know about.
 func TestDetect_MissingPricingRow(t *testing.T) {
 	db := openTestDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -298,8 +284,7 @@ func TestDetect_MissingPricingRow(t *testing.T) {
 	}
 }
 
-// TestRender_TableHumanReadable verifies the operator-facing report format.
-// One row per finding, model + expected + actual + drift% + reason.
+// TestRender_TableHumanReadable pins the operator-facing report shape (model/expected/actual/drift/reason).
 func TestRender_TableHumanReadable(t *testing.T) {
 	var sb strings.Builder
 	renderFindings(&sb, []driftFinding{{
