@@ -129,10 +129,14 @@ func Setup(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 		return nil, err
 	}
 
+	// Sampler intentionally omitted: the SDK reads OTEL_TRACES_SAMPLER +
+	// OTEL_TRACES_SAMPLER_ARG via applyTracerProviderEnvConfigs and falls
+	// back to ParentBased(AlwaysSample()) in ensureValidTracerProviderConfig
+	// when neither env var is set. Passing WithSampler here would override
+	// the env contract operators rely on (sdk/trace WithSampler godoc).
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(traceExp),
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.AlwaysSample())),
 	)
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
