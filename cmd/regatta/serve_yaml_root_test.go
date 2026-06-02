@@ -20,22 +20,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// TestServe_YAMLSpecAdapterRoot_DrivesItemsCatalog pins the S1-T1
-// contract: when `regatta.yaml` declares
-//
-//	spec_adapter:
-//	  type: markdown_catalog
-//	  root: <dir>
-//
-// at the repo root AND the operator omits the `--items-root` flag,
-// `serve --tick-once` resolves work items from <dir>/.regatta/items/*.md
-// without any extra wiring.
-//
-// Proxy for "items listed": the work_items row count in state.db after
-// one tick. A bare flag-default invocation against a repo with no
-// regatta.yaml fixture leaves work_items empty (covered by the existing
-// TestCLI_Serve_TickOnceStub test); this test asserts the new yaml-driven
-// path lands at least one row.
+// TestServe_YAMLSpecAdapterRoot_DrivesItemsCatalog pins the S1-T1 contract: when `regatta.yaml` declares  spec_adapter: type: markdown_catalog
 func TestServe_YAMLSpecAdapterRoot_DrivesItemsCatalog(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go not on PATH")
@@ -132,11 +117,7 @@ status: planned
 	}
 }
 
-// TestServe_YAMLSpecAdapterRoot_ExplicitFlagOverrides pins the
-// resolution priority: an explicit `--items-root` beats the
-// yaml-declared `spec_adapter.root`. Operators who script over the
-// binary with a different items dir must not get silently overridden
-// by a yaml field they did not edit.
+// TestServe_YAMLSpecAdapterRoot_ExplicitFlagOverrides pins the resolution priority: an explicit `--items-root` beats the yaml-declared `spec_a
 func TestServe_YAMLSpecAdapterRoot_ExplicitFlagOverrides(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go not on PATH")
