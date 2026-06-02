@@ -117,10 +117,95 @@ func TestLoad_MarkdownCatalogAdapter_Valid(t *testing.T) {
   selector: "label:planned"
 `, `spec_adapter:
   type: markdown_catalog
-  path: docs/MILESTONES.md
+  root: .
 `, 1)
 	if err := LoadBytes([]byte(yaml)); err != nil {
 		t.Fatalf("expected nil error for markdown_catalog adapter; got %v", err)
+	}
+}
+
+// TestLoad_MarkdownCatalog_RootDefaults pins that omitting `root` is
+// legal — the CUE default ("." per regatta.v1.cue §SpecAdapter
+// markdown_catalog) keeps minimal-yaml ergonomics for the self-host
+// case where items live at <repo>/.regatta/items/.
+func TestLoad_MarkdownCatalog_RootDefaults(t *testing.T) {
+	yaml := strings.Replace(minimalValid, `spec_adapter:
+  type: github_issues
+  selector: "label:planned"
+`, `spec_adapter:
+  type: markdown_catalog
+`, 1)
+	if err := LoadBytes([]byte(yaml)); err != nil {
+		t.Fatalf("expected nil error for markdown_catalog adapter with default root; got %v", err)
+	}
+}
+
+// TestLoad_MarkdownCatalog_DeadPathField_Errors pins the schema rename:
+// the legacy `path` field (which had no runtime consumer) is rejected
+// after the rename to `root`. Operators carrying old configs see an
+// actionable error rather than a silent no-op.
+func TestLoad_MarkdownCatalog_DeadPathField_Errors(t *testing.T) {
+	yaml := strings.Replace(minimalValid, `spec_adapter:
+  type: github_issues
+  selector: "label:planned"
+`, `spec_adapter:
+  type: markdown_catalog
+  path: docs/MILESTONES.md
+`, 1)
+	if err := LoadBytes([]byte(yaml)); err == nil {
+		t.Fatal("expected CUE rejection for dead `path` field on markdown_catalog; got nil")
+	}
+}
+
+// TestLoad_MarkdownCatalog_RootSurfacedOnConfig pins the typed accessor
+// downstream callers use to read the adapter root from a parsed config.
+// cmd/regatta/serve.go consumes this to drive the spawner's items-root
+// when --items-root is not explicitly passed.
+func TestLoad_MarkdownCatalog_RootSurfacedOnConfig(t *testing.T) {
+	yaml := strings.Replace(minimalValid, `spec_adapter:
+  type: github_issues
+  selector: "label:planned"
+`, `spec_adapter:
+  type: markdown_catalog
+  root: subdir
+`, 1)
+	cfg, err := LoadConfig([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if got := cfg.MarkdownCatalogRoot(); got != "subdir" {
+		t.Fatalf("MarkdownCatalogRoot()=%q; want %q", got, "subdir")
+	}
+}
+
+// TestLoad_MarkdownCatalog_RootDefaultSurfaced pins the CUE-default
+// flow: an operator who omits `root` reads "." back, not "".
+func TestLoad_MarkdownCatalog_RootDefaultSurfaced(t *testing.T) {
+	yaml := strings.Replace(minimalValid, `spec_adapter:
+  type: github_issues
+  selector: "label:planned"
+`, `spec_adapter:
+  type: markdown_catalog
+`, 1)
+	cfg, err := LoadConfig([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if got := cfg.MarkdownCatalogRoot(); got != "." {
+		t.Fatalf("MarkdownCatalogRoot()=%q; want %q (default)", got, ".")
+	}
+}
+
+// TestLoad_NonMarkdownAdapter_RootEmpty pins MarkdownCatalogRoot() == ""
+// for non-markdown adapter types, so serve.go can distinguish "yaml
+// did not declare markdown" from "markdown root is empty string."
+func TestLoad_NonMarkdownAdapter_RootEmpty(t *testing.T) {
+	cfg, err := LoadConfig([]byte(minimalValid))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if got := cfg.MarkdownCatalogRoot(); got != "" {
+		t.Fatalf("MarkdownCatalogRoot()=%q; want \"\" for github_issues adapter", got)
 	}
 }
 
