@@ -93,6 +93,7 @@ func (r *Reloader) Run(ctx context.Context) error {
 	reloads := make(chan string, 8)
 	var wg sync.WaitGroup
 	watcherReady := make(chan struct{})
+	signalReady := make(chan struct{})
 
 	if !r.DisableFsnotify {
 		wg.Add(1)
@@ -102,7 +103,9 @@ func (r *Reloader) Run(ctx context.Context) error {
 	}
 	if !r.DisableSighup {
 		wg.Add(1)
-		go func() { defer wg.Done(); r.signalLoop(ctx, reloads) }()
+		go func() { defer wg.Done(); r.signalLoop(ctx, reloads, signalReady) }()
+	} else {
+		close(signalReady)
 	}
 
 	wg.Add(1)
@@ -121,11 +124,18 @@ func (r *Reloader) Run(ctx context.Context) error {
 		}
 	}()
 
-	select {
-	case <-watcherReady:
-	case <-ctx.Done():
-		wg.Wait()
-		return nil
+	// Gate OnStart on BOTH triggers being live. Without the signal-ready
+	// gate a test-issued SIGHUP can race past an unregistered signal.Notify
+	// and hit Go's default disposition — terminate the process. Manifests
+	// as `TestReloader_BadTemplate_RetainsLastGood` timing out at
+	// `no reload result` (the SIGHUP was lost before any listener existed).
+	for _, ready := range []chan struct{}{watcherReady, signalReady} {
+		select {
+		case <-ready:
+		case <-ctx.Done():
+			wg.Wait()
+			return nil
+		}
 	}
 	if r.OnStart != nil {
 		r.OnStart()
