@@ -57,6 +57,14 @@ func NewHandler(deps Dependencies) http.Handler {
 		// Spec §3.3 default Cache-Control: no-store on operator surfaces.
 		// /ui/static/* sets its own immutable cache above before delegating.
 		w.Header().Set("Cache-Control", noStoreCacheControl)
+		// mux.HandleFunc("/", ...) is the catch-all; narrow to the literal
+		// root so /foo etc. surface as 404 instead of pretending the layout
+		// is the page they asked for. T6 mounts /approve/* below via
+		// RouteRegistrar, so those paths win on the longest-prefix rule.
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
 		if deps.Templates == nil {
 			http.Error(w, "templates not loaded", http.StatusInternalServerError)
 			return

@@ -20,7 +20,7 @@ const (
 
 // CSPMiddleware stamps spec §3.7 headers on every response before delegating
 // to next. The header set is fixed at boot — no per-request branching — so
-// the middleware adds two memory writes and one delegation per request.
+// the middleware adds four header writes and one delegation per request.
 func CSPMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hdr := w.Header()

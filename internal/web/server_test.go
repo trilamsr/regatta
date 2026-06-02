@@ -121,6 +121,21 @@ func TestConstNoZeroValueMagic(t *testing.T) {
 	}
 }
 
+// Non-root paths under the catch-all surface as 404 so an operator visiting /typo
+// does not get a stub rendered as a real page.
+func TestNewHandler_UnknownPathReturnsNotFound(t *testing.T) {
+	h := newTestHandler(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/does-not-exist", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status=%d want 404 (body=%q)", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Security-Policy"); got != cspExpected {
+		t.Errorf("404 path missing CSP header; got %q", got)
+	}
+}
+
 // Ensures handler does not crash with a nil Dependencies.RouteRegistrar (seam contract — T6 lands later).
 func TestNewHandler_NilRouteRegistrar(t *testing.T) {
 	tmpls, err := LoadTemplates(assetsFS)
