@@ -57,9 +57,7 @@ func TestPayload_BudgetReconciledJSONTags(t *testing.T) {
 	}
 }
 
-// TestSubstrate_TokenSpendPayloadValidates drives the substrate validate-
-// dispatch table against a well-formed TokenSpendPayload + rejects
-// malformed (missing call_id).
+// TestSubstrate_TokenSpendPayloadValidates pins the substrate validate-dispatch shape per spec §3.5.
 func TestSubstrate_TokenSpendPayloadValidates(t *testing.T) {
 	db := openWriterDB(t)
 	// Well-formed: pass it through RecordCall which builds the canonical
