@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups
+.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full crash-recovery-property-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups mutation-test mutation-test-install
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -25,9 +25,24 @@ go-check-full:  ## Full race sweep without -short. Run weekly + before any tag. 
 
 property-test:  ## Run rapid property tests. PHASE-S-RELAX: 50 checks in CI/local; spec-mandated 200 via `make property-test-full`.
 	go test -race -run 'TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty' ./internal/orchestrator/state/... -rapid.checks=50
+	go test -race -run 'TestSchedulerCrashRecoveryProperty' ./internal/orchestrator/scheduler/... -rapid.checks=50
+	go test -race -run 'TestSpendCrashRecoveryProperty' ./internal/cost/spend/... -rapid.checks=50
+	go test -race -run 'TestReaperCrashRecoveryProperty' ./internal/gates/approval/... -rapid.checks=50
 
-property-test-full:  ## Full 200-check property sweep. Run weekly + before any tag. PHASE-S-RELAX restoration target — fold back into `property-test` at end of self-host phase (memory/feedback_gate_relaxation_phase_s).
+property-test-full:  ## Full 200/2000-check property sweep. Run weekly + before any tag. PHASE-S-RELAX restoration target — fold back into `property-test` at end of self-host phase (memory/feedback_gate_relaxation_phase_s).
 	go test -race -run 'TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty' ./internal/orchestrator/state/... -rapid.checks=200
+	go test -race -run 'TestSchedulerCrashRecoveryProperty' ./internal/orchestrator/scheduler/... -rapid.checks=2000 -timeout=5m
+	go test -race -run 'TestSpendCrashRecoveryProperty' ./internal/cost/spend/... -rapid.checks=200
+	go test -race -run 'TestReaperCrashRecoveryProperty' ./internal/gates/approval/... -rapid.checks=200
+
+crash-recovery-property-full:  ## 2000-case crash-recovery property sweep. Nightly CI target; spec §3.4. ≤90s wallclock budget.
+	go test -race -run 'TestSchedulerCrashRecoveryProperty' ./internal/orchestrator/scheduler/... -rapid.checks=2000 -timeout=5m
+
+mutation-test-install:  ## Install pinned gremlins binary into $GOPATH/bin. Idempotent.
+	go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
+
+mutation-test: mutation-test-install  ## Run gremlins against cost + scheduler packages (spec §3.2 allowlist). Developer mode (no threshold enforcement); see scripts/mutation/run-gremlins.sh for env knobs.
+	NO_THRESHOLD=1 bash scripts/mutation/run-gremlins.sh
 
 bench:  ## Run benchmark corpus (scheduler.Tick, CycleCheck, ListSpawnable, BriefLoader.Sync, schemas.Verify, canon). ~30s total at -benchtime=3x.
 	go test -run=^$$ -bench=. -benchmem -benchtime=3x \

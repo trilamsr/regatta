@@ -180,7 +180,18 @@ exempt = re.compile(r"^(research/|docs/rfcs/|\.claude/)")
 # reviewer-tag fires in any file; banner + pr-ref restrict to source-code
 # comment leaders (// or shell #), because in markdown # introduces a
 # heading and would false-positive on legitimate doc structure.
-reviewer_tag = re.compile(r"[Rr]eviewer\s+[A-Z0-9][A-Za-z0-9/.#-]*[-/]?[A-Za-z0-9]")
+#
+# Tag shape (issue #333): the gate targets review-cycle inline tags like
+# "Reviewer Bob:" or "Reviewer-Alice/round-2", not prose that happens to
+# put a capitalized noun after "reviewer" ("Reviewer Notifier returns",
+# "Zero-reviewer Request"). Required structure:
+#   1. anchor: line-start, whitespace, or '@'
+#   2. literal "Reviewer" or "reviewer"
+#   3. separator: whitespace or '-' (no other prose runs into the name)
+#   4. one Capital+lowercase word (excludes ALL-CAPS terms like JSON)
+#   5. optional /-#-joined subref segments
+#   6. terminator: a colon or end-of-line (allowing trailing whitespace)
+reviewer_tag = re.compile(r"(?:^|[\s@])[Rr]eviewer(?:\s+|-)[A-Z][a-z]+(?:[/#-][A-Za-z0-9-]+)*(?:\s*:|\s*$)")
 source_pr_ref = re.compile(r"//.*\bPR\s*#\d+|^\s*#\s.*\bPR\s*#\d+")
 source_banner = re.compile(r"^//\s*[-=]{2,}\s*\S.*\s*[-=]{2,}\s*$|^#\s*[-=]{2,}\s*\S.*\s*[-=]{2,}\s*$")
 file = ""

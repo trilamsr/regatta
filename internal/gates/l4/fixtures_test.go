@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/gates/severity"
 )
 
 // Fixture-driven Run table — 7 model outputs route to expected verdicts.
@@ -29,7 +30,7 @@ func TestL4_Run_FixtureTable(t *testing.T) {
 			cfg := Config{
 				GateID:        "l4_adversarial",
 				Model:         DefaultModel,
-				SeverityBlock: []string{RuleCritical, RuleTwoHigh},
+				SeverityBlock: []string{severity.Critical, severity.TwoHigh},
 				Invoker:       fixtureInvoker(t, tc.fixture),
 			}
 			gr, err := Run(context.Background(), cfg, Input{PRSHA: "deadbeef", RunID: "run-fixture"})

@@ -33,6 +33,12 @@ gates:
   - id: adversarial
     type: ai
     model: claude-sonnet-4-6
+    # Per-category model overrides. Unmapped categories fall back to
+    # the primary `model` above. Bucketing collapses to one LLM call
+    # when every override equals the primary.
+    models:
+      security: claude-opus-4-7
+      refactor: claude-haiku-4-5
     severity_block: ['critical', '2*high']
   - id: drift
     type: ai

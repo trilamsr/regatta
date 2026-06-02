@@ -122,6 +122,7 @@ func (r *Reloader) Run(ctx context.Context) error {
 
 	var wg sync.WaitGroup
 	watcherReady := make(chan struct{})
+	signalReady := make(chan struct{})
 	if !r.DisableFsnotify {
 		wg.Add(1)
 		go func() { defer wg.Done(); r.watchLoop(ctx, reloads, watcherReady) }()
@@ -130,7 +131,9 @@ func (r *Reloader) Run(ctx context.Context) error {
 	}
 	if !r.DisableSighup {
 		wg.Add(1)
-		go func() { defer wg.Done(); r.signalLoop(ctx, reloads) }()
+		go func() { defer wg.Done(); r.signalLoop(ctx, reloads, signalReady) }()
+	} else {
+		close(signalReady)
 	}
 	wg.Add(1)
 	go func() {
@@ -145,14 +148,18 @@ func (r *Reloader) Run(ctx context.Context) error {
 		}
 	}()
 
-	// Block on watcher-ready so OnStart fires only after the inotify /
-	// kqueue / RDCW registration is live — closes the test-race window
-	// where a write lands before the watch is established.
-	select {
-	case <-watcherReady:
-	case <-ctx.Done():
-		wg.Wait()
-		return nil
+	// Block until BOTH triggers are live before OnStart fires. Without the
+	// signal-ready gate a test-issued SIGHUP can race past an unregistered
+	// signal.Notify and hit Go's default disposition — terminate the
+	// process (`signal: hangup`). watcher-ready closes the matching window
+	// for fsnotify writes landing pre-Add.
+	for _, ready := range []chan struct{}{watcherReady, signalReady} {
+		select {
+		case <-ready:
+		case <-ctx.Done():
+			wg.Wait()
+			return nil
+		}
 	}
 	if r.OnStart != nil {
 		r.OnStart()

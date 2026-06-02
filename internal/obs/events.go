@@ -76,6 +76,13 @@ const (
 	EventBriefRejected          EventName = "brief.rejected"
 	EventBriefMaterialiseFailed EventName = "brief.materialise_failed"
 	EventBriefEdgesMaterialised EventName = "brief.edges_materialised"
+	// EventBriefCriteriaDrift fires WARN per in-flight child whose
+	// snapshotted acceptance_json no longer matches the criteria a
+	// re-loaded brief carries. Snapshot semantics stay intentional (spec
+	// §2.4/2.5 Locked decision #5: no auto-resync). This event is the
+	// operator-visibility seam — runbook entry tells the operator to
+	// archive affected children + re-plan to apply the new bar. Issue #78.
+	EventBriefCriteriaDrift EventName = "brief.criteria_drift"
 
 	// Adapter sync (spec §5.8).
 	EventAdapterSyncSynced EventName = "adaptersync.synced"
@@ -212,6 +219,7 @@ func AllEventNames() []EventName {
 		EventBriefRejected,
 		EventBriefMaterialiseFailed,
 		EventBriefEdgesMaterialised,
+		EventBriefCriteriaDrift,
 		EventAdapterSyncSynced,
 		EventAdapterSyncFailed,
 		EventApprovalNotifyStub,

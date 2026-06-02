@@ -4,8 +4,10 @@
 // per spec §2.4 + §3 sign-then-persist: a brief that fails Validate
 // or VerifySignature emits obs.EventBriefRejected through the
 // injected logger and no child rows touch state. Rejections never
-// enter sqlite; audit trail lives in logs (RFC-0001 §audit deferral
-// to MVP-3+).
+// enter the brief-children table. Issue #80 adds a parallel durable
+// audit sink — every rejection slog.Warn is followed by a best-effort
+// substrate `brief_rejected` row so the rejection survives log
+// rotation + restart.
 package program
 
 import (
@@ -27,6 +29,12 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
+
+// auditNowFunc is the clock recordBriefRejection uses for substrate
+// timestamps. Production binds to time.Now via NewBriefLoader; tests
+// that need a deterministic clock swap it through a future field once
+// the use-case lands.
+type auditNowFunc = func() time.Time
 
 // maxBriefSize caps the bytes BriefLoader will read for any single
 // brief. 1 MiB is ~3 orders of magnitude above a realistic ProgramBrief
@@ -250,6 +258,14 @@ type BriefLoaderConfig struct {
 	// global provider — noop until obs/otel.Setup runs. Per W6 spec
 	// §3.3 + feedback_spec_pattern_authority.
 	Tracer trace.Tracer
+
+	// Audit is the substrate-sink config for durable rejection records
+	// (issue #80). Zero value disables the sink; an operator without
+	// REGATTA_HMAC_KEY keeps the slog-only behaviour. When enabled,
+	// every rejection slog.Warn is followed by a best-effort
+	// substrate.AppendEvent so the record outlives log rotation +
+	// restart.
+	Audit BriefAuditConfig
 }
 
 // BriefLoader is the recurring sync. Construct once at orchestrator
@@ -266,6 +282,8 @@ type BriefLoader struct {
 	evaluator *EdgeEvaluator
 	log       *slog.Logger
 	tracer    trace.Tracer
+	audit    BriefAuditConfig
+	auditNow auditNowFunc
 
 	mu               sync.RWMutex
 	outputsSchemas   map[FeatureID]*OutputsSchema
@@ -304,6 +322,8 @@ func NewBriefLoader(cfg BriefLoaderConfig) (*BriefLoader, error) {
 		evaluator:        cfg.Evaluator,
 		log:              log,
 		tracer:           tracer,
+		audit:            cfg.Audit,
+		auditNow:         time.Now,
 		outputsSchemas:   map[FeatureID]*OutputsSchema{},
 		programByFeature: map[FeatureID]string{},
 	}, nil
@@ -378,24 +398,50 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		brief, v2, err := loadAndVerifyBriefBoth(b.fsys, path, b.keyring)
 		if err != nil {
 			b.log.Warn(string(obs.EventBriefRejected), "path", path, "reason", err.Error())
+			b.recordBriefRejection(ctx, path, err.Error())
 			continue
 		}
 		if _, err := b.db.GetWorkItem(ctx, brief.ParentWorkItemID); err != nil {
 			if errors.Is(err, state.ErrWorkItemNotFound) {
 				b.log.Warn(string(obs.EventBriefRejected), "path", path,
 					"reason", "unknown_parent_program", "id", brief.ParentWorkItemID)
+				b.recordBriefRejection(ctx, path, "unknown_parent_program: "+brief.ParentWorkItemID)
 				continue
 			}
 			return fmt.Errorf("brief_loader: probe parent %s: %w", brief.ParentWorkItemID, err)
+		}
+		// Issue #92: processed_briefs is the durable replay-defence
+		// floor; work_items watermark is fallback-only because the row
+		// set is mutable by operators. Two-layer probe so an exact MAC
+		// re-presentation is rejected even at equal/earlier produced_at.
+		if seen, err := b.db.HasProcessedBriefHMAC(ctx, brief.Signature.MAC); err != nil {
+			return fmt.Errorf("brief_loader: probe hmac for %s: %w", brief.ParentWorkItemID, err)
+		} else if seen {
+			b.log.Warn(string(obs.EventBriefRejected), "path", path,
+				"reason", "brief_already_processed",
+				"parent", brief.ParentWorkItemID)
+			b.recordBriefRejection(ctx, path, "brief_already_processed: "+brief.ParentWorkItemID)
+			continue
+		}
+		recorded, hasRecorded, err := b.db.GetProcessedBrief(ctx, brief.ParentWorkItemID)
+		if err != nil {
+			return fmt.Errorf("brief_loader: probe processed_briefs for %s: %w", brief.ParentWorkItemID, err)
 		}
 		watermark, err := b.db.MaxUpdatedAtForBriefChildren(ctx, brief.ParentWorkItemID)
 		if err != nil {
 			return fmt.Errorf("brief_loader: freshness watermark for %s: %w", brief.ParentWorkItemID, err)
 		}
+		// MAX over both layers — the durable floor cannot regress when
+		// work_items rows are deleted (the original #92 attack).
+		if hasRecorded && recorded.LastProducedAt.After(watermark) {
+			watermark = recorded.LastProducedAt
+		}
 		if !watermark.IsZero() && !brief.ProducedAt.After(watermark) {
 			b.log.Warn(string(obs.EventBriefRejected), "path", path,
 				"reason", "stale_produced_at",
 				"produced_at", brief.ProducedAt, "watermark", watermark)
+			b.recordBriefRejection(ctx, path, fmt.Sprintf("stale_produced_at: produced_at=%s watermark=%s",
+				brief.ProducedAt.Format(time.RFC3339), watermark.Format(time.RFC3339)))
 			continue
 		}
 
@@ -415,6 +461,7 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 				b.log.Warn(string(obs.EventBriefRejected), "path", path,
 					"reason", "feature_id_collision",
 					"feature", feat.ID, "first_seen_in", firstPath)
+				b.recordBriefRejection(ctx, path, "feature_id_collision: "+feat.ID+" first_seen_in="+firstPath)
 				continue
 			}
 			seenFeature[feat.ID] = path
@@ -422,6 +469,25 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 			snapshot, mErr := json.Marshal(featureAcceptanceSnapshot(feat, acceptanceByFulfilled))
 			if mErr != nil {
 				return fmt.Errorf("brief_loader: marshal snapshot for %s: %w", feat.ID, mErr)
+			}
+			// Issue #78: warn the operator when a re-loaded brief's
+			// acceptance criteria diverge from an in-flight child's
+			// snapshot. Snapshot semantics stay intentional per spec §2.4
+			// + §2.5 Locked decision #5 (no auto-resync) — this is the
+			// visibility seam so silent re-snapshots no longer surprise
+			// agents whose gate bar just shifted. Skip planned + archived:
+			// planned rows snap forward harmlessly on this same upsert;
+			// archived rows are no longer gating anything.
+			if existing, gErr := b.db.GetWorkItem(ctx, feat.ID); gErr == nil &&
+				existing.Status != state.WorkStatusPlanned &&
+				existing.Status != state.WorkStatusArchived &&
+				existing.AcceptanceJSON != "" &&
+				existing.AcceptanceJSON != string(snapshot) {
+				b.log.Warn(string(obs.EventBriefCriteriaDrift),
+					string(obs.KeyProgramID), brief.ParentWorkItemID,
+					string(obs.KeyWorkItemID), feat.ID,
+					"prior_status", string(existing.Status),
+					"path", path)
 			}
 			child := state.WorkItem{
 				ID:                feat.ID,
@@ -435,6 +501,7 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 			}
 			if cycErr := b.db.CycleCheck(ctx, child); cycErr != nil {
 				b.log.Warn(string(obs.EventBriefRejected), "path", path, "reason", cycErr.Error())
+				b.recordBriefRejection(ctx, path, cycErr.Error())
 				continue
 			}
 			staged = append(staged, child)
@@ -454,6 +521,14 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 				freshSchemas[f.ID] = f.OutputsSchema
 				freshProgramBy[f.ID] = v2.ProgramID
 			}
+		}
+		// Issue #92: persist replay-defence watermark independent of
+		// work_items so an operator deleting brief children cannot reset
+		// the floor to zero. Written last so a partial-failure brief
+		// (any return above) never records as accepted.
+		if err := b.db.RecordProcessedBrief(ctx, brief.ParentWorkItemID,
+			brief.ProducedAt, brief.Signature.MAC, pollStartedAt); err != nil {
+			return fmt.Errorf("brief_loader: record processed_brief %s: %w", brief.ParentWorkItemID, err)
 		}
 	}
 

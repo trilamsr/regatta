@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/canon"
 	"github.com/trilamsr/regatta/internal/config"
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
@@ -32,6 +34,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 	"github.com/trilamsr/regatta/internal/program"
 	"github.com/trilamsr/regatta/internal/web"
 )
@@ -188,7 +191,8 @@ func runServe(args []string) int {
 		return 2
 	}
 
-	costKey, costKeyID := firstKey(loadBriefKeyring())
+	costKeyring, costKeyID := loadBriefKeyringWithActive()
+	costKey := costKeyring[costKeyID]
 	set, err := buildSpawner(*spawnerName, *repoRoot, *claudeBin, *baseRef, slogger, db, costKey, costKeyID)
 	if err != nil {
 		logger.Printf("spawner: %v", err)
@@ -215,6 +219,16 @@ func runServe(args []string) int {
 		Keyring:   loadBriefKeyring(),
 		Evaluator: evaluator,
 		Logger:    slogger,
+		// Issue #80: durable audit sink under the existing brief HMAC
+		// key. Zero-key deployments (no REGATTA_HMAC_KEY) fall back to
+		// slog-only retention; the BriefAuditConfig.enabled() guard
+		// inside the loader keeps the cost zero in that case.
+		Audit: program.BriefAuditConfig{
+			Key:      costKey,
+			KeyID:    costKeyID,
+			TenantID: substrate.DefaultTenantID,
+			RunID:    "brief-loader",
+		},
 	})
 	if err != nil {
 		logger.Printf("brief loader: %v", err)
@@ -380,39 +394,94 @@ func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger
 	}
 }
 
-// firstKey picks one (keyID, key) pair from loadBriefKeyring's map so
-// the spawner-side cost-governor callback can sign substrate rows with
-// the same key the brief loader + approval gate use — single HMAC key
-// per process; ranging the map and breaking is intentional.
-func firstKey(keys map[string][]byte) ([]byte, string) {
-	for k, v := range keys {
-		return v, k
-	}
-	return nil, ""
+// loadBriefKeyring returns the configured HMAC keyring for brief
+// verification + approval-token verify. The verify-side consumes every
+// entry; signers must use loadBriefKeyringWithActive to pick the
+// active (write) key.
+func loadBriefKeyring() map[string][]byte {
+	keys, _ := loadBriefKeyringWithActive()
+	return keys
 }
 
-// loadBriefKeyring reads the HMAC key from REGATTA_HMAC_KEY (or the
-// env var named by REGATTA_HMAC_KEY_ENV when set) and returns it as a
-// one-entry keyring keyed by REGATTA_HMAC_KEY_ID (default "k1", which
-// matches the `program plan -hmac-key-id` default so the offline e2e
-// flow round-trips without per-key wiring). Empty keyring when unset --
-// BriefLoader skips brief verification only when no briefs exist on
-// disk; a brief landing without a configured key surfaces the misconfig
-// to the operator via brief.rejected logs.
-func loadBriefKeyring() map[string][]byte {
+// loadBriefKeyringWithActive resolves the multi-key keyring + active
+// keyID per docs/engineer/specs/2026-06-02-s3-t3-key-rotation-drill.md
+// §3.3. Precedence: REGATTA_HMAC_KEYRING (colon-comma list) overrides
+// the legacy REGATTA_HMAC_KEY single-key path. Active = last entry in
+// keyring order (rotation IS append) unless REGATTA_HMAC_KEY_ID
+// overrides — operators recovering under an older key set the explicit
+// keyID and sign under it. Empty keyring returns ("", "") and lets the
+// brief loader surface the misconfig via brief.rejected logs.
+func loadBriefKeyringWithActive() (map[string][]byte, string) {
+	if raw := os.Getenv("REGATTA_HMAC_KEYRING"); raw != "" {
+		keys, order, err := parseBriefKeyring(raw)
+		if err != nil {
+			// Boot-time misconfig should fail loud; we surface via empty
+			// keyring + brief.rejected. Future PR-C wires log.Fatal at
+			// serve entry.
+			return map[string][]byte{}, ""
+		}
+		active := order[len(order)-1]
+		if override := os.Getenv("REGATTA_HMAC_KEY_ID"); override != "" {
+			if _, ok := keys[override]; ok {
+				active = override
+			}
+		}
+		return keys, active
+	}
+
 	envName := os.Getenv("REGATTA_HMAC_KEY_ENV")
 	if envName == "" {
 		envName = "REGATTA_HMAC_KEY"
 	}
 	v := os.Getenv(envName)
 	if v == "" {
-		return map[string][]byte{}
+		return map[string][]byte{}, ""
 	}
 	keyID := os.Getenv("REGATTA_HMAC_KEY_ID")
 	if keyID == "" {
 		keyID = "k1"
 	}
-	return map[string][]byte{keyID: []byte(v)}
+	return map[string][]byte{keyID: []byte(v)}, keyID
+}
+
+// parseBriefKeyring decodes the colon-comma multi-key env format
+// (`k1:hex,k2:hex,...`) into a keyring map plus the keyID order. Hex
+// over JSON because kubectl + Docker `--env` accept colons + commas
+// unquoted; JSON forces shell-quote drama (spec §5 reviewer note).
+// Returns ErrDuplicateKeyID when two entries share a keyID — silent
+// overwrite would lose the older verify path mid-rotation.
+func parseBriefKeyring(raw string) (map[string][]byte, []string, error) {
+	pairs := strings.Split(raw, ",")
+	keys := make(map[string][]byte, len(pairs))
+	order := make([]string, 0, len(pairs))
+	for i, pair := range pairs {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		idx := strings.IndexByte(pair, ':')
+		if idx <= 0 || idx == len(pair)-1 {
+			return nil, nil, fmt.Errorf("keyring entry %d: want 'keyID:hex', got %q", i, pair)
+		}
+		keyID := strings.TrimSpace(pair[:idx])
+		hexMat := strings.TrimSpace(pair[idx+1:])
+		decoded, err := hex.DecodeString(hexMat)
+		if err != nil {
+			return nil, nil, fmt.Errorf("keyring entry %s: hex decode: %w", keyID, err)
+		}
+		if len(decoded) < schemas.MinKeyLen {
+			return nil, nil, fmt.Errorf("keyring entry %s: %w (got %d bytes)", keyID, schemas.ErrWeakKey, len(decoded))
+		}
+		if _, dup := keys[keyID]; dup {
+			return nil, nil, fmt.Errorf("keyring entry %s: duplicate keyID", keyID)
+		}
+		keys[keyID] = decoded
+		order = append(order, keyID)
+	}
+	if len(order) == 0 {
+		return nil, nil, fmt.Errorf("keyring is empty")
+	}
+	return keys, order, nil
 }
 
 // buildApprovalGate constructs the scheduler-side HITL gate seam from
@@ -599,10 +668,9 @@ func loadMarkdownCatalogRoot(repoRoot string) (string, bool) {
 // empty key returns an empty MapKeyring so NewGate's constructor guard
 // fires only when the operator has at least one gate defined.
 func approvalKeyring() (canon.Keyring, string) {
-	keys := loadBriefKeyring()
-	keyID := os.Getenv("REGATTA_HMAC_KEY_ID")
-	if keyID == "" {
-		keyID = "k1"
+	keys, active := loadBriefKeyringWithActive()
+	if active == "" {
+		active = "k1"
 	}
-	return canon.MapKeyring(keys), keyID
+	return canon.MapKeyring(keys), active
 }
