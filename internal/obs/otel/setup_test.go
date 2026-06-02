@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	otrace "go.opentelemetry.io/otel/trace"
+	commonpb "go.opentelemetry.io/proto/otlp/common/v1"
 	coltrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/grpc"
 
@@ -212,6 +214,84 @@ func TestSetup_HonorsOTELTracesSamplerEnv(t *testing.T) {
 	}
 }
 
+// TestSetup_CostAttrsSurviveParentBasedSampling pins cost-governor spec §3.7 — regatta.cost.* attrs on llm_call survive operator-set ParentBased sampling.
+func TestSetup_CostAttrsSurviveParentBasedSampling(t *testing.T) {
+	srv, addr, sink := startStubOTLPCollector(t)
+	t.Cleanup(srv.Stop)
+
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://"+addr)
+	t.Setenv("OTEL_EXPORTER_OTLP_INSECURE", "true")
+	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE", "true")
+	t.Setenv("OTEL_BSP_SCHEDULE_DELAY", "50")
+	// parentbased_traceidratio with arg=1.0 is the SDK's "sample every
+	// trace" knob through the same ParentBased decorator operators
+	// reach for in prod. Pins the contract that operator-chosen
+	// sampling does not strip the cost attr set off the llm_call span.
+	t.Setenv("OTEL_TRACES_SAMPLER", "parentbased_traceidratio")
+	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "1.0")
+
+	shutdown, err := otelpkg.Setup(context.Background(), otelpkg.Config{
+		ServiceName: "regatta",
+	})
+	if err != nil {
+		t.Fatalf("Setup err = %v; want nil", err)
+	}
+
+	// llm_call is the W6 spec name; runtime emits "chat <model>" per
+	// W6 §3.4 A2. Either form carries the regatta.cost.* attrs identically
+	// — the assertion targets the attr set, not the span name.
+	tracer := otel.Tracer("setup-test")
+	_, span := tracer.Start(context.Background(), "chat claude-sonnet-4-7",
+		otrace.WithSpanKind(otrace.SpanKindClient),
+		otrace.WithAttributes(
+			attribute.String("regatta.cost.error", "pricing_missing"),
+			attribute.Float64("regatta.cost.usd_estimate", 0.42),
+			attribute.Bool("regatta.cost.allow", true),
+		),
+	)
+	span.End()
+
+	if err := shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown err = %v; want nil", err)
+	}
+
+	spans := sink.spans()
+	if len(spans) == 0 {
+		t.Fatal("stub collector received zero spans; want >= 1 under parentbased_traceidratio arg=1.0")
+	}
+
+	var got *stubSpan
+	for i := range spans {
+		if spans[i].name == "chat claude-sonnet-4-7" {
+			got = &spans[i]
+			break
+		}
+	}
+	if got == nil {
+		names := make([]string, 0, len(spans))
+		for _, s := range spans {
+			names = append(names, s.name)
+		}
+		t.Fatalf("llm_call-shaped span absent from sink; got names %v", names)
+	}
+
+	wantAttrs := map[string]any{
+		"regatta.cost.error":        "pricing_missing",
+		"regatta.cost.usd_estimate": 0.42,
+		"regatta.cost.allow":        true,
+	}
+	for k, want := range wantAttrs {
+		gotVal, ok := got.attrs[k]
+		if !ok {
+			t.Errorf("attr %q absent from exported span; sampling stripped the cost attr set", k)
+			continue
+		}
+		if gotVal != want {
+			t.Errorf("attr %q = %v (%T); want %v (%T)", k, gotVal, gotVal, want, want)
+		}
+	}
+}
+
 // stubSpanSink captures the span names a stub gRPC OTLP collector sees
 // so the export-wiring test can assert on flushed spans after shutdown.
 type stubSpanSink struct {
@@ -221,7 +301,8 @@ type stubSpanSink struct {
 }
 
 type stubSpan struct {
-	name string
+	name  string
+	attrs map[string]any
 }
 
 func (s *stubSpanSink) Export(_ context.Context, req *coltrace.ExportTraceServiceRequest) (*coltrace.ExportTraceServiceResponse, error) {
@@ -230,11 +311,37 @@ func (s *stubSpanSink) Export(_ context.Context, req *coltrace.ExportTraceServic
 	for _, rs := range req.GetResourceSpans() {
 		for _, ss := range rs.GetScopeSpans() {
 			for _, sp := range ss.GetSpans() {
-				s.flat = append(s.flat, stubSpan{name: sp.GetName()})
+				kvs := sp.GetAttributes()
+				attrs := make(map[string]any, len(kvs))
+				for _, kv := range kvs {
+					attrs[kv.GetKey()] = anyValueToGo(kv.GetValue())
+				}
+				s.flat = append(s.flat, stubSpan{name: sp.GetName(), attrs: attrs})
 			}
 		}
 	}
 	return &coltrace.ExportTraceServiceResponse{}, nil
+}
+
+// anyValueToGo unwraps an OTLP AnyValue oneof into the native Go type
+// the test cases compare against — keeps the stubSpan API ergonomic
+// without leaking proto types into per-test assertions.
+func anyValueToGo(v *commonpb.AnyValue) any {
+	if v == nil {
+		return nil
+	}
+	switch v.GetValue().(type) {
+	case *commonpb.AnyValue_StringValue:
+		return v.GetStringValue()
+	case *commonpb.AnyValue_BoolValue:
+		return v.GetBoolValue()
+	case *commonpb.AnyValue_IntValue:
+		return v.GetIntValue()
+	case *commonpb.AnyValue_DoubleValue:
+		return v.GetDoubleValue()
+	default:
+		return nil
+	}
 }
 
 func (s *stubSpanSink) spans() []stubSpan {
