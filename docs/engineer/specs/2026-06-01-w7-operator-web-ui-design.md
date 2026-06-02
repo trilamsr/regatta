@@ -184,6 +184,7 @@ Makefile                            # ADD: lint-web-template-html, lint-hx-sync,
 
 | Method | Path | Purpose | Auth | Caching |
 |---|---|---|---|---|
+| `GET` | `/approve/redeem?t=<hmac-token>` | One-time redeem endpoint. Validates the HMAC token in the query string, sets `regatta_approval_token` + `regatta_csrf` cookies (both per-ULID scope; see §3.6.1–§3.6.2), then 303-redirects to `/approve/{approval_id}`. Token never reappears in path or referer after this hop (I1). | HMAC token in `t` query param (validated via `canon.VerifyToken`) | `Cache-Control: no-store, no-cache` + `Referrer-Policy: no-referrer` |
 | `GET` | `/approve/{approval_id}` | Render approval page. The path carries **only the ULID** of the approval (public, audit-trail-safe). The HMAC token is in a short-lived cookie set on first redirect from the Slack/email click (I1). | HMAC token in cookie (validated via `canon.VerifyToken`) + Origin-header check (S2) | `Cache-Control: no-store, no-cache` + `Referrer-Policy: no-referrer` |
 | `POST` | `/approve/{approval_id}/decide` | Submit decision. Body: form-urlencoded `decision={allow,deny}` + `reason=<text>` + `csrf=<form-token>`. Server calls `approval.DecideTx`. | HMAC cookie + CSRF (double-submit) + Origin check (S2) | `Cache-Control: no-store` |
 | `GET` | `/approve/{approval_id}/diff` | Full diff stream (Transfer-Encoding: chunked) with 1 MiB hard cap + redaction notice (I2). Only used when `_diff.tmpl` overflows the 8 KiB cap. | same as approval page | `Cache-Control: no-store` |
@@ -208,7 +209,7 @@ All templates under `internal/web/templates/` embedded via `//go:embed templates
 | `approval_diff.tmpl` | page | Full-diff overflow renderer; chunked stream; 1 MiB hard cap (I2) | `_flash.tmpl` | _none_ |
 | `runs.tmpl` | page | HTML table: work_items (id, lane, state, started_at, ended_at, trace_id link) ORDER BY started_at; HTML list: edges (`from_id → to_id`); filter form (state + lane). NO sort UI (S4). NO SVG (S1). | `_flash.tmpl` | `runs_cost.tmpl` via `hx-get="/runs/{run_id}/cost"` |
 | `runs_cost.tmpl` | partial | Cost panel: input_tokens + output_tokens + USD = `SUM(json_extract(payload_json,'$.usd_micros'))/1e6` (S3); budget bar if `policies WHERE kind='budget' AND scope_id=run_id` row exists. Single SUM aggregate. Time-series deferred to W7.4. | _none_ | _none_ |
-| `_diff.tmpl` | partial | Server-rendered unified diff; HARD CAP 8 KiB output (I2 — lifted from §9 v1 open-q); overflow → "Show full diff →" link to `/approve/{approval_id}/diff`. Operates on `[]DiffLine{Op, Text, OldLineNum, NewLineNum}`. | _none_ | _none_ |
+| `_diff.tmpl` | partial | Server-rendered unified diff; HARD CAP **8192 bytes (raw byte count, not runes)** output (I2 — lifted from §9 v1 open-q); hard-truncate at byte boundary, then `utf8.ValidString` guard trims the trailing partial code-point if the cut landed mid-rune; overflow renders truncation indicator `... (8 KiB cap reached)` plus "Show full diff →" link to `/approve/{approval_id}/diff`. Operates on `[]DiffLine{Op, Text, OldLineNum, NewLineNum}`. | _none_ | _none_ |
 | `_flash.tmpl` | partial | Green/red banner. | _none_ | _none_ |
 
 **Template funcs whitelisted at load time**: `formatTime`, `formatBytes`, `formatTokens`, `formatUSDMicros`, `truncate`, `humanizeDuration`, `safeURL` (whitelisted scheme prefixes only), `csrfToken`, `clampDiff` (enforces 8 KiB cap server-side — I2).
@@ -228,12 +229,18 @@ All templates under `internal/web/templates/` embedded via `//go:embed templates
 
 **Build step (developer machine only)**:
 ```bash
-make build-tailwind   # runs: npx tailwindcss -i ./internal/web/css/input.css \
-                      #                       -o ./internal/web/static/tailwind.min.css \
-                      #                       --minify --content './internal/web/templates/*.tmpl'
+make build-tailwind   # runs: npx tailwindcss@3.4.1 -i ./internal/web/css/input.css \
+                      #                              -o ./internal/web/static/tailwind.min.css \
+                      #                              --minify --content './internal/web/templates/*.tmpl'
 ```
 
+**Pinned versions** (as of 2026-06-01, latest stable on each major):
+- Tailwind CSS `3.4.1`
+- htmx `2.0.4`
+
 `tailwind.min.css` is **committed** under `internal/web/static/`. CI does NOT run `npx`. The artifact ships as part of the source tree and goes into `embed.FS` at `go build` time. Net binary delta after Tailwind minify+purge against our template content: ≤ 15 KiB gzipped.
+
+**SHA-256 hashes for vendored assets**: tracked in `internal/web/static/vendored-assets.lock` (one line per artifact: `<sha256>  <relpath>`). Pre-merge CI re-derives hashes from the in-tree bytes and fails if `vendored-assets.lock` drifts. Lock file shipped in T5; standing tracking issue opens if hash discipline ever regresses.
 
 **Why this beats CDN** (closes R3):
 - No third-party origin in CSP.
@@ -249,11 +256,11 @@ make build-tailwind   # runs: npx tailwindcss -i ./internal/web/css/input.css \
 **Token never traverses URL path** (I1). The flow:
 
 1. Reviewer clicks Slack/email link: `https://regatta.host/approve/redeem?t=<hmac-token>` (one-time redeem endpoint).
-2. Server validates token; sets short-lived (= `cfg.DecisionWindow`) cookie `regatta_approval_token=<hmac-token>; SameSite=Strict; Secure; HttpOnly=true; Path=/approve/<approval_id>`; redirects 303 to `/approve/<approval_id>` (opaque ULID).
+2. Server validates token; sets short-lived cookie `regatta_approval_token=<hmac-token>; SameSite=Strict; Secure; HttpOnly=true; Path=/approve/<approval_id>; Max-Age=int(cfg.DecisionWindow.Seconds())`; redirects 303 to `/approve/<approval_id>` (opaque ULID). **Cookie scope is per-ULID**, deliberately tighter than a `/approve/*` glob — one stolen cookie cannot replay against a sibling approval.
 3. All subsequent GET/POST to `/approve/<approval_id>*` read the token from the cookie. Path now logs as `/approve/01H8...` in reverse-proxy + browser-history — opaque ULID, audit-safe.
 4. Slack notifier emits message with `unfurl_links: false` so Slackbot does not preflight-GET the redeem URL.
 
-TTL = `cfg.DecisionWindow` (existing token's `Window` field). Expired → `approval_error.tmpl` with `token_expired`.
+TTL = `cfg.DecisionWindow` (existing token's `Window` field), wired to cookie as `Max-Age=int(cfg.DecisionWindow.Seconds())`. Expired → `approval_error.tmpl` with `token_expired`.
 
 Single-use: token's `jti` consumed on POST via existing `token_consumed` event in `approval_events`. Second POST → `token_replay` page.
 
@@ -265,10 +272,10 @@ View (GET) does NOT consume the token. Refresh is safe; only POST mutates state.
 
 #### 3.6.2 CSRF defense + Origin check (S2)
 
-- Cookie: `regatta_csrf={random-32-hex}; SameSite=Strict; Secure; HttpOnly=true; Path=/approve/`. Issued on first GET after redeem.
+- Cookie: `regatta_csrf={random-32-hex}; SameSite=Strict; Secure; HttpOnly=true; Path=/approve/<approval_id>` (per-ULID, matches token cookie scope). Value = 16 bytes from `crypto/rand` (NOT `math/rand`) hex-encoded → 32 chars. Issued on first GET after redeem.
 - Form: hidden `<input type="hidden" name="csrf" value="{{.CSRFToken}}">` populated **server-side** from the cookie (template func runs in handler scope, reads cookie at render time — cookie itself is HttpOnly, JS cannot read it).
 - Server validates `r.PostFormValue("csrf") == cookie.Value` via `subtle.ConstantTimeCompare`. Mismatch → 403, no audit row.
-- **Plus Origin check**: server rejects POST if `Origin` header missing or `Origin != "https://" + r.Host`. htmx 2 sets `Origin` automatically. Curl-based attacks blocked.
+- **Plus Origin check**: server rejects POST if `Origin` header missing or `Origin != "https://" + r.Host`. `r.Host` carries the port (e.g. `localhost:8080`), so the comparison is exact-match including port — a request to `:8080` cannot be forged from `:8081`. htmx 2 sets `Origin` automatically. Curl-based attacks blocked.
 - Both layers locked (open-q S2 ruling).
 
 #### 3.6.3 DAG view + cost panel (`/runs/{run_id}*`)
@@ -307,7 +314,7 @@ Content-Security-Policy:
   default-src 'self';
   script-src 'self';
   style-src 'self';
-  img-src 'self' data:;
+  img-src 'self';
   connect-src 'self';
   frame-ancestors 'none';
   base-uri 'self';
@@ -318,8 +325,10 @@ X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
 ```
 
+`data:` URIs dropped from `img-src` — no v1 template uses them. Re-add (and document the use) if SVG icons ever need inline embedding. Tightening reduces attack surface (inline-image vector for content-sniff escapes).
+
 Wire-format (single line for reverse-proxy override):
-`Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` (N2)
+`Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` (N2)
 
 **No third-party origins. No `unsafe-inline`. No `unsafe-eval`.** htmx 2 runs with `htmx.config.allowEval = false` and templates use `data-hx-*` (not `hx-on::*`) for any handler attachment.
 
@@ -373,7 +382,7 @@ W7 ships during the substrate migration window. Reading legacy tables that get r
 | **DAG list view** (work_items + edges) | `work_items` + `work_item_edges` (legacy) | `substrate_events` fold (`kind='node_output'` for work_items; edges stay in DDL — substrate spec §2.1 keeps edges as structural metadata, not event log) | List view is a read-only render; W7.4 followup swaps the SELECT to `fold(kind='node_output')` once Phase 3 lands. |
 | **Cost panel** | `substrate_events WHERE kind='token_spend'` (R1 — substrate is the **only** source; v1 has no legacy table to read from) | UNCHANGED | Brand-new surface; no legacy precedent. Blocking on substrate Phase 1 (table ships) — see §7 wave ordering. |
 
-**Substrate-spec citation**: per `docs/superpowers/specs/2026-06-01-unified-substrate-design.md` §2.1 (lines 56-113) the `substrate_events` table ships in migration `0006_substrate.sql` (renumbered from spec's `0005` per dispatch note) with `kind='token_spend'` payload carrying `usd_micros`, `input_tokens`, `output_tokens`, `model`, `llm_call_id`. The fold semantics in §4 of the substrate spec specify `set-union over (work_item_id, llm_call_id)` for `token_spend` — duplicates dedupe at fold time, not at SUM time. W7's single-SUM query above is correct under set-union because the substrate writer enforces idempotency at insert via the unique `(run_id, written_by, nonce)` index (substrate spec §2.1 line 111-112).
+**Substrate-spec citation**: per `docs/superpowers/specs/2026-06-01-unified-substrate-design.md` §2.1 (event log table definition + payload validators section) the `substrate_events` table ships in migration `0006_substrate.sql` (renumbered from spec's `0005` per dispatch note) with `kind='token_spend'` payload carrying `usd_micros`, `input_tokens`, `output_tokens`, `model`, `llm_call_id`. The fold semantics in §4 of the substrate spec specify `set-union over (work_item_id, llm_call_id)` for `token_spend` — duplicates dedupe at fold time, not at SUM time. W7's single-SUM query above is correct under set-union because the substrate writer enforces idempotency at insert via the unique `(run_id, written_by, nonce)` index declared in the §2.1 event log DDL.
 
 **W7.0 task T1 explicitly declares** "W7 depends on substrate Phase 1 (migration `0006_substrate.sql` applied)." If substrate slips, W7.3 (cost panel) blocks but W7.0/W7.1/W7.2 proceed.
 
