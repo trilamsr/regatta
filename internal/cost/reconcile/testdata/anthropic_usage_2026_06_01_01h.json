@@ -1,0 +1,23 @@
+{
+  "data": [
+    {
+      "bucket_start": "2026-06-01T01:00:00Z",
+      "bucket_end": "2026-06-01T02:00:00Z",
+      "model": "claude-sonnet-4-7",
+      "uncached_input_tokens": 1000000,
+      "cache_read_input_tokens": 500000,
+      "cache_creation_input_tokens": 200000,
+      "output_tokens": 250000
+    },
+    {
+      "bucket_start": "2026-06-01T01:00:00Z",
+      "bucket_end": "2026-06-01T02:00:00Z",
+      "model": "claude-haiku-4-5",
+      "uncached_input_tokens": 500000,
+      "cache_read_input_tokens": 100000,
+      "cache_creation_input_tokens": 0,
+      "output_tokens": 80000
+    }
+  ],
+  "has_more": false
+}

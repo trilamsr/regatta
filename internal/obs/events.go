@@ -106,6 +106,19 @@ const (
 	// Task H). Carries reason= attr so dashboards can distinguish
 	// fallback causes if the matrix later grows.
 	EventPlannerFallback EventName = "planner.prompt_fallback"
+
+	// Cost-governor reconciler (cost-gov §3.4). Tick lifecycle + fail
+	// modes. Skipped fires WARN when the admin key is unset; Fallback
+	// fires WARN when Cost API is unavailable and the run uses the
+	// Usage API + local pricing path. Failing fires ERROR after 5
+	// consecutive upstream failures so dashboards see a sustained
+	// outage (single failure is below the noise floor by design).
+	// DriftAlert fires WARN once per (period_start, drift_pct@2dp) per
+	// A4 dedup.
+	EventCostReconcileSkipped  EventName = "cost.reconcile_skipped"
+	EventCostReconcileFallback EventName = "cost.reconcile_fallback"
+	EventCostReconcileFailing  EventName = "cost.reconcile_failing"
+	EventCostDriftAlert        EventName = "cost.drift_alert"
 )
 
 // Attribute keys. The set is intentionally small — anything not on
@@ -203,6 +216,10 @@ func AllEventNames() []EventName {
 		EventApprovalAutoApproved,
 		EventApprovalEscalated,
 		EventPlannerFallback,
+		EventCostReconcileSkipped,
+		EventCostReconcileFallback,
+		EventCostReconcileFailing,
+		EventCostDriftAlert,
 	}
 }
 
