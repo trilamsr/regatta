@@ -26,8 +26,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/cost/gate"
 	"github.com/trilamsr/regatta/internal/gates/approval"
+	"github.com/trilamsr/regatta/internal/gates/l4"
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -46,6 +48,28 @@ type CostGate interface {
 // regime). Mirrors GateResolver shape so the scheduler treats both
 // gate-passes uniformly.
 type CostGateResolver func(wi state.WorkItem) (gate.WorkItemScope, bool)
+
+// L4Gate is the scheduler-side seam to the adversarial-reviewer gate.
+// Production wires a thin shim over internal/gates/l4.Run; tests inject
+// a fake without pulling in the model adapter. The seam keeps the
+// scheduler ↔ l4 coupling to one method so the gate's transitive deps
+// (model adapter, prompt template loader, OTel emitter) stay invisible
+// to scheduler tests. Spec §3.2 step 0.7.
+type L4Gate interface {
+	Evaluate(ctx context.Context, cfg l4.Config, in l4.Input) (schemas.GateResult, error)
+}
+
+// L4GateResolver maps a planned work_item to its L4 gate config + the
+// Input the gate runs against (diff, spec, scorecard). Returns
+// (_, _, false) when the wi is out-of-scope (e.g. doc-only PRs that
+// bypass adversarial review). Mirrors GateResolver / CostGateResolver
+// shape so the scheduler treats all three gate-passes uniformly.
+//
+// Construction of Input (git diff vs base, binding-spec lookup,
+// scorecard extraction from PR body) lives in the production wiring;
+// the scheduler stays policy-agnostic and consumes whatever the
+// resolver hands back.
+type L4GateResolver func(wi state.WorkItem) (l4.Config, l4.Input, bool)
 
 // DowngradeHook lets the production wiring surface a soft-cap-induced
 // model swap to the spawner. Scheduler-side we record the intent;
@@ -181,6 +205,18 @@ type Config struct {
 	// opted in via AllowDowngrade. Wave 1 surfaces the intent; the
 	// spawner-side ModelOverride consumer lands in Wave 2.
 	OnDowngrade DowngradeHook
+
+	// L4Gate evaluates the adversarial-reviewer gate-pass per spec
+	// §3.2 step 0.7. Nil disables the pass — applyL4Gate short-circuits
+	// to identity so callers that have not wired the model adapter pay
+	// zero overhead.
+	L4Gate L4Gate
+
+	// L4GateResolver maps a planned work_item to its L4 config + Input.
+	// Nil disables the pass; same semantics as L4Gate=nil so an
+	// operator who forgets one of the two gets a clean "L4 disabled"
+	// rather than a half-wired runtime.
+	L4GateResolver L4GateResolver
 }
 
 // schedulerDB is the seam between Scheduler and state.DB. The
@@ -343,6 +379,13 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 	spawnable, err = s.applyCostGovernor(ctx, spawnable)
 	if err != nil {
 		return nil, fmt.Errorf("scheduler: apply cost governor: %w", err)
+	}
+	// Spec §3.2 step 0.7 — adversarial-reviewer gate. Cost-deny
+	// short-circuits BEFORE L4 fires so we never pay model tokens for
+	// a wi the cheap deterministic gate already rejected.
+	spawnable, err = s.applyL4Gate(ctx, spawnable)
+	if err != nil {
+		return nil, fmt.Errorf("scheduler: apply l4 gate: %w", err)
 	}
 
 	occupancy, err := s.db.CountAgentsByLane(ctx, activeStates...)
@@ -694,6 +737,61 @@ func (s *Scheduler) applyCostGovernor(ctx context.Context, spawnable []state.Wor
 		}
 		if v.SoftCapBreached && v.DowngradeTo != "" && s.cfg.OnDowngrade != nil {
 			s.cfg.OnDowngrade(wi.ID, v.DowngradeTo)
+		}
+		kept = append(kept, wi)
+	}
+	return kept, nil
+}
+
+// applyL4Gate filters spawnable through the adversarial-reviewer gate
+// per spec §3.2 step 0.7. Returns the surviving slice: Blocking=false
+// (pass / advisory) keeps the wi for the reservation loop, Blocking=true
+// drops the wi from this tick (status stays 'planned' so the next tick
+// re-evaluates once the implementer pushes a new SHA).
+//
+// Disabled (L4Gate or L4GateResolver nil) returns spawnable byte-equal
+// so callers that have not wired the model adapter pay zero overhead —
+// matches the cost-governor identity-short-circuit posture.
+//
+// Per-wi Evaluate errors warn on the injected logger and treat the wi
+// as denied for this tick — fail-closed posture matches the cost gate's:
+// a misconfigured model adapter must not silently allow.
+//
+// Severity-block routing lives inside l4.Run; the scheduler consumes
+// GateResult.Blocking as the single boolean drop signal so the yaml
+// severity_block DSL stays a property of the gate, not the scheduler.
+func (s *Scheduler) applyL4Gate(ctx context.Context, spawnable []state.WorkItem) ([]state.WorkItem, error) {
+	if s.cfg.L4Gate == nil || s.cfg.L4GateResolver == nil {
+		return spawnable, nil
+	}
+	kept := make([]state.WorkItem, 0, len(spawnable))
+	for _, wi := range spawnable {
+		cfg, in, gated := s.cfg.L4GateResolver(wi)
+		if !gated {
+			kept = append(kept, wi)
+			continue
+		}
+		gr, err := s.cfg.L4Gate.Evaluate(ctx, cfg, in)
+		if err != nil {
+			s.log.Warn("scheduler.l4_gate_error",
+				string(obs.KeyWorkItemID), wi.ID,
+				string(obs.KeyGateID), cfg.GateID,
+				string(obs.KeyErr), err.Error(),
+			)
+			continue
+		}
+		if gr.Blocking {
+			reason := string(gr.Verdict)
+			if len(gr.Findings) > 0 {
+				reason = gr.Findings[0].ID
+			}
+			s.log.Info("scheduler.l4_gate_blocked",
+				string(obs.KeyWorkItemID), wi.ID,
+				string(obs.KeyGateID), cfg.GateID,
+				string(obs.KeyVerdict), string(gr.Verdict),
+				string(obs.KeyReason), reason,
+			)
+			continue
 		}
 		kept = append(kept, wi)
 	}
