@@ -865,3 +865,119 @@ Wave-2 + wave-4 picks compose into MVR-2:
 **Self-scored tier:** A+ — every criterion met. The consolidation
 itself is the A+ delta: four chains collapsed to one brief, 24
 PRs closed, single-canonical destination for MVR-1 dispatch.
+
+---
+
+## Update — 2026-06-02 PM
+
+PM-wave merge sweep landed ~30 PRs while this brief was open. The
+sections below are status-only; strategic content above is
+unchanged. Reading order: shipped → in-flight → pending.
+
+### Shipped today (does not change MVR-1/2/3/4 sequence)
+
+These merges land under the **pre-MVR-1 self-host hardening**
+window — they are not MVR-1 dispatch wedges (no W7 UI / `regatta
+init` / Gitea adapter merged), but they reduce risk on §4's
+abandon-criteria and clear §9.4's secret-rotation invariants ahead
+of MVR-1 kickoff.
+
+**§9.4 secret-rotation (HMAC chain shipped end-to-end):**
+- #79 / #393 — `regatta keys re-sign-briefs` subcommand for HMAC key rotation.
+- #379 — multi-key HMAC keyring parser for the rotation drill.
+- #389 — `keys` subcommand tree (list/rotate/retire) + retire pre-flight.
+- #395 — `regatta keys recover` + operator key-rotation runbook.
+- #374 — S3-T3 spec for the rotation drill + operator recovery (docs).
+
+The HMAC row in §9.4's multi-key-window table is now
+operator-runnable end-to-end; only ANTHROPIC_API_KEY + GH_TOKEN +
+cosign rows remain on paper (those land with MVR-2-T2 + MVR-3-T1).
+
+**L4 reviewer-gate substrate (feeds §5.5 + MVR-2-T1):**
+- #370 — wire L4 adversarial gate at scheduler step 0.7.
+- #373 — anthropic adapter + tolerant parser + 7-fixture table.
+- #375 — extract shared severity parser to `internal/gates/severity`.
+- #380 — reviewer-disagreement second-opinion loop.
+- #381 — in-memory LRU findings cache (#357).
+- #385 — auto-fix patch mode (unified-diff on findings).
+- #387 — prompt template hot-reload (SIGHUP + fsnotify).
+- #388 — per-category model selection (#355).
+
+The L4 gate substrate now carries the shape DeepEval will plug
+into at MVR-2-T1 (§5.5 picks DeepEval; the rubric loader + severity
+parser + cache + hot-reload are the seams).
+
+**Cost-governor hardening (reduces §4 MVR-1 abandon-risk):**
+- #434 — retire local `BudgetReconciledPayload` stub (#275).
+- #440 — boot validator + known-bad fixture for rollback runbook (#290).
+- #441 — soft-cap warn mode requires explicit ack (#226).
+- #442 — wire `reconcile.Run` into production startup (#276).
+- #445 / #447 / #451 — pricing empty-table guard + Lookup-time zero-rate defense.
+- #450 — `reconcile/appender_test` import fix.
+- #452 — `cost.reconcile_failing` attempt_count reflects real attempts (#439).
+- #461 — cost-governor sampler-customization E2E (#228).
+- #372 — gremlins mutation CI for cost + scheduler (S2-T4 wave 1).
+- #454 — mutation-survival tests for reaper tier-comparison helpers (#147).
+
+**State / approval substrate (feeds MVR-2-T2 + §9.1 rollback):**
+- #133 / #386 — wire `state.Approval` → `notify.Request` adapter.
+- #156 / #443 — consolidate `ApprovalGateConfig` with `approval.Config`.
+- #369 — S3-T2 Phase B approvals shadow-write seam (migration 0009).
+- #378 — S3-T2 Phase C approvals read-from-substrate seam (migration 0011).
+- #377 — property fold(events)≡state-machine (1000 checks).
+- #382 — S3-T4 T2 crash-recovery property test (rapid 200/2000 cases).
+- #391 — nightly 2000-case property sweep + make target.
+- #394 — crash-recovery property tests + factor golden-DB clone.
+- #453 — typed `TransitionWorkItem`; drop raw-SQL CAS.
+- #455 — `approval_list.v1.json` contract + schema-check.
+- #456 / #457 / #459 — `approval_list` nil reviewer_set orEmpty shim + doc surface.
+- #460 — `canon.VerifyToken` derives reviewer from claim when expectReviewer empty (#305).
+- #462 — drive `approvals.go` coverage to 95% via branch tests (#139).
+- #144 / #444 — reaper consolidate fold helpers + route events via recordEvent.
+
+**Observability + W8 OPA (feeds §5.3 + W8 commercial-core):**
+- #432 — observability roadmap converged spec (consolidates #400 #405 #410 #413 #420).
+- #436 — surface `EventCostReconcileFailing` on OTel ERROR severity.
+- #438 — honor `OTEL_TRACES_SAMPLER` env in obs/otel setup (#174).
+- #448 — wire OPAAuthorizer + hot-reload into serve (#364).
+- #396 — gate OnStart on SIGHUP-handler readiness (resolves signal: hangup).
+
+**Brief / followup substrate (feeds §10 + meta-workflow):**
+- #80 / #390 — durable brief-rejection sink via substrate events.
+- #78 / #392 — warn on criteria drift for in-flight children.
+- #95 / #376 — pin reserve continue-on-error contract.
+- #145 / #146 / #444 — reaper fold-helper consolidation.
+- #175 / #465 — bridge per-record overhead bench + <5us guard.
+- #333 / #371 — tighten reviewer_tag regex to stop over-matching prose.
+- #368 — GH `[followup]` issues → `work_item` briefs (S2-T3).
+
+**Operator docs:**
+- #397 — getting-started: clone → first PR walkthrough + README index refresh.
+- #398 — record 2026-06-02 autonomous-session shipped PRs.
+
+### Pending — MVR-1 dispatch wedges untouched
+
+The §3/§4 MVR-1 top-3 wedges remain pending; none merged in the
+PM wave:
+
+- **MVR-1-T1 — W7 Wave 1 htmx UI.** Not started. Spec landed in §11 (#318/#303/#307 referenced); implementer dispatch gated on §10.6 customer-0 interview completion (≥3 maintainer interviews).
+- **MVR-1-T2 — `regatta init` wizard.** Not started.
+- **MVR-1-T3 — GoReleaser release pipeline.** Not started.
+- **MVR-1-T4 — GH-issue adapter (`[autonomous]` label).** Not started.
+- **MVR-1-T5 — P3.8 SCM-adapter + Gitea second consumer.** Not started.
+- **MVR-1-T6 — Pricing + support-contract design.** Item filed in `.regatta/items/mvr-1-t6-pricing-support-contracts.md`; awaits §10 Q5 license decision.
+
+### Pending — §10 operator decisions
+
+All five §10 questions (#423–#427) remain open. §10.6 customer-0
+interview gate (≥3 maintainer interviews) remains the load-bearing
+block on MVR-1 implementer dispatch. None of today's PM-wave
+merges resolve §10 — the wave hardened substrate, not strategy.
+
+### Net read
+
+Today's wave is **pre-MVR-1 substrate hardening** — the L4
+reviewer-gate, cost-governor, approval-state, and HMAC-rotation
+seams that MVR-1/MVR-2 plug into. The MVR-1 wedge surface (W7 UI
+/ init bundle / Gitea adapter) is still untouched and remains
+gated on §10.6 interview completion + §10 Q1–Q5 operator answers.
