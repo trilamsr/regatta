@@ -37,6 +37,7 @@ var costGovernorConfigFields = []string{
 	"drift_alert_threshold_pct",
 	"usage_api_key_env",
 	"estimation_strategy",
+	"pricing_override_path",
 }
 
 // costGovernorLinkAllowlist skips link-validity for forward refs to

@@ -63,9 +63,7 @@ func TestCUEValidate_AllCapsZero_RejectedWithMessage(t *testing.T) {
 	}
 }
 
-// TestCUEValidate_EstimationStrategy_HistoryAccepted pins the opt-in
-// flag from spec §10 S1 (issue #238): `history` is a valid value, so
-// operators who set it pass CUE validation.
+// TestCUEValidate_EstimationStrategy_HistoryAccepted pins spec §10 S1 (#238) — `history` passes CUE validation.
 func TestCUEValidate_EstimationStrategy_HistoryAccepted(t *testing.T) {
 	yaml := baseYAML + `safety:
   cost:
@@ -77,9 +75,7 @@ func TestCUEValidate_EstimationStrategy_HistoryAccepted(t *testing.T) {
 	}
 }
 
-// TestCUEValidate_EstimationStrategy_DefaultUpperBound pins the
-// additive-default property: omitting the field is byte-equal to the
-// pre-#238 behaviour (no breaking change).
+// TestCUEValidate_EstimationStrategy_DefaultUpperBound pins additive-default — omitted field is byte-equal to pre-#238.
 func TestCUEValidate_EstimationStrategy_DefaultUpperBound(t *testing.T) {
 	yaml := baseYAML + `safety:
   cost:
@@ -90,10 +86,7 @@ func TestCUEValidate_EstimationStrategy_DefaultUpperBound(t *testing.T) {
 	}
 }
 
-// TestCUEValidate_EstimationStrategy_InvalidRejected pins the
-// closed-enum property: only upper_bound | history are accepted.
-// Typos like `historical` must fail at config-load time, not at the
-// first spawn.
+// TestCUEValidate_EstimationStrategy_InvalidRejected pins closed-enum — typos like `historical` fail at config-load.
 func TestCUEValidate_EstimationStrategy_InvalidRejected(t *testing.T) {
 	yaml := baseYAML + `safety:
   cost:
@@ -106,6 +99,32 @@ func TestCUEValidate_EstimationStrategy_InvalidRejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "estimation_strategy") {
 		t.Fatalf("err=%q; want CUE error naming estimation_strategy field", err)
+	}
+}
+
+func TestCUEValidate_PricingOverridePath_Accepted(t *testing.T) {
+	yaml := baseYAML + `safety:
+  cost:
+    per_dag_usd: 100
+    pricing_override_path: /etc/regatta/pricing.json
+`
+	if err := validate.ValidateConfig([]byte(yaml)); err != nil {
+		t.Fatalf("ValidateConfig: %v; want nil (pricing_override_path is a valid optional field)", err)
+	}
+}
+
+func TestCUEValidate_PricingOverridePath_NonStringRejected(t *testing.T) {
+	yaml := baseYAML + `safety:
+  cost:
+    per_dag_usd: 100
+    pricing_override_path: 42
+`
+	err := validate.ValidateConfig([]byte(yaml))
+	if err == nil {
+		t.Fatalf("ValidateConfig: nil; want CUE rejection of non-string pricing_override_path")
+	}
+	if !strings.Contains(err.Error(), "pricing_override_path") {
+		t.Fatalf("err=%q; want CUE error naming pricing_override_path field", err)
 	}
 }
 

@@ -81,12 +81,7 @@ func (s *stubFallback) Estimate(_ context.Context, _ gate.EstHint, _ string) (fl
 	return s.usd, nil
 }
 
-// TestHistory_EngagedWhenSamplesMeetThreshold pins the opt-in path: when
-// ≥ MinSamples token_spend rows exist for the cohort, History.Estimate
-// returns the p95 of recorded USD — NOT the upper-bound fallback.
-//
-// This is the load-bearing assertion for spec §10 S1: "history-based
-// estimator engaged when opt-in flag set + cohort warm".
+// TestHistory_EngagedWhenSamplesMeetThreshold pins spec §10 S1 — ≥ MinSamples cohort rows ⇒ p95, not fallback.
 func TestHistory_EngagedWhenSamplesMeetThreshold(t *testing.T) {
 	db := openSpendDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -125,9 +120,7 @@ func TestHistory_EngagedWhenSamplesMeetThreshold(t *testing.T) {
 	}
 }
 
-// TestHistory_ColdStartFallback pins the < MinSamples path: when fewer
-// than the threshold samples exist for the cohort, History delegates to
-// the Fallback estimator (upper_bound in prod wiring).
+// TestHistory_ColdStartFallback pins the < MinSamples path — History delegates to Fallback (upper_bound in prod).
 func TestHistory_ColdStartFallback(t *testing.T) {
 	db := openSpendDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -161,9 +154,7 @@ func TestHistory_ColdStartFallback(t *testing.T) {
 	}
 }
 
-// TestHistory_DeterministicAcrossCalls pins W9 replay-safety: same
-// substrate snapshot ⇒ same estimate. The frozen clock + identical row
-// set must produce byte-equal float64 results across invocations.
+// TestHistory_DeterministicAcrossCalls pins W9 replay-safety — same substrate snapshot ⇒ byte-equal estimate.
 func TestHistory_DeterministicAcrossCalls(t *testing.T) {
 	db := openSpendDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -196,10 +187,7 @@ func TestHistory_DeterministicAcrossCalls(t *testing.T) {
 	}
 }
 
-// TestHistory_CohortScopedByOperatorAndModel pins R9 forward-fit + spec
-// requirement: history is per-(operator_id, model) cohort. Rows from a
-// different operator or different model must NOT contaminate the
-// estimate for (agent-7, claude-sonnet-4-7).
+// TestHistory_CohortScopedByOperatorAndModel pins R9 — history is per-(operator_id, model) cohort, no cross-contamination.
 func TestHistory_CohortScopedByOperatorAndModel(t *testing.T) {
 	db := openSpendDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)

@@ -48,7 +48,10 @@ import "list"
 		acceptance_section?: *"## Acceptance" | string
 	}
 	if type == "markdown_catalog" {
-		path:    string                          // path relative to repo root
+		// Directory containing .regatta/items/*.md, relative to repo
+		// root. Default "." matches the self-host layout where items
+		// live at <repo>/.regatta/items/.
+		root:    *"." | string
 		format:  *"github_checkbox" | "rubric"   // - [ ] / - [x]  vs.  ☐/⧗/☑
 	}
 	if type == "jira" {
@@ -180,6 +183,16 @@ import "list"
 	// fewer than ~10 prior (tenant, operator, model) samples
 	// exist. Additive — no breaking change for existing configs.
 	estimation_strategy:        *"upper_bound" | "history"
+	// Optional path to a JSON file that overrides or extends the
+	// hardcoded pricing table at boot. Per-key merge — each model in
+	// the override file replaces the corresponding hardcoded row;
+	// rows not present in the override are untouched. Adds new SKUs
+	// (Bedrock/Vertex/marketplace) the upstream-mirror table cannot
+	// carry. Hard-fails on malformed JSON, unknown fields, non-positive
+	// rates, or world-writable file mode (R14 mitigation). Refresh
+	// via in-tree PR is still the default; this is the escape hatch
+	// for operators who cannot fork. Spec §10 S2 + §3.8.
+	pricing_override_path?:     string
 }
 
 #Context: {
