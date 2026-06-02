@@ -45,6 +45,13 @@ const defaultListenerAddr = ":8080"
 // listenerShutdownBudget mirrors the existing serve.go signal-shutdown contract: 5 s to drain inflight requests before forced exit.
 const listenerShutdownBudget = 5 * time.Second
 
+// reconcilerShutdownBudget bounds how long serve waits for the cost-
+// reconciler goroutine to exit on signal-shutdown. The goroutine's
+// inner select honours ctx.Done immediately on the wait branch, so 5s
+// is a generous upper bound — a stuck Tick() is the only path that
+// would burn through this budget.
+const reconcilerShutdownBudget = 5 * time.Second
+
 // healthzBody is the spec §3.3 row 6 literal: `200 OK` with body `ok` and zero DB queries.
 const healthzBody = "ok\n"
 
@@ -295,6 +302,31 @@ func runServe(args []string) int {
 			_ = httpSrv.Shutdown(shutdownCtx)
 			if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
 				logger.Printf("listener: %v", err)
+			}
+		}()
+	}
+
+	// Cost-reconciler goroutine: opt-in per safety.cost.reconcile_interval.
+	// Run() loops forever swallowing tick errors (R6), so startup never
+	// blocks on a transient Anthropic Cost API failure. Ctx-cancel via
+	// SIGINT/SIGTERM exits the goroutine; the deferred wait pins graceful
+	// shutdown — `regatta serve` does not return until the reconciler
+	// has cleanly stopped (bounded by reconcilerShutdownBudget).
+	reconcileSettings := loadCostReconcileSettingsFor(*repoRoot)
+	reconcileDone, reconcileStarted := startReconciler(ctx, reconcileWiring{
+		DB:                db,
+		Key:               costKey,
+		KeyID:             costKeyID,
+		ReconcileInterval: reconcileSettings.ReconcileInterval,
+		UsageAPIKeyEnv:    reconcileSettings.UsageAPIKeyEnv,
+		Logger:            slogger,
+	})
+	if reconcileStarted {
+		defer func() {
+			select {
+			case <-reconcileDone:
+			case <-time.After(reconcilerShutdownBudget):
+				logger.Printf("cost reconciler: shutdown timeout after %s", reconcilerShutdownBudget)
 			}
 		}()
 	}

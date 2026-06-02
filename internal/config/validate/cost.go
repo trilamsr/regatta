@@ -3,6 +3,7 @@ package validate
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -64,6 +65,8 @@ type rawCost struct {
 	PerOperatorUSD     *int    `yaml:"per_operator_usd"`
 	PerWorkItemUSD     *int    `yaml:"per_work_item_usd"`
 	EstimationStrategy *string `yaml:"estimation_strategy"`
+	ReconcileInterval  *string `yaml:"reconcile_interval"`
+	UsageAPIKeyEnv     *string `yaml:"usage_api_key_env"`
 }
 
 func (c *rawCost) anyCapSet() bool {
@@ -74,6 +77,49 @@ func (c *rawCost) allCapsZero() bool {
 	return c.PerDAGUSD != nil && *c.PerDAGUSD == 0 &&
 		c.PerOperatorUSD != nil && *c.PerOperatorUSD == 0 &&
 		c.PerWorkItemUSD != nil && *c.PerWorkItemUSD == 0
+}
+
+// CostReconcileSettings is the subset of safety.cost the reconciler
+// loop needs at startup. ReconcileInterval == 0 means the operator did
+// not set the field (cost block omitted, cost.reconcile_interval unset);
+// callers treat 0 as "do not start the reconciler goroutine".
+type CostReconcileSettings struct {
+	ReconcileInterval time.Duration
+	UsageAPIKeyEnv    string
+}
+
+// LoadCostReconcileSettings extracts safety.cost.{reconcile_interval,
+// usage_api_key_env} from regatta.yaml bytes. The CUE schema constrains
+// the interval to the documented enum (1h default, 5m/15m/30m/6h/24h);
+// a missing block returns the zero value so cmd/regatta can no-op.
+//
+// Wave-1 single-tenant wiring: this is the only Go-side surface that
+// reads reconcile_interval — when W8 ships per-tenant overrides, the
+// loader extends here, not at every caller.
+func LoadCostReconcileSettings(data []byte) (CostReconcileSettings, error) {
+	if len(data) == 0 {
+		return CostReconcileSettings{}, nil
+	}
+	var cfg rawConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return CostReconcileSettings{}, fmt.Errorf("cost-reconcile: %w", err)
+	}
+	if cfg.Safety == nil || cfg.Safety.Cost == nil {
+		return CostReconcileSettings{}, nil
+	}
+	out := CostReconcileSettings{}
+	if cfg.Safety.Cost.ReconcileInterval != nil && *cfg.Safety.Cost.ReconcileInterval != "" {
+		d, err := time.ParseDuration(*cfg.Safety.Cost.ReconcileInterval)
+		if err != nil {
+			return CostReconcileSettings{}, fmt.Errorf("cost-reconcile: parse reconcile_interval=%q: %w",
+				*cfg.Safety.Cost.ReconcileInterval, err)
+		}
+		out.ReconcileInterval = d
+	}
+	if cfg.Safety.Cost.UsageAPIKeyEnv != nil {
+		out.UsageAPIKeyEnv = *cfg.Safety.Cost.UsageAPIKeyEnv
+	}
+	return out, nil
 }
 
 func validateCost(data []byte) error {
