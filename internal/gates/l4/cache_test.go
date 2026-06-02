@@ -21,7 +21,7 @@ func TestL4_FindingsCache_SecondInvocationHits(t *testing.T) {
 			PromptSHA: "sha-1",
 		}, nil
 	}
-	cached := NewCachedInvoker(base, 8)
+	cached := NewCachedInvoker(base, 8, nil)
 	cfg := Config{GateID: "l4_adversarial", Model: DefaultModel, Invoker: cached}
 	in := Input{PRSHA: "deadbeef", RunID: "run-A", Diff: "@@ +1 -1 @@", Spec: "spec body"}
 
@@ -49,7 +49,7 @@ func TestL4_FindingsCache_DifferentKeyMisses(t *testing.T) {
 		calls.Add(1)
 		return InvokeResponse{PromptSHA: "sha-" + req.Input.Diff}, nil
 	}
-	cached := NewCachedInvoker(base, 8)
+	cached := NewCachedInvoker(base, 8, nil)
 	cfg := Config{GateID: "l4_adversarial", Model: DefaultModel, Invoker: cached}
 
 	if _, err := Run(context.Background(), cfg, Input{PRSHA: "a", RunID: "1", Diff: "diff-A", Spec: "S"}); err != nil {
@@ -76,7 +76,7 @@ func TestL4_FindingsCache_ModelInKey(t *testing.T) {
 		calls.Add(1)
 		return InvokeResponse{}, nil
 	}
-	cached := NewCachedInvoker(base, 8)
+	cached := NewCachedInvoker(base, 8, nil)
 	in := Input{PRSHA: "z", RunID: "1", Diff: "D", Spec: "S"}
 	if _, err := Run(context.Background(), Config{Model: "claude-sonnet-4-6", Invoker: cached}, in); err != nil {
 		t.Fatalf("sonnet run: %v", err)
@@ -99,7 +99,7 @@ func TestL4_FindingsCache_ErrorsNotCached(t *testing.T) {
 		}
 		return InvokeResponse{Findings: []schemas.Finding{{ID: "L4-OK"}}}, nil
 	}
-	cached := NewCachedInvoker(base, 8)
+	cached := NewCachedInvoker(base, 8, nil)
 	cfg := Config{GateID: "g", Model: DefaultModel, Invoker: cached}
 	in := Input{PRSHA: "p", RunID: "1", Diff: "D", Spec: "S"}
 
@@ -124,7 +124,7 @@ func TestL4_FindingsCache_LRUEviction(t *testing.T) {
 		calls.Add(1)
 		return InvokeResponse{}, nil
 	}
-	cached := NewCachedInvoker(base, 2)
+	cached := NewCachedInvoker(base, 2, nil)
 	cfg := Config{Model: DefaultModel, Invoker: cached}
 	mkInput := func(d string) Input { return Input{PRSHA: d, RunID: d, Diff: d, Spec: "S"} }
 
@@ -145,7 +145,7 @@ func TestL4_FindingsCache_ZeroCapacityIsPassthrough(t *testing.T) {
 		calls.Add(1)
 		return InvokeResponse{}, nil
 	}
-	cached := NewCachedInvoker(base, 0)
+	cached := NewCachedInvoker(base, 0, nil)
 	cfg := Config{Model: DefaultModel, Invoker: cached}
 	in := Input{PRSHA: "p", RunID: "1", Diff: "D", Spec: "S"}
 	for i := 0; i < 3; i++ {
