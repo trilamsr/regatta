@@ -9,6 +9,7 @@ Locked design for the ACTIVE or NEXT wave. One spec per wedge. Specs here are th
 - [`2026-06-01-w7-operator-web-ui-design.md`](2026-06-01-w7-operator-web-ui-design.md) — W7 operator web UI v2: server-rendered approval flow + read-only DAG + cost panel; Go embed.FS + htmx + Tailwind CDN. 14 tasks across 4 waves (W7.0 listener prereq + 3 build waves). Authorizer interface seam designed pre-W8.
 - [`2026-06-01-w9-temporal-vs-bespoke-redteam.md`](2026-06-01-w9-temporal-vs-bespoke-redteam.md) — W9 replay+diff harness, option C (hybrid): `DurableHistory` Go interface, substrate-default impl, Temporal-backed impl behind refined P2.5 trigger. Ships AFTER W6/W7/W8 land.
 - [`2026-06-01-adapter-contracts-design.md`](2026-06-01-adapter-contracts-design.md) — P3.8 swap-out adapter contracts: 5 adapters (OTel exporter, OPA RBAC, Sigstore signer, Stripe metered billing, LLM gateway) behind `internal/adapters/<name>/` `sql.Register`-style pattern. Trigger = first customer ask for hosted backend.
+- [`2026-06-02-orchestrator-pr-watcher.md`](2026-06-02-orchestrator-pr-watcher.md) — orchestrator PR-watch wedge: drives `running → pr_open` by polling GitHub head SHA via `gh pr list --head regatta/agent-{id}`. New `internal/orchestrator/prwatch` package; tick-driven Sweep; emits `agent_pr_opened` + `agent_pr_head_changed` substrate events so gate runner (#33) and rejection router (#16) consume via the existing event seam. Supersedes issue #15.
 
 ## Dependency graph
 
