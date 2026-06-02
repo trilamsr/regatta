@@ -29,10 +29,7 @@ func repoRoot(t *testing.T) string {
 	return filepath.Dir(filepath.Dir(file))
 }
 
-// TestSelfHost_RegattaYAML_Validates pins the repo-root regatta.yaml
-// against the CUE schema. The yaml is the single source of truth for
-// the self-host adapter + gate configuration; this test catches a
-// schema drift before `regatta serve` boots.
+// TestSelfHost_RegattaYAML_Validates pins the repo-root regatta.yaml against the CUE schema. The yaml is the single source
 func TestSelfHost_RegattaYAML_Validates(t *testing.T) {
 	path := filepath.Join(repoRoot(t), "regatta.yaml")
 	data, err := os.ReadFile(path)
@@ -44,11 +41,7 @@ func TestSelfHost_RegattaYAML_Validates(t *testing.T) {
 	}
 }
 
-// TestSelfHost_RegattaYAML_DeclaresMarkdownCatalog pins the self-host
-// adapter choice: the brief §3 calls out markdown adapter as the
-// Phase-S default, ahead of the GH-issue adapter deferred to Phase X.
-// A drift to a non-markdown type would silently bypass the seeded
-// .regatta/items/.
+// TestSelfHost_RegattaYAML_DeclaresMarkdownCatalog pins the self-host adapter choice: the brief §3 calls out markdown adap
 func TestSelfHost_RegattaYAML_DeclaresMarkdownCatalog(t *testing.T) {
 	path := filepath.Join(repoRoot(t), "regatta.yaml")
 	data, err := os.ReadFile(path)
@@ -65,11 +58,7 @@ func TestSelfHost_RegattaYAML_DeclaresMarkdownCatalog(t *testing.T) {
 	}
 }
 
-// TestSelfHost_SeedItems_Parse anchors every .regatta/items/*.md file
-// at the repo root against the markdown adapter's parser. A seed that
-// fails to parse would mean the orchestrator's first poll cycle returns
-// an adapter error — surface that here at test time rather than at
-// boot time.
+// TestSelfHost_SeedItems_Parse anchors every .regatta/items/*.md file at the repo root against the markdown adapter's pars
 func TestSelfHost_SeedItems_Parse(t *testing.T) {
 	dir := filepath.Join(repoRoot(t), ".regatta", "items")
 	entries, err := os.ReadDir(dir)
