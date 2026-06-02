@@ -11,10 +11,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// TestBuildSpawner_ClaudeWiresCostCallback — when a HMAC key is supplied
-// the claude spawner config carries a non-nil OnResultEventFor factory;
-// no key supplied keeps wiring default-off so operators without HMAC
-// stay byte-equal to pre-cost-gov behaviour.
+// TestBuildSpawner_ClaudeWiresCostCallback — HMAC key present wires OnResultEventFor; absent keeps it nil.
 func TestBuildSpawner_ClaudeWiresCostCallback(t *testing.T) {
 	tmp := t.TempDir()
 	db := openTempDB(t, tmp)
