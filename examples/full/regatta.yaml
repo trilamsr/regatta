@@ -63,6 +63,17 @@ safety:
   spend_cap_usd: 50
   spend_cap_usd_per_day: 200
   canary_rate: 0.05
+  # cost-governor demo block (spec §3.6). Uncomment to enable
+  # pre-call deny + reconciliation. Reader:
+  # docs/operator/cost-governor.md.
+  # cost:
+  #   per_dag_usd: 100
+  #   per_operator_usd: 50
+  #   period: 1d
+  #   soft_pct: 80
+  #   reconcile_interval: 1h
+  #   drift_alert_threshold_pct: 10
+  #   usage_api_key_env: ANTHROPIC_ADMIN_KEY
 
 context:
   trusted_doc_paths:
