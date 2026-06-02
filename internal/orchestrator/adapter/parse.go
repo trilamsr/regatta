@@ -85,7 +85,7 @@ func parseMarkdownItem(data []byte) (schemas.WorkItem, error) {
 // `acceptance_criteria[*].citation`.
 var (
 	frontmatterRE  = regexp.MustCompile(`(?s)\A---\r?\n(.*?)\r?\n---\r?\n?`)
-	criterionRE    = regexp.MustCompile(`^\s*-\s*\[(planned|in_progress|done)\]\s+([^\s:]+):\s*(.+?)\s*$`)
+	criterionRE    = regexp.MustCompile(`^\s*-\s*\[(planned|in_progress|done|closed)\]\s+([^\s:]+):\s*(.+?)\s*$`)
 	criteriaHeadRE = regexp.MustCompile(`(?i)^##\s+acceptance\s+criteria\s*$`)
 )
 
@@ -234,7 +234,7 @@ func splitList(v string) []string {
 
 func validStatus(s schemas.Status) bool {
 	switch s {
-	case schemas.StatusPlanned, schemas.StatusInProgress, schemas.StatusDone:
+	case schemas.StatusPlanned, schemas.StatusInProgress, schemas.StatusDone, schemas.StatusClosedResolved:
 		return true
 	}
 	return false

@@ -10,7 +10,7 @@ Source: docs/engineer/autonomous-session-prompt.md#L29
 
 . Promoted from MVP-3 rank #4 to S2 rank #1 for self-host. Skip Temporal-backed variant (Phase X). Spec `docs/engineer/specs/2026-06-01-w9-temporal-vs-bespoke-redteam.md` option C, substrate path only.
 
-<!-- source-sha256: c83fea96f2a004f7c9b8f8b9162ab65b4946ff73be1c4d486e01ac5449e3b8fc -->
+<!-- source-sha256: fe19dffb94f19a6a13589cd964d49655d52f9abd833bdec9fe16e34a3b6f0bfc -->
 
 ## Acceptance criteria
 

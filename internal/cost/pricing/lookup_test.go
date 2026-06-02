@@ -32,3 +32,23 @@ func TestPricing_Lookup_KnownModelReturnsRow(t *testing.T) {
 		t.Fatalf("Lookup(known) returned zero-rate row %+v", row)
 	}
 }
+
+// TestPricing_Lookup_RejectsZeroRateMutation pins #447: post-init mutation MUST fail at call site, not return zero.
+func TestPricing_Lookup_RejectsZeroRateMutation(t *testing.T) {
+	const sku = "test-zero-rate-mutation"
+	pricing.Anthropic[sku] = pricing.Row{
+		InputUSDPerMTok:         0, // <-- the mutation: zero rate slipped past init() Validate.
+		CacheReadUSDPerMTok:     0.30,
+		CacheCreationUSDPerMTok: 3.75,
+		OutputUSDPerMTok:        15.00,
+	}
+	t.Cleanup(func() { delete(pricing.Anthropic, sku) })
+
+	row, err := pricing.Lookup(sku)
+	if err == nil {
+		t.Fatalf("Lookup(%q) for zero-rate row returned no error; got row=%+v", sku, row)
+	}
+	if !errors.Is(err, pricing.ErrPricingZeroRow) {
+		t.Fatalf("Lookup(%q) for zero-rate row = %v; want ErrPricingZeroRow", sku, err)
+	}
+}

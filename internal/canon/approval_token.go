@@ -120,6 +120,17 @@ func MintToken(kr Keyring, kid string, p TokenPayload, jtiRand io.Reader) (strin
 // compare → json.Unmarshal(DisallowUnknownFields) → window+reviewer.
 // HMAC is computed and compared BEFORE any json.Unmarshal of the body
 // to deny parser-oracle attacks.
+//
+// Reviewer-binding modes (Option A, issue #305):
+//   - expectReviewer != "": strict-compare against payload.Reviewer;
+//     mismatch trips ErrUnverifiable. Use this in flows where the
+//     caller already knows the reviewer out-of-band (CLI `decide`,
+//     Slack interactive callback POST body).
+//   - expectReviewer == "": derive the reviewer from the claim. Use
+//     this in cookie-bound web flows where the token IS the identity
+//     proof (spec §3.6.1). HMAC verification still runs first, so the
+//     empty arg cannot weaken authentication — a forged token still
+//     fails MAC compare before reaching the reviewer branch.
 func VerifyToken(kr Keyring, wire string, expectReviewer string, now time.Time) (TokenPayload, error) {
 	var zero TokenPayload
 	dot := strings.IndexByte(wire, '.')
@@ -169,7 +180,10 @@ func VerifyToken(kr Keyring, wire string, expectReviewer string, now time.Time) 
 	if !now.Before(time.Unix(p.Window, 0)) {
 		return zero, ErrTokenExpired
 	}
-	if p.Reviewer != expectReviewer {
+	// expectReviewer == "" means "derive from claim" — the HMAC compare
+	// above is the authentication boundary; this branch only enforces
+	// reviewer-pinning for callers that already know the identity.
+	if expectReviewer != "" && p.Reviewer != expectReviewer {
 		return zero, fmt.Errorf("%w: reviewer mismatch", ErrUnverifiable)
 	}
 	return p, nil

@@ -281,6 +281,70 @@ func TestParse_PhaseXSkipped(t *testing.T) {
 	}
 }
 
+// fixtureShippedBootPrompt mixes a SHIPPED entry (single PR ref), a multi-PR SHIPPED, a SHIPPED with no PR number, and a planned entry. Per issue #471 the converter must emit status: done when body opens with SHIPPED, capturing the first PR number into closing_pr; entries with no SHIPPED marker keep status: planned.
+const fixtureShippedBootPrompt = `PRIORITY (top-down)
+
+PHASE S1 — dogfood-ready core
+1. **S1-T2 — close #282 spawner-callback wiring** — SHIPPED #294. Wired spend.SpawnerCallback into buildSpawner.
+2. **S1-T4 — Cost-governor Wave 3 dispatch** — SHIPPED. T5+T6+T7 trio per plan #267.
+3. **S1-T1 — regatta.yaml for THIS repo** — SHIPPED #331 (boot-prompt→items) + #368 (gh-followup→items).
+
+PHASE S2 — trust-the-loop
+6. **S2-T1 — W9 replay+diff harness** — substrate-default DurableHistory impl ONLY.
+
+OPEN FOLLOWUPS
+- sweep
+`
+
+// TestParse_ShippedMarker_EmitsStatusDone — entries whose body opens with "SHIPPED" must emit status: done; entries without remain planned (issue #471).
+func TestParse_ShippedMarker_EmitsStatusDone(t *testing.T) {
+	dir := t.TempDir()
+	src := writeFixture(t, dir, "boot.md", fixtureShippedBootPrompt)
+	out := filepath.Join(dir, "items")
+	if err := convert(convertOpts{source: src, out: out, sourceRel: "boot.md"}); err != nil {
+		t.Fatalf("convert: %v", err)
+	}
+	cases := []struct {
+		file       string
+		wantStatus string
+		wantPR     string // empty = closing_pr line must be absent
+	}{
+		{"s1-t2-close-282-spawner-callback-wiring.md", "done", "294"},
+		{"s1-t4-cost-governor-wave-3-dispatch.md", "done", ""},
+		{"s1-t1-regatta-yaml-this-repo.md", "done", "331"},
+		{"s2-t1-w9-replay-diff-harness.md", "planned", ""},
+	}
+	for _, tc := range cases {
+		data, err := os.ReadFile(filepath.Join(out, tc.file))
+		if err != nil {
+			t.Fatalf("read %s: %v", tc.file, err)
+		}
+		s := string(data)
+		wantStatusLine := "status: " + tc.wantStatus
+		if !strings.Contains(s, wantStatusLine+"\n") {
+			t.Errorf("%s: missing %q\n--- file ---\n%s", tc.file, wantStatusLine, s)
+		}
+		if tc.wantPR == "" {
+			if strings.Contains(s, "closing_pr:") {
+				t.Errorf("%s: unexpected closing_pr line\n--- file ---\n%s", tc.file, s)
+			}
+		} else {
+			wantPRLine := "closing_pr: " + tc.wantPR
+			if !strings.Contains(s, wantPRLine+"\n") {
+				t.Errorf("%s: missing %q\n--- file ---\n%s", tc.file, wantPRLine, s)
+			}
+		}
+		// Adapter round-trip — SHIPPED entries must still parse cleanly.
+		item, err := adapter.ParseMarkdownItem(data)
+		if err != nil {
+			t.Fatalf("adapter rejected %s: %v\n%s", tc.file, err, data)
+		}
+		if string(item.Status) != tc.wantStatus {
+			t.Errorf("%s: adapter Status = %q, want %q", tc.file, item.Status, tc.wantStatus)
+		}
+	}
+}
+
 // TestParse_DuplicateID_Errors — duplicate IDs in the source are a hard error; no files written.
 func TestParse_DuplicateID_Errors(t *testing.T) {
 	dupSource := `PHASE S1 — x

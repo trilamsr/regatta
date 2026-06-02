@@ -14,6 +14,7 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -244,14 +245,18 @@ type schedulerDB interface {
 	MarkEdgeFired(ctx context.Context, edgeID int64, fired, contentSHA string) error
 	GetLatestOutput(ctx context.Context, workItemID string) (state.OutputJournalEntry, error)
 	WithTx(ctx context.Context, fn func(*sql.Tx) error) error
-	// SQL escapes the seam for the gate-pass's raw-SQL CAS write that
-	// transitions a rejected work_item to status='rejected'. Spec §3.1
-	// step 0.5 spells this as state.TransitionWorkItem, but state has no
-	// typed transition for work_items yet; the precedent from
-	// internal/program/brief_loader.go (the archive-on-archived-dep path)
-	// is to use db.SQL() directly. Promoting this to a typed method on
-	// *state.DB is tracked as a followup so the next wave can consolidate.
-	SQL() *sql.DB
+	// TransitionWorkItem CAS-updates work_items.status. Spec §3.1
+	// step 0.5 names this for the approval-gate rejected path; the
+	// brief_loader cascade-archive uses the same primitive. Both
+	// previously issued raw-SQL UPDATEs through *state.DB.SQL();
+	// consolidating here keeps the CAS shape in one place.
+	TransitionWorkItem(ctx context.Context, id string, from, to state.WorkItemStatus) error
+	// GetAgentByWorkItemID + RecordEvent are the seam applyL4Gate uses
+	// to emit `gate_rejected` audit rows the RejectionRouter drains
+	// (issue #479). agent_id=NULL when no row exists yet — the gate
+	// can fire pre-spawn, so audit visibility cannot wait on UpsertPending.
+	GetAgentByWorkItemID(ctx context.Context, workItemID string) (*state.Agent, error)
+	RecordEvent(ctx context.Context, agentID int64, kind, payloadJSON string) error
 }
 
 // Scheduler is single-caller: Tick must not be invoked concurrently.
@@ -791,6 +796,7 @@ func (s *Scheduler) applyL4Gate(ctx context.Context, spawnable []state.WorkItem)
 				string(obs.KeyVerdict), string(gr.Verdict),
 				string(obs.KeyReason), reason,
 			)
+			s.emitGateRejected(ctx, wi.ID, in.PRSHA, reason)
 			continue
 		}
 		kept = append(kept, wi)
@@ -798,34 +804,66 @@ func (s *Scheduler) applyL4Gate(ctx context.Context, spawnable []state.WorkItem)
 	return kept, nil
 }
 
+// emitGateRejected writes the audit row the RejectionRouter drains
+// (issue #479). agent_id resolves to the existing agents row when one
+// exists; sql.ErrNoRows → agent_id=NULL audit-only row so the gate can
+// fire before the wi is ever reserved (planned → spawning happens AFTER
+// applyL4Gate per spec §3.2 step 0.7). Emit errors warn rather than
+// abort the tick: a missed audit row is recoverable on re-evaluation,
+// but a failed tick drops every wi behind this one.
+func (s *Scheduler) emitGateRejected(ctx context.Context, workItemID, prSHA, reason string) {
+	var agentID int64
+	a, err := s.db.GetAgentByWorkItemID(ctx, workItemID)
+	switch {
+	case err == nil:
+		agentID = a.ID
+	case errors.Is(err, sql.ErrNoRows):
+		// audit-only: no agent yet
+	default:
+		s.log.Warn("scheduler.l4_gate_emit_lookup_error",
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyErr), err.Error(),
+		)
+		return
+	}
+	payload, err := json.Marshal(struct {
+		PRSHA  string `json:"pr_sha"`
+		Reason string `json:"reason"`
+	}{PRSHA: prSHA, Reason: reason})
+	if err != nil {
+		// Hand-built struct; marshal cannot fail in practice.
+		s.log.Warn("scheduler.l4_gate_emit_marshal_error",
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyErr), err.Error(),
+		)
+		return
+	}
+	if err := s.db.RecordEvent(ctx, agentID, eventKindGateRejected, string(payload)); err != nil {
+		s.log.Warn("scheduler.l4_gate_emit_record_error",
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyErr), err.Error(),
+		)
+	}
+}
+
+// eventKindGateRejected duplicates rejectionrouter.EventKindGateRejected
+// to avoid a scheduler → rejectionrouter import (rejectionrouter is the
+// downstream consumer of scheduler-emitted events, so the dependency
+// must stay one-way). The constant's value is the contract; both
+// packages assert it against the same string literal.
+const eventKindGateRejected = "gate_rejected"
+
 // markWorkItemRejected flips work_items.status='rejected' atomically
-// against the planned-source state. CAS predicate (`status='planned'`)
-// is load-bearing: a concurrent writer that already moved the row
-// (cancel/archive) must win — the gate cannot resurrect a terminal wi.
-//
-// Spec §3.1 calls this state.TransitionWorkItem; state has no typed
-// work_item transition yet, so the raw-SQL pattern matches the
-// brief_loader.go archive-on-archived-dep precedent. A followup will
-// consolidate both into a state-package API.
+// against the planned-source state via state.TransitionWorkItem. The
+// CAS predicate inside the typed call is load-bearing: a concurrent
+// writer that already moved the row (cancel/archive) must win — the
+// gate cannot resurrect a terminal wi. ErrInvalidWorkItemTransition
+// surfaces unwrapped so the caller can errors.Is on the lost race.
 func (s *Scheduler) markWorkItemRejected(ctx context.Context, tc *tickCtx, id string) error {
 	if err := s.fireWriteHook(tc); err != nil {
 		return err
 	}
-	now := time.Now().UTC().Unix()
-	res, err := s.db.SQL().ExecContext(ctx,
-		`UPDATE work_items SET status = ?, updated_at = ? WHERE id = ? AND status = ?`,
-		"rejected", now, id, string(state.WorkStatusPlanned))
-	if err != nil {
-		return err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		return fmt.Errorf("scheduler: work_item %s no longer in status=planned", id)
-	}
-	return nil
+	return s.db.TransitionWorkItem(ctx, id, state.WorkStatusPlanned, state.WorkStatusRejected)
 }
 
 func (s *Scheduler) laneHasCapacity(lane string, occupancy map[string]int) bool {

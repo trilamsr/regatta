@@ -266,6 +266,83 @@ func TestApprovalToken_FixedWireRegression(t *testing.T) {
 	}
 }
 
+// TestVerifyToken_EmptyExpectReviewer_DerivesFromClaim covers Option A: passing "" skips the strict-compare and returns the claim's reviewer.
+func TestVerifyToken_EmptyExpectReviewer_DerivesFromClaim(t *testing.T) {
+	t.Parallel()
+	kr := newTestKeyring()
+	window := time.Now().Add(time.Hour).Unix()
+	wire, _ := mintForTest(t, "alice", window)
+	got, err := VerifyToken(kr, wire, "", time.Now())
+	if err != nil {
+		t.Fatalf("verify with empty expectReviewer: %v", err)
+	}
+	if got.Reviewer != "alice" {
+		t.Fatalf("derived reviewer = %q want %q", got.Reviewer, "alice")
+	}
+}
+
+// TestVerifyToken_EmptyExpectReviewer_TamperedSigStillFails proves HMAC verify happens BEFORE the derivation branch — passing "" cannot bypass forgery detection.
+func TestVerifyToken_EmptyExpectReviewer_TamperedSigStillFails(t *testing.T) {
+	t.Parallel()
+	kr := newTestKeyring()
+	wire, _ := mintForTest(t, "alice", time.Now().Add(time.Hour).Unix())
+	dot := strings.IndexByte(wire, '.')
+	sig, err := base64.RawURLEncoding.DecodeString(wire[:dot])
+	if err != nil {
+		t.Fatal(err)
+	}
+	sig[0] ^= 0x01
+	tampered := base64.RawURLEncoding.EncodeToString(sig) + wire[dot:]
+	_, err = VerifyToken(kr, tampered, "", time.Now())
+	if !errors.Is(err, ErrUnverifiable) {
+		t.Fatalf("want ErrUnverifiable (HMAC trips before derivation), got %v", err)
+	}
+}
+
+// TestVerifyToken_EmptyExpectReviewer_TamperedPayloadStillFails covers the body-flip path with empty expectReviewer.
+func TestVerifyToken_EmptyExpectReviewer_TamperedPayloadStillFails(t *testing.T) {
+	t.Parallel()
+	kr := newTestKeyring()
+	wire, _ := mintForTest(t, "alice", time.Now().Add(time.Hour).Unix())
+	dot := strings.IndexByte(wire, '.')
+	if dot < 0 {
+		t.Fatal("no dot")
+	}
+	pay, err := base64.RawURLEncoding.DecodeString(wire[dot+1:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	pay[len(pay)-2] ^= 0x01
+	tampered := wire[:dot+1] + base64.RawURLEncoding.EncodeToString(pay)
+	_, err = VerifyToken(kr, tampered, "", time.Now())
+	if !errors.Is(err, ErrUnverifiable) {
+		t.Fatalf("want ErrUnverifiable, got %v", err)
+	}
+}
+
+// TestVerifyToken_EmptyExpectReviewer_ExpiredStillFails confirms window check still runs when expectReviewer is "".
+func TestVerifyToken_EmptyExpectReviewer_ExpiredStillFails(t *testing.T) {
+	t.Parallel()
+	kr := newTestKeyring()
+	past := time.Now().Add(-time.Hour).Unix()
+	wire, _ := mintForTest(t, "alice", past)
+	_, err := VerifyToken(kr, wire, "", time.Now())
+	if !errors.Is(err, ErrTokenExpired) {
+		t.Fatalf("want ErrTokenExpired, got %v", err)
+	}
+}
+
+// TestVerifyToken_ExplicitReviewerPreservesStrictCompare guards the migration: existing callers passing an explicit reviewer keep mismatch → ErrUnverifiable.
+func TestVerifyToken_ExplicitReviewerPreservesStrictCompare(t *testing.T) {
+	t.Parallel()
+	kr := newTestKeyring()
+	wire, _ := mintForTest(t, "alice", time.Now().Add(time.Hour).Unix())
+	_, err := VerifyToken(kr, wire, "bob", time.Now())
+	if !errors.Is(err, ErrUnverifiable) {
+		t.Fatalf("want ErrUnverifiable on explicit-reviewer mismatch, got %v", err)
+	}
+}
+
 // TestExtractKID_TypedSentinels pins each kid-scan failure mode to its typed sentinel.
 func TestExtractKID_TypedSentinels(t *testing.T) {
 	t.Parallel()

@@ -211,8 +211,13 @@ regatta approval decide \
 # Exit 0 on success; non-zero per the exit-code table below.
 ```
 
-`--format=json` on `list` emits the contract surface (pinned by
-`TestApprovalList_JSONShape`) for scripting; default is human table.
+`--format=json` on `list` emits the contract surface for scripting;
+default is human table. The row shape is pinned by
+`TestApprovalList_JSONShape` (key-presence) and
+`TestApprovalList_JSONMatchesSchema` (full JSON Schema 2020-12
+validation) against the machine-readable schema at
+`contracts/schemas/approval_list.v1.json` — downstream tools can
+consume that file directly to validate piped output.
 
 ### Where the token comes from
 

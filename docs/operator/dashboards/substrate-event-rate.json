@@ -1,0 +1,123 @@
+{
+  "uid": "regatta-substrate-event-rate",
+  "title": "Regatta — Substrate Event-Rate",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["regatta", "substrate", "wave-b", "tier-2", "slo-3"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      },
+      {
+        "name": "kind",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(regatta_substrate_events_appended_total, kind)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Event rate by kind (5m)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 16, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (kind) (rate(regatta_substrate_events_appended_total{kind=~\"$kind\"}[5m]))",
+          "legendFormat": "{{kind}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Chain breaks — last 24h (target: 0)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(regatta_substrate_chain_break_total[24h]))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Divergence detections — last 24h",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 5 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (layer) (increase(regatta_substrate_divergence_detected_total[24h]))",
+          "legendFormat": "{{layer}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Rate vs 7d baseline ±3σ (SLO-3 band)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(regatta_substrate_events_appended_total[5m]))",
+          "legendFormat": "rate (now)"
+        },
+        {
+          "refId": "B",
+          "expr": "avg_over_time(sum(rate(regatta_substrate_events_appended_total[5m]))[7d:5m])",
+          "legendFormat": "baseline (7d mean)"
+        },
+        {
+          "refId": "C",
+          "expr": "avg_over_time(sum(rate(regatta_substrate_events_appended_total[5m]))[7d:5m]) + 3 * stddev_over_time(sum(rate(regatta_substrate_events_appended_total[5m]))[7d:5m])",
+          "legendFormat": "+3σ"
+        },
+        {
+          "refId": "D",
+          "expr": "avg_over_time(sum(rate(regatta_substrate_events_appended_total[5m]))[7d:5m]) - 3 * stddev_over_time(sum(rate(regatta_substrate_events_appended_total[5m]))[7d:5m])",
+          "legendFormat": "-3σ"
+        }
+      ]
+    }
+  ]
+}
