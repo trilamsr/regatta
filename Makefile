@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full crash-recovery-property-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups mutation-test mutation-test-install agent-status agent-status-test
+.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full crash-recovery-property-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups mutation-test mutation-test-install agent-status agent-status-test ci-flake-report ci-flake-report-test
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -63,6 +63,12 @@ agent-status:  ## Summarize autonomous-session state: agent worktrees, open PRs,
 
 agent-status-test:  ## Smoke test for scripts/agent-status.sh (offline; --no-network path).
 	bash scripts/agent-status_test.sh
+
+ci-flake-report:  ## Rank tests by flake rate across recent CI runs (default top 10, last 100 runs).
+	bash scripts/ci-flake-report.sh
+
+ci-flake-report-test:  ## Smoke test for scripts/ci-flake-report.sh (offline; stubbed gh).
+	bash scripts/ci-flake-report_test.sh
 
 cover:  ## Print cross-package coverage; useful before declaring "done".
 	go test -coverpkg=./... -coverprofile=/tmp/regatta.cover ./...
