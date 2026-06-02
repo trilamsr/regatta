@@ -190,3 +190,7 @@ Failing-test capture: the first run of `go test ./cmd/boot-prompt-to-items/` mus
 - `memory/feedback_doc_check_banned_phrases` — §8 grade rubric requires banned-phrase clean.
 - `memory/feedback_grade_rubric` — §8 + PR body MUST post the scorecard verbatim.
 - `memory/feedback_deletion_default` — §9 enumerates the cuts.
+
+## Resolution (2026-06-02)
+
+Shipped via #331 (`feat(self-host): S1-T3 boot-prompt → work_item brief converter`). `make items` round-trips the autonomous-session-prompt PRIORITY block into `.regatta/items/*.md`.

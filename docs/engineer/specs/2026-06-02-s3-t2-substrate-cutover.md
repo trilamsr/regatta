@@ -332,3 +332,7 @@ Each filed before Wave 1 PR opens. Prefix `[s3-t2-followup]`.
 ---
 
 _Spec authority: per `feedback_spec_pattern_authority`, implementer subagent deviation from this spec requires re-spawning the design subagent. Open questions §10 must be resolved by adversarial reviewer before Wave dispatches. Followup issues §9 MUST be filed and cited in the Wave 1 PR body per `feedback_unaddressed_load_bearing`._
+
+## Resolution (2026-06-02)
+
+Phase B+C cutover shipped across #369 (`feat(state): Phase B — approvals shadow-write seam (migration 0009)`) and #378 (`feat(state): Phase C — approvals read-from-substrate seam (migration 0011)`). Cost-governor stays substrate-native (no cutover needed); approvals are the only legacy table touched in this scope.

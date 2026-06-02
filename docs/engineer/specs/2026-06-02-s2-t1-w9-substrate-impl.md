@@ -347,3 +347,7 @@ Each MUST be filed as `[s2-t1-followup]` BEFORE T1's PR opens. PR body cites iss
 ---
 
 _Spec authority: `feedback_spec_pattern_authority` — implementer subagent deviation requires re-spawning the design subagent. The 8 follow-up issues in §11 MUST be filed and cited in the T1 PR body per `feedback_unaddressed_load_bearing` + `feedback_review_before_automerge`._
+
+## Resolution (2026-06-02)
+
+Shipped via #350 (`feat(history): W9 substrate DurableHistory — interface + Append slice`). Substrate-default impl lives at `internal/history/`; Temporal-backed variant remains Phase X per `briefs/2026-06-01-self-host-first.md` §4.

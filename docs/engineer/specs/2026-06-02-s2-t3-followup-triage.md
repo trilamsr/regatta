@@ -334,3 +334,7 @@ Findings NOT folded back (defended in-place):
 - `memory/feedback_spec_pattern_authority` — implementer deviations from this spec (e.g. "let's add status: completed", "let's emit closed issues with kind: program", "let's introduce internal/itemsgen/ now") re-spawn the design subagent.
 - `memory/feedback_deletion_default` — §10 + §13 enumerate every cut.
 - `memory/feedback_parallel_dup_followups` — §2.1 defers shared-helper extraction to the third caller.
+
+## Resolution (2026-06-02)
+
+Shipped via #368 (`feat(gh-followup-to-items): GH [followup] issues → work_item briefs (S2-T3)`). `make followups` emits one `.regatta/items/F-<NNN>-<slug>.md` per open `[followup]` GH issue.
