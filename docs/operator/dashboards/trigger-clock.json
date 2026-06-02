@@ -1,0 +1,90 @@
+{
+  "uid": "regatta-trigger-clock",
+  "title": "Regatta — Trigger Clock (Days to Unlock)",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["regatta", "triggers", "wave-d", "tier-4"],
+  "timezone": "browser",
+  "refresh": "5m",
+  "time": { "from": "now-30d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      },
+      {
+        "name": "trigger",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(regatta_trigger_days_remaining, trigger)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Days remaining by trigger",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 7 },
+              { "color": "blue", "value": 1 },
+              { "color": "purple", "value": 0 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["last"] }, "textMode": "value_and_name" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (trigger) (regatta_trigger_days_remaining{trigger=~\"$trigger\"})",
+          "legendFormat": "{{trigger}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Days-remaining trend by trigger (30d)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "unit": "d" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (trigger) (regatta_trigger_days_remaining{trigger=~\"$trigger\"})",
+          "legendFormat": "{{trigger}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Trigger snapshot",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 18 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (trigger) (regatta_trigger_days_remaining{trigger=~\"$trigger\"})",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    }
+  ]
+}
