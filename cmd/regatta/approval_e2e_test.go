@@ -599,8 +599,6 @@ func TestE2E_TimeoutEscalatePath(t *testing.T) {
 	if code, _ := h.decideViaCLI(aliceTier0Tok, "allow", "alice"); code != exitNotReviewer {
 		t.Errorf("post-escalate tier-0 decide exit=%d; want %d (NotReviewer)", code, exitNotReviewer)
 	}
-
-	t.Skip("#194 — gate.Evaluate does not mint+notify tier-N+1; tier-1 decide deferred")
 }
 
 // TestE2E_ConcurrentDecideVsReaper pins spec §3.2.1 atomicity under race.
