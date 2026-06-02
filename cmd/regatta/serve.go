@@ -22,6 +22,7 @@ import (
 
 	"github.com/trilamsr/regatta/internal/canon"
 	"github.com/trilamsr/regatta/internal/config"
+	"github.com/trilamsr/regatta/internal/cost/spend"
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
@@ -161,7 +162,8 @@ func runServe(args []string) int {
 		return 2
 	}
 
-	set, err := buildSpawner(*spawnerName, *repoRoot, *claudeBin, *baseRef, slogger)
+	costKey, costKeyID := firstKey(loadBriefKeyring())
+	set, err := buildSpawner(*spawnerName, *repoRoot, *claudeBin, *baseRef, slogger, db, costKey, costKeyID)
 	if err != nil {
 		logger.Printf("spawner: %v", err)
 		return 2
@@ -327,7 +329,7 @@ type spawnerSet struct {
 // currently has no slog callsites — its observability lands when real
 // stdout/stderr-stream capture ships (#27, #45), at which point the
 // logger will thread through ClaudeSpawnerConfig the same way.
-func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger) (spawnerSet, error) {
+func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger, db *state.DB, costKey []byte, costKeyID string) (spawnerSet, error) {
 	switch name {
 	case "", "stub":
 		return spawnerSet{Spawner: spawner.New(spawner.Config{Logger: logger})}, nil
@@ -336,10 +338,13 @@ func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger
 		if err != nil {
 			return spawnerSet{}, fmt.Errorf("worktree manager: %w", err)
 		}
-		cs, err := spawner.NewClaudeSpawner(wm, spawner.ClaudeSpawnerConfig{
-			Command: claudeBin,
-			BaseRef: baseRef,
-		})
+		cfg := spawner.ClaudeSpawnerConfig{Command: claudeBin, BaseRef: baseRef}
+		if db != nil && len(costKey) > 0 {
+			cfg.OnResultEventFor = spend.SpawnerCallback(db.SQL(),
+				spend.WriteOptions{Key: costKey, KeyID: costKeyID},
+				spend.CallScope{WrittenBy: "claude-spawner"})
+		}
+		cs, err := spawner.NewClaudeSpawner(wm, cfg)
 		if err != nil {
 			return spawnerSet{}, fmt.Errorf("claude spawner: %w", err)
 		}
@@ -347,6 +352,17 @@ func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger
 	default:
 		return spawnerSet{}, fmt.Errorf("unknown spawner %q (want stub|claude)", name)
 	}
+}
+
+// firstKey picks one (keyID, key) pair from loadBriefKeyring's map so
+// the spawner-side cost-governor callback can sign substrate rows with
+// the same key the brief loader + approval gate use — single HMAC key
+// per process; ranging the map and breaking is intentional.
+func firstKey(keys map[string][]byte) ([]byte, string) {
+	for k, v := range keys {
+		return v, k
+	}
+	return nil, ""
 }
 
 // loadBriefKeyring reads the HMAC key from REGATTA_HMAC_KEY (or the
