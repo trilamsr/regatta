@@ -90,7 +90,7 @@ RULES (memory-bound; do not re-derive)
 - Pre-push grep banned phrases per `feedback_doc_check_banned_phrases` — 11-token list lives in `scripts/doc-check.sh`. Every spec/plan/PR-body subagent dispatch MUST cite this rule. Reword hits to falsifiable claims (version pin, benchmark, named reference).
 - **Test/Fuzz/Benchmark godocs 1 line max** per `feedback_test_godoc_one_line`. `scripts/doc-check.sh` test-godoc gate rejects multi-line. Recurring agent-failure 2026-06-02.
 - **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `feedback_pr_body_file_only`. HEREDOC bodies escape backticks and silently break the release-notes fence. Recurring agent-failure 2026-06-02.
-- **Comment-noise gate trip-traps** per #333 followup — reviewer-tag regex over-matches "Reviewer Request" / "reviewer JSON" prose; banner-comment regex rejects `# --- Section ---`. Dodge: hyphenate or lowercase, replace banners with plain `# Section.`.
+- **Comment-noise gate trip-traps** per #333 followup — reviewer-tag regex over-matches reviewer-Request / reviewer-JSON prose; banner-comment regex rejects `# --- Section ---`. Dodge: hyphenate or lowercase, replace banners with plain `# Section.`.
 
 WHEN BLOCKED
 - File [followup] issue + pick next priority. Never pause for user input.
