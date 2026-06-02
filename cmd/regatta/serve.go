@@ -516,7 +516,7 @@ func buildApprovalGate(db *state.DB, repoRoot string, logger *slog.Logger) (sche
 
 	byName := make(map[string]approval.Config, len(gates))
 	for _, g := range gates {
-		byName[g.Name] = convertApprovalGateConfig(g)
+		byName[g.Name] = g
 	}
 
 	keyring, kid := approvalKeyring()
@@ -526,37 +526,6 @@ func buildApprovalGate(db *state.DB, repoRoot string, logger *slog.Logger) (sche
 		return c, ok
 	})
 	return g, resolver, nil
-}
-
-// convertApprovalGateConfig adapts the YAML-loaded config.ApprovalGateConfig
-// to the runtime approval.Config. Fields are field-for-field identical —
-// the two types differ only by yaml vs runtime tags so the package
-// boundary stays clean. A future consolidation may collapse them.
-func convertApprovalGateConfig(in config.ApprovalGateConfig) approval.Config {
-	tiers := make([]approval.TierConfig, len(in.EscalationChain))
-	for i, t := range in.EscalationChain {
-		tiers[i] = approval.TierConfig{
-			Reviewers:         t.Reviewers,
-			Roles:             t.Roles,
-			Quorum:            t.Quorum,
-			PreventSelfReview: t.PreventSelfReview,
-			Timeout:           t.Timeout,
-			DecisionWindow:    t.DecisionWindow,
-		}
-	}
-	return approval.Config{
-		Name:              in.Name,
-		RiskClass:         in.RiskClass,
-		Reviewers:         in.Reviewers,
-		Roles:             in.Roles,
-		Quorum:            in.Quorum,
-		PreventSelfReview: in.PreventSelfReview,
-		Timeout:           in.Timeout,
-		DecisionWindow:    in.DecisionWindow,
-		OnTimeout:         in.OnTimeout,
-		EscalationChain:   tiers,
-		PredicateCEL:      in.PredicateCEL,
-	}
 }
 
 // listenerConfig is the bootListener seam; the test harness drives it directly so integration tests exercise the real boot path.

@@ -14,10 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/trilamsr/regatta/internal/config"
-	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -130,59 +127,6 @@ safety:
 	}
 	if gate != nil || resolver != nil {
 		t.Fatalf("gate=%v resolver=%v; want both nil when zero approval_gates configured", gate, resolver)
-	}
-}
-
-// TestConvertApprovalGateConfig_RoundTrips pins config→runtime field parity.
-func TestConvertApprovalGateConfig_RoundTrips(t *testing.T) {
-	// Compile-time + runtime sanity: build, convert, compare.
-	in := canonicalApprovalGateConfig()
-	out := convertApprovalGateConfig(in)
-	if out.Name != in.Name {
-		t.Errorf("Name: in=%q out=%q", in.Name, out.Name)
-	}
-	if out.Quorum != in.Quorum {
-		t.Errorf("Quorum: in=%d out=%d", in.Quorum, out.Quorum)
-	}
-	if out.Timeout != in.Timeout {
-		t.Errorf("Timeout: in=%v out=%v", in.Timeout, out.Timeout)
-	}
-	if out.OnTimeout != in.OnTimeout {
-		t.Errorf("OnTimeout: in=%q out=%q", in.OnTimeout, out.OnTimeout)
-	}
-	if len(out.Reviewers) != len(in.Reviewers) {
-		t.Errorf("Reviewers len mismatch: in=%d out=%d", len(in.Reviewers), len(out.Reviewers))
-	}
-	if len(out.EscalationChain) != len(in.EscalationChain) {
-		t.Errorf("EscalationChain len: in=%d out=%d", len(in.EscalationChain), len(out.EscalationChain))
-	}
-	// Sanity check: round-tripped Config validates per spec §5.5.
-	if err := out.Validate(); err != nil {
-		t.Errorf("converted Config fails approval.Config.Validate: %v", err)
-	}
-	// Compile-time assertion that the seam wires through; touches the
-	// approval import so the test stays robust if Config grows fields
-	// the converter must learn to copy.
-	_ = approval.ResultPause
-}
-
-// canonicalApprovalGateConfig is a small valid config row used to test
-// the converter in isolation from the YAML loader.
-func canonicalApprovalGateConfig() config.ApprovalGateConfig {
-	return config.ApprovalGateConfig{
-		Name:           "prod",
-		RiskClass:      config.RiskLow,
-		Reviewers:      []string{"alice", "bob"},
-		Quorum:         1,
-		Timeout:        time.Hour,
-		DecisionWindow: 30 * time.Minute,
-		OnTimeout:      config.OnTimeoutFail,
-		EscalationChain: []config.ApprovalTierConfig{{
-			Reviewers:      []string{"carol"},
-			Quorum:         1,
-			Timeout:        time.Hour,
-			DecisionWindow: 30 * time.Minute,
-		}},
 	}
 }
 
