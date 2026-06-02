@@ -558,8 +558,11 @@ with explicit reopen condition. Empty cuts list = failure mode.
 | Hosted SaaS (regatta cloud) | Rejected for MVR-1+MVR-2. Self-host-only ships first; hosted is the third product (persona C territory). | Persona-B/C asks specifically for hosted variant + commits to a pilot LOI. See §10 Q4. |
 | LangGraph / CrewAI / AutoGen as the substrate | Adversarial review against existing substrate per `2026-06-01-w9-temporal-vs-bespoke-redteam.md`. None of these provide signed-verdict history; rebuilding regatta around them is a 6-month sink. | A paying customer mandates one specifically. Even then, build the bridge as an MCP server, not a substrate swap. |
 | In-house CRDT lib | Yjs / Automerge already won. Building one ourselves is the deletion-default counter-example. | Both Yjs and Automerge stop maintenance for ≥12 months. Unlikely. |
+| Bespoke SBOM generator | `syft` (Anchore, Apache 2) ships an SPDX/CycloneDX-emitting CLI; GoReleaser already wires syft-on-release via the `sboms:` block. Persona-B/D procurement asks for SBOMs read CycloneDX directly — building our own is pure duplication. | syft drops Go module support OR a customer demands a non-CycloneDX format syft does not emit. |
+| Bespoke license-compliance scanner | `go-licenses` (Google, Apache 2) + `licensei` (Bánzai Cloud, Apache 2) cover the Go-module compliance ask; `scancode-toolkit` covers the deeper source-level case. License-allowlist enforcement lives in CI as a pre-merge gate, not as a regatta verb. | A persona-B/C reseller signs a pilot specifically requiring in-substrate license attribution alongside Sigstore attestation. Even then, wrap go-licenses output into the W10 bundle — do not re-implement. |
+| Bespoke skill-version registry | Anthropic Skills format already carries `version:` in the front-matter; pinning happens at the dispatch-prompt layer (operator pins `skill@1.2.3` in the autonomous-session-prompt). regatta-side version DB duplicates the Skills directory's own metadata. | Anthropic drops the `version:` field from the Skills front-matter OR a customer demands cross-skill compatibility resolution (semver-solver shape) that the directory does not provide. |
 
-11 cuts. Each cut is a step we don't take.
+14 cuts. Each cut is a step we don't take.
 
 ### 9.1 Fleet-management stack — adopt/reject
 
@@ -602,7 +605,7 @@ tracking issue at that point.
 
 <!-- FOLLOWUP-RESOLVED 2026-06-02: §9.1 fleet-mgmt + §9.2 plugin-API closed in-place. -->
 
-### 9.5 Rollback strategy — regatta auto-merges a bad PR, main breaks
+### 9.3 Rollback strategy — regatta auto-merges a bad PR, main breaks
 
 When regatta dispatches a PR that passes all gates, auto-merges,
 and breaks `main` (test red post-merge, telemetry regression, or
@@ -656,7 +659,7 @@ no force-push**. regatta inherits the same invariant.
 
 <!-- FOLLOWUP: how does regatta DETECT a bad merge? Three candidate signals — (1) CI red on `main` post-merge (cheap, narrow); (2) operator-tagged via GH comment `@regatta rollback` (manual but covers every defect class); (3) production telemetry-driven (error-rate spike on a named metric within N minutes of merge; requires customer telemetry wiring). Recommended MVR-1 default: (1) + (2); (3) defers to MVR-3 when customer telemetry pipelines exist. File a `[FOLLOWUP] rollback detection signal pick` issue before MVR-1-T1 dispatch; without a chosen signal, `regatta rollback` is operator-invoked only — acceptable for MVR-1, load-bearing for MVR-2+. -->
 
-### 9.6 Secret-rotation design — beyond #379 HMAC rotation
+### 9.4 Secret-rotation design — beyond #379 HMAC rotation
 
 PR #379 landed multi-key keyring rotation for the HMAC signing
 key. The same shape extends to every other long-lived credential
@@ -741,7 +744,7 @@ nits, not blockers. They are inline-resolved in §6.
 All five operator questions land in `docs/engineer/decisions/`
 (created when answered) before the respective phase dispatches.
 
-### 10.5 Customer-0 interview followup — persona pick is unvalidated until ≥3 maintainer interviews land
+### 10.6 Customer-0 interview followup — persona pick is unvalidated until ≥3 maintainer interviews land
 
 The persona-A pick in §1 is **desk research**, not validated
 demand, per #421 RISK #423. Surfacing this explicitly so the
@@ -856,8 +859,8 @@ Wave-2 + wave-4 picks compose into MVR-2:
 | Tier | Criteria |
 |---|---|
 | **B (floor)** | Customer 0 named (§1). Top-3 wedges ranked (§3). ≥1 adopt-vs-build table (§5). ≥1 cut (§9). Release-notes fence in PR body. |
-| **A (target)** | B + 4 personas scored on ≥3 axes (§1). Strategic gaps mapped (folded into §3 + §5 + §6 sections). Phase X wedges score ≥2 OSS candidates each (§5). 4-phase sequenced roadmap with abandon-criterion per phase (§4). Gate criteria measurable (§2). ≥5 cuts with reopen condition (§9 has 11). |
-| **A+ (stretch)** | A + 4 wave-3 cross-category insights surfaced + 1 cultural-moat insight (§6.7). Zero bespoke wedges across four phases (§4 budget summary). Customer-0 pick rebuttable with adversarial note (§1). Effort + abandon-criterion per task (§4 tables). ≥10 cuts (§9 has 11). Single-source consolidation kills 24 superseded PRs (§12 + this PR's "Supersedes" list). |
+| **A (target)** | B + 4 personas scored on ≥3 axes (§1). Strategic gaps mapped (folded into §3 + §5 + §6 sections). Phase X wedges score ≥2 OSS candidates each (§5). 4-phase sequenced roadmap with abandon-criterion per phase (§4). Gate criteria measurable (§2). ≥5 cuts with reopen condition (§9 has 14). |
+| **A+ (stretch)** | A + 4 wave-3 cross-category insights surfaced + 1 cultural-moat insight (§6.7). Zero bespoke wedges across four phases (§4 budget summary). Customer-0 pick rebuttable with adversarial note (§1). Effort + abandon-criterion per task (§4 tables). ≥10 cuts (§9 has 14). Single-source consolidation kills 24 superseded PRs (§12 + this PR's "Supersedes" list). |
 
 **Self-scored tier:** A+ — every criterion met. The consolidation
 itself is the A+ delta: four chains collapsed to one brief, 24
