@@ -59,3 +59,8 @@ MEMORY CITES
 - [ ] no banned phrases, no signatures
 - [ ] memory rules cited
 - [ ] PR opened against `main`; worktree removed after merge
+
+## RECURRING-FAILURE TRAPS
+
+1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `feedback_pr_body_file_only`. HEREDOC bodies escape backticks.
+2. **GH base-sha drift workaround** per #343 (fix #347 merged): tag release-notes with `[DOCS]` for spec-only PRs to skip check-tdd.

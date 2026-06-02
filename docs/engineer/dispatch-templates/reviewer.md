@@ -50,3 +50,8 @@ NO SIGNATURES
 - [ ] verdict line present
 - [ ] Risk-tier+ findings have a disposition (inline-fix OR tracking issue #)
 - [ ] memory rules cited
+
+## RECURRING-FAILURE TRAPS
+
+1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `feedback_pr_body_file_only` when posting review summary.
+2. **Comment-noise trip-traps** per #333 (regex tightened in #371): flag legitimate "Reviewer-Capital" prose in author diffs only if the regex still over-matches.
