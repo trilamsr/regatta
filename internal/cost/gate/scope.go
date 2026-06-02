@@ -27,8 +27,14 @@ type WorkItemScope struct {
 // USD set means "use this as the upper-bound" (planner already
 // resolved); USD==0 with InputTokens+MaxTokens populated means "ask
 // the estimator to compute from these counts".
+//
+// OperatorID is the per-call agent identity — empty for the default
+// upper_bound estimator (which never reads it), populated by Gate.Evaluate
+// from WorkItemScope.OperatorID when the History estimator (spec §10 S1
+// opt-in, issue #238) needs cohort scoping at p95-query time.
 type EstHint struct {
 	USD         float64
 	InputTokens int64
 	MaxTokens   int64
+	OperatorID  string
 }

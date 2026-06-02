@@ -173,6 +173,13 @@ import "list"
 	reconcile_interval:         *"1h" | "5m" | "15m" | "30m" | "6h" | "24h"
 	drift_alert_threshold_pct:  *10 | int & >=0 & <=100
 	usage_api_key_env:          *"ANTHROPIC_ADMIN_KEY" | string
+	// estimation_strategy is the opt-in flag from spec §10 S1
+	// (issue #238). Default upper_bound matches Wave-1 behaviour
+	// byte-for-byte; setting `history` switches to p95-of-cohort
+	// estimation with cold-start fallback to upper_bound when
+	// fewer than ~10 prior (tenant, operator, model) samples
+	// exist. Additive — no breaking change for existing configs.
+	estimation_strategy:        *"upper_bound" | "history"
 }
 
 #Context: {
