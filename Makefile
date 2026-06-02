@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items
+.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -11,6 +11,9 @@ doc-check-test:  ## Assert banned-phrase gate strips fenced + inline backtick sp
 
 items:  ## Regenerate .regatta/items/*.md from docs/engineer/autonomous-session-prompt.md. Idempotent.
 	go run ./cmd/boot-prompt-to-items
+
+followups:  ## Regenerate .regatta/items/gh-issue-*.md from GH [followup]-labeled issues. Idempotent.
+	go run ./cmd/gh-followup-to-items
 
 go-check:  ## Build and test every Go package with the race detector. PHASE-S-RELAX: -short during self-host window; full sweep via `make go-check-full`.
 	go build -buildvcs=false ./...
