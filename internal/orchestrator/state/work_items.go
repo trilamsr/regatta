@@ -32,7 +32,9 @@ const (
 // WorkItemStatus enumerates work_items.status values.
 type WorkItemStatus string
 
-// Work item lifecycle statuses per spec §2.2.
+// Work item lifecycle statuses per spec §2.2. WorkStatusRejected is the
+// terminal state for an approval-gate denial (spec §3.1 step 0.5); the
+// scheduler reaches it via TransitionWorkItem.
 const (
 	WorkStatusPlanned  WorkItemStatus = "planned"
 	WorkStatusRunning  WorkItemStatus = "running"
@@ -40,6 +42,7 @@ const (
 	WorkStatusMerged   WorkItemStatus = "merged"
 	WorkStatusArchived WorkItemStatus = "archived"
 	WorkStatusBlocked  WorkItemStatus = "blocked"
+	WorkStatusRejected WorkItemStatus = "rejected"
 )
 
 // WorkItemSource enumerates work_items.source values.
@@ -75,6 +78,60 @@ type WorkItem struct {
 // exist. Distinct from sql.ErrNoRows so callers can branch on the
 // typed sentinel.
 var ErrWorkItemNotFound = errors.New("state: work_item not found")
+
+// ErrInvalidWorkItemTransition is returned by TransitionWorkItem when
+// the CAS predicate (status=from) does not match — either the row no
+// longer exists or another writer already moved it past `from`. The
+// CAS-loses-race posture is load-bearing: callers like the scheduler's
+// approval gate MUST treat this as "another producer already settled
+// the wi" rather than retry, so a terminal state cannot be resurrected.
+var ErrInvalidWorkItemTransition = errors.New("state: invalid work_item transition")
+
+// TransitionWorkItem flips work_items.status from→to atomically. The
+// CAS predicate (status=from) ensures a concurrent writer that already
+// moved the row past `from` wins; the caller observes
+// ErrInvalidWorkItemTransition and treats the row as already-settled.
+//
+// Spec §3.1 step 0.5 names this transition for the approval-gate
+// rejected path; the brief_loader cascade-archive path (archive a
+// child whose dep is archived) uses the same primitive. Both call
+// sites previously issued raw-SQL UPDATEs; consolidating here pins
+// the CAS shape in one place so future state-package changes (e.g.
+// an audit column or a transition matrix) flow to every transition.
+//
+// Unknown id and stale from collapse to one sentinel because the
+// SQL CAS cannot distinguish them without a second round-trip, and
+// callers branch on "did not transition" identically either way.
+//
+// TransitionWorkItem is the d.now() shim — production writers that
+// thread a poll-time stamp (BriefLoader) MUST call TransitionWorkItemAt
+// so the constructor-bound clock contract holds.
+func (d *DB) TransitionWorkItem(ctx context.Context, id string, from, to WorkItemStatus) error {
+	return d.TransitionWorkItemAt(ctx, id, from, to, d.now())
+}
+
+// TransitionWorkItemAt is the timestamp-explicit variant of
+// TransitionWorkItem. See TransitionWorkItem for the contract; at is
+// the poll-start tick threaded by BriefLoader-style callers so the
+// constructor-bound clock cannot drift between sibling writes inside
+// one Sync.
+func (d *DB) TransitionWorkItemAt(ctx context.Context, id string, from, to WorkItemStatus, at time.Time) error {
+	now := at.UTC().Unix()
+	res, err := d.sql.ExecContext(ctx,
+		`UPDATE work_items SET status = ?, updated_at = ? WHERE id = ? AND status = ?`,
+		string(to), now, id, string(from))
+	if err != nil {
+		return fmt.Errorf("state: transition work_item: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("state: transition work_item rows: %w", err)
+	}
+	if rows == 0 {
+		return fmt.Errorf("%w: id=%s from=%s to=%s", ErrInvalidWorkItemTransition, id, from, to)
+	}
+	return nil
+}
 
 // GetWorkItem fetches one row by id. Returns ErrWorkItemNotFound
 // when the row does not exist.

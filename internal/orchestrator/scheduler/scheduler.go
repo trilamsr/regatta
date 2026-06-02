@@ -244,14 +244,12 @@ type schedulerDB interface {
 	MarkEdgeFired(ctx context.Context, edgeID int64, fired, contentSHA string) error
 	GetLatestOutput(ctx context.Context, workItemID string) (state.OutputJournalEntry, error)
 	WithTx(ctx context.Context, fn func(*sql.Tx) error) error
-	// SQL escapes the seam for the gate-pass's raw-SQL CAS write that
-	// transitions a rejected work_item to status='rejected'. Spec §3.1
-	// step 0.5 spells this as state.TransitionWorkItem, but state has no
-	// typed transition for work_items yet; the precedent from
-	// internal/program/brief_loader.go (the archive-on-archived-dep path)
-	// is to use db.SQL() directly. Promoting this to a typed method on
-	// *state.DB is tracked as a followup so the next wave can consolidate.
-	SQL() *sql.DB
+	// TransitionWorkItem CAS-updates work_items.status. Spec §3.1
+	// step 0.5 names this for the approval-gate rejected path; the
+	// brief_loader cascade-archive uses the same primitive. Both
+	// previously issued raw-SQL UPDATEs through *state.DB.SQL();
+	// consolidating here keeps the CAS shape in one place.
+	TransitionWorkItem(ctx context.Context, id string, from, to state.WorkItemStatus) error
 }
 
 // Scheduler is single-caller: Tick must not be invoked concurrently.
@@ -799,33 +797,16 @@ func (s *Scheduler) applyL4Gate(ctx context.Context, spawnable []state.WorkItem)
 }
 
 // markWorkItemRejected flips work_items.status='rejected' atomically
-// against the planned-source state. CAS predicate (`status='planned'`)
-// is load-bearing: a concurrent writer that already moved the row
-// (cancel/archive) must win — the gate cannot resurrect a terminal wi.
-//
-// Spec §3.1 calls this state.TransitionWorkItem; state has no typed
-// work_item transition yet, so the raw-SQL pattern matches the
-// brief_loader.go archive-on-archived-dep precedent. A followup will
-// consolidate both into a state-package API.
+// against the planned-source state via state.TransitionWorkItem. The
+// CAS predicate inside the typed call is load-bearing: a concurrent
+// writer that already moved the row (cancel/archive) must win — the
+// gate cannot resurrect a terminal wi. ErrInvalidWorkItemTransition
+// surfaces unwrapped so the caller can errors.Is on the lost race.
 func (s *Scheduler) markWorkItemRejected(ctx context.Context, tc *tickCtx, id string) error {
 	if err := s.fireWriteHook(tc); err != nil {
 		return err
 	}
-	now := time.Now().UTC().Unix()
-	res, err := s.db.SQL().ExecContext(ctx,
-		`UPDATE work_items SET status = ?, updated_at = ? WHERE id = ? AND status = ?`,
-		"rejected", now, id, string(state.WorkStatusPlanned))
-	if err != nil {
-		return err
-	}
-	rows, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if rows == 0 {
-		return fmt.Errorf("scheduler: work_item %s no longer in status=planned", id)
-	}
-	return nil
+	return s.db.TransitionWorkItem(ctx, id, state.WorkStatusPlanned, state.WorkStatusRejected)
 }
 
 func (s *Scheduler) laneHasCapacity(lane string, occupancy map[string]int) bool {
