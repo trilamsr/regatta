@@ -57,6 +57,15 @@ type streamUsage struct {
 	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 }
 
+// ResultEventCallback fires once per `result` event after the W6 attrs
+// are set but before span.End. Cost-governor (P8) wires this to write a
+// substrate `token_spend` row inside the parser's span-close path so
+// recorded usage and the closing span are mutually visible. A non-nil
+// returned error marks the span Error+error.type=record_call_failed per
+// the R4 open-span-as-smoke-alarm contract; it is not propagated to
+// ParseStream's return value (callers classify subprocess errors apart).
+type ResultEventCallback func(ctx context.Context, ev *streamEvent) error
+
 // ParseStream reads claude CLI stream-json events from r and opens one
 // `chat <model>` span on the system.init line, closing it on the matching
 // result line. Spec §3.4 attribute set, §3.5 child-of-operator_invocation
@@ -64,11 +73,15 @@ type streamUsage struct {
 // event (legacy CLI invocation without --output-format=stream-json — spec
 // §9 R10 nondisruption contract).
 //
+// onResult, when non-nil, fires once per `result` event after finalizeResult
+// has set the W6 attribute set but before span.End. Backwards-compatible:
+// onResult=nil preserves every pre-cost-gov behaviour byte-equal.
+//
 // The returned error surfaces only on stream I/O failures; a non-zero
 // is_error in a result event is recorded as span status + error.type and
 // returns nil so the caller (Spawn) does not double-classify subprocess
 // errors.
-func ParseStream(ctx context.Context, tracer trace.Tracer, r io.Reader) error {
+func ParseStream(ctx context.Context, tracer trace.Tracer, r io.Reader, onResult ResultEventCallback) error {
 	if tracer == nil || r == nil {
 		return nil
 	}
@@ -126,6 +139,13 @@ func ParseStream(ctx context.Context, tracer trace.Tracer, r io.Reader) error {
 				continue
 			}
 			finalizeResult(span, ev)
+			if onResult != nil {
+				if err := onResult(ctx, &ev); err != nil {
+					span.RecordError(err)
+					span.SetStatus(codes.Error, err.Error())
+					span.SetAttributes(rotel.ErrorTypeAttr("record_call_failed"))
+				}
+			}
 			span.End()
 			span = nil
 		}

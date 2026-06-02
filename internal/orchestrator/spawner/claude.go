@@ -54,6 +54,12 @@ type ClaudeSpawnerConfig struct {
 	// Nil falls back to otel.Tracer("spawner") which resolves to the
 	// global provider — noop until obs/otel.Setup runs (W6 spec §3.3).
 	Tracer trace.Tracer
+
+	// OnResultEvent fires inside ParseStream's result-event handler after
+	// the W6 attribute set lands but before span.End. Cost-governor (P8)
+	// wires this to write a substrate token_spend row; nil = no-op,
+	// preserving every pre-cost-gov behaviour byte-equal.
+	OnResultEvent ResultEventCallback
 }
 
 // PromptBuilder produces the prompt text for one Spawn request.
@@ -117,7 +123,7 @@ func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) 
 	spanCtx, span := s.cfg.Tracer.Start(ctx, "operator_invocation")
 	pr, pw := io.Pipe()
 	go func() {
-		_ = ParseStream(spanCtx, s.cfg.Tracer, pr)
+		_ = ParseStream(spanCtx, s.cfg.Tracer, pr, s.cfg.OnResultEvent)
 	}()
 
 	args := append([]string(nil), s.cfg.Args...)
