@@ -282,10 +282,10 @@ func runServe(args []string) int {
 		}))
 	}
 	// RejectionRouter wakes agents on AI-gate rejections and labels the
-	// PR `needs-human` after K=3 (issue #475 / PR #469 followup). Defaults
-	// match docs/design.md §Failure modes; no regatta.yaml keys are
-	// introduced for MVR-1 — operators who want richer routing land it
-	// when a real customer use-case shows up.
+	// PR `needs-human` after K=3. Defaults match docs/design.md §Failure
+	// modes; no regatta.yaml keys are introduced for MVR-1 — operators
+	// who want richer routing land it when a real customer use-case
+	// shows up.
 	o.SetRejectionRouter(buildRejectionRouter(db, rejectionrouter.GHLabeler{}, slogger))
 
 	if err := o.Recover(ctx); err != nil {
@@ -365,7 +365,7 @@ func runServe(args []string) int {
 			return 1
 		}
 		// Mirror the Run loop order so `--tick-once` is a faithful
-		// single-shot rehearsal of one daemon tick (issue #475).
+		// single-shot rehearsal of one daemon tick.
 		if err := o.RouteRejections(ctx); err != nil {
 			logger.Printf("route rejections: %v", err)
 			return 1
@@ -547,11 +547,11 @@ func parseBriefKeyring(raw string) (map[string][]byte, []string, error) {
 }
 
 // buildRejectionRouter wires the RejectionRouter the orchestrator
-// drives per tick (issue #475). Defaults — K=3 + label=needs-human —
-// come from the router package; we pass them implicitly by leaving the
-// Config zero-valued. The labeler is injected so tests can substitute
-// a capturing fake without spawning gh; serve.go production wiring
-// hands in rejectionrouter.GHLabeler{} which shells out to gh.
+// drives per tick. Defaults — K=3 + label=needs-human — come from the
+// router package; we pass them implicitly by leaving the Config
+// zero-valued. The labeler is injected so tests can substitute a
+// capturing fake without spawning gh; serve.go production wiring hands
+// in rejectionrouter.GHLabeler{} which shells out to gh.
 func buildRejectionRouter(db *state.DB, labeler rejectionrouter.PRLabeler, logger *slog.Logger) *rejectionrouter.Router {
 	return rejectionrouter.New(rejectionrouter.Config{
 		DB:      db,
