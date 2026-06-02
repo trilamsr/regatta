@@ -21,9 +21,11 @@ meter.Int64Counter("regatta.dispatch.failure").Add(ctx, 1,
 
 Resolve meter from the spawner-failure-taxonomy ctor's `Config.Meter` field (A-T0b retrofit lands this Config struct — spec §7 Wave-A table row A-T0b explicitly includes the spawner-failure-taxonomy ctor in its 6 retrofit set).
 
-`mode` enum (≤ 15 buckets, must cover ≥ 8 known failure modes from the last 30 d CI history per Wave-C exit gate): `lint_fail`, `test_fail`, `compile_fail`, `timeout`, `oom`, `network_flake`, `merge_conflict`, `permission_denied`, `dep_missing`, `policy_block`, `other`. Reserved bucket `other` catches unparseable logs — paired with a `TestFailureTaxonomy_UnknownModeRouteToOther` test so cardinality stays bounded.
+`mode` enum — initial set is 11 buckets (covering 8+ known modes from 30 d CI history per Wave-C exit gate): `lint_fail`, `test_fail`, `compile_fail`, `timeout`, `oom`, `network_flake`, `merge_conflict`, `permission_denied`, `dep_missing`, `policy_block`, `other`. The ≤ 15 ceiling leaves 4 spare slots so a new bucket can land at PR-time without a cardinality re-budget; adding a 16th MUST update spec §3 item #12 in the same PR. Reserved bucket `other` catches unparseable logs — paired with a `TestFailureTaxonomy_UnknownModeRouteToOther` test so cardinality stays bounded. The known-modes corpus lives at `testdata/failure_taxonomy/ci_failures_30d.txt` (one log excerpt per file; ≥ 8 mode coverage asserted by `TestFailureTaxonomy_KnownModesCoverage`).
 
 Tag set: `mode` (≤ 15 enums), `template` (≤ 20 enums, mirrors C-T1). Cardinality safe (≤ 300 cells).
+
+Nil-meter fallback covered by `TestFailureTaxonomy_NilMeterFallback`.
 
 Add `dashboards/grafana/failure-modes.json`:
 

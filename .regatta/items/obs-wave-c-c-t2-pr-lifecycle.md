@@ -25,7 +25,11 @@ meter.Float64Histogram("regatta.pr.stage_duration_seconds").Record(ctx, duration
 
 Tag set: `stage` (3 enums). Cardinality safe. `pr_number` flows via the dispatch span attribute → exemplar; the histogram itself stays unlabeled-by-PR.
 
-Resolve meter from a new `internal/obs/prlifecycle/config.go` Config struct (Config.Meter field added inline in this PR — not part of A-T0b's retrofit list). Nil falls back to `otel.Meter("obs/prlifecycle")`.
+Stage-ordering invariant: stages MUST be monotone (`open_to_review` → `review_to_approve` → `approve_to_merge`); out-of-order GitHub events (e.g. a review pushed before the open webhook is observed due to event reordering) are dropped with a warn-log + a `regatta.pr.lifecycle.out_of_order` counter increment (tagged `stage` only — same enum set, cardinality unchanged). Test fixture `TestPRLifecycle_OutOfOrderEventsDropped` covers reorder + late-arrival.
+
+Resolve meter from a new `internal/obs/prlifecycle/config.go` Config struct (Config.Meter field added inline in this PR — not part of A-T0b's retrofit list). Nil falls back to `otel.Meter("obs/prlifecycle")` (covered by `TestPRLifecycle_NilMeterFallback`).
+
+GitHub API rate-limit handling: `gh` CLI inherits the operator's auth token and surfaces HTTP 403 / 429 on rate-limit hit. The collector retries with exponential backoff (`time.Sleep(1s, 2s, 4s, 8s)`) up to 4 attempts; on persistent failure, log a warn + increment a `regatta.pr.lifecycle.gh_rate_limited` counter (no tags — single series) so the operator can spot a quota-burn against the steady-state event rate. Tracked + alarmed via the same A-T6 operator doc surface — no new dashboard.
 
 Add `dashboards/grafana/dispatch.json` panels (extends C-T1's dashboard — coordinate edit ordering: C-T1 lands first, C-T2 extends):
 

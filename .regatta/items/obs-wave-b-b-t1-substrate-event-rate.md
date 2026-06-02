@@ -21,7 +21,9 @@ meter.Int64Counter("regatta.substrate.events.appended").Add(ctx, 1,
 
 Resolve the meter from the substrate `Config.Meter` field (landed in A-T0b's substrate Config retrofit). Nil falls back to `otel.Meter("orchestrator/state/substrate")`.
 
-Tag set per spec §2.2 budget: `layer` (≤ 5 enums: dispatch/cost/divergence/audit/policy), `kind` (≤ 30 enums). Cardinality safe. **DO NOT** add `pr_number`/`run_id`/`work_item_id` — banned on metrics per spec §2.2.
+Tag set per spec §2.2 budget: `layer` (≤ 5 enums: dispatch/cost/divergence/audit/policy), `kind` (≤ 30 enums — enforced at emit-site via `var validKinds = map[string]struct{}{…}`; unknown kinds route to literal `"other"` so a typo or new caller cannot leak unbounded series). Cardinality safe (≤ 150 cells). **DO NOT** add `pr_number`/`run_id`/`work_item_id` — banned on metrics per spec §2.2.
+
+Nil-meter fallback path: when `Config.Meter == nil`, resolve via `otel.Meter("orchestrator/state/substrate")` AND add a `TestEventCounter_NilMeterFallback` covering the no-op path so the existing test suite (which constructs substrate without a meter) does not panic post-A-T0b.
 
 Ship `slo/substrate-event-rate.yaml` (SLO-3, warn-tier per §5): tracks events/sec rolling-rate; warn-tier alarm fires on > 2× 24-h trailing P95 (substrate-event-storm signal). Sloth compile to `dashboards/prometheus/rules/`.
 
@@ -41,7 +43,7 @@ Per `feedback_research_design_principles`: lean on OTel SDK + Sloth verbatim; no
 ## Acceptance criteria
 
 - [planned] c1: `internal/orchestrator/state/substrate/event.go` Append emits `regatta.substrate.events.appended` Int64Counter (spec §3 item #5).
-- [planned] c2: Tag set strictly `layer` + `kind`; AST-walk lint stays green (spec §2.2).
+- [planned] c2: Tag set strictly `layer` + `kind`; unknown `kind` strings route to `"other"` (bounded-enum guard); AST-walk lint stays green (spec §2.2).
 - [planned] c3: `slo/substrate-event-rate.yaml` SLO-3 warn-tier compiles + fires on synthetic burst (spec §5 SLO-3).
 - [planned] c4: `dashboards/grafana/substrate-events.json` checked in with two panels referencing emitted names (spec §9 R2).
 - [planned] c5: PR body carries A+ rubric scorecard + release-notes fence; submitted via `--body-file`.

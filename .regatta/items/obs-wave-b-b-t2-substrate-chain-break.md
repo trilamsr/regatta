@@ -18,13 +18,15 @@ meter.Int64Counter("regatta.substrate.chain.break").Add(ctx, n,
     attribute.String("layer", layer))
 ```
 
-Where `n = 1` on verify failure, `n = 0` on success (keeps the series alive for absent-data alarms). Resolve meter from substrate `Config.Meter` field (A-T0b retrofit). Nil falls back to `otel.Meter("orchestrator/state/substrate")`.
+Where `n = 1` on verify failure; on success the counter is NOT incremented (Prom convention: `rate()` over an unchanged counter returns zero, so no `n = 0` write is needed to keep the series alive). The companion `regatta.substrate.chain.verify` counter (also emitted from this path, `n = 1` per verify regardless of outcome) provides the denominator for failure-rate alerts and guarantees series presence so `absent()` alarms fire correctly if the verify path goes silent. Resolve meter from substrate `Config.Meter` field (A-T0b retrofit). Nil falls back to `otel.Meter("orchestrator/state/substrate")` (covered by `TestChainBreakCounter_NilMeterFallback`).
 
 Tag set: `layer` (≤ 5 enums, mirrors B-T1). Cardinality safe.
 
 Per spec §2.5, the chain-verify package is on the always-sample override list — A-T0a's `ErrorOverride` sampler captures every chain-break trace regardless of head-sampling ratio. Verify the override fires by emitting a span carrying `error.type=chain_break` on every non-zero increment.
 
 Critical-tier alarm rule (spec §3 row 6): fires on any non-zero increment (`increase(regatta_substrate_chain_break_total[5m]) > 0`). Lives in `slo/substrate-chain-break.yaml` (alarm-only, no SLO). Operator runbook `docs/operator/runbooks/substrate-chain-break.md` covers triage + recovery.
+
+A chain break is a tamper signal — any non-zero increment is load-bearing. The dedup safeguard against alert-fatigue is at the notifier (Alertmanager `group_wait` / `repeat_interval`), NOT at the rule (do not soften to `> N` thresholds; that hides the first incident). Document the Alertmanager group config in the runbook.
 
 Add `dashboards/grafana/substrate-chain.json`:
 
@@ -39,7 +41,7 @@ Add `dashboards/grafana/substrate-chain.json`:
 
 ## Acceptance criteria
 
-- [planned] c1: `internal/orchestrator/state/substrate/sign.go` emits `regatta.substrate.chain.break` on every verify (n=1 fail, n=0 success) (spec §3 item #6).
+- [planned] c1: `internal/orchestrator/state/substrate/sign.go` emits `regatta.substrate.chain.break` on every verify failure (n=1 on fail; no write on success) AND `regatta.substrate.chain.verify` (n=1 per verify) as the denominator counter (spec §3 item #6).
 - [planned] c2: Tag set strictly `layer`; AST-walk lint stays green (spec §2.2).
 - [planned] c3: Critical-tier alarm rule fires on any non-zero increment; synthetic-break test fixture proves it (spec §7 Wave-B exit gate).
 - [planned] c4: Operator runbook `docs/operator/runbooks/substrate-chain-break.md` covers triage (spec §8 A3).

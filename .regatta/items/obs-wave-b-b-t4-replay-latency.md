@@ -14,15 +14,21 @@ Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-
 Instrument `internal/history/substrate_impl.go` Replay path. Wrap the replay call with a histogram timer:
 
 ```go
-meter.Float64Histogram("regatta.replay.latency_ms").Record(ctx, durationMs,
+meter.Float64Histogram("regatta.replay.latency_ms",
+    metric.WithExplicitBucketBoundaries(5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000),
+).Record(ctx, durationMs,
     attribute.String("impl", impl)) // sqlite | substrate | hybrid
 ```
 
-Resolve meter from `internal/history` Config.Meter field (A-T0b retrofit). Nil falls back to `otel.Meter("history")`.
+Bucket boundaries explicit (not OTel defaults): defaults are biased toward web latencies and have only one bucket between 500 ms and 5 s, which would blur the warn (500 ms) and critical (2 s) SLO thresholds at the same quantile. The 11-bucket grid above gives ≥ 3 buckets in the warn-to-critical band so `histogram_quantile` reads cleanly. Resolve meter from `internal/history` Config.Meter field (A-T0b retrofit). Nil falls back to `otel.Meter("history")` (covered by `TestReplayHistogram_NilMeterFallback`).
 
-Tag set: `impl` (3 enums max). Cardinality safe.
+Tag set: `impl` (3 enums max). Cardinality safe (≤ 33 cells across 11 buckets).
 
 Ship `slo/replay-latency.yaml`: tracks P95 replay latency per `impl`; warn-tier alarm fires on P95 > 500 ms over 10-min window; critical-tier on P95 > 2 s. Sloth compile to `dashboards/prometheus/rules/`. Operator runbook `docs/operator/runbooks/replay-latency.md` covers triage (sqlite VACUUM, substrate compaction, hybrid-fallback toggle).
+
+Threshold rationale: 500 ms warn is set so a 100-event replay (typical DAG resume) finishes in < 5 s perceived latency at P95; 2 s critical correlates to the scheduler-tick SLO (SLO-1) — when replay tail goes above 2 s, the tick loop starves and the dispatch surface degrades. Both thresholds carried over from the pre-substrate sqlite-only baseline measured against the existing replay test fixtures.
+
+<!-- FOLLOWUP: re-measure the baseline P95/P99 against a real substrate-backed replay corpus once B-T1/B-T2/B-T3 land; if measured P95 < 200 ms steady-state, tighten warn to 300 ms (current 500 ms is the sqlite-baseline ceiling). Owner: B-T4 author at Wave-B exit. -->
 
 Add `dashboards/grafana/replay.json`:
 

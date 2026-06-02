@@ -19,7 +19,13 @@ meter.Int64Counter("regatta.adversarial.findings").Add(ctx, 1,
     attribute.String("severity", severity)) // critical | major | minor
 ```
 
-Resolve meter from followup `Config.Meter` field (A-T0b retrofit lands this Config struct — spec §7 Wave-A table row A-T0b explicitly includes `orchestrator/followup`). Nil falls back to `otel.Meter("orchestrator/followup")`.
+`fate` enum definitions (pinned so triage code cannot drift):
+- `filed` — finding opened as a new follow-up issue/PR comment for human triage.
+- `dismissed` — triage decided the finding is a false positive OR low-signal disagreement with house style (NOT silently dropped — explicit decision logged).
+- `auto_fixed` — finding was resolved in the SAME implementer PR by re-spawning the implementer subagent with the reviewer's diff context (no separate follow-up issue filed).
+- `superseded` — finding is a duplicate of an already-filed follow-up OR rolled into a larger refactor issue.
+
+Resolve meter from followup `Config.Meter` field (A-T0b retrofit lands this Config struct — spec §7 Wave-A table row A-T0b explicitly includes `orchestrator/followup`). Nil falls back to `otel.Meter("orchestrator/followup")` (covered by `TestAdversarialCounter_NilMeterFallback`).
 
 Tag set: `fate` (4 enums), `severity` (3 enums). Cardinality safe (≤ 12 cells).
 
@@ -29,7 +35,9 @@ Add `dashboards/grafana/adversarial.json`:
 2. Stat panel "Dismissal rate (7d)" — `sum(increase(regatta_adversarial_findings_total{fate="dismissed"}[7d])) / sum(increase(regatta_adversarial_findings_total[7d]))`.
 3. Time-series panel "Findings by severity" — `sum by (severity) (rate(regatta_adversarial_findings_total[1h]))`.
 
-**Dismissal-rate alarm** (per spec §7 Wave-D exit gate): warn-tier alarm fires when dismissal rate > 50% over 7-d trailing window AND finding count > 20 (avoids low-sample noise). Lives in `slo/adversarial-dismissal.yaml` (alarm-only). Operator runbook `docs/operator/runbooks/adversarial-dismissal.md` covers triage (recalibrate reviewer prompt? reviewer disagreement with house style? real false-positive surge?).
+**Dismissal-rate alarm** (per spec §7 Wave-D exit gate): warn-tier alarm fires when dismissal rate > 50% over 7-d trailing window AND finding count > 20 (avoids low-sample noise). Thresholds rationale: 50% dismissal means the reviewer is no longer load-bearing — half its findings get rejected, so the prompt or routing needs recalibration before more compute spends; the count > 20 floor blocks the alarm from firing on slow weeks (1 finding × 1 dismissal = 100% rate but zero signal). Lives in `slo/adversarial-dismissal.yaml` (alarm-only). Operator runbook `docs/operator/runbooks/adversarial-dismissal.md` covers triage (recalibrate reviewer prompt? reviewer disagreement with house style? real false-positive surge?).
+
+<!-- FOLLOWUP: re-tune the 50% threshold once 4 weeks of dismissal-rate data accumulate post-D-T1 merge; the current 50% is a guess against the existing manual-review baseline. Owner: D-T1 author at Wave-D exit. -->
 
 **A-T4 placeholder removal (per spec §6.2 first-digest degraded contract):** This PR also removes the placeholder line for the "Adversarial-findings" section in A-T4's `cmd/regatta/digest.go` so the digest renders live finding-counter data. Cite the contract handoff in the PR body.
 

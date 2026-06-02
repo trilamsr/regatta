@@ -18,7 +18,7 @@ meter.Float64ObservableGauge("regatta.trigger.days_remaining").Observe(daysRemai
     attribute.String("trigger", trigger)) // 30_day_green | external_customer | self_host_30
 ```
 
-Resolve meter from a new `internal/obs/triggers/config.go` Config struct (Config.Meter field added inline). Nil falls back to `otel.Meter("obs/triggers")`.
+Resolve meter from a new `internal/obs/triggers/config.go` Config struct (Config.Meter field added inline). Nil falls back to `otel.Meter("obs/triggers")` (covered by `TestTriggers_NilMeterFallback`).
 
 Tag set: `trigger` (3 enums per the 3 phase-S relaxation triggers). Cardinality safe.
 
@@ -39,7 +39,23 @@ Add `dashboards/grafana/triggers.json`:
 1. Stat-row panel "Days remaining by trigger" — `regatta_trigger_days_remaining`.
 2. Time-series panel "Trigger countdown" — same metric over 30-d window.
 
-Trigger thresholds + start dates live in `slo/triggers.yaml` (operator-editable; checked in).
+Trigger thresholds + start dates live in `slo/triggers.yaml` (operator-editable; checked in). Schema (pinned so the implementer cannot drift):
+
+```yaml
+triggers:
+  30_day_green:
+    start_date: 2026-05-24    # ISO-8601; days_remaining = max(0, 30 - (today - start_date))
+    window_days: 30
+  external_customer:
+    activated: false          # operator flips to true + sets start_date when first paying customer signs
+    start_date: null
+    window_days: 30
+  self_host_30:
+    start_date: 2026-05-09    # self-host cutover date
+    window_days: 30
+```
+
+CUE schema at `slo/triggers.cue` validates the YAML on `make slo-compile`. Test `TestTriggersYAML_ValidatesAgainstCUE` covers structural drift.
 
 **B6 precondition (spec §8):** D-T3 PR body MUST cite C-T2's PR number + show `prom http GET /api/v1/query?query=regatta_pr_stage_duration_seconds_count` returns non-zero series. Do NOT dispatch D-T3 before C-T2 merges — the `30_day_green` gauge would compute against an empty histogram.
 

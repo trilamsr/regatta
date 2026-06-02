@@ -20,9 +20,9 @@ meter.Int64Counter("regatta.dispatch.subagents").Add(ctx, 1,
     attribute.String("agent_id", agentID))
 ```
 
-Resolve meter from spawner `Config.Meter` field (A-T0b retrofit). Nil falls back to `otel.Meter("orchestrator/spawner")`.
+Resolve meter from spawner `Config.Meter` field (A-T0b retrofit). Nil falls back to `otel.Meter("orchestrator/spawner")` (covered by `TestDispatchCounter_NilMeterFallback` so existing spawner tests that construct without a meter do not panic post-A-T0b).
 
-Tag set per spec §2.2 budget: `template` (≤ 20 enums), `task_type` (≤ 15 enums), `agent_id` (≤ 100). Cardinality safe (≤ 30k cells). **DO NOT** add `pr_number`/`run_id`/`work_item_id` — banned per spec §2.2. C-T2 ships the per-PR correlation via the PR-lifecycle collector.
+Tag set per spec §2.2 budget: `template` (≤ 20 enums), `task_type` (≤ 15 enums), `agent_id` (≤ 100). Cardinality ceiling = 20 × 15 × 100 = 30k cells — safe vs. the spec §2.2 750k breach threshold. Steady-state cross-product is much smaller because `template` × `task_type` is not a full Cartesian set (most templates serve one task type); a property test (A+ rubric) measures real cross-product against the bound. **DO NOT** add `pr_number`/`run_id`/`work_item_id` — banned per spec §2.2. C-T2 ships the per-PR correlation via the PR-lifecycle collector.
 
 Add `dashboards/grafana/dispatch.json`:
 

@@ -23,6 +23,8 @@ Create new `cmd/regatta/status.go` TUI subcommand using `bubbletea` (charmbracel
 
 Data source: Prom HTTP API for metrics; sqlite for cost fallback. Per spec §10 R5 + `feedback_decision_priority` (UX-first): when Prom HTTP API returns error, show banner "Prom unreachable — sqlite fallback (cost only)" instead of zeros.
 
+**Per-panel degradation** (each metric source resolves independently — handles the 13-dep fan-in case where a subset of Wave A/B/C items merged out of order, e.g. C-T1 merged but B-T1 not yet): each panel renders one of three states — `OK` (metric series present + non-zero), `EMPTY` (metric exists but no data yet — shown as "—" with a one-line "waiting for first observation" hint), `MISSING` (PromQL `absent()` returns 1 — metric name not registered at the backend; shown as "n/a (metric not yet shipped — see Wave-X exit gate)"). Wave-D dispatch is safe even if one Wave-B/C item is in-flight; the panel shows MISSING until the upstream PR merges.
+
 **Render budget**: < 3 s cold start on 80×24 terminal per Wave-D exit gate. `BenchmarkStatusRender_ColdStart` enforces.
 
 **Panel-budget table** (per spec §6.1): row count ≤ 24, max column width ≤ 80. `TestStatus_FitsInDefaultTerminal` parses rendered output + asserts both bounds.
@@ -40,7 +42,7 @@ Per `feedback_research_design_principles`: bubbletea is the proven OSS choice �
 - [planned] c1: New `cmd/regatta/status.go` registers `regatta status` subcommand using bubbletea (spec §3 item #13).
 - [planned] c2: bubbletea added to `go.mod`; `go mod tidy` clean.
 - [planned] c3: 5 panels render (Cost, L4 latency, Scheduler tick, Substrate health, Adversarial findings) per spec §6.1.
-- [planned] c4: Prom-unreachable banner shows "sqlite fallback (cost only)" instead of zeros (spec §10 R5).
+- [planned] c4: Prom-unreachable banner shows "sqlite fallback (cost only)" instead of zeros (spec §10 R5); per-panel `OK`/`EMPTY`/`MISSING` state resolves independently so partial Wave-A/B/C completion does not blank-screen the TUI.
 - [planned] c5: Cold render budget < 3 s on 80×24 terminal; `BenchmarkStatusRender_ColdStart` proves it (Wave-D exit gate).
 - [planned] c6: `TestStatus_FitsInDefaultTerminal` enforces rows ≤ 24 + max col ≤ 80 (spec §6.1).
 - [planned] c7: Dispatches AFTER Waves A+B+C all merged — TUI panels reference all wave metrics.
