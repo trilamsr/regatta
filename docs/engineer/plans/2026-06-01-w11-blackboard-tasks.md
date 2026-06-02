@@ -301,11 +301,10 @@ For each of the 7 named tests:
      (WHY not WHAT; godocs ≤ 1 line on test funcs).
   4. Run `bash scripts/doc-check.sh` and `bash scripts/stale-todo.sh`
      — both exit 0.
-  5. Grep for banned phrases (`blazing-fast`, `production-grade`,
-     `robust`, `world-class`, `best-in-class`, `industry-leading`,
-     `cutting-edge`, `lightning-fast`, `battle-tested`, `enterprise-grade`,
-     `rock-solid`) in your diff and PR body. Reword on hit. Per
-     feedback_doc_check_banned_phrases.
+  5. Grep your diff and PR body against the banned-phrase token list
+     in `scripts/doc-check.sh` (per `feedback_doc_check_banned_phrases`
+     — 11-token marketing-prose lint). Reword any hit to a falsifiable
+     claim before push.
   6. File the 10 [blackboard-followup] issues per the plan §7 list
      BEFORE opening this PR. Gather issue numbers.
   7. Push branch.
@@ -318,7 +317,7 @@ For each of the 7 named tests:
        ```
  10. Spawn ONE adversarial reviewer subagent (per
      feedback_adversarial_review + feedback_agent_pr_review) with the
-     hunt list below. Reviewer MUST measure the PR against the A+
+     hunt list below. The reviewer measures the PR against the A+
      scorecard per feedback_grade_rubric.
  11. Apply reviewer findings inline OR file a tracking issue per
      feedback_unaddressed_load_bearing and cite the issue in the PR body.
