@@ -453,6 +453,8 @@ Sibling subcommand `cmd/regatta/triggers.go` — one stat-line per trigger ("`30
 
 Every dashboard tile in §3 ships as a JSON file under `dashboards/grafana/*.json`, version-controlled. `make provision-dashboards` calls the Grafana HTTP API to upsert. CI test `TestDashboardJSON_LintsAgainstSchema` validates every JSON against Grafana's schema (vendored at `tools/grafana-schema/`).
 
+The Wave-C cost-per-agent rollup is the one panel that uses a Grafana template variable (`$rollup_dim` ∈ {`pr_number`, `agent_id`, `task_type`}) so a single base dashboard JSON renders three views — per-PR (operator-facing, ties cost+latency to merge-able units), per-agent (debugger-facing, isolates flakey agents), per-task-type (strategy-facing, "which dispatch templates are slow"). Same dense-event store, three sparse projections at query time — no schema migration to add a fourth view later (per §11 RISK-B + §9 follow-up #3).
+
 ---
 
 ## §7 Sequenced roadmap (4 waves, file-disjoint, dispatch-ready)
@@ -674,7 +676,7 @@ Per `feedback_design_iteration_local` — one RISK was deferred at the PR #413 r
 
 **Resolution at impl time.** The drill path works (metric → exemplar → trace → spend log carries `agent_id`), so this is a UX gap, not a correctness gap. File `[OBS-followup] Cost-per-agent rollup` as part of A-T1 merge: targets a derived recording rule (Prom) or a sqlite view that joins `event_token_spend` rows with the dispatch span tree on `trace_id` → `agent_id`. Lands in Wave-C alongside C-T1/C-T3 or as an A-T6 doc note (operator drill recipe) — owner picked at Wave-C kickoff.
 
-<!-- FOLLOWUP: confirm at Wave-C kickoff whether the cost-per-agent rollup ships as a Prom recording rule (preferred — no new infra) or as a sqlite view (fallback if Prom recording-rule cardinality budget blocks it). Owner is C-T3 by default since C-T3 already extends writer.go; reassign if scope grows. -->
+**Rollup shape — multi-dimensional tag set + 3 views (closed at Wave-C kickoff).** The rollup is NOT a single-dimension pick (per-PR vs per-agent vs per-task-type). Wave-C emits a 3-tag set on the existing dispatch surface (`pr_number` on log only per §3 item #11, `agent_id` on the dispatch counter per §3 item #9, `dispatch.task_type` on the dispatch counter per §3 item #9 — already in the spec), and the rollup ships as a Prom recording rule (preferred — no new infra) that joins `event_token_spend` rows with the dispatch span tree on `trace_id`. The recording-rule output carries all three dimensions; the dashboard exposes them as a single Grafana template variable (`$rollup_dim` ∈ {`pr_number`, `agent_id`, `task_type`}) so one base panel renders three views without a schema migration. Cardinality is safe per §2.5 head-sampling (`pr_number` + `agent_id` capped at the trace layer; `task_type` is bounded ≤ 20). Sqlite-view fallback stays on the table only if the Prom recording-rule cardinality budget blocks at provision time. Owner: C-T3 by default since C-T3 already extends `writer.go`; reassign at follow-up triage if scope grows. Precedent: Honeycomb, Datadog, and Tempo all converge on "store the high-dimensional event row, project the view at query time" — adopting the same shape per `feedback_research_design_principles`.
 
 **Why deferred, not amended.** Adding `agent_id` to the cost-counter labels at A-T1 would breach the cardinality budget (≤ 50 dag × ≤ 100 operator × 3 direction × ≤ 50 agent = 750k cells, 5× the documented cap). The drill path is the OTel-blessed shape; the rollup is a follow-on convenience, not a load-bearing primitive.
 

@@ -27,7 +27,7 @@ Tag set on aggregate counter: none. `pr_number` strictly banned per spec §2.2 c
 
 Add a panel to `dashboards/grafana/cost.json` (file owned by A-T1; coordinate edit ordering): stat panel "Total cost USD (since boot)" — `regatta_pr_cost_usd_total`.
 
-**File the §9 follow-up #3 issue at merge** (per `feedback_unaddressed_load_bearing`): `[OBS-followup] Cost-per-agent rollup (Prom recording rule OR sqlite view joining event_token_spend × dispatch trace tree on trace_id → agent_id)`. Owner: C-T3 by default; reassign at follow-up triage if scope grows. The rollup ships as a derived view (Prom recording rule OR sqlite view), NOT as a new `agent_id` label on the cost counter — adding the label would breach the cardinality budget per spec §11 RISK-B.
+**File the §9 follow-up #3 issue at merge** (per `feedback_unaddressed_load_bearing`): `[OBS-followup] Cost-per-agent rollup — Prom recording rule joining event_token_spend × dispatch trace tree on trace_id; multi-dimensional output (pr_number + agent_id + task_type) projected through Grafana template variable $rollup_dim into 3 views (per-PR / per-agent / per-task-type)`. Owner: C-T3 by default; reassign at follow-up triage if scope grows. The rollup ships as a derived view (Prom recording rule preferred; sqlite-view fallback only if Prom cardinality budget blocks at provision time), NOT as a new `agent_id` label on the cost counter — adding the label would breach the cardinality budget per spec §11 RISK-B. Rollup-shape decision is closed in spec §11 RISK-B (Wave-C kickoff), no longer a kickoff-time open question.
 
 **Shared-owner coordination:** A-T1 is sole owner of `internal/cost/spend/writer.go` across Waves A+C. C-T3 dispatch MUST wait for A-T1 to merge. Per `feedback_shared_primitive_owner`.
 
