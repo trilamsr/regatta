@@ -61,33 +61,29 @@ Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -40
 - **2026-06-02 self-host-first reorder SHIPPED**: #320 (brief + PRIORITY rewrite, S1→S2→S3 phasing, Phase X deferral list)
 - **2026-06-02 Phase-S gate relaxation SHIPPED**: #322 (CI: drop windows matrix · property-test 200→50 · go-check -short · stale-todo 30d · prose-dup engineer-doc skip) · #323 (dispatch rules: reviewer auto-skip on docs/CI · scorecard scope · load-bearing slim) · #324 (followup: check-tdd downgrade considered+rejected, reopen-trigger documented). All toggles grep-able via `PHASE-S-RELAX` marker; restore at 30-day-green OR external-customer trigger per memory/feedback_gate_relaxation_phase_s
 
-WORKFLOW per item
-1. Spawn design subagent → spec (w/ grade rubric per feedback_grade_rubric)
-2. Spawn adversarial reviewer on spec → fix findings
-3. Spawn plan subagent → plan
-4. Spawn parallel implementer subagents on file-disjoint tasks
-5. Spawn adversarial reviewer per wave → fix → merge
+WORKFLOW per item — use templates at `docs/engineer/dispatch-templates/`. Substitute variables; do NOT inline-repeat preamble.
+1. Design subagent → spec — `designer.md` (rubric, OSS-first, self-host filter)
+2. Adversarial reviewer on spec → fix findings — `reviewer.md`
+3. Plan subagent → plan — `designer.md` (plans are spec-shaped)
+4. Parallel implementer subagents on file-disjoint tasks — `implementer.md` (worktree + TDD + scorecard + release-notes + doc-check)
+5. Adversarial reviewer per wave → fix → merge — `reviewer.md`
+6. Land / defer / reject decisions on issues + stale PRs — `triage.md`
+
+Templates encode load-bearing preamble: worktree-first, TDD failing-first, adversarial reviewer, A+ scorecard, doc-check banned phrases, release-notes fence, no-signatures, memory cites, PHASE-S-RELAX conditions. Cite memory rules in dispatch prompts via the templates' `<MEMORY-RULES>` variable.
 
 RULES (memory-bound; do not re-derive)
 - Subagents do everything: design, plan, impl, review, doc, PR-body drafting, issue filing, debugging. Main thread = dispatcher + integrator.
 - Decisions: NEVER ask user. Spawn review subagent + decide based on memory/feedback_decision_priority (UX > ease > best-practices > speed > velocity).
-- TDD strict (failing test FIRST, capture output)
-- adversarial review on EVERY PR before automerge fires; main session OR implementer subagent may enable automerge once reviewer-cleared AND all Risk-tier+ findings addressed (inline-fixed or filed as cited followup issues) per memory/feedback_review_before_automerge. **PHASE-S-RELAX**: auto-skip reviewer when `git diff --name-only origin/main...HEAD | grep -vE '^(docs/|\\.github/|scripts/|.*\\.md$)'` returns empty (docs-only / CI-only / scripts-only / dep-bump PRs). Encoded in `feedback_review_proportional`. Restore reviewer-always at 30-day-green trigger.
-- Implementer subagent dispatch prompts MUST require an explicit "A+ Rubric Scorecard" section in the PR body — each B/A/A+ criterion from the spec marked PASS/FAIL/N-A with one-line evidence + claimed tier. Reviewer subagent independently re-scores. Automerge precondition: scorecard posted (feedback_a_plus_scorecard_required + feedback_agent_pr_review). **PHASE-S-RELAX**: scorecard required ONLY for net-new-feature PRs during self-host window; refactor / cleanup / docs / CI PRs skip the scorecard (ceremony for small diffs). Restore universal-scorecard at 30-day-green trigger.
-- Unaddressed load-bearing items in PR body → file tracking issues + cite numbers in PR before merge (memory/feedback_unaddressed_load_bearing). **PHASE-S-RELAX**: required only for Risk-tier+ items during self-host window; nice-to-have items may be inline-noted instead of issue-filed (trace stays in PR body). Restore strict issue-per-load-bearing at 30-day-green trigger.
-- Research + design: prefer adopting proven OSS over reimplementation. Priority order: user experience first, then quality bar matching reference systems, then ecosystem conventions, then long-term repo + user benefit (memory/feedback_research_design_principles). Every design-subagent prompt must cite this rule.
-- Spec deviations require design-subagent re-spawn (memory/feedback_spec_pattern_authority); never let implementer pick alternative
 - **W9 substrate-choice locked = option C hybrid, self-host scope = substrate-default impl ONLY** (memory/wedge_roadmap_assessment §"Substrate + W9 substrate-choice locked 2026-06-01" + self-host-first brief §3 S2-T1): ship W9 against `DurableHistory` Go interface, default impl on substrate `events`. Temporal-backed impl is Phase X — gated behind refined P2.5 trigger (sqlite contention >5% OR ≥30 concurrent OR replay-recovery >60s — any one, two consecutive 24h windows) AND external customer ask. W9 promoted ahead of W7/W8 for self-host loop closure. Never re-litigate during implementer dispatch.
 - **Self-host-first filter** (per docs/engineer/briefs/2026-06-01-self-host-first.md §1): every wedge filtered by "does the sole internal operator need this to dispatch regatta-the-binary at this repo unattended?". Keep → in scope. Defer → Phase X. Single-tenant, single-operator, single-repo, CLI-only, deterministic CI, human-merge via GH branch protection. No RBAC for tenancy. No billing. No htmx UI. No Sigstore. No blackboard. Reopen Phase X on external customer ask OR 30-day-green trigger.
-- root-cause only, no workarounds
+- root-cause only, no workarounds (memory/feedback_root_cause)
 - max parallel fan-out (memory/feedback_parallel_dispatch)
 - Cap parallel implementer subagents at 3-4 per feedback_session_limit_dispatch; shared API quota dies at 5+. Heavy-context sessions reduce cap to 2-3.
 - make pre-push-check before every push
 - Pre-fetch next-horizon brief when current wave drains (≤2 unblocked items remaining) per feedback_roadmap_pre_fetch
 - Audit dep-graph before parallel dispatch; sequence chained-output work; parallelize file-disjoint only per feedback_sequence_dependent_work
 - Default to deletion over addition; every PR answers "what got smaller?"; adversarial reviewer enforces ≥1 deletion proposal per feedback_deletion_default
-- no AI signatures in commits/PRs
-- Pre-push grep banned phrases per `feedback_doc_check_banned_phrases` — 11-token list lives in `scripts/doc-check.sh`. Every spec/plan/PR-body subagent dispatch MUST cite this rule. Reword hits to falsifiable claims (version pin, benchmark, named reference).
+- PHASE-S-RELAX active on reviewer + scorecard + load-bearing gates — template files encode current conditions; restore at 30-day-green OR external-customer trigger per memory/feedback_gate_relaxation_phase_s.
 
 WHEN BLOCKED
 - File [followup] issue + pick next priority. Never pause for user input.
@@ -115,7 +111,8 @@ Begin BOOT. After boot, pick highest priority + dispatch design subagent.
 
 ## When to update this prompt
 
-- New memory entry added → cite in RULES if load-bearing
+- New memory entry added → cite in RULES if load-bearing OR update template `<MEMORY-RULES>` defaults
 - New gate added to `make` → reference if pre-push-relevant
 - Priorities shift → reorder PRIORITY section
 - Drop_ceremony adds/removes items → adjust RULES brevity
+- Dispatch preamble drift detected → update `docs/engineer/dispatch-templates/*.md` instead of inlining rules back into boot prompt
