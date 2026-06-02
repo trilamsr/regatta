@@ -1452,7 +1452,7 @@ Begin now. NEVER pause for user input.
 
 - **`docs/operator/cost-governor.md`** (cost-gov W3 T5) — same format conventions: env-var contract; precedence rule; runbook examples; OTel attr recommendations.
 - **`bash scripts/doc-check.sh`** — banned-phrase + markdown-link gates.
-- **`bash scripts/stale-todo.sh`** — TODO sweep.
+- **`bash scripts/stale-todo.sh`** — stale-marker sweep.
 
 ### TDD test list
 
