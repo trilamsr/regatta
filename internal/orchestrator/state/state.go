@@ -23,7 +23,7 @@ import (
 // CurrentSchemaVersion is the latest forward-only migration this
 // binary knows; see migrations/. Migrate() rejects DBs whose
 // goose_db_version exceeds this — see ErrSchemaTooNew.
-const CurrentSchemaVersion int64 = 8
+const CurrentSchemaVersion int64 = 10
 
 // AgentState mirrors the state-machine in docs/design.md §378.
 type AgentState string
