@@ -57,6 +57,15 @@ type Config struct {
 	// (Opus 4.7). Per-Run only; set at config-load.
 	SecondOpinionModel string
 
+	// AutoFix opts the gate into surfacing unified-diff Patch
+	// bodies on findings the model flags auto_fixable=true.
+	// Default false strips Patch + AutoFixable off every finding
+	// before emitting the GateResult — the operator must opt in
+	// per issue #358. Downstream PR-comment posters render the
+	// patch inside a fenced ```diff block; the gate itself never
+	// applies the patch.
+	AutoFix bool
+
 	// Invoker is the model call-site. Tests inject a stub here.
 	// Nil panics at Run time so the wiring contract is explicit.
 	Invoker Invoker
