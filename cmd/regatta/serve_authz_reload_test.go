@@ -22,12 +22,7 @@ import (
 	"time"
 )
 
-// TestServe_AuthzPolicyHotReload_OnSIGHUP exercises the W8 T1+T-HR wiring
-// end-to-end: build the binary, declare safety.authz.policy_dir in
-// regatta.yaml, boot `serve --ui=true`, write a `.rego` under
-// policy_dir/regatta/v1/default/, SIGHUP the child, and assert the
-// reloader log line confirms a new bundle SHA. Without the wiring this
-// test fails because no Reloader goroutine exists.
+// TestServe_AuthzPolicyHotReload_OnSIGHUP asserts SIGHUP swaps an active policy bundle.
 func TestServe_AuthzPolicyHotReload_OnSIGHUP(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go not on PATH")
