@@ -53,3 +53,29 @@ func TestDB_TransitionWorkItem_UnknownIDFails(t *testing.T) {
 		t.Fatalf("err=%v; want ErrInvalidWorkItemTransition", err)
 	}
 }
+
+// TestDB_TransitionWorkItem_ArchiveBeatsRejected pins issue #165's
+// race acceptance — when a cancel/archive lands between the gate's
+// fold and the rejected write, the gate must not resurrect the row.
+func TestDB_TransitionWorkItem_ArchiveBeatsRejected(t *testing.T) {
+	ctx := context.Background()
+	db := openOrphanTestDB(t)
+	seedOrphanWI(t, db, "F-race", WorkStatusPlanned)
+
+	// Producer A (cancel/archive) commits first.
+	if err := db.TransitionWorkItem(ctx, "F-race", WorkStatusPlanned, WorkStatusArchived); err != nil {
+		t.Fatalf("archive: %v", err)
+	}
+	// Producer B (approval-gate rejected) arrives second; CAS loses.
+	err := db.TransitionWorkItem(ctx, "F-race", WorkStatusPlanned, WorkStatusRejected)
+	if !errors.Is(err, ErrInvalidWorkItemTransition) {
+		t.Fatalf("err=%v; want ErrInvalidWorkItemTransition", err)
+	}
+	wi, gErr := db.GetWorkItem(ctx, "F-race")
+	if gErr != nil {
+		t.Fatalf("GetWorkItem: %v", gErr)
+	}
+	if wi.Status != WorkStatusArchived {
+		t.Fatalf("status=%q; want %q (archive wins, rejected cannot resurrect)", wi.Status, WorkStatusArchived)
+	}
+}
