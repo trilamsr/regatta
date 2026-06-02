@@ -99,6 +99,11 @@ type approvalEventPayload struct {
 	ApprovalID string `json:"approval_id"`
 	Transition string `json:"transition"`
 	Actor      string `json:"actor"`
+	// TokenJTI carries the legacy approval_events.token_jti through
+	// the shadow-write mirror (S3-T2 spec §3.2). NOT reused as the
+	// substrate column nonce (spec §3.5) — token replay and substrate
+	// replay are independent surfaces with different lifetimes.
+	TokenJTI string `json:"token_jti,omitempty"`
 }
 
 func validateApprovalEvent(raw json.RawMessage) error {
