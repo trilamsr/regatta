@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/cost/spend"
 	"github.com/trilamsr/regatta/internal/obs"
 )
 
@@ -26,33 +27,6 @@ import (
 // PR diff (gosec G101 false-positive on the literal constant — the
 // constant is the env-var name, not the key).
 const adminKeyEnv = "ANTHROPIC_ADMIN_KEY" //nolint:gosec // env var name, not a credential
-
-// stubBudgetReconciledPayload is a TEST-LOCAL stub of
-// spend.BudgetReconciledPayload (spec §3.5 lines 278-289). T3 will own
-// the canonical struct in internal/cost/spend/payload.go; this stub
-// gets deleted after T3 merges per the worktree dispatch contract.
-//
-// Field shape pinned to spec §3.5 verbatim so the post-T3 swap is a
-// one-line import change.
-type stubBudgetReconciledPayload struct {
-	PeriodStart    int64                       `json:"period_start"`
-	PeriodEnd      int64                       `json:"period_end"`
-	ActualUSD      float64                     `json:"actual_usd"`
-	RecordedUSD    float64                     `json:"recorded_usd"`
-	DeltaUSD       float64                     `json:"delta_usd"`
-	DriftPct       float64                     `json:"drift_pct"`
-	ModelBreakdown []stubModelBreakdownRow     `json:"model_breakdown"`
-	APIResponseSig string                      `json:"api_response_sig"`
-}
-
-type stubModelBreakdownRow struct {
-	Model               string  `json:"model"`
-	InputTokens         int64   `json:"input_tokens"`
-	OutputTokens        int64   `json:"output_tokens"`
-	CacheReadTokens     int64   `json:"cache_read_tokens"`
-	CacheCreationTokens int64   `json:"cache_creation_tokens"`
-	USD                 float64 `json:"usd"`
-}
 
 // recordedAppend captures one Appender call. The fake Appender stores
 // every call so tests assert payload + tenant + kind invariants.
@@ -208,7 +182,7 @@ func TestReconciler_TickEmitsBudgetReconciled_CostAPIPreferred(t *testing.T) {
 	if rows[0].kind != "budget_reconciled" {
 		t.Errorf("kind=%q want budget_reconciled", rows[0].kind)
 	}
-	var p stubBudgetReconciledPayload
+	var p spend.BudgetReconciledPayload
 	if err := json.Unmarshal(rows[0].payload, &p); err != nil {
 		t.Fatalf("unmarshal payload: %v", err)
 	}
@@ -552,6 +526,71 @@ func TestReconciler_Network5xx_KeepsTickingAndNeverPanics(t *testing.T) {
 	if capH.eventCounts()[string(obs.EventCostReconcileFailing)] == 0 {
 		t.Errorf("expected EventCostReconcileFailing; got=%v", capH.eventCounts())
 	}
+	// Issue #289 — the failing emit must carry period_start +
+	// attempt_count so the OTel bridge surfaces the same join keys to
+	// Honeycomb/Loki/Datadog as the happy-path BudgetReconciledPayload.
+	// Issue #439 — exhausted-retry path reports the full attempt budget.
+	wantStart, _ := WindowForTick(fixedTime(), time.Hour)
+	assertFailingEventAttrs(t, capH.snapshot(), wantStart.UnixMilli(), "upstream_down", int64(defaultRetryAttempts))
+}
+
+// TestReconciler_ImmediateFail_AttemptCountIsActual pins issue #439: non-exhaustion failures report the real attempt count, not defaultRetryAttempts.
+func TestReconciler_ImmediateFail_AttemptCountIsActual(t *testing.T) {
+	t.Setenv(adminKeyEnv, adminKeyFixture)
+	// HTTP 200 + malformed JSON triggers a decode error inside
+	// FetchCost. fetchWithBackoff treats unknown errors as non-retryable
+	// and returns after the first attempt — attempt_count must be 1.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, "not-json{")
+	}))
+	t.Cleanup(srv.Close)
+
+	app := &fakeAppender{}
+	logger, capH := mkCapturingLogger()
+	r := NewReconciler(Config{
+		Clock:                  frozenClock(fixedTime()),
+		HTTPClient:             srv.Client(),
+		BaseURL:                srv.URL,
+		BucketWidth:            time.Hour,
+		DriftAlertThresholdPct: 10,
+		UsageAPIKeyEnv:         adminKeyEnv,
+		Appender:               app,
+		RecordedReader:         mkRecorder(t, 0),
+		TenantID:               "default",
+		Logger:                 logger,
+		Sleep:                  func(time.Duration) {},
+	})
+	if err := r.Tick(context.Background()); err == nil {
+		t.Fatal("Tick err=nil want non-nil (decode failure path)")
+	}
+	wantStart, _ := WindowForTick(fixedTime(), time.Hour)
+	assertFailingEventAttrs(t, capH.snapshot(), wantStart.UnixMilli(), "upstream_down", 1)
+}
+
+// assertFailingEventAttrs scans capH for the cost.reconcile_failing record and pins period_start, reason, attempt_count.
+func assertFailingEventAttrs(t *testing.T, recs []slog.Record, wantStart int64, wantReason string, wantAttempts int64) {
+	t.Helper()
+	for _, r := range recs {
+		if r.Message != string(obs.EventCostReconcileFailing) {
+			continue
+		}
+		attrs := map[string]slog.Value{}
+		r.Attrs(func(a slog.Attr) bool {
+			attrs[a.Key] = a.Value
+			return true
+		})
+		if v, ok := attrs[string(obs.KeyPeriodStart)]; !ok || v.Int64() != wantStart {
+			t.Errorf("period_start attr: want %d got (%v, found=%v)", wantStart, v, ok)
+		}
+		if v, ok := attrs[string(obs.KeyAttemptCount)]; !ok || v.Int64() != wantAttempts {
+			t.Errorf("attempt_count attr: want %d got (%v, found=%v)", wantAttempts, v, ok)
+		}
+		if v, ok := attrs[string(obs.KeyReason)]; !ok || v.String() != wantReason {
+			t.Errorf("reason attr: want %q got (%v, found=%v)", wantReason, v, ok)
+		}
+		return
+	}
+	t.Errorf("no %q record in capture", obs.EventCostReconcileFailing)
 }
 
 // TestReconciler_AnthropicResponseSig_IsSHA256OfCanonicalBody pins A2 audit-replay invariant.
@@ -584,7 +623,7 @@ func TestReconciler_AnthropicResponseSig_IsSHA256OfCanonicalBody(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("len(rows)=%d", len(rows))
 	}
-	var p stubBudgetReconciledPayload
+	var p spend.BudgetReconciledPayload
 	if err := json.Unmarshal(rows[0].payload, &p); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
@@ -647,7 +686,7 @@ func TestReconciler_LWWCorrectionEmitsNewRow(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("len(rows)=%d want 2 (LWW per substrate §4)", len(rows))
 	}
-	var first, second stubBudgetReconciledPayload
+	var first, second spend.BudgetReconciledPayload
 	_ = json.Unmarshal(rows[0].payload, &first)
 	_ = json.Unmarshal(rows[1].payload, &second)
 	if first.PeriodStart != second.PeriodStart {

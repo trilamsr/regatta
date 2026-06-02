@@ -5,12 +5,15 @@
 package embedded
 
 import (
+	"context"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
 	"encoding/json"
 	"io/fs"
 	"sort"
+
+	"github.com/trilamsr/regatta/internal/authz"
 )
 
 // FS holds the verbatim default-deny Rego sources from spec §3.5.
@@ -25,6 +28,35 @@ var FS embed.FS
 // drift between binary versions changes authz outcomes invisibly; the
 // stability test asserts this constant equals a hard-coded hex string.
 var DefaultBundleSHA256 = computeBundleSHA256()
+
+// Loader implements authz.BundleLoader against the embedded default-deny
+// bundle (spec §3.5). disk.Loader uses one as its Fallback so a missing /
+// empty policy_dir still serves valid Rego at boot. The loader is
+// stateless — a single value is safe for concurrent use.
+type Loader struct{}
+
+// NewLoader returns an authz.BundleLoader that reads from the embedded
+// default-deny FS. Returned interface (not pointer) lets callers pass it
+// to disk.Loader.Fallback without re-typing.
+func NewLoader() authz.BundleLoader { return Loader{} }
+
+// Tenants returns the single-tenant slot per spec §3.5.
+func (Loader) Tenants(_ context.Context) ([]string, error) {
+	return []string{authz.DefaultTenant}, nil
+}
+
+// ActiveBundle returns the embed.FS bundle for the default tenant; any
+// other tenant ⇒ ErrPolicyMissing (slim variant locks to one slot).
+func (Loader) ActiveBundle(_ context.Context, tenant string) (string, map[string]string, error) {
+	if tenant != authz.DefaultTenant {
+		return "", nil, authz.ErrPolicyMissing
+	}
+	files, err := Files()
+	if err != nil {
+		return "", nil, err
+	}
+	return DefaultBundleSHA256, files, nil
+}
 
 // Files returns the default-deny bundle as a path->body map. Disk-loader
 // fallback path (slim hot-reload: policy_dir empty/missing) and any future
