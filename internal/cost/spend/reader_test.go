@@ -153,10 +153,7 @@ func contains(haystack, needle string) bool {
 	return len(haystack) >= len(needle) && indexOf(haystack, needle) >= 0
 }
 
-// TestReader_RecordedUSDForWindow_SumsTokenSpendInWindow pins the
-// reconciler-side seam: SUM(usd) over [start, end) — boundary inclusive
-// at start, exclusive at end (matches WindowForTick's [start, end)
-// contract).
+// TestReader_RecordedUSDForWindow_SumsTokenSpendInWindow pins the reconciler-side seam — SUM(usd) over [start, end) with tenant isolation.
 func TestReader_RecordedUSDForWindow_SumsTokenSpendInWindow(t *testing.T) {
 	db := openReaderDB(t)
 	start := time.Date(2026, 6, 1, 1, 0, 0, 0, time.UTC)

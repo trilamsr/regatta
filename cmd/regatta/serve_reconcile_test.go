@@ -48,10 +48,7 @@ safety:
     reconcile_interval: 5m
 `
 
-// TestStartReconciler_LandsBudgetReconciledRowOnTick drives the
-// production wiring end-to-end: startReconciler builds a Reconciler
-// against state.DB, the goroutine ticks once, the substrate row lands.
-// Ctx cancel returns cleanly — no leak.
+// TestStartReconciler_LandsBudgetReconciledRowOnTick drives the production wiring end-to-end against an httptest Cost API.
 func TestStartReconciler_LandsBudgetReconciledRowOnTick(t *testing.T) {
 	t.Setenv("ANTHROPIC_ADMIN_KEY", "sk-ant-admin-fixture-DO-NOT-LEAK")
 
@@ -121,9 +118,7 @@ func TestStartReconciler_LandsBudgetReconciledRowOnTick(t *testing.T) {
 	}
 }
 
-// TestStartReconciler_NoOpWhenIntervalZero pins the off-switch: an
-// empty/zero reconcile_interval ⇒ no goroutine, no work. Operators on
-// MVP-2 (no cost block) pay zero runtime cost.
+// TestStartReconciler_NoOpWhenIntervalZero pins the off-switch — empty/zero reconcile_interval ⇒ no goroutine.
 func TestStartReconciler_NoOpWhenIntervalZero(t *testing.T) {
 	tmp := t.TempDir()
 	db := openTempDB(t, tmp)
@@ -143,10 +138,7 @@ func TestStartReconciler_NoOpWhenIntervalZero(t *testing.T) {
 	}
 }
 
-// TestStartReconciler_NoOpWhenKeyMissing pins R15 fail-soft: HMAC key
-// unset ⇒ no goroutine. The reconciler depends on substrate signing;
-// starting a loop that will fail every Append is operator footgun
-// energy. Reconciler stays cold; serve keeps booting.
+// TestStartReconciler_NoOpWhenKeyMissing pins R15 fail-soft — HMAC key unset ⇒ no goroutine.
 func TestStartReconciler_NoOpWhenKeyMissing(t *testing.T) {
 	tmp := t.TempDir()
 	db := openTempDB(t, tmp)
@@ -166,8 +158,7 @@ func TestStartReconciler_NoOpWhenKeyMissing(t *testing.T) {
 	}
 }
 
-// TestLoadCostReconcileSettings_ReadsYAML pins the wiring path the
-// production caller uses: regatta.yaml on disk → CostReconcileSettings.
+// TestLoadCostReconcileSettings_ReadsYAML pins the production wiring path — regatta.yaml on disk → CostReconcileSettings.
 func TestLoadCostReconcileSettings_ReadsYAML(t *testing.T) {
 	tmp := t.TempDir()
 	cfgPath := filepath.Join(tmp, "regatta.yaml")
@@ -183,8 +174,7 @@ func TestLoadCostReconcileSettings_ReadsYAML(t *testing.T) {
 	}
 }
 
-// TestLoadCostReconcileSettings_MissingFileReturnsZero pins R6: a repo
-// without regatta.yaml returns zero-value settings; the caller no-ops.
+// TestLoadCostReconcileSettings_MissingFileReturnsZero pins R6 — missing regatta.yaml ⇒ zero settings, caller no-ops.
 func TestLoadCostReconcileSettings_MissingFileReturnsZero(t *testing.T) {
 	settings, err := loadCostReconcileSettingsFromFile(filepath.Join(t.TempDir(), "missing.yaml"))
 	if err != nil {

@@ -14,9 +14,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// TestSubstrateAppender_AppendsBudgetReconciledRow pins the production
-// Appender contract: one Append call lands one HMAC-signed substrate
-// row keyed kind=budget_reconciled.
+// TestSubstrateAppender_AppendsBudgetReconciledRow pins the production Appender contract — one Append ⇒ one HMAC-signed budget_reconciled row.
 func TestSubstrateAppender_AppendsBudgetReconciledRow(t *testing.T) {
 	ctx := context.Background()
 	tmp := t.TempDir()
@@ -70,9 +68,7 @@ func TestSubstrateAppender_AppendsBudgetReconciledRow(t *testing.T) {
 	}
 }
 
-// TestSubstrateAppender_TickEndToEnd drives a real Reconciler through one
-// Tick against an httptest Cost API and asserts the row lands in sqlite —
-// closes the loop on the production wiring: tick → Append → row.
+// TestSubstrateAppender_TickEndToEnd drives a real Reconciler through one Tick against an httptest Cost API and asserts the substrate row.
 func TestSubstrateAppender_TickEndToEnd(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 	ctx := context.Background()
