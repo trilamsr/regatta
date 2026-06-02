@@ -58,6 +58,8 @@ Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -40
 - **2026-06-01 session C fixes**: #269 (decideTx pre-check race; closes #206) · #285 (lift t.Skip(#194))
 - **2026-06-01 session C followups filed**: cost-gov #272 #273 #274 #275 #276 #277 #282 · approval #265
 - **2026-06-01 boot-prompt extensions**: #208 (indefinite-mode framing + 3 new rules) · #256 (post-session-B refresh) · #262 (require A+ scorecard) · #271 (doc-check banned-phrase pre-push) · #264 (rubric sentinel clarification)
+- **2026-06-02 self-host-first reorder SHIPPED**: #320 (brief + PRIORITY rewrite, S1→S2→S3 phasing, Phase X deferral list)
+- **2026-06-02 Phase-S gate relaxation SHIPPED**: #322 (CI: drop windows matrix · property-test 200→50 · go-check -short · stale-todo 30d · prose-dup engineer-doc skip) · #323 (dispatch rules: reviewer auto-skip on docs/CI · scorecard scope · load-bearing slim) · #324 (followup: check-tdd downgrade considered+rejected, reopen-trigger documented). All toggles grep-able via `PHASE-S-RELAX` marker; restore at 30-day-green OR external-customer trigger per memory/feedback_gate_relaxation_phase_s
 
 WORKFLOW per item
 1. Spawn design subagent → spec (w/ grade rubric per feedback_grade_rubric)
