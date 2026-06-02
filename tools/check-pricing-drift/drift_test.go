@@ -284,6 +284,38 @@ func TestDetect_MissingPricingRow(t *testing.T) {
 	}
 }
 
+// TestDetect_BedrockSKU_PricedViaCatalog pins the Catalog() wiring (#240).
+func TestDetect_BedrockSKU_PricedViaCatalog(t *testing.T) {
+	db := openTestDB(t)
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	periodStart := now.Add(-time.Hour)
+	periodEnd := now
+
+	// 1M input tokens at $15/Mtok = $15 expected. Reconciled USD matches
+	// → no drift finding emitted; the Bedrock SKU is recognized via
+	// pricing.Catalog() rather than ignored as "row missing".
+	insertEvent(t, db, "token_spend",
+		tokenSpendPayload("bedrock.claude-opus-4-7", 1_000_000, 0, 0, 0, 15.0),
+		now.Add(-30*time.Minute), "default", "")
+	insertEvent(t, db, "budget_reconciled",
+		reconciledPayload(periodStart, periodEnd, "bedrock.claude-opus-4-7", 15.0),
+		now.Add(-29*time.Minute), "default", fmt.Sprintf("%d", periodStart.UnixMilli()))
+
+	findings, err := detectDrift(context.Background(), db, detectOptions{
+		Window:    24 * time.Hour,
+		Threshold: 0.05,
+		Now:       now,
+		TenantID:  "default",
+		Pricing:   pricing.Catalog(),
+	})
+	if err != nil {
+		t.Fatalf("detectDrift: %v", err)
+	}
+	if len(findings) != 0 {
+		t.Fatalf("findings=%d; want 0 (Bedrock row priced via Catalog, no drift). got=%+v", len(findings), findings)
+	}
+}
+
 // TestRender_TableHumanReadable pins the operator-facing report shape (model/expected/actual/drift/reason).
 func TestRender_TableHumanReadable(t *testing.T) {
 	var sb strings.Builder
