@@ -9,9 +9,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// TestBatchUpsertWorkItems_InsertsAndPreservesCreatedAt pins the
-// per-row UPSERT behaviour: first call inserts; second call updates and
-// leaves created_at untouched.
+// TestBatchUpsertWorkItems_InsertsAndPreservesCreatedAt pins the per-row UPSERT behaviour: first call inserts; second call updates and leaves 
 func TestBatchUpsertWorkItems_InsertsAndPreservesCreatedAt(t *testing.T) {
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
@@ -46,8 +44,7 @@ func TestBatchUpsertWorkItems_InsertsAndPreservesCreatedAt(t *testing.T) {
 	}
 }
 
-// TestBatchUpsertWorkItems_EmptySliceNoop confirms zero-len input is a
-// no-op — no tx is opened, no error returned.
+// TestBatchUpsertWorkItems_EmptySliceNoop confirms zero-len input is a no-op — no tx is opened, no error returned.
 func TestBatchUpsertWorkItems_EmptySliceNoop(t *testing.T) {
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
@@ -56,8 +53,7 @@ func TestBatchUpsertWorkItems_EmptySliceNoop(t *testing.T) {
 	}
 }
 
-// TestBatchUpsertWorkItems_ChunkBoundary writes a slice >batchUpsertChunk
-// to exercise the chunk-loop seam — a row in the second chunk must land.
+// TestBatchUpsertWorkItems_ChunkBoundary writes a slice >batchUpsertChunk to exercise the chunk-loop seam — a row in the second chunk must lan
 func TestBatchUpsertWorkItems_ChunkBoundary(t *testing.T) {
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
@@ -81,8 +77,7 @@ func TestBatchUpsertWorkItems_ChunkBoundary(t *testing.T) {
 	}
 }
 
-// TestBatchUpsertWorkItems_AcceptanceJSONValidation rejects invalid JSON
-// matching UpsertWorkItem's contract.
+// TestBatchUpsertWorkItems_AcceptanceJSONValidation rejects invalid JSON matching UpsertWorkItem's contract.
 func TestBatchUpsertWorkItems_AcceptanceJSONValidation(t *testing.T) {
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)

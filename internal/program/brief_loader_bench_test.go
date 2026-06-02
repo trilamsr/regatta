@@ -91,9 +91,7 @@ func seedBriefCorpus(b *testing.B, db *state.DB, n, featPerBrief int, key []byte
 	return fsys
 }
 
-// BenchmarkBriefLoaderSync times end-to-end BriefLoader.Sync. Two shapes
-// surface the batched-UPSERT delta (issue #89): N briefs × 1 feature
-// (BriefLoader's MVP-1 norm) and N briefs × 10 features (MVP-2 shape).
+// BenchmarkBriefLoaderSync times end-to-end BriefLoader.Sync. Two shapes surface the batched-UPSERT delta (issue #89): N briefs × 1 feature (B
 func BenchmarkBriefLoaderSync(b *testing.B) {
 	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
 	shapes := []struct {
