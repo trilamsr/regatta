@@ -60,6 +60,12 @@ type ClaudeSpawnerConfig struct {
 	// wires this to write a substrate token_spend row; nil = no-op,
 	// preserving every pre-cost-gov behaviour byte-equal.
 	OnResultEvent ResultEventCallback
+
+	// OnResultEventFor, when non-nil, is invoked once per Spawn with the
+	// inbound Request so the returned callback can stamp request-derived
+	// fields (operator_id, dag_id, work_item_id) onto each emitted row
+	// — the factory wins over OnResultEvent when both are set.
+	OnResultEventFor func(Request) ResultEventCallback
 }
 
 // PromptBuilder produces the prompt text for one Spawn request.
@@ -122,8 +128,12 @@ func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) 
 
 	spanCtx, span := s.cfg.Tracer.Start(ctx, "operator_invocation")
 	pr, pw := io.Pipe()
+	cb := s.cfg.OnResultEvent
+	if s.cfg.OnResultEventFor != nil {
+		cb = s.cfg.OnResultEventFor(req)
+	}
 	go func() {
-		_ = ParseStream(spanCtx, s.cfg.Tracer, pr, s.cfg.OnResultEvent)
+		_ = ParseStream(spanCtx, s.cfg.Tracer, pr, cb)
 	}()
 
 	args := append([]string(nil), s.cfg.Args...)
@@ -197,6 +207,11 @@ func (s *ClaudeSpawner) KillAgent(agentID int64) (bool, error) {
 
 // WorktreeManager exposes the underlying manager for the Reaper.
 func (s *ClaudeSpawner) WorktreeManager() *WorktreeManager { return s.wm }
+
+// Config returns a snapshot of the spawner's effective config so callers
+// (notably cmd/regatta tests) can assert the cost-governor callback
+// factory landed without booting a subprocess.
+func (s *ClaudeSpawner) Config() ClaudeSpawnerConfig { return s.cfg }
 
 func defaultPromptBuilder(req Request) string {
 	return fmt.Sprintf("regatta: work item %s on lane %s (agent %d). Follow the repo's acceptance criteria and open a PR when CI is green.",
