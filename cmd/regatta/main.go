@@ -10,6 +10,7 @@
 //	regatta serve                   Run the orchestrator daemon (skeleton).
 //	regatta program plan            One-shot decompose a parent WorkItem (kind: program) into a signed ProgramBrief.
 //	regatta program verify-handoff  Structurally validate (+ optionally verify HMAC of) a handoff.json.
+//	regatta digest                  Generate docs/digests/<date>.md from Prom metrics + degraded placeholders.
 //	regatta version                 Print build info.
 //
 // All other subcommands from docs/design.md are pending implementation.
@@ -31,6 +32,7 @@ const (
 	subcmdVerifyRepoConfig = "verify-repo-config"
 	subcmdApproval         = "approval"
 	subcmdKeys             = "keys"
+	subcmdDigest           = "digest"
 )
 
 // subcommand binds a CLI verb to its run function. The table is the
@@ -52,6 +54,7 @@ var subcommands = []subcommand{
 	{subcmdInit, runInit},
 	{subcmdApproval, runApproval},
 	{subcmdKeys, runKeys},
+	{subcmdDigest, runDigest},
 }
 
 func main() {
@@ -91,6 +94,7 @@ func usage(w io.Writer) {
   regatta approval list [--mine ID] [--format F]      List pending approvals (table | json)
   regatta init                                        Scaffold regatta.yaml + run L0 demo
   regatta keys re-sign-briefs -old-key-id ...         Re-sign program briefs after HMAC key rotation
+  regatta digest --date YYYY-MM-DD                    Generate docs/digests/<date>.md from Prom metrics
   regatta version                                     Print build info
   regatta help                                        This message
 
