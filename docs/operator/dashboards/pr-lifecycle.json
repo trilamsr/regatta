@@ -1,0 +1,118 @@
+{
+  "uid": "regatta-pr-lifecycle",
+  "title": "Regatta — PR Lifecycle Stage Timing",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["regatta", "pr", "wave-c", "tier-3"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      },
+      {
+        "name": "stage",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(regatta_pr_stage_duration_seconds_bucket, stage)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "heatmap",
+      "title": "Stage duration heatmap (all stages)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 10, "w": 16, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (le) (rate(regatta_pr_stage_duration_seconds_bucket{stage=~\"$stage\"}[5m]))",
+          "format": "heatmap",
+          "legendFormat": "{{le}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "24h merged PR count",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(regatta_pr_stage_duration_seconds_count{stage=\"ci_green_to_merge\"}[24h]))"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "7d-trailing avg merges/day",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 5 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(regatta_pr_stage_duration_seconds_count{stage=\"ci_green_to_merge\"}[7d])) / 7"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "p50 / p95 stage duration by stage (seconds)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 10 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le, stage) (rate(regatta_pr_stage_duration_seconds_bucket{stage=~\"$stage\"}[5m])))",
+          "legendFormat": "p50 {{stage}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(regatta_pr_stage_duration_seconds_bucket{stage=~\"$stage\"}[5m])))",
+          "legendFormat": "p95 {{stage}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Dispatch → first commit p95 (alarm: > 1800s for 10m)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 19 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1800 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(regatta_pr_stage_duration_seconds_bucket{stage=\"dispatch_to_first_commit\"}[5m])))",
+          "legendFormat": "p95"
+        }
+      ]
+    }
+  ]
+}
