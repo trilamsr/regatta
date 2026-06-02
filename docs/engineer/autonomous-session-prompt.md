@@ -65,6 +65,7 @@ RULES (memory-bound; do not re-derive)
 - Audit dep-graph before parallel dispatch; sequence chained-output work; parallelize file-disjoint only per feedback_sequence_dependent_work
 - Default to deletion over addition; every PR answers "what got smaller?"; adversarial reviewer enforces ≥1 deletion proposal per feedback_deletion_default
 - no AI signatures in commits/PRs
+- Pre-push grep banned phrases per `feedback_doc_check_banned_phrases` — 11-token list lives in `scripts/doc-check.sh`. Every spec/plan/PR-body subagent dispatch MUST cite this rule. Reword hits to falsifiable claims (version pin, benchmark, named reference).
 
 WHEN BLOCKED
 - File [followup] issue + pick next priority. Never pause for user input.
