@@ -17,10 +17,9 @@ var ErrCostCapsAllZero = errors.New("all configured caps are zero — this would
 
 // ErrSoftCapNotAcknowledged fires when `safety.soft_cap_mode: warn` is
 // set without the paired `safety.soft_cap_acknowledge_overrun: true`
-// opt-in. Closes the silent-correctness regression vector flagged in
-// PR #211 adversarial review: warn-but-allow lets spend cross the soft
-// cap with only a log event, which a reviewer who skims the diff for
-// `soft_cap_mode: warn` may not realise. Issue #226.
+// opt-in. Closes the silent-correctness regression: warn-but-allow lets
+// spend cross the soft cap with only a log event, which a reviewer who
+// skims the diff for `soft_cap_mode: warn` may not realise.
 var ErrSoftCapNotAcknowledged = errors.New("safety.soft_cap_mode=warn requires safety.soft_cap_acknowledge_overrun=true — warn mode permits spawns past the 80% soft cap with only a log event; set the ack field to confirm the silent-overrun risk is understood, or change soft_cap_mode to enforce")
 
 // ValidateConfig validates YAML bytes against the CUE schema AND runs
