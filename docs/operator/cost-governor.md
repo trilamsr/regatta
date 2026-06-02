@@ -48,6 +48,7 @@ which carry defaults. An empty `safety.cost: {}` is rejected at boot
     reconcile_interval:         *"1h" | "5m" | "15m" | "30m" | "6h" | "24h"
     drift_alert_threshold_pct:  *10 | int & >=0 & <=100
     usage_api_key_env:          *"ANTHROPIC_ADMIN_KEY" | string
+    pricing_override_path?:     string
 }
 ```
 
@@ -61,6 +62,7 @@ which carry defaults. An empty `safety.cost: {}` is rejected at boot
 | `reconcile_interval` | `1h` | Reconciler cron cadence. Hourly is the smallest stable Anthropic bucket. |
 | `drift_alert_threshold_pct` | `10` | Drift threshold for `obs.EventCostDriftAlert`. `abs(actual - recorded) / max(actual, 0.01)`. |
 | `usage_api_key_env` | `ANTHROPIC_ADMIN_KEY` | Env-var name holding the Anthropic admin key. NEVER the key value itself. |
+| `pricing_override_path` | unset | Optional path to a JSON file that overrides or extends the hardcoded pricing table at boot. Per-key merge — each model key replaces the corresponding hardcoded row; siblings untouched; new SKUs (Bedrock/Vertex) added. See **Pricing refresh** below for format + file-mode requirements. |
 
 ## Precedence — most-restrictive-wins
 
@@ -179,6 +181,53 @@ Step-by-step.
 Rollback procedure for a bad-pricing PR is in
 cost-governor-incidents (`docs/engineer/runbooks/cost-governor-incidents.md`,
 lands in #300) §"Pricing-table rollback".
+
+### `pricing_override_path` — escape hatch for forked rates
+
+The default refresh-via-PR flow is the right answer for ≥95% of
+operators. The `pricing_override_path` config field is the escape
+hatch for operators who run claude through Bedrock, Vertex, or a
+marketplace re-seller whose rates the upstream pricing table cannot
+mirror.
+
+Format. JSON object keyed on model SKU; each row mirrors
+`internal/cost/pricing.Row`.
+
+```json
+{
+  "bedrock-claude-sonnet-4-7": {
+    "InputUSDPerMTok": 3.30,
+    "CacheReadUSDPerMTok": 0.33,
+    "CacheCreationUSDPerMTok": 4.10,
+    "OutputUSDPerMTok": 16.50
+  }
+}
+```
+
+Semantics. Per-key merge — each model key in the override file
+replaces the corresponding hardcoded row entirely. Rows not present
+in the override are untouched. The override can also ADD SKUs the
+hardcoded table does not list (the Bedrock case above). Field-level
+merge is intentionally NOT supported: zero values then become
+ambiguous, and the override-as-full-row rule keeps the diff
+reviewable.
+
+Boot-time hard-fails (R14 mitigation — every check is a refusal, not
+a warning):
+
+- File does not exist or is unreadable → `pricing override: stat …`.
+- Malformed JSON → `pricing override: parse …`.
+- Unknown field (typo in `InputUSDPerMTok`) → strict-decoder error.
+- Non-positive rate on an active SKU → `ErrOverrideInvalid`
+  (same Portkey-trap defense as the in-tree table).
+- World-writable file mode (POSIX `o+w` bit set) → `ErrOverrideUnsafe`.
+  Defends against the attacker-rewrite vector.
+
+The override file MUST be owned by the regatta process user and have
+mode `0600` (`-rw-------`). Boot fails closed when this is not true.
+
+Hot-reload is not supported in this wave: the override loads once at
+process boot. Restart the regatta process after editing the file.
 
 ## OTel cardinality
 
@@ -319,10 +368,10 @@ The major gaps operators commonly expect:
   pattern) — would require regatta to proxy Anthropic API calls.
   Out-of-scope; pre-call deny at scheduler tick is the regatta-native
   equivalent.
-- **Bedrock / Vertex first-class pricing** — Anthropic native API
-  only in Wave 1.
-- **`pricing_override_path` config field** — refresh via code change
-  for now.
+- **Bedrock / Vertex first-class pricing** — first-class hardcoded
+  rows still deferred; the `pricing_override_path` escape hatch (see
+  **Pricing refresh** above) lets operators load their own JSON table
+  in the meantime.
 - **In-process admin-key rotation without restart** — rolling restart
   is the MVP-2 procedure.
 

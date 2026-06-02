@@ -63,6 +63,32 @@ func TestCUEValidate_AllCapsZero_RejectedWithMessage(t *testing.T) {
 	}
 }
 
+func TestCUEValidate_PricingOverridePath_Accepted(t *testing.T) {
+	yaml := baseYAML + `safety:
+  cost:
+    per_dag_usd: 100
+    pricing_override_path: /etc/regatta/pricing.json
+`
+	if err := validate.ValidateConfig([]byte(yaml)); err != nil {
+		t.Fatalf("ValidateConfig: %v; want nil (pricing_override_path is a valid optional field)", err)
+	}
+}
+
+func TestCUEValidate_PricingOverridePath_NonStringRejected(t *testing.T) {
+	yaml := baseYAML + `safety:
+  cost:
+    per_dag_usd: 100
+    pricing_override_path: 42
+`
+	err := validate.ValidateConfig([]byte(yaml))
+	if err == nil {
+		t.Fatalf("ValidateConfig: nil; want CUE rejection of non-string pricing_override_path")
+	}
+	if !strings.Contains(err.Error(), "pricing_override_path") {
+		t.Fatalf("err=%q; want CUE error naming pricing_override_path field", err)
+	}
+}
+
 func TestCUEValidate_SoftPctOutOfRange_Rejected(t *testing.T) {
 	yaml := baseYAML + `safety:
   cost:

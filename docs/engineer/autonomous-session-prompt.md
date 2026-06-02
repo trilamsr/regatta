@@ -84,6 +84,9 @@ RULES (memory-bound; do not re-derive)
 - Audit dep-graph before parallel dispatch; sequence chained-output work; parallelize file-disjoint only per feedback_sequence_dependent_work
 - Default to deletion over addition; every PR answers "what got smaller?"; adversarial reviewer enforces ≥1 deletion proposal per feedback_deletion_default
 - PHASE-S-RELAX active on reviewer + scorecard + load-bearing gates — template files encode current conditions; restore at 30-day-green OR external-customer trigger per memory/feedback_gate_relaxation_phase_s.
+- **Test/Fuzz/Benchmark godocs 1 line max** per `feedback_test_godoc_one_line`. `scripts/doc-check.sh` test-godoc gate rejects multi-line. Recurring agent-failure 2026-06-02.
+- **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `feedback_pr_body_file_only`. HEREDOC bodies escape backticks and silently break the release-notes fence. Recurring agent-failure 2026-06-02.
+- **Comment-noise gate trip-traps** per #333 followup — reviewer-tag regex over-matches reviewer-Request / reviewer-JSON prose; banner-comment regex rejects `# --- Section ---`. Dodge: hyphenate or lowercase, replace banners with plain `# Section.`.
 
 WHEN BLOCKED
 - File [followup] issue + pick next priority. Never pause for user input.

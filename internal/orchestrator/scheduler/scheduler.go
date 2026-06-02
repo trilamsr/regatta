@@ -204,6 +204,7 @@ type schedulerDB interface {
 	ExpireStaleLocks(ctx context.Context, ttl time.Duration) (int64, error)
 	ListPendingEdgesFromMerged(ctx context.Context) ([]state.EdgeRow, error)
 	ListEdgesFrom(ctx context.Context, fromID string) ([]state.EdgeRow, error)
+	CountNonDefaultEdgeStates(ctx context.Context, fromID string) (state.EdgeFromAggregate, error)
 	MarkEdgeFired(ctx context.Context, edgeID int64, fired, contentSHA string) error
 	GetLatestOutput(ctx context.Context, workItemID string) (state.OutputJournalEntry, error)
 	WithTx(ctx context.Context, fn func(*sql.Tx) error) error
@@ -759,13 +760,15 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 			)
 		}
 
-		// Read the post-write sibling set from the DB so we see every
-		// edge already resolved by prior ticks plus everything this
-		// tick just committed. Pre-fix the tick-local accumulator
-		// missed siblings resolved before a partial-tick crash; spec
-		// §3.2 has the full rationale.
-		// Safe under single-writer flock invariant (state.go:9, orchestrator PollOnce).
-		siblings, err := s.db.ListEdgesFrom(ctx, fromID)
+		// Aggregate the post-write sibling state in a single index
+		// scan instead of re-reading the slice. Equivalent semantic
+		// to the prior ListEdgesFrom path (same post-write read
+		// under the single-writer flock — state.go:9, orchestrator
+		// PollOnce) but without the per-group slice alloc that drove
+		// the +19% allocs/op regression in #187. See spec §3.2 for
+		// the post-write rationale that rules out a tick-local
+		// accumulator.
+		agg, err := s.db.CountNonDefaultEdgeStates(ctx, fromID)
 		if err != nil {
 			s.log.Warn("edge.list_siblings_failed",
 				string(obs.KeyFromID), fromID,
@@ -773,59 +776,33 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 			)
 			continue
 		}
-		var (
-			defaultRow      *state.EdgeRow
-			defaultCount    int
-			nonDefaultFired int
-			anyTrue         bool
-			anyPending      bool
-		)
-		for i := range siblings {
-			e := &siblings[i]
-			if e.IsDefault {
-				defaultCount++
-				defaultRow = e
-				continue
-			}
-			nonDefaultFired++
-			switch e.Fired {
-			case edgeFiredTrue:
-				anyTrue = true
-			case edgeFiredPending:
-				anyPending = true
-			}
-		}
-		if defaultCount > 1 {
+		if agg.DefaultCount > 1 {
 			// Dedupe per (program_id, from_id) so a permanently
 			// misconfigured brief does not spam every tick.
-			programID := ""
-			if len(siblings) > 0 {
-				programID = siblings[0].ProgramID
-			}
-			key := programID + "\x00" + fromID
+			key := agg.DefaultProgramID + "\x00" + fromID
 			if _, loaded := s.multiDefaultLogged.LoadOrStore(key, struct{}{}); !loaded {
 				s.log.Warn(string(obs.EventEdgeMultipleDefaultsPerFrom),
-					string(obs.KeyProgramID), programID,
+					string(obs.KeyProgramID), agg.DefaultProgramID,
 					string(obs.KeyFromID), fromID,
-					"count", defaultCount,
+					"count", agg.DefaultCount,
 				)
 			}
 		}
-		if defaultRow == nil || defaultRow.Fired != edgeFiredPending {
+		if agg.DefaultCount == 0 || agg.DefaultFired != edgeFiredPending {
 			continue
 		}
-		if anyTrue || anyPending || nonDefaultFired == 0 {
+		if agg.AnyNonDefaultTrue || agg.AnyNonDefaultPending || agg.NonDefaultCount == 0 {
 			continue
 		}
-		if err := s.db.MarkEdgeFired(ctx, defaultRow.ID, edgeFiredTrue, journal.ContentSHA); err != nil {
+		if err := s.db.MarkEdgeFired(ctx, agg.DefaultEdgeID, edgeFiredTrue, journal.ContentSHA); err != nil {
 			s.log.Warn("edge.default_mark_failed",
-				string(obs.KeyEdgeID), defaultRow.ID,
+				string(obs.KeyEdgeID), agg.DefaultEdgeID,
 				string(obs.KeyErr), err.Error(),
 			)
 			continue
 		}
 		s.log.Info(string(obs.EventEdgeDefaultFallback),
-			string(obs.KeyEdgeID), defaultRow.ID,
+			string(obs.KeyEdgeID), agg.DefaultEdgeID,
 			string(obs.KeyFromID), fromID,
 			string(obs.KeyJournalSHA), journal.ContentSHA,
 		)
