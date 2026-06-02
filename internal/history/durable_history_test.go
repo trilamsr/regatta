@@ -66,9 +66,7 @@ func nodeOutputEvent(seed byte, runID, workItemID string, at time.Time) substrat
 	}
 }
 
-// TestS2T1_AppendRoundTripsViaSubstrateFold proves the round-trip
-// identity contract from §6 B2 — Append writes a row that
-// substrate.Fold (the canonical read primitive) returns.
+// TestS2T1_AppendRoundTripsViaSubstrateFold proves the round-trip identity contract from §6 B2 — Append writes a row that substrate.Fold (the 
 func TestS2T1_AppendRoundTripsViaSubstrateFold(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
@@ -101,9 +99,7 @@ func TestS2T1_AppendRoundTripsViaSubstrateFold(t *testing.T) {
 	}
 }
 
-// TestS2T1_AppendRejectsRunIDMismatch — defence in depth: an Event
-// whose RunID disagrees with the runID arg is a writer bug, not a
-// silent override. Same root-cause rule as substrate's ErrTenantRequired.
+// TestS2T1_AppendRejectsRunIDMismatch — defence in depth: an Event whose RunID disagrees with the runID arg is a writer bug, not a silent over
 func TestS2T1_AppendRejectsRunIDMismatch(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
@@ -118,8 +114,7 @@ func TestS2T1_AppendRejectsRunIDMismatch(t *testing.T) {
 	}
 }
 
-// TestS2T1_AppendPropagatesSubstrateValidation — bad payload must
-// surface substrate.ErrInvalidPayload, not get swallowed.
+// TestS2T1_AppendPropagatesSubstrateValidation — bad payload must surface substrate.ErrInvalidPayload, not get swallowed.
 func TestS2T1_AppendPropagatesSubstrateValidation(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
@@ -135,9 +130,7 @@ func TestS2T1_AppendPropagatesSubstrateValidation(t *testing.T) {
 	}
 }
 
-// TestS2T1_TailReturnsErrUnsupported — the v1 slice lands the
-// interface + Append; Tail is Phase X (spec §1 OUT + §11 F1). Calling
-// it must surface ErrUnsupported, not panic or return nil channels.
+// TestS2T1_TailReturnsErrUnsupported — the v1 slice lands the interface + Append; Tail is Phase X (spec §1 OUT + §11 F1). Calling it must surf
 func TestS2T1_TailReturnsErrUnsupported(t *testing.T) {
 	ctx := context.Background()
 	db := openMigratedDB(t)
