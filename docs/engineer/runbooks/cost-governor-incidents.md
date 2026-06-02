@@ -186,8 +186,11 @@ affects".
   append-only; the LWW reducer on `budget_reconciled` self-corrects
   on the next clean tick.
 - **Spec-cite.** §3.8 (Refresh runbook) + §3.5 (reducer semantics)
-  + §7 B3 (append-only invariant). A test fixture for known-bad
-  pricing tables is tracked at #290.
+  + §7 B3 (append-only invariant). The boot validator that catches
+  zero-rate rows before any Lookup is pinned by
+  `TestPricing_BootRejectsKnownBadTable` against the
+  `internal/cost/pricing/testdata/anthropic_bad_zero_row.go` fixture
+  (closes #290).
 
 ## Spawner SIGKILL drift recovery (R13)
 
