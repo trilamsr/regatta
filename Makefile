@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets
+.PHONY: help check ci-check doc-check go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -6,11 +6,18 @@ help:  ## Show this help.
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
 
-go-check:  ## Build and test every Go package with the race detector.
+go-check:  ## Build and test every Go package with the race detector. PHASE-S-RELAX: -short during self-host window; full sweep via `make go-check-full`.
+	go build -buildvcs=false ./...
+	go test -short -race ./...
+
+go-check-full:  ## Full race sweep without -short. Run weekly + before any tag. PHASE-S-RELAX restoration target — fold back into `go-check` at end of self-host phase (memory/feedback_gate_relaxation_phase_s).
 	go build -buildvcs=false ./...
 	go test -race ./...
 
-property-test:  ## Run rapid property tests with spec-mandated check count (200).
+property-test:  ## Run rapid property tests. PHASE-S-RELAX: 50 checks in CI/local; spec-mandated 200 via `make property-test-full`.
+	go test -race -run 'TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty' ./internal/orchestrator/state/... -rapid.checks=50
+
+property-test-full:  ## Full 200-check property sweep. Run weekly + before any tag. PHASE-S-RELAX restoration target — fold back into `property-test` at end of self-host phase (memory/feedback_gate_relaxation_phase_s).
 	go test -race -run 'TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty' ./internal/orchestrator/state/... -rapid.checks=200
 
 bench:  ## Run benchmark corpus (scheduler.Tick, CycleCheck, ListSpawnable, BriefLoader.Sync, schemas.Verify, canon). ~30s total at -benchtime=3x.

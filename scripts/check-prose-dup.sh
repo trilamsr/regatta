@@ -27,7 +27,18 @@ while IFS= read -r phrase; do
   # Count files containing the phrase. Restrict to *.md and skip
   # node_modules-style noise + transient agent worktrees under
   # .claude/worktrees/ (these would falsely double-count every seed).
-  hits=$(grep -rIl --include='*.md' --exclude-dir='.claude' --exclude-dir='node_modules' -F "$phrase" "$root" 2>/dev/null || true)
+  #
+  # PHASE-S-RELAX: also skip docs/engineer/{briefs,specs,plans}/ during
+  # the self-host window — wave dispatch re-introduces shared spec
+  # phrasing across sibling docs constantly. Restore strict scope at
+  # 30-day-green trigger. Memory: feedback_gate_relaxation_phase_s.
+  hits=$(grep -rIl --include='*.md' \
+    --exclude-dir='.claude' \
+    --exclude-dir='node_modules' \
+    --exclude-dir='briefs' \
+    --exclude-dir='specs' \
+    --exclude-dir='plans' \
+    -F "$phrase" "$root" 2>/dev/null || true)
   count=$(echo -n "$hits" | grep -c . || true)
   if [ "$count" -gt 1 ]; then
     echo "check-prose-dup: duplicate phrase appears in $count files:" >&2

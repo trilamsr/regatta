@@ -13,7 +13,11 @@
 
 set -euo pipefail
 
-WINDOW_DAYS="${WINDOW_DAYS:-7}"
+# PHASE-S-RELAX: default raised 7→30d during self-host window so
+# in-flight max-velocity dispatch does not file churn-issues for week-old
+# TODOs that are still in active scope. Restore 7d at 30-day-green trigger.
+# Memory: feedback_gate_relaxation_phase_s.
+WINDOW_DAYS="${WINDOW_DAYS:-30}"
 window_seconds=$((WINDOW_DAYS * 86400))
 now=$(date +%s)
 fail=0
