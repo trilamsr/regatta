@@ -14,3 +14,9 @@ dist/
 *.test
 *.out
 coverage.out
+
+# Node toolchain used only for `make build-tailwind`. The compiled
+# tailwind.min.css ships under internal/web/static/; node never runs on CI.
+node_modules/
+package-lock.json
+package.json

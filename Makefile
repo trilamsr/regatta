@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test bench pre-push-check cleanup-branches
+.PHONY: help check ci-check doc-check go-check cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -62,7 +62,25 @@ uninstall-hooks:  ## Detach repo-managed hooks (resets core.hooksPath).
 	@git config --unset core.hooksPath || true
 	@echo "Hooks detached. Git falls back to .git/hooks/."
 
-check: doc-check prose-dup vet lint tidy-check mod-verify go-check property-test  ## Local gate; <60s. Single source of truth for what is verified locally.
+build-tailwind:  ## Re-compile internal/web/static/tailwind.min.css from CSS source + templates. Developer-machine only (npx tailwindcss@3.4.1). Commit the output; CI does NOT run this.
+	npx tailwindcss@3.4.1 -c ./internal/web/tailwind.config.js \
+		-i ./internal/web/css/input.css \
+		-o ./internal/web/static/tailwind.min.css \
+		--minify
+
+verify-vendored-assets:  ## Assert on-disk SHA-256 of internal/web/static/htmx.min.js matches the pin in VENDORED.md. Mismatch = supply-chain tamper or accidental edit; fails CI.
+	@bash -c 'set -euo pipefail; \
+		ON_DISK=$$(shasum -a 256 internal/web/static/htmx.min.js | awk "{print \$$1}"); \
+		PINNED=$$(grep -oE "[a-f0-9]{64}" internal/web/static/VENDORED.md | head -1); \
+		if [ "$$ON_DISK" != "$$PINNED" ]; then \
+			echo "verify-vendored-assets: htmx.min.js sha256 drift"; \
+			echo "  on-disk: $$ON_DISK"; \
+			echo "  pinned : $$PINNED"; \
+			exit 1; \
+		fi; \
+		echo "verify-vendored-assets: htmx.min.js sha256 ok ($$ON_DISK)"'
+
+check: doc-check prose-dup vet lint tidy-check mod-verify verify-vendored-assets go-check property-test  ## Local gate; <60s. Single source of truth for what is verified locally.
 
 ci-check: check stale-todo  ## CI gate; supersedes `check` with longer-running scans (stale-todo).
 

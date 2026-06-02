@@ -1,0 +1,23 @@
+# URL contract for vendored static assets — reference document
+#
+# T4's server.go mounts this directory at /ui/static/ via
+# http.FileServer(http.FS(staticSubFS)) + http.StripPrefix.
+# T6's templates emit <link>/<script> URLs against the paths below.
+# Reverse-proxy operators (nginx, Caddy) can mirror these headers in
+# front of regatta serve without changing application code.
+#
+# Format: one line per asset.
+#   <url-path>  <content-type>  <cache-control>
+
+/ui/static/tailwind.min.css  text/css; charset=utf-8         public, max-age=86400, immutable
+/ui/static/htmx.min.js       application/javascript; charset=utf-8  public, max-age=86400, immutable
+
+# Notes:
+# - immutable + 1-day max-age is safe because every URL is content-pinned
+#   by SHA-256 in VENDORED.md; a byte change ships under the same path
+#   but lands behind a release tag, so cache-bust is per-deploy.
+# - CSP (T4's csp.go) restricts script-src + style-src to 'self'; these
+#   URLs are the only satisfier. Add no external origins here.
+# - Asset paths are stable across waves. If a future task renames a
+#   file, update this contract AND every template reference in the same
+#   PR — the rename is a wire-format break.
