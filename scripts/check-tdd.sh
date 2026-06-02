@@ -27,21 +27,30 @@
 #      the GitHub Actions wrapper - this script does not see labels).
 #
 # Inputs:
-#   BASE_SHA, HEAD_SHA - the diff range to inspect. Falls back to
-#   origin/main...HEAD for local invocation.
+#   BASE_SHA, HEAD_SHA - HEAD_SHA names the PR tip; BASE_SHA is a HINT
+#   only. When origin/main (or main) is present we always recompute
+#   `git merge-base <ref> HEAD` and ignore BASE_SHA. GitHub's
+#   pull_request.base.sha snapshots at PR-open and only refreshes on
+#   PR events (synchronize / edited / labeled); when main moves between
+#   events the env var points at a pre-move base and the diff window
+#   pulls in unrelated commits that landed on main, falsely tripping
+#   the gate. Live merge-base resolution is GH-agnostic and matches
+#   the local `make pre-push-check` path.
 #   BODY               - PR body text for the category-opt-out parse.
 
 set -euo pipefail
 
-base="${BASE_SHA:-}"
 head="${HEAD_SHA:-HEAD}"
+base=""
+if git rev-parse --verify origin/main >/dev/null 2>&1; then
+  base="$(git merge-base origin/main "$head" 2>/dev/null || echo "")"
+elif git rev-parse --verify main >/dev/null 2>&1; then
+  base="$(git merge-base main "$head" 2>/dev/null || echo "")"
+fi
+# Fallback when no main ref is reachable (shallow clones, detached
+# fixtures): trust the BASE_SHA hint.
 if [ -z "$base" ]; then
-  # Local invocation: diff against origin/main merge base.
-  if git rev-parse --verify origin/main >/dev/null 2>&1; then
-    base="$(git merge-base origin/main "$head")"
-  else
-    base="$(git merge-base main "$head" 2>/dev/null || echo "")"
-  fi
+  base="${BASE_SHA:-}"
 fi
 if [ -z "$base" ]; then
   echo "check-tdd: no base ref resolvable; nothing to check"
