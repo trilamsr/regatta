@@ -10,7 +10,7 @@ Source: docs/engineer/autonomous-session-prompt.md#L22
 
 wire `spend.SpawnerCallback` into `cmd/regatta/serve.go::buildSpawner`. Single PR. Smallest unblock.
 
-<!-- source-sha256: 161e4c4586c8e70d007098f4257a50b60a49511c737688cacf21eda40d0098d6 -->
+<!-- source-sha256: 26c852b6b761f0b161e622145059b3ab0f4a072bc13c44c1a2d99330c2676ddc -->
 
 ## Acceptance criteria
 

@@ -23,6 +23,14 @@ import (
 	"strings"
 )
 
+// Emitted status / criterion-state literals. Kept narrow on purpose:
+// the markdown_catalog adapter only accepts these two values for the
+// item lifecycle the converter writes (issue #471 + parser enum).
+const (
+	statusPlanned = "planned"
+	statusDone    = "done"
+)
+
 type convertOpts struct {
 	source    string // absolute path to boot prompt
 	out       string // output dir (will be created)
@@ -63,18 +71,38 @@ var (
 	endOfPriorityRE = regexp.MustCompile(`^(OPEN FOLLOWUPS|Already shipped|WORKFLOW per item)\b`)
 	// Sentinel comment line.
 	sentinelRE = regexp.MustCompile(`<!-- source-sha256: ([0-9a-f]{64}) -->`)
+	// SHIPPED marker at body head. Body forms accepted (per
+	// docs/engineer/autonomous-session-prompt.md):
+	//   "SHIPPED #294. Wired..."
+	//   "SHIPPED #331 (note) + #368 (note)."
+	//   "SHIPPED. T5+T6+T7 trio..." (no PR ref captured)
+	// The first capture (when present) is the first PR number.
+	shippedRE = regexp.MustCompile(`^SHIPPED(?:\s+#(\d+))?\b`)
 )
 
 type entry struct {
-	id        string // upper-cased, e.g. "S1-T2"
-	phase     string // "s1" / "s2" / "s3"
-	title     string // raw title prose, trimmed
-	body      string // raw body prose, trimmed
-	lineNum   int    // 1-based line number in source
+	id      string // upper-cased, e.g. "S1-T2"
+	phase   string // "s1" / "s2" / "s3"
+	title   string // raw title prose, trimmed
+	body    string // raw body prose, trimmed
+	lineNum int    // 1-based line number in source
+	// shipped is true when the body opens with "SHIPPED" — emit
+	// status: done instead of planned (issue #471).
+	shipped bool
+	// closingPR is the first PR number after the SHIPPED marker, or
+	// "" if absent. Emitted as `closing_pr: NNN` frontmatter.
+	closingPR string
 }
 
 func (e entry) sha() string {
-	h := sha256.Sum256([]byte(e.id + "\x00" + e.title + "\x00" + e.body))
+	// shipped + closingPR feed the hash so a SHIPPED-marker annotation
+	// in the source flips the on-disk sentinel and triggers rewrite
+	// even when title+body bytes otherwise stayed compatible.
+	shippedFlag := "0"
+	if e.shipped {
+		shippedFlag = "1"
+	}
+	h := sha256.Sum256([]byte(e.id + "\x00" + e.title + "\x00" + e.body + "\x00" + shippedFlag + "\x00" + e.closingPR))
 	return hex.EncodeToString(h[:])
 }
 
@@ -149,12 +177,15 @@ func parseEntries(data []byte) ([]entry, error) {
 			id := strings.ToUpper(m[1])
 			title := strings.TrimSpace(m[2])
 			body := strings.TrimSpace(m[3])
+			shipped, pr := parseShipped(body)
 			entries = append(entries, entry{
-				id:      id,
-				phase:   phase,
-				title:   title,
-				body:    body,
-				lineNum: i + 1,
+				id:        id,
+				phase:     phase,
+				title:     title,
+				body:      body,
+				lineNum:   i + 1,
+				shipped:   shipped,
+				closingPR: pr,
 			})
 		}
 	}
@@ -179,17 +210,35 @@ func parseEntries(data []byte) ([]entry, error) {
 	return entries, nil
 }
 
+// parseShipped reports whether body opens with a SHIPPED marker and
+// returns the first PR number (without leading '#') if present. See
+// shippedRE for the recognized forms. Issue #471.
+func parseShipped(body string) (bool, string) {
+	m := shippedRE.FindStringSubmatch(body)
+	if m == nil {
+		return false, ""
+	}
+	return true, m[1]
+}
+
 // renderItem produces the on-disk file bytes for one entry.
 // Format matches internal/orchestrator/adapter/parse.go::parseMarkdownItem
 // + parseCriteria. The sentinel <!-- source-sha256: ... --> on the last
 // line is what convert() reads back to decide idempotency.
 func renderItem(e entry, sourceRel string) []byte {
 	var buf bytes.Buffer
+	status := statusPlanned
+	if e.shipped {
+		status = statusDone
+	}
 	buf.WriteString("---\n")
 	fmt.Fprintf(&buf, "id: %s\n", e.id)
 	fmt.Fprintf(&buf, "title: %s\n", e.title)
 	buf.WriteString("lane: self-host\n")
-	buf.WriteString("status: planned\n")
+	fmt.Fprintf(&buf, "status: %s\n", status)
+	if e.closingPR != "" {
+		fmt.Fprintf(&buf, "closing_pr: %s\n", e.closingPR)
+	}
 	fmt.Fprintf(&buf, "linked_artifact: %s#L%d\n", sourceRel, e.lineNum)
 	buf.WriteString("---\n\n")
 	if e.body != "" {
@@ -214,7 +263,13 @@ func renderItem(e entry, sourceRel string) []byte {
 		e.lineNum,
 	)
 	critText = strings.ReplaceAll(critText, "\n", " ")
-	fmt.Fprintf(&buf, "- [planned] c1: %s\n", critText)
+	// Criterion state mirrors item status — a shipped item with a
+	// [planned] criterion would lie to the L0 verifier.
+	critState := statusPlanned
+	if e.shipped {
+		critState = statusDone
+	}
+	fmt.Fprintf(&buf, "- [%s] c1: %s\n", critState, critText)
 	return buf.Bytes()
 }
 
