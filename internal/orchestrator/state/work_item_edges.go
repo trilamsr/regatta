@@ -142,6 +142,97 @@ func (d *DB) ListEdgesFrom(ctx context.Context, fromID string) ([]EdgeRow, error
 	return scanEdges(rows)
 }
 
+// EdgeFromAggregate carries the five facts the scheduler's
+// default-fallback decision needs about a from_id's sibling set
+// (evalPendingEdges, scheduler.go default-fallback branch). It exists
+// so the post-write check can avoid materialising the sibling slice
+// per pending-edge group — see #187 for the +19% allocs/op regression
+// the slice path was paying at N=1000.
+type EdgeFromAggregate struct {
+	// NonDefaultCount is the number of is_default=0 rows. The fallback
+	// guard `nonDefaultFired == 0` reads this.
+	NonDefaultCount int
+	// AnyNonDefaultTrue is true iff at least one is_default=0 row has
+	// fired='true'. Blocks the fallback (a real branch already won).
+	AnyNonDefaultTrue bool
+	// AnyNonDefaultPending is true iff at least one is_default=0 row
+	// still has fired='pending'. Blocks the fallback (decision not
+	// yet ripe).
+	AnyNonDefaultPending bool
+	// DefaultCount is the number of is_default=1 rows. >1 is a brief
+	// misconfiguration the scheduler warns about (deduped per
+	// (program_id, from_id)).
+	DefaultCount int
+	// DefaultEdgeID identifies the default row to mark fired when the
+	// fallback wins. Selects the lowest id when multiple defaults
+	// exist so the choice is deterministic; the multi-default warn
+	// still fires regardless.
+	DefaultEdgeID int64
+	// DefaultFired is the fired status of the row identified by
+	// DefaultEdgeID. The fallback runs only when this is 'pending'.
+	DefaultFired string
+	// DefaultProgramID labels the multi-default warn so a misconfigured
+	// brief is identifiable in logs.
+	DefaultProgramID string
+}
+
+// CountNonDefaultEdgeStates returns the EdgeFromAggregate for a fromID
+// in a single index-only query against idx_work_item_edges_from
+// (from_id, fired). It replaces the post-loop ListEdgesFrom re-read
+// the scheduler used to do per pending-edge group; same post-write
+// semantic (so the partial-tick-crash invariant from #98 still holds),
+// without the per-row scan + slice alloc.
+//
+// SQL shape: one CASE-aggregated SELECT. The default-row probe uses a
+// correlated subquery against the same index — sqlite plans this as a
+// second seek on the same key, not a second table scan. EXPLAIN QUERY
+// PLAN for N=1000 confirms SEARCH USING COVERING INDEX (verified
+// manually via `make explain-count-edges` precedent, see docs).
+func (d *DB) CountNonDefaultEdgeStates(ctx context.Context, fromID string) (EdgeFromAggregate, error) {
+	var agg EdgeFromAggregate
+	var (
+		anyTrue, anyPending sql.NullInt64
+		defID               sql.NullInt64
+		defFired            sql.NullString
+		defProgram          sql.NullString
+	)
+	err := d.sql.QueryRowContext(ctx, `
+		SELECT
+			COALESCE(SUM(CASE WHEN is_default = 0 THEN 1 ELSE 0 END), 0) AS non_default_count,
+			COALESCE(MAX(CASE WHEN is_default = 0 AND fired = 'true' THEN 1 ELSE 0 END), 0) AS any_true,
+			COALESCE(MAX(CASE WHEN is_default = 0 AND fired = 'pending' THEN 1 ELSE 0 END), 0) AS any_pending,
+			COALESCE(SUM(CASE WHEN is_default = 1 THEN 1 ELSE 0 END), 0) AS default_count,
+			(SELECT id        FROM work_item_edges WHERE from_id = ? AND is_default = 1 ORDER BY id LIMIT 1) AS default_id,
+			(SELECT fired     FROM work_item_edges WHERE from_id = ? AND is_default = 1 ORDER BY id LIMIT 1) AS default_fired,
+			(SELECT program_id FROM work_item_edges WHERE from_id = ? ORDER BY id LIMIT 1)                  AS default_program
+		FROM work_item_edges
+		WHERE from_id = ?`,
+		fromID, fromID, fromID, fromID).Scan(
+		&agg.NonDefaultCount,
+		&anyTrue,
+		&anyPending,
+		&agg.DefaultCount,
+		&defID,
+		&defFired,
+		&defProgram,
+	)
+	if err != nil {
+		return EdgeFromAggregate{}, fmt.Errorf("state: count non-default edge states: %w", err)
+	}
+	agg.AnyNonDefaultTrue = anyTrue.Int64 != 0
+	agg.AnyNonDefaultPending = anyPending.Int64 != 0
+	if defID.Valid {
+		agg.DefaultEdgeID = defID.Int64
+	}
+	if defFired.Valid {
+		agg.DefaultFired = defFired.String
+	}
+	if defProgram.Valid {
+		agg.DefaultProgramID = defProgram.String
+	}
+	return agg, nil
+}
+
 // ListEdgesTo returns all edges whose to_id matches, ordered by id ASC.
 func (d *DB) ListEdgesTo(ctx context.Context, toID string) ([]EdgeRow, error) {
 	rows, err := d.sql.QueryContext(ctx,
