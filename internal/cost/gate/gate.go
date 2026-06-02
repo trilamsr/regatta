@@ -106,8 +106,15 @@ func (g *Gate) Evaluate(ctx context.Context, w WorkItemScope) (Verdict, error) {
 		return Verdict{Allow: true}, nil
 	}
 
-	// Estimate once; reused across every cap check.
-	est, err := g.estim.Estimate(ctx, w.EstHint, w.Model)
+	// Estimate once; reused across every cap check. OperatorID flows
+	// through the hint so the History estimator (opt-in, spec §10 S1)
+	// can scope its cohort p95 to (tenant, operator, model). Default
+	// upper_bound ignores the field — zero-cost for the default path.
+	hint := w.EstHint
+	if hint.OperatorID == "" {
+		hint.OperatorID = w.OperatorID
+	}
+	est, err := g.estim.Estimate(ctx, hint, w.Model)
 	if err != nil {
 		return Verdict{}, fmt.Errorf("cost.gate: estimate: %w", err)
 	}

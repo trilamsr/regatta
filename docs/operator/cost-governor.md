@@ -48,6 +48,7 @@ which carry defaults. An empty `safety.cost: {}` is rejected at boot
     reconcile_interval:         *"1h" | "5m" | "15m" | "30m" | "6h" | "24h"
     drift_alert_threshold_pct:  *10 | int & >=0 & <=100
     usage_api_key_env:          *"ANTHROPIC_ADMIN_KEY" | string
+    estimation_strategy:        *"upper_bound" | "history"
     pricing_override_path?:     string
 }
 ```
@@ -62,6 +63,7 @@ which carry defaults. An empty `safety.cost: {}` is rejected at boot
 | `reconcile_interval` | `1h` | Reconciler cron cadence. Hourly is the smallest stable Anthropic bucket. |
 | `drift_alert_threshold_pct` | `10` | Drift threshold for `obs.EventCostDriftAlert`. `abs(actual - recorded) / max(actual, 0.01)`. |
 | `usage_api_key_env` | `ANTHROPIC_ADMIN_KEY` | Env-var name holding the Anthropic admin key. NEVER the key value itself. |
+| `estimation_strategy` | `upper_bound` | Pre-call USD estimator. `upper_bound` (default) is deterministic + conservative — `(input × price_in + max × price_out)`. `history` is the opt-in p95-of-cohort estimator (spec §10 S1, issue #238): reads recent `token_spend` rows for the `(tenant, operator, model)` cohort, falls back to `upper_bound` on cold-start (< 10 samples). Switch only if upper-bound's pessimism triggers soft-cap thrash. |
 | `pricing_override_path` | unset | Optional path to a JSON file that overrides or extends the hardcoded pricing table at boot. Per-key merge — each model key replaces the corresponding hardcoded row; siblings untouched; new SKUs (Bedrock/Vertex) added. See **Pricing refresh** below for format + file-mode requirements. |
 
 ## Precedence — most-restrictive-wins

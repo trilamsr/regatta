@@ -36,6 +36,7 @@ var costGovernorConfigFields = []string{
 	"reconcile_interval",
 	"drift_alert_threshold_pct",
 	"usage_api_key_env",
+	"estimation_strategy",
 	"pricing_override_path",
 }
 

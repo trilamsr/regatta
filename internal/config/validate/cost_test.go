@@ -63,6 +63,45 @@ func TestCUEValidate_AllCapsZero_RejectedWithMessage(t *testing.T) {
 	}
 }
 
+// TestCUEValidate_EstimationStrategy_HistoryAccepted pins spec §10 S1 (#238) — `history` passes CUE validation.
+func TestCUEValidate_EstimationStrategy_HistoryAccepted(t *testing.T) {
+	yaml := baseYAML + `safety:
+  cost:
+    per_dag_usd: 100
+    estimation_strategy: history
+`
+	if err := validate.ValidateConfig([]byte(yaml)); err != nil {
+		t.Fatalf("ValidateConfig: %v; want nil for estimation_strategy=history (opt-in flag)", err)
+	}
+}
+
+// TestCUEValidate_EstimationStrategy_DefaultUpperBound pins additive-default — omitted field is byte-equal to pre-#238.
+func TestCUEValidate_EstimationStrategy_DefaultUpperBound(t *testing.T) {
+	yaml := baseYAML + `safety:
+  cost:
+    per_dag_usd: 100
+`
+	if err := validate.ValidateConfig([]byte(yaml)); err != nil {
+		t.Fatalf("ValidateConfig: %v; want nil (estimation_strategy defaults to upper_bound)", err)
+	}
+}
+
+// TestCUEValidate_EstimationStrategy_InvalidRejected pins closed-enum — typos like `historical` fail at config-load.
+func TestCUEValidate_EstimationStrategy_InvalidRejected(t *testing.T) {
+	yaml := baseYAML + `safety:
+  cost:
+    per_dag_usd: 100
+    estimation_strategy: historical
+`
+	err := validate.ValidateConfig([]byte(yaml))
+	if err == nil {
+		t.Fatalf("ValidateConfig: nil; want CUE rejection of estimation_strategy=historical")
+	}
+	if !strings.Contains(err.Error(), "estimation_strategy") {
+		t.Fatalf("err=%q; want CUE error naming estimation_strategy field", err)
+	}
+}
+
 func TestCUEValidate_PricingOverridePath_Accepted(t *testing.T) {
 	yaml := baseYAML + `safety:
   cost:
