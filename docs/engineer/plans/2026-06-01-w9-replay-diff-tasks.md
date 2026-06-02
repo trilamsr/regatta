@@ -1315,7 +1315,7 @@ Content (mandatory sections):
 T6 ships zero code. No tests. **Markdown gates only:**
 
 - `bash scripts/doc-check.sh` exits 0 (link integrity + banned-phrase lint per `feedback_doc_check_banned_phrases`).
-- `bash scripts/stale-todo.sh` exits 0 (no stale TODO without owner).
+- `bash scripts/stale-todo.sh` exits 0 (no stale untagged markers without owner).
 
 ### PR body skeleton
 
