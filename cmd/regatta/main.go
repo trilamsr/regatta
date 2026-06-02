@@ -30,6 +30,7 @@ const (
 	subcmdInit             = "init"
 	subcmdVerifyRepoConfig = "verify-repo-config"
 	subcmdApproval         = "approval"
+	subcmdKeys             = "keys"
 )
 
 // subcommand binds a CLI verb to its run function. The table is the
@@ -50,6 +51,7 @@ var subcommands = []subcommand{
 	{subcmdValidateConfig, runValidateConfig},
 	{subcmdInit, runInit},
 	{subcmdApproval, runApproval},
+	{subcmdKeys, runKeys},
 }
 
 func main() {
@@ -88,6 +90,7 @@ func usage(w io.Writer) {
   regatta approval decide --token T --decision D ...  Record an approval-gate decision from a signed token
   regatta approval list [--mine ID] [--format F]      List pending approvals (table | json)
   regatta init                                        Scaffold regatta.yaml + run L0 demo
+  regatta keys re-sign-briefs -old-key-id ...         Re-sign program briefs after HMAC key rotation
   regatta version                                     Print build info
   regatta help                                        This message
 
