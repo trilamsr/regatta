@@ -41,7 +41,7 @@ NO SIGNATURES
 
 1. When posting reviewer output via `gh pr comment` / `gh pr review`, use `--body-file <path>` — HEREDOC bodies escape backticks and break the release-notes fence detector if the comment is later promoted to a PR body. Per `feedback_pr_body_file_only`.
 
-2. Comment-noise trip-traps to flag in author diffs: `[Rr]eviewer\s+[A-Z]` (e.g. "Reviewer Request") and `# --- Section ---` banner comments — both over-match legitimate prose. Suggest hyphenation / lowercase / plain `# Section.` rewrites in review comments instead of failing the gate.
+2. Comment-noise trip-traps to flag in author diffs: `[Rr]eviewer\s+[A-Z]` (e.g. "reviewer-Request") and `# --- Section ---` banner comments — both over-match legitimate prose. Suggest hyphenation / lowercase / plain `# Section.` rewrites in review comments instead of failing the gate.
 
 ## Per-dispatch payload
 - Target: `<TARGET>`

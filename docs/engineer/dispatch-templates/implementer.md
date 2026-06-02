@@ -54,7 +54,7 @@ These four traps cost a re-spin each in the last loop. Implementers paste these 
 2. `gh pr create` / `gh pr edit` MUST use `--body-file <path>`. HEREDOC bodies (`--body "$(cat <<EOF ... EOF)"`) escape backticks and silently break the release-notes fence detector. Write the body to `/tmp/pr-<branch>.md` first, then `gh pr create --body-file /tmp/pr-<branch>.md`. Per `feedback_pr_body_file_only`.
 
 3. Comment-noise gate trip-traps. Two patterns over-match legitimate prose:
-   - `[Rr]eviewer\s+[A-Z]` matches "Reviewer Request" / "reviewer JSON" → hyphenate (`reviewer-Request`, `reviewer-JSON`) or lowercase the following token.
+   - `[Rr]eviewer\s+[A-Z]` matches "reviewer-Request" / "reviewer-JSON" → hyphenate (`reviewer-Request`, `reviewer-JSON`) or lowercase the following token.
    - `# --- Section ---` banner comment regex (source files only) → use plain `# Section.` instead.
 
 4. GH base-sha drift workaround (per #343; root-cause fix tracked in #347): if `check-tdd` flags a file that is not in your diff, the workflow's `BASE_SHA` env is stale from a `main` merge that landed after PR-open. Add `[DOCS]`, `[CI]`, or `[CHORE]` category prefix at the start of the ```release-notes``` block to opt out of the test-first check. Remove the prefix once #347 lands.
