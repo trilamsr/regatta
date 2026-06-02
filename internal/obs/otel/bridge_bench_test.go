@@ -4,7 +4,10 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
+
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 
 	"github.com/trilamsr/regatta/internal/obs"
 	obsotel "github.com/trilamsr/regatta/internal/obs/otel"
@@ -20,7 +23,46 @@ import (
 // of int64s is the modal record).
 const bridgeBenchBudgetNsPerOp = 5000
 
-// BenchmarkBridge_Handle_BothLegs measures per-record overhead with both legs (discard slog + sdklog) wired at 0/5/20 attrs; the 5-attr budget is asserted by the sibling perf-guard test (issue #175).
+// bridgeBenchBudgetAllocsPerOp pins the per-record alloc budget for the
+// 5-attr both-legs path. Issue #467: bench reports allocs/op but the
+// guard previously asserted only ns/op, so a defensive copy that
+// doubled allocs (e.g. fmt.Sprintf in the hot path) could still pass
+// the ns/op gate and ship a silent regression. Current measured value
+// is 2 allocs/op (bridge wrapper + otelslog record build); ceiling at
+// 3 leaves headroom for one incidental alloc without permitting the
+// 2x growth regression shape #467 calls out.
+const bridgeBenchBudgetAllocsPerOp = 3
+
+// countingProcessor is a zero-alloc sdklog.Processor used by the bench
+// and perf-guard paths to isolate bridge fan-out cost from sink cost.
+// memProcessor (bridge_test.go) clones each record and appends under a
+// mutex to an unbounded slice — for b.N≥600K that adds ~150MB of heap
+// growth, per-record clone, and mutex serialisation into the timed
+// loop, none of which reflect bridge overhead (issue #466). The
+// counting variant keeps OnEmit allocation-free and lock-free so the
+// bench measures the bridge, not the sink.
+type countingProcessor struct {
+	emitted atomic.Int64
+}
+
+func (p *countingProcessor) Enabled(context.Context, sdklog.EnabledParameters) bool { return true }
+
+func (p *countingProcessor) OnEmit(_ context.Context, _ *sdklog.Record) error {
+	p.emitted.Add(1)
+	return nil
+}
+
+func (p *countingProcessor) Shutdown(context.Context) error   { return nil }
+func (p *countingProcessor) ForceFlush(context.Context) error { return nil }
+
+// newBenchProvider builds a LoggerProvider wired to countingProcessor; returned alongside the provider so callers can assert emission count without paying the memProcessor clone/append cost (issue #466).
+func newBenchProvider() (*sdklog.LoggerProvider, *countingProcessor) {
+	p := &countingProcessor{}
+	lp := sdklog.NewLoggerProvider(sdklog.WithProcessor(p))
+	return lp, p
+}
+
+// BenchmarkBridge_Handle_BothLegs measures per-record overhead with both legs (discard slog + counting sdklog) wired at 0/5/20 attrs; the 5-attr ns/op and allocs/op budgets are asserted by the sibling perf-guard test (issue #175).
 func BenchmarkBridge_Handle_BothLegs(b *testing.B) {
 	sizes := []struct {
 		name  string
@@ -37,7 +79,7 @@ func BenchmarkBridge_Handle_BothLegs(b *testing.B) {
 			// so the measurement isolates the bridge fan-out + otelslog
 			// translation cost, which is the variable the budget targets.
 			primary := slog.NewTextHandler(io.Discard, nil)
-			lp, _ := newTestProvider()
+			lp, _ := newBenchProvider()
 			b.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
 
 			bridge := obsotel.NewBridgeHandler(primary, "regatta-bench", obsotel.WithLoggerProvider(lp))
