@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/gates/severity"
 )
 
 // Run with no findings returns a clean pass.
@@ -12,7 +13,7 @@ func TestL4_Run_CleanPass(t *testing.T) {
 	cfg := Config{
 		GateID:        "l4_adversarial",
 		Model:         DefaultModel,
-		SeverityBlock: []string{RuleCritical, RuleTwoHigh},
+		SeverityBlock: []string{severity.Critical, severity.TwoHigh},
 		Invoker:       stubInvoker(nil),
 	}
 	gr, err := Run(context.Background(), cfg, Input{PRSHA: "deadbeef", RunID: "run-1"})
@@ -38,7 +39,7 @@ func TestL4_Run_OneCritical_Blocks(t *testing.T) {
 	cfg := Config{
 		GateID:        "l4_adversarial",
 		Model:         DefaultModel,
-		SeverityBlock: []string{RuleCritical, RuleTwoHigh},
+		SeverityBlock: []string{severity.Critical, severity.TwoHigh},
 		Invoker: stubInvoker([]schemas.Finding{{
 			ID:       "L4-CORR-OFFBYONE",
 			Severity: schemas.FindingCritical,
@@ -66,7 +67,7 @@ func TestL4_Run_TwoHigh_Blocks(t *testing.T) {
 	cfg := Config{
 		GateID:        "l4_adversarial",
 		Model:         DefaultModel,
-		SeverityBlock: []string{RuleCritical, RuleTwoHigh},
+		SeverityBlock: []string{severity.Critical, severity.TwoHigh},
 		Invoker:       stubInvoker(highs),
 	}
 	gr, err := Run(context.Background(), cfg, Input{PRSHA: "deadbeef", RunID: "run-3"})
@@ -86,7 +87,7 @@ func TestL4_Run_AdvisoryMode_NeverBlocks(t *testing.T) {
 	cfg := Config{
 		GateID:        "l4_adversarial",
 		Model:         DefaultModel,
-		SeverityBlock: []string{RuleCritical, RuleTwoHigh},
+		SeverityBlock: []string{severity.Critical, severity.TwoHigh},
 		AdvisoryMode:  true,
 		Invoker: stubInvoker([]schemas.Finding{{
 			ID:       "L4-SEC-AUTHBYPASS",
