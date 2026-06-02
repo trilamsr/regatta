@@ -43,7 +43,9 @@ This spec **deletes from the original `wedge_blackboard.md` data model** rather 
 - **Bespoke `tags_json` column + index removed** — topics carry the same naming-convention burden (`"schema.user_table"`, `"files.touched"`) without an extra index. Tag-faceted queries land if/when a real use case forces it.
 - **Bespoke read API (`fact.get`/`fact.list`/`fact.semantic`) collapsed to two** — `GetFact(topic)` (latest reducer output) + `TailFacts(topic, since)` (stream). Drop `fact.list(tag=...)` and `fact.semantic(query, k)` until a real consumer forces them.
 
-Net: W11 adds **one new table (`substrate_blobs`)**, **one new package (`internal/orchestrator/blackboard/`)**, **one new migration (`0007_blackboard_blobs.sql`)**. Everything else reuses substrate primitives that already shipped.
+Net: W11 adds **one new table (`substrate_blobs`)**, **one new package (`internal/orchestrator/blackboard/`)**, **one new migration (`0008_blackboard_blobs.sql`)**. Everything else reuses substrate primitives that already shipped.
+
+> **Migration number note:** Migration #0007 was reserved for W8 `policy_revision` per amendment PR #311 (in flight). W11 takes #0008. See §3.3 + §9 pre-conditions.
 
 ---
 
@@ -212,9 +214,10 @@ Operator-defined reducers register via the same `Register` API.
 A new table `substrate_blobs` (sqlite BLOB column, sha256 PK):
 
 ```sql
--- 0007_blackboard_blobs.sql
+-- 0008_blackboard_blobs.sql
 -- W11 blackboard CAS primitive. Owned by substrate package per spec §3.3.
--- Migration #0007 reserved per docs/engineer/specs/2026-06-01-w11-blackboard-design.md.
+-- Migration #0008 reserved per docs/engineer/specs/2026-06-01-w11-blackboard-design.md.
+-- Migration #0007 owned by W8 policy_revision per amendment PR #311; W11 takes #0008.
 
 CREATE TABLE substrate_blobs (
     digest        TEXT    NOT NULL PRIMARY KEY,         -- sha256 hex (64 chars)
@@ -233,7 +236,7 @@ CREATE INDEX idx_substrate_blobs_created_at
 
 **Why sqlite BLOB column, not S3 / external store:** per `feedback_research_design_principles` — substrate already ships with sqlite. Adding an S3 dependency for ≤1 MiB payloads is build-cost the wedge doesn't need. The schema's hard cap (16 MiB) keeps any single blob below sqlite's per-row recommended ceiling (~1 GiB; SQLITE_MAX_LENGTH; we leave 60× headroom). External-store adapter is `[blackboard-followup]` F4 once a real consumer needs >16 MiB.
 
-**Go API (lives in `internal/orchestrator/state/substrate/blob.go`** — substrate owns the table because the substrate package owns `0007_blackboard_blobs.sql` per `feedback_migration_number_lock`):**
+**Go API (lives in `internal/orchestrator/state/substrate/blob.go`** — substrate owns the table because the substrate package owns `0008_blackboard_blobs.sql` per `feedback_migration_number_lock`):**
 
 ```go
 package substrate
@@ -415,10 +418,10 @@ Per `feedback_adversarial_review`. Reviewer subagent MUST verify each before W11
 
 ## 6. Test plan per task (B / A / A+ — tool-checkable per `feedback_grade_rubric`)
 
-### T1 — Blobs primitive + migration 0007
+### T1 — Blobs primitive + migration 0008
 
 **B-tier:**
-- `TestMigration0007_AppliesAndCreatesSchema` — fresh DB → migrate → `substrate_blobs` table + index present; schema-version bump 6 → 7.
+- `TestMigration0008_AppliesAndCreatesSchema` — fresh DB → migrate → `substrate_blobs` table + index present; schema-version bump 7 → 8.
 - `TestBlackboard_PutBlobRoundTrip` — `PutBlob(content)` returns sha256(content); `GetBlob(digest)` returns content.
 - `TestBlackboard_PutBlobIdempotent` — same content twice ⇒ same digest; no UNIQUE-collision error; row count unchanged.
 - `TestBlackboard_PutBlobRejectsOversize` — content > `sizeMax` ⇒ `ErrBlobTooLarge`; no row written.
@@ -490,7 +493,7 @@ Per `feedback_adversarial_review`. Reviewer subagent MUST verify each before W11
 
 | Tier | Criterion | Tool check |
 |---|---|---|
-| **B** | `substrate_blobs` migration ships under `0007_blackboard_blobs.sql`; `PutBlob` + `GetBlob` + `PutFact` + `GetFact` + `TailFacts` shipped; `Registry.Register/Seal/Resolve` shipped; built-in `DefaultLWW` reducer ships; orphan-GC sweep job ships with opt-out; OTel attrs on fact-write + tail spans; **all B-tier tests in §6 pass**; no UPDATE/DELETE in blackboard package except the GC sweep's bounded DELETE on `substrate_blobs`. | `make check && go test ./internal/orchestrator/blackboard/... ./internal/orchestrator/blackboard_gc/... ./internal/orchestrator/state/substrate/...` passes; `grep -rE '\b(UPDATE\|DELETE)\b' internal/orchestrator/blackboard/` returns matches only in `_test.go` + the GC sweep file; schema-version 6 → 7. |
+| **B** | `substrate_blobs` migration ships under `0008_blackboard_blobs.sql`; `PutBlob` + `GetBlob` + `PutFact` + `GetFact` + `TailFacts` shipped; `Registry.Register/Seal/Resolve` shipped; built-in `DefaultLWW` reducer ships; orphan-GC sweep job ships with opt-out; OTel attrs on fact-write + tail spans; **all B-tier tests in §6 pass**; no UPDATE/DELETE in blackboard package except the GC sweep's bounded DELETE on `substrate_blobs`. | `make check && go test ./internal/orchestrator/blackboard/... ./internal/orchestrator/blackboard_gc/... ./internal/orchestrator/state/substrate/...` passes; `grep -rE '\b(UPDATE\|DELETE)\b' internal/orchestrator/blackboard/` returns matches only in `_test.go` + the GC sweep file; schema-version 7 → 8. |
 | **A** | All B + reducer-determinism test (R7) passes; schema-version-skew assertion test (R2) passes; bounded-batch test for tail + GC passes; ctx-cancel-no-leak test (R5) passes; operator runbook (`docs/operator/blackboard.md`) lands with topic-naming + GC opt-out + schema-version migration sections; built-in reducers `SetUnion`, `WriteOnce`, `Append` ship + tested. | A-tier tests pass; `docs/operator/blackboard.md` exists + `TestBlackboard_OperatorRunbookSectionsPresent` passes; `go test -run TestBlackboard_TailFactsCtxNoLeak ./...` passes. |
 | **A+** | All A + `tools/lint-blackboard-reducer-purity` rejects impure reducers in CI; `tools/lint-blackboard-tail-ctx` enforces cancellable-ctx at call sites; `tools/lint-blackboard-topics` enforces prefix list; 1M-fact synthetic load test verifies p95 `GetFact` ≤ 20ms + p95 `TailFacts` tick ≤ 50ms (tag `-tags=load`, nightly); one downstream consumer (e.g. cost-governor's spend rollup, or a multi-agent refactor demo) uses `TailFacts` as the primary read path. | Three lint tools land in CI; `go test -run TestBlackboard_LoadP95 -tags=load ./...` reports p95 within budget; downstream-consumer PR merged citing W11 as data source. |
 
@@ -500,7 +503,7 @@ Per `feedback_adversarial_review`. Reviewer subagent MUST verify each before W11
 
 | # | Task | Files (exclusive write scope) | Effort | Depends on |
 |---|---|---|---|---|
-| **T1** | **Blobs primitive + migration 0007** | `internal/orchestrator/state/migrations/0007_blackboard_blobs.sql`; `internal/orchestrator/state/substrate/blob.go` + `blob_test.go`; `internal/orchestrator/state/migrate.go` (CurrentSchemaVersion 6 → 7) | M | Substrate W1 (#224) merged |
+| **T1** | **Blobs primitive + migration 0008** | `internal/orchestrator/state/migrations/0008_blackboard_blobs.sql`; `internal/orchestrator/state/substrate/blob.go` + `blob_test.go`; `internal/orchestrator/state/migrate.go` (CurrentSchemaVersion 7 → 8) | M | Substrate W1 (#224) merged; W8 amendment PR #311 merged (claims #0007) |
 | **T2** | **Fact-kind registry + reducer dispatch** | `internal/orchestrator/blackboard/{registry,reducers,payload,fact,get_fact,errors}.go` + matching `_test.go`; `internal/orchestrator/blackboard/reducers/{lww,set_union,write_once,append}.go` | M | T1 (uses `PutBlob`/`GetBlob`); substrate's `RegisterPayloadValidator` |
 | **T3** | **TailFacts API + cursor semantics** | `internal/orchestrator/blackboard/{tail,cursor}.go` + `*_test.go` | M | T2 (uses `Fact` type + registry) |
 | **T4** | **Blob GC sweep job** | `internal/orchestrator/blackboard_gc/{sweep,config}.go` + `_test.go` | S | T1 (DELETE on `substrate_blobs`); T2 (reads `payload_json.blob_refs`) |
@@ -530,7 +533,8 @@ Per `feedback_adversarial_review`. Reviewer subagent MUST verify each before W11
 **Pre-conditions (hard):**
 
 - Substrate Wave 1 merged to main — provides `kind=fact` event channel, `RegisterPayloadValidator`, `AppendEvent`, `Fold`, HMAC signing, tenant_id propagation, OTel attrs via W6. Without this W11 has no foundation. **(Already shipped via #224.)**
-- Migration #0006 (substrate) applied — W11's migration #0007 depends on goose's sequential numbering. **(Already applied via #224.)**
+- Migration #0006 (substrate) applied — W11's migration #0008 depends on goose's sequential numbering. **(Already applied via #224.)**
+- **W8 amendment PR #311 merged** — claims migration #0007 for `policy_revision`. W11 Wave A dispatch is GATED on #311 merge AND verification that #0008 is unallocated on `origin/main` at dispatch time.
 
 **Pre-conditions (soft — not blockers):**
 
