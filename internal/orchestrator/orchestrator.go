@@ -9,8 +9,9 @@
 //  3. AgentSpawner (called from ScheduleOnce)
 //
 // Plus crash recovery (Recover) and lock heartbeating (Heartbeat).
-// PRWatcher, RejectionRouter, CanaryInjector, SupervisorLimits,
-// Reaper, and LessonCapture land in follow-up commits.
+// PRWatcher, CanaryInjector, SupervisorLimits, and LessonCapture
+// land in follow-up commits. Reaper + RejectionRouter are wired in
+// via SetReaper / SetRejectionRouter.
 package orchestrator
 
 import (
@@ -21,12 +22,14 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/lockfile"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
+	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -98,6 +101,25 @@ type Config struct {
 	// the Config.Logger DI normalization per W6 spec §3.3 +
 	// feedback_spec_pattern_authority.
 	Tracer trace.Tracer
+
+	// Meter is the OTel instrument factory for orchestrator
+	// lifecycle telemetry. Nil resolves to otel.Meter("orchestrator")
+	// at the first ResolveMeter() call so the global MeterProvider
+	// Setup wires (or a noop when Setup was skipped) wins by default.
+	// Mirrors the W6 Config.Tracer pattern so callers stay on one DI
+	// seam across trace + metric.
+	Meter metric.Meter
+}
+
+// ResolveMeter returns the configured meter or falls back to the
+// global provider's scoped meter. The fallback is lazy so a global
+// provider swap (e.g. test injection of a noop provider) takes effect
+// on the next call. Matches the W6 Config.Tracer nil-fallback shape.
+func (c Config) ResolveMeter() metric.Meter {
+	if c.Meter != nil {
+		return c.Meter
+	}
+	return otel.Meter("orchestrator")
 }
 
 // Orchestrator coordinates the spec adapter, scheduler, and spawner.
@@ -112,6 +134,7 @@ type Orchestrator struct {
 	sched       *scheduler.Scheduler
 	spawner     spawner.Spawner
 	reaper      *reaper.Reaper
+	rejection   *rejectionrouter.Router
 	dbPath      string
 	cfg         Config
 	log         *slog.Logger
@@ -159,6 +182,14 @@ func New(cfg Config) *Orchestrator {
 // leaves worktrees on disk after terminal transitions.
 func (o *Orchestrator) SetReaper(r *reaper.Reaper) {
 	o.reaper = r
+}
+
+// SetRejectionRouter installs the RejectionRouter used by Run to
+// route gate_rejected events into agent transitions + K-escalation.
+// Optional; without a Router the daemon still functions but agents
+// never wake on AI-gate rejections and never escalate to needs-human.
+func (o *Orchestrator) SetRejectionRouter(r *rejectionrouter.Router) {
+	o.rejection = r
 }
 
 // Recover implements the crash-recovery contract in docs/design.md
@@ -341,6 +372,16 @@ func (o *Orchestrator) ReapTerminal(ctx context.Context) error {
 	return o.reaper.ReapAll(ctx)
 }
 
+// RouteRejections drains pending gate_rejected events into agent
+// transitions + K-escalation. Safe to call with no Router set;
+// returns nil in that case.
+func (o *Orchestrator) RouteRejections(ctx context.Context) error {
+	if o.rejection == nil {
+		return nil
+	}
+	return o.rejection.Tick(ctx)
+}
+
 // Heartbeat refreshes every lock owned by an active agent. The
 // orchestrator runs Heartbeat on cfg.HeartbeatInterval so that locks
 // only age out when an agent has truly crashed.
@@ -391,6 +432,9 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		case <-tickT.C:
 			if err := o.ScheduleOnce(ctx); err != nil {
 				o.log.Warn("orchestrator.schedule_failed", string(obs.KeyErr), err.Error())
+			}
+			if err := o.RouteRejections(ctx); err != nil {
+				o.log.Warn("orchestrator.rejection_route_failed", string(obs.KeyErr), err.Error())
 			}
 			if err := o.ReapTerminal(ctx); err != nil {
 				o.log.Warn("orchestrator.reap_failed", string(obs.KeyErr), err.Error())

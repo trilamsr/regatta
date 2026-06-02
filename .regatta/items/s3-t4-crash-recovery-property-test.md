@@ -10,7 +10,7 @@ Source: docs/engineer/autonomous-session-prompt.md#L38
 
 200 random crash-points × scheduler tick. NEW.
 
-<!-- source-sha256: 0418a852004d91b3fa20ed74e53d28fbc381bb95c88513d1cfc8d3a66bd92454 -->
+<!-- source-sha256: a797cbfa6e4cfde3d94da75b99c1c34e5c5b1802e2fd519b09eb3793c629d457 -->
 
 ## Acceptance criteria
 

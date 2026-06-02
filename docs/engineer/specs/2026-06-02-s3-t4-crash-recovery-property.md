@@ -240,3 +240,7 @@ No spec dependency follows S3-T4 — it is a leaf in the Phase S graph.
 - Approval-reaper crash-recovery property test — same harness, different state machine. Filed as followup at PR time.
 - Multi-process crash recovery (regatta restarts mid-tick) — not in S3-T4 scope; deferred to Phase X if/when regatta gains a daemon-restart story.
 - Sqlite-file corruption recovery — out of scope; substrate W1 trusts sqlite WAL fsync per its own spec.
+
+## Resolution (2026-06-02)
+
+Shipped across #366 (`feat(scheduler): WriteHook fault-injection seam`), #382 (`test(scheduler): crash-recovery property test (rapid 200/2000 cases)`), #391 (`ci(crash-recovery): nightly 2000-case property sweep + make target`), and #394 (`test(cost+approval): crash-recovery property tests + factor golden-DB clone`). Property harness now covers scheduler, cost-governor, and reaper state machines.

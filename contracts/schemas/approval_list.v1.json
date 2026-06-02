@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/trilamsr/regatta/schemas/approval_list.v1.json",
+  "title": "ApprovalListRow",
+  "description": "One row emitted by `regatta approval list --format=json`. The whole command emits an array of these. Stable wire contract for downstream operator scripts: a column drift in cmd/regatta must fail schema-check (TestApprovalList_JSONMatchesSchema) before reaching a runtime parser.",
+  "type": "object",
+  "required": [
+    "approval_id",
+    "work_item_id",
+    "gate_name",
+    "requested_at_unix",
+    "timeout_at_unix",
+    "reviewer_set",
+    "quorum"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "approval_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier for the approval row in regatta.db.approvals.id."
+    },
+    "work_item_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "WorkItem the approval gates."
+    },
+    "gate_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Name of the approval_gate that requested this approval. Matches regatta.v1.cue #Gate.name (^[a-zA-Z0-9_-]{1,64}$)."
+    },
+    "requested_at_unix": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unix seconds since epoch at which the approval was requested. UTC; matches state.Approval.RequestedAt.Unix()."
+    },
+    "timeout_at_unix": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Unix seconds since epoch after which the reaper applies on_timeout policy. UTC; matches state.Approval.TimeoutAt.Unix()."
+    },
+    "reviewer_set": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Snapshot of reviewer ids at request time. Order preserved from the snapshot; downstream tools must not assume sort order."
+    },
+    "quorum": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Number of distinct approving reviewers required for the approval to terminate as approved."
+    }
+  }
+}

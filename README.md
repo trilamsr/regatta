@@ -119,35 +119,55 @@ the most load-bearing.
   the embedded `contracts/schemas/regatta.v1.cue`. Multi-error output enumerates
   every offending field with `file:line` positions instead of eliding
   with `(and N more errors)`.
+- **L4 adversarial reviewer gate.** `internal/gates/l4/` runs at
+  scheduler step 0.7 — Anthropic adapter + tolerant JSON parser +
+  per-category model selection + LRU findings cache + second-opinion
+  loop + auto-fix patch mode + SIGHUP prompt-template hot-reload.
+- **Approval-gate stack.** HMAC-token mint + reaper + multi-key
+  rotation + `regatta keys` CLI. CLI flow: `regatta approval list` /
+  `regatta approval decide --id X --approve`.
+- **Cost governor.** Pre-call USD+token caps, Anthropic Usage/Cost
+  API reconciliation, drift alarms, soft-cap warn mode, pricing-table
+  boot validator. Runbook: `docs/engineer/runbooks/cost-governor-incidents.md`.
+- **W6 OTel backbone.** SDK + slog bridge + scheduler/spawner/gate
+  spans + GenAI semantic conventions + Jaeger E2E.
+- **W8 OPA Authorizer (single-tenant).** Rego policy embed + atomic
+  store swap + SIGHUP/fsnotify hot-reload. Multi-tenant scoping
+  deferred to Phase X.
+- **W9 substrate-default `DurableHistory`.** Append/replay/diff over
+  `substrate_events`. Temporal-backed variant deferred to Phase X.
 
 - **Orchestrator skeleton.** `regatta serve` runs a daemon backed by
-  a sqlite state store (`modernc.org/sqlite`) that implements three of
+  a sqlite state store (`modernc.org/sqlite`) that implements four of
   the nine responsibilities in `docs/design.md` §Orchestrator shape:
   the SpecWatcher (markdown_catalog adapter reading
   `<root>/.regatta/items/*.md`), the Scheduler with sorted-lock
-  hotspot acquisition and per-lane concurrency caps, and the
-  AgentSpawner (currently a stub that records spawn calls). The state
-  machine in `docs/design.md` §State, persistence, recovery is
-  enforced in `internal/orchestrator/state`; crash recovery requeues
-  dead agents on startup. `--tick-once` runs a single poll+schedule
-  cycle for CI smoke tests. PRWatcher, RejectionRouter,
-  CanaryInjector, SupervisorLimits, Reaper, and LessonCapture are
-  deferred to follow-up commits.
+  hotspot acquisition and per-lane concurrency caps, the
+  `ClaudeSpawner` that shells `claude` per work item into per-agent
+  worktrees (`internal/orchestrator/spawner/claude.go`), and the
+  approval-gate Reaper. The state machine in `docs/design.md` §State,
+  persistence, recovery is enforced in `internal/orchestrator/state`;
+  crash recovery requeues dead agents on startup. `--tick-once` runs a
+  single poll+schedule cycle for CI smoke tests. PRWatcher,
+  RejectionRouter, CanaryInjector, SupervisorLimits (cgroups / rlimits),
+  and LessonCapture are deferred to follow-up commits.
 
 ## Next steps
 
 1. **Expand the L0 fixture corpus toward the 200-fixture target.**
+   Currently at ~75 fixtures under `testdata/gates/l0/`.
 2. **`regatta validate-spec`.** Connect to the configured `SpecAdapter`,
    list ready work items, surface NFC + invisible-glyph cleanliness,
    verify the dependency DAG.
-3. **Production AgentSpawner.** Replace the stub with a real worktree
-   + `claude --resume` launcher; wire SupervisorLimits (cgroups on
-   Linux, rlimits on macOS).
+3. **SupervisorLimits.** The `ClaudeSpawner` shells `claude` per
+   work item into per-agent worktrees (`internal/orchestrator/spawner/claude.go`),
+   but cgroups (Linux) / rlimits (macOS) are not wired yet.
 4. **PRWatcher + RejectionRouter.** Drive agents past `running` so
    the rest of the state machine (`pr_open` through `done`) gets
    exercised.
-5. **Gate runners for L3 / L4 / L5.** Anthropic SDK clients with
-   prompt-caching, structured-output enforcement.
+5. **Gate runners for L3 / L5.** L4 (adversarial reviewer) shipped via the
+   Phase S2-T2 wave (`internal/gates/l4/`); L3 spec-conformance and L5 drift
+   detection still pending.
 
 ## Why "regatta"
 

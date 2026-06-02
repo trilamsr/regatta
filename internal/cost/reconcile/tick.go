@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/trilamsr/regatta/internal/cost/pricing"
+	"github.com/trilamsr/regatta/internal/cost/spend"
 	"github.com/trilamsr/regatta/internal/obs"
 )
 
@@ -206,7 +207,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 
 	// Try Cost API (preferred). On 403/404 fall back to Usage API.
 	apiSource := "cost"
-	costResp, body, err := r.fetchWithBackoff(spanCtx, func(c context.Context) ([]byte, *bytes.Buffer, error) {
+	costResp, body, attempts, err := r.fetchWithBackoff(spanCtx, func(c context.Context) ([]byte, *bytes.Buffer, error) {
 		resp, b, e := r.client.FetchCost(c, start, end, r.cfg.BucketWidth)
 		if e != nil {
 			return nil, nil, e
@@ -216,7 +217,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		return b, buf, nil
 	})
 	var actualUSD float64
-	var modelBreakdown []ModelBreakdownRow
+	var modelBreakdown []spend.ModelBreakdownRow
 
 	switch {
 	case errors.Is(err, ErrAdminKeyUnset):
@@ -233,9 +234,9 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 			slog.String(string(obs.KeyEventName), string(obs.EventCostReconcileFallback)),
 		)
 		apiSource = "usage_fallback"
-		usageResp, ub, ferr := r.fetchUsageWithBackoff(spanCtx, start, end)
+		usageResp, ub, uAttempts, ferr := r.fetchUsageWithBackoff(spanCtx, start, end)
 		if ferr != nil {
-			return r.persistentFailure(spanCtx, span, ferr)
+			return r.persistentFailure(spanCtx, span, start, uAttempts, ferr)
 		}
 		body = ub
 		actualUSD, modelBreakdown, err = r.usageToActualUSD(spanCtx, usageResp)
@@ -244,13 +245,13 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		}
 
 	case err != nil:
-		return r.persistentFailure(spanCtx, span, err)
+		return r.persistentFailure(spanCtx, span, start, attempts, err)
 
 	default:
 		// Cost API happy path — Anthropic returned USD directly.
 		for _, row := range costResp.Data {
 			actualUSD += row.CostUSD
-			modelBreakdown = append(modelBreakdown, ModelBreakdownRow{
+			modelBreakdown = append(modelBreakdown, spend.ModelBreakdownRow{
 				Model: row.Model,
 				USD:   row.CostUSD,
 			})
@@ -288,7 +289,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		return fmt.Errorf("canonicalise response: %w", sigErr)
 	}
 
-	payload := BudgetReconciledPayload{
+	payload := spend.BudgetReconciledPayload{
 		PeriodStart:    start.UnixMilli(),
 		PeriodEnd:      end.UnixMilli(),
 		ActualUSD:      actualUSD,
@@ -341,19 +342,27 @@ func (r *Reconciler) Run(ctx context.Context) error {
 // fetchWithBackoff retries 429 + 5xx up to defaultRetryAttempts. On
 // ErrAdminKeyUnset or ErrCostAPIUnavailable we return immediately —
 // those are caller-handled signals, not retryable failures.
-func (r *Reconciler) fetchWithBackoff(ctx context.Context, fetcher func(context.Context) ([]byte, *bytes.Buffer, error)) (CostResponse, []byte, error) {
+//
+// Returned attempts counts the actual attempts made (1-indexed). On the
+// admin-key / cost-api-unavailable shortcut paths it is the iteration
+// the signal was seen on. On the exhaustion path it equals
+// defaultRetryAttempts. The cost.reconcile_failing emit pins this value
+// so dashboards joining on attempt_count see real numbers, not the
+// retry-budget ceiling (issue #439).
+func (r *Reconciler) fetchWithBackoff(ctx context.Context, fetcher func(context.Context) ([]byte, *bytes.Buffer, error)) (CostResponse, []byte, int, error) {
 	backoff := NewBackoff(time.Second, 5*time.Minute)
-	for attempt := 0; attempt < defaultRetryAttempts; attempt++ {
+	attempt := 0
+	for ; attempt < defaultRetryAttempts; attempt++ {
 		body, _, err := fetcher(ctx)
 		if err == nil {
 			var resp CostResponse
 			if jerr := json.Unmarshal(body, &resp); jerr != nil {
-				return CostResponse{}, nil, fmt.Errorf("decode cost: %w", jerr)
+				return CostResponse{}, nil, attempt + 1, fmt.Errorf("decode cost: %w", jerr)
 			}
-			return resp, body, nil
+			return resp, body, attempt + 1, nil
 		}
 		if errors.Is(err, ErrAdminKeyUnset) || errors.Is(err, ErrCostAPIUnavailable) {
-			return CostResponse{}, nil, err
+			return CostResponse{}, nil, attempt + 1, err
 		}
 		var rl *RateLimitedError
 		if errors.As(err, &rl) {
@@ -366,20 +375,21 @@ func (r *Reconciler) fetchWithBackoff(ctx context.Context, fetcher func(context.
 			continue
 		}
 		// Unknown — propagate so the caller does not silently retry.
-		return CostResponse{}, nil, err
+		return CostResponse{}, nil, attempt + 1, err
 	}
-	return CostResponse{}, nil, ErrUpstreamPersistent5xx
+	return CostResponse{}, nil, attempt, ErrUpstreamPersistent5xx
 }
 
-func (r *Reconciler) fetchUsageWithBackoff(ctx context.Context, start, end time.Time) (UsageResponse, []byte, error) {
+func (r *Reconciler) fetchUsageWithBackoff(ctx context.Context, start, end time.Time) (UsageResponse, []byte, int, error) {
 	backoff := NewBackoff(time.Second, 5*time.Minute)
-	for attempt := 0; attempt < defaultRetryAttempts; attempt++ {
+	attempt := 0
+	for ; attempt < defaultRetryAttempts; attempt++ {
 		resp, body, err := r.client.FetchUsage(ctx, start, end, r.cfg.BucketWidth)
 		if err == nil {
-			return resp, body, nil
+			return resp, body, attempt + 1, nil
 		}
 		if errors.Is(err, ErrAdminKeyUnset) {
-			return UsageResponse{}, nil, err
+			return UsageResponse{}, nil, attempt + 1, err
 		}
 		var rl *RateLimitedError
 		if errors.As(err, &rl) {
@@ -391,9 +401,9 @@ func (r *Reconciler) fetchUsageWithBackoff(ctx context.Context, start, end time.
 			r.sleep(backoff.Next())
 			continue
 		}
-		return UsageResponse{}, nil, err
+		return UsageResponse{}, nil, attempt + 1, err
 	}
-	return UsageResponse{}, nil, ErrUpstreamPersistent5xx
+	return UsageResponse{}, nil, attempt, ErrUpstreamPersistent5xx
 }
 
 // usageToActualUSD applies local pricing to the Usage API response.
@@ -401,9 +411,9 @@ func (r *Reconciler) fetchUsageWithBackoff(ctx context.Context, start, end time.
 // pricing table is wrong, drift will appear zero even when actual
 // billing differs. The fallback emit covers stream-json-parser drift
 // only; the operator runbook documents the limitation.
-func (r *Reconciler) usageToActualUSD(ctx context.Context, resp UsageResponse) (float64, []ModelBreakdownRow, error) {
+func (r *Reconciler) usageToActualUSD(ctx context.Context, resp UsageResponse) (float64, []spend.ModelBreakdownRow, error) {
 	var total float64
-	var rows []ModelBreakdownRow
+	var rows []spend.ModelBreakdownRow
 	for _, b := range resp.Data {
 		row, err := r.cfg.Pricing(b.Model)
 		if err != nil {
@@ -422,7 +432,7 @@ func (r *Reconciler) usageToActualUSD(ctx context.Context, resp UsageResponse) (
 			perMillion(b.CacheCreationInputTokens, row.CacheCreationUSDPerMTok) +
 			perMillion(b.OutputTokens, row.OutputUSDPerMTok)
 		total += usd
-		rows = append(rows, ModelBreakdownRow{
+		rows = append(rows, spend.ModelBreakdownRow{
 			Model:               b.Model,
 			InputTokens:         b.UncachedInputTokens,
 			OutputTokens:        b.OutputTokens,
@@ -438,8 +448,16 @@ func perMillion(tokens int64, ratePerMTok float64) float64 {
 	return float64(tokens) * ratePerMTok / 1_000_000.0
 }
 
-// persistentFailure handles the 5xx-or-429 exhaustion path.
-func (r *Reconciler) persistentFailure(ctx context.Context, span trace.Span, cause error) error {
+// persistentFailure handles the 5xx-or-429 exhaustion path and the
+// non-retryable immediate-fail path (issue #439). The period_start +
+// attempt_count attrs ride along so the OTel ERROR record (bridged via
+// internal/obs/otel) carries the same join keys dashboards already use
+// on the happy-path BudgetReconciledPayload row — operators reading
+// Honeycomb/Loki/Datadog see the failed window without cross-referencing
+// slog stderr (issue #289). attempts is the real number of attempts the
+// retry loop made; dashboards alerting on attempt_count == retry budget
+// or aggregating by attempt_count see the actual value, not the ceiling.
+func (r *Reconciler) persistentFailure(ctx context.Context, span trace.Span, periodStart time.Time, attempts int, cause error) error {
 	reason := "upstream_down"
 	sentinel := ErrUpstreamPersistent5xx
 	var rl *RateLimitedError
@@ -452,6 +470,8 @@ func (r *Reconciler) persistentFailure(ctx context.Context, span trace.Span, cau
 	}
 	r.log.ErrorContext(ctx, string(obs.EventCostReconcileFailing),
 		slog.String(string(obs.KeyReason), reason),
+		slog.Int64(string(obs.KeyPeriodStart), periodStart.UnixMilli()),
+		slog.Int64(string(obs.KeyAttemptCount), int64(attempts)),
 		slog.String(string(obs.KeyEventName), string(obs.EventCostReconcileFailing)),
 	)
 	span.SetAttributes(attribute.String("regatta.cost.api_source", "failed"))
@@ -459,7 +479,7 @@ func (r *Reconciler) persistentFailure(ctx context.Context, span trace.Span, cau
 }
 
 // maybeEmitDriftAlert is the (period_start, drift_pct@2dp) dedup gate.
-func (r *Reconciler) maybeEmitDriftAlert(ctx context.Context, p BudgetReconciledPayload) {
+func (r *Reconciler) maybeEmitDriftAlert(ctx context.Context, p spend.BudgetReconciledPayload) {
 	round := math.Round(p.DriftPct*100) / 100 // 2dp
 	key := fmt.Sprintf("%d|%.2f", p.PeriodStart, round)
 	r.alertMu.Lock()
@@ -529,32 +549,4 @@ func canonicalHashHex(raw []byte) (string, error) {
 	}
 	sum := sha256.Sum256(c)
 	return hex.EncodeToString(sum[:]), nil
-}
-
-// BudgetReconciledPayload is the spec §3.5 lines 278-289 typed shape.
-// T4 OWNS this struct locally until T3 lands `spend.BudgetReconciledPayload`
-// in `internal/cost/spend/payload.go` and the swap reduces to one import
-// change. Documented in PR body under `## Followup issues` so the
-// reviewer sees the seam evolution.
-type BudgetReconciledPayload struct {
-	PeriodStart    int64               `json:"period_start"`
-	PeriodEnd      int64               `json:"period_end"`
-	ActualUSD      float64             `json:"actual_usd"`
-	RecordedUSD    float64             `json:"recorded_usd"`
-	DeltaUSD       float64             `json:"delta_usd"`
-	DriftPct       float64             `json:"drift_pct"`
-	ModelBreakdown []ModelBreakdownRow `json:"model_breakdown"`
-	APIResponseSig string              `json:"api_response_sig"`
-}
-
-// ModelBreakdownRow is one per-model row inside BudgetReconciledPayload.
-// Tokens are populated on the Usage API fallback path; the Cost API
-// happy path leaves token fields zero and only USD set.
-type ModelBreakdownRow struct {
-	Model               string  `json:"model"`
-	InputTokens         int64   `json:"input_tokens"`
-	OutputTokens        int64   `json:"output_tokens"`
-	CacheReadTokens     int64   `json:"cache_read_tokens"`
-	CacheCreationTokens int64   `json:"cache_creation_tokens"`
-	USD                 float64 `json:"usd"`
 }

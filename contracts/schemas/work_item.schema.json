@@ -30,7 +30,7 @@
         "properties": {
           "id": { "type": "string", "minLength": 1 },
           "text": { "type": "string", "minLength": 1 },
-          "state": { "enum": ["planned", "in_progress", "done"] },
+          "state": { "enum": ["planned", "in_progress", "done", "closed"] },
           "citation": {
             "type": "string",
             "description": "Evidence string set when state transitions to done. Format: 'test=<TestName>' | 'file=<path>:<line>' | 'commit=<sha>'."
@@ -48,7 +48,7 @@
       "description": "Lane ID this item belongs to. Empty means default lane."
     },
     "status": {
-      "enum": ["planned", "in_progress", "done"]
+      "enum": ["planned", "in_progress", "done", "closed-resolved"]
     },
     "linked_artifact": {
       "type": "string",

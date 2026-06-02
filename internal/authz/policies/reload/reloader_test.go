@@ -127,33 +127,36 @@ func TestReloader_IgnoresEditorBackupFiles(t *testing.T) {
 func TestReloader_NoOpReloadOnSameSHA(t *testing.T) {
 	t.Parallel()
 	dir, az := setupAuthz(t)
-	var reloadCount atomic.Int64
+	// Buffer holds at least one swap + one skip so OnReload never
+	// back-pressures doReload.
+	results := make(chan reload.Result, 16)
 	r := &reload.Reloader{
 		Authorizer: az,
 		Loader:     &disk.Loader{Dir: dir, Fallback: embeddedFallback()},
 		Tenant:     authz.DefaultTenant,
 		Debounce:   25 * time.Millisecond,
 		Logger:     slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		OnReload: func(res reload.Result) {
-			if !res.Skipped {
-				reloadCount.Add(1)
-			}
-		},
+		OnReload:   func(res reload.Result) { results <- res },
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	startReloader(t, r, ctx)
 
-	revBefore := az.CurrentRevision(authz.DefaultTenant)
 	writeRego(t, dir, "approval.rego", "package regatta.v1.approval.view\n\ndefault decision := {\"allow\": true, \"reason\": \"v1\"}\n")
-	waitForRevisionChange(t, az, revBefore, 2*time.Second)
-	gotReloads := reloadCount.Load()
+	// Observe the swap via OnReload — CurrentRevision flips before the
+	// callback fires, so polling the revision lets the second write race
+	// the snapshot. The callback is the only after-swap edge the test owns.
+	first := waitForReloadResult(t, results, 2*time.Second)
+	if first.Skipped || first.Err != nil {
+		t.Fatalf("expected first reload to swap cleanly, got skipped=%v err=%v", first.Skipped, first.Err)
+	}
 
 	// Same bytes again — fsnotify still fires but SHA short-circuit elides the swap.
 	writeRego(t, dir, "approval.rego", "package regatta.v1.approval.view\n\ndefault decision := {\"allow\": true, \"reason\": \"v1\"}\n")
-	time.Sleep(200 * time.Millisecond)
-	if delta := reloadCount.Load() - gotReloads; delta != 0 {
-		t.Fatalf("expected no-op on same SHA, got %d additional reloads", delta)
+	second := waitForReloadResult(t, results, 2*time.Second)
+	if !second.Skipped {
+		t.Fatalf("expected no-op (skipped=true) on same SHA, got skipped=%v err=%v rev=%q",
+			second.Skipped, second.Err, second.RevisionAfter)
 	}
 }
 
@@ -316,21 +319,15 @@ func waitForRevisionChange(t *testing.T, az *authz.OPAAuthorizer, before string,
 	t.Fatalf("revision unchanged after %s (was %q)", timeout, before)
 }
 
-func embeddedFallback() authz.BundleLoader { return &embedFallback{} }
-
-type embedFallback struct{}
-
-func (e *embedFallback) Tenants(_ context.Context) ([]string, error) {
-	return []string{authz.DefaultTenant}, nil
+func waitForReloadResult(t *testing.T, ch <-chan reload.Result, timeout time.Duration) reload.Result {
+	t.Helper()
+	select {
+	case res := <-ch:
+		return res
+	case <-time.After(timeout):
+		t.Fatalf("no reload result after %s", timeout)
+		return reload.Result{}
+	}
 }
 
-func (e *embedFallback) ActiveBundle(_ context.Context, tenant string) (string, map[string]string, error) {
-	if tenant != authz.DefaultTenant {
-		return "", nil, authz.ErrPolicyMissing
-	}
-	files, err := embedded.Files()
-	if err != nil {
-		return "", nil, err
-	}
-	return embedded.DefaultBundleSHA256, files, nil
-}
+func embeddedFallback() authz.BundleLoader { return embedded.NewLoader() }

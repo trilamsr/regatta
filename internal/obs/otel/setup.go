@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"sync"
 
 	"go.opentelemetry.io/otel"
@@ -129,11 +130,20 @@ func Setup(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 		return nil, err
 	}
 
-	tp := sdktrace.NewTracerProvider(
+	// Sampler resolution: with OTEL_TRACES_SAMPLER set, the SDK env-config
+	// path applies and Setup omits WithSampler so the operator override
+	// wins. With neither env var set, the regatta default per spec §2.5
+	// is ParentBased(TraceIDRatioBased(0.1)) wrapped in ErrorOverrideSampler
+	// so error.type-tagged + chain-verify / divergence-audit spans always
+	// sample regardless of the ratio bucket.
+	tpOpts := []sdktrace.TracerProviderOption{
 		sdktrace.WithBatcher(traceExp),
 		sdktrace.WithResource(res),
-		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.AlwaysSample())),
-	)
+	}
+	if base, useDefault := resolveDefaultTraceSampler(); useDefault {
+		tpOpts = append(tpOpts, sdktrace.WithSampler(NewErrorOverrideSampler(base)))
+	}
+	tp := sdktrace.NewTracerProvider(tpOpts...)
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
@@ -147,6 +157,27 @@ func Setup(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 	otellog.SetLoggerProvider(lp)
 
 	return composedShutdown(tp, lp), nil
+}
+
+// resolveDefaultTraceSampler returns the regatta default head-sampling
+// policy when no OTEL_TRACES_SAMPLER env var is set. The second return
+// is true when the caller should wire WithSampler; false leaves the
+// SDK env-config path untouched so an operator override
+// (e.g. OTEL_TRACES_SAMPLER=parentbased_traceidratio arg=1.0) wins.
+//
+// Default ratio: 0.1 per spec §2.5; OTEL_TRACES_SAMPLER_ARG without a
+// SAMPLER pick still acts as an explicit ratio override.
+func resolveDefaultTraceSampler() (sdktrace.Sampler, bool) {
+	if os.Getenv("OTEL_TRACES_SAMPLER") != "" {
+		return nil, false
+	}
+	ratio := 0.1
+	if arg := os.Getenv("OTEL_TRACES_SAMPLER_ARG"); arg != "" {
+		if v, err := strconv.ParseFloat(arg, 64); err == nil {
+			ratio = v
+		}
+	}
+	return sdktrace.ParentBased(sdktrace.TraceIDRatioBased(ratio)), true
 }
 
 func withDefaults(cfg Config) Config {

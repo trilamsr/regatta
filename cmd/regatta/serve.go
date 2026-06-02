@@ -22,6 +22,10 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/authz"
+	"github.com/trilamsr/regatta/internal/authz/policies/disk"
+	"github.com/trilamsr/regatta/internal/authz/policies/embedded"
+	"github.com/trilamsr/regatta/internal/authz/policies/reload"
 	"github.com/trilamsr/regatta/internal/canon"
 	"github.com/trilamsr/regatta/internal/config"
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
@@ -31,6 +35,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
+	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -44,6 +49,13 @@ const defaultListenerAddr = ":8080"
 
 // listenerShutdownBudget mirrors the existing serve.go signal-shutdown contract: 5 s to drain inflight requests before forced exit.
 const listenerShutdownBudget = 5 * time.Second
+
+// reconcilerShutdownBudget bounds how long serve waits for the cost-
+// reconciler goroutine to exit on signal-shutdown. The goroutine's
+// inner select honours ctx.Done immediately on the wait branch, so 5s
+// is a generous upper bound — a stuck Tick() is the only path that
+// would burn through this budget.
+const reconcilerShutdownBudget = 5 * time.Second
 
 // healthzBody is the spec §3.3 row 6 literal: `200 OK` with body `ok` and zero DB queries.
 const healthzBody = "ok\n"
@@ -269,18 +281,37 @@ func runServe(args []string) int {
 			Logger: slogger,
 		}))
 	}
+	// RejectionRouter wakes agents on AI-gate rejections and labels the
+	// PR `needs-human` after K=3. Defaults match docs/design.md §Failure
+	// modes; no regatta.yaml keys are introduced for MVR-1 — operators
+	// who want richer routing land it when a real customer use-case
+	// shows up.
+	o.SetRejectionRouter(buildRejectionRouter(db, rejectionrouter.GHLabeler{}, slogger))
 
 	if err := o.Recover(ctx); err != nil {
 		logger.Printf("recover: %v", err)
 		return 1
 	}
 
+	// W8 T1/T-HR: Hydrate the OPA authorizer + (optionally) start the
+	// disk-driven hot-reload goroutine. The Authorizer is plumbed to
+	// listenerConfig so W8 T3 can wire it through the web handler
+	// without touching boot code. Hydrate failure is fail-loud because a
+	// broken authz bundle MUST surface at boot — a serve that runs with
+	// an unhydrated store would deny every request mid-evaluation.
+	authzr, err := buildAuthorizer(ctx, *repoRoot, slogger)
+	if err != nil {
+		logger.Printf("authz: %v", err)
+		return 2
+	}
+
 	httpSrv, err := bootListener(listenerConfig{
-		UI:      *ui,
-		Addr:    *addr,
-		DB:      db,
-		Keyring: canon.MapKeyring(loadBriefKeyring()),
-		Clock:   time.Now,
+		UI:         *ui,
+		Addr:       *addr,
+		DB:         db,
+		Keyring:    canon.MapKeyring(loadBriefKeyring()),
+		Clock:      time.Now,
+		Authorizer: authzr,
 	})
 	if err != nil {
 		logger.Printf("listener boot: %v", err)
@@ -299,6 +330,31 @@ func runServe(args []string) int {
 		}()
 	}
 
+	// Cost-reconciler goroutine: opt-in per safety.cost.reconcile_interval.
+	// Run() loops forever swallowing tick errors (R6), so startup never
+	// blocks on a transient Anthropic Cost API failure. Ctx-cancel via
+	// SIGINT/SIGTERM exits the goroutine; the deferred wait pins graceful
+	// shutdown — `regatta serve` does not return until the reconciler
+	// has cleanly stopped (bounded by reconcilerShutdownBudget).
+	reconcileSettings := loadCostReconcileSettingsFor(*repoRoot)
+	reconcileDone, reconcileStarted := startReconciler(ctx, reconcileWiring{
+		DB:                db,
+		Key:               costKey,
+		KeyID:             costKeyID,
+		ReconcileInterval: reconcileSettings.ReconcileInterval,
+		UsageAPIKeyEnv:    reconcileSettings.UsageAPIKeyEnv,
+		Logger:            slogger,
+	})
+	if reconcileStarted {
+		defer func() {
+			select {
+			case <-reconcileDone:
+			case <-time.After(reconcilerShutdownBudget):
+				logger.Printf("cost reconciler: shutdown timeout after %s", reconcilerShutdownBudget)
+			}
+		}()
+	}
+
 	if *tickOnce {
 		if err := o.PollOnce(ctx); err != nil {
 			logger.Printf("poll: %v", err)
@@ -306,6 +362,12 @@ func runServe(args []string) int {
 		}
 		if err := o.ScheduleOnce(ctx); err != nil {
 			logger.Printf("schedule: %v", err)
+			return 1
+		}
+		// Mirror the Run loop order so `--tick-once` is a faithful
+		// single-shot rehearsal of one daemon tick.
+		if err := o.RouteRejections(ctx); err != nil {
+			logger.Printf("route rejections: %v", err)
 			return 1
 		}
 		if err := o.ReapTerminal(ctx); err != nil {
@@ -484,6 +546,20 @@ func parseBriefKeyring(raw string) (map[string][]byte, []string, error) {
 	return keys, order, nil
 }
 
+// buildRejectionRouter wires the RejectionRouter the orchestrator
+// drives per tick. Defaults — K=3 + label=needs-human — come from the
+// router package; we pass them implicitly by leaving the Config
+// zero-valued. The labeler is injected so tests can substitute a
+// capturing fake without spawning gh; serve.go production wiring hands
+// in rejectionrouter.GHLabeler{} which shells out to gh.
+func buildRejectionRouter(db *state.DB, labeler rejectionrouter.PRLabeler, logger *slog.Logger) *rejectionrouter.Router {
+	return rejectionrouter.New(rejectionrouter.Config{
+		DB:      db,
+		Labeler: labeler,
+		Logger:  logger,
+	})
+}
+
 // buildApprovalGate constructs the scheduler-side HITL gate seam from
 // regatta.yaml. Missing or empty regatta.yaml yields (nil, nil, nil) so
 // repos that have not adopted approval gates pay zero runtime cost —
@@ -516,7 +592,7 @@ func buildApprovalGate(db *state.DB, repoRoot string, logger *slog.Logger) (sche
 
 	byName := make(map[string]approval.Config, len(gates))
 	for _, g := range gates {
-		byName[g.Name] = convertApprovalGateConfig(g)
+		byName[g.Name] = g
 	}
 
 	keyring, kid := approvalKeyring()
@@ -528,44 +604,17 @@ func buildApprovalGate(db *state.DB, repoRoot string, logger *slog.Logger) (sche
 	return g, resolver, nil
 }
 
-// convertApprovalGateConfig adapts the YAML-loaded config.ApprovalGateConfig
-// to the runtime approval.Config. Fields are field-for-field identical —
-// the two types differ only by yaml vs runtime tags so the package
-// boundary stays clean. A future consolidation may collapse them.
-func convertApprovalGateConfig(in config.ApprovalGateConfig) approval.Config {
-	tiers := make([]approval.TierConfig, len(in.EscalationChain))
-	for i, t := range in.EscalationChain {
-		tiers[i] = approval.TierConfig{
-			Reviewers:         t.Reviewers,
-			Roles:             t.Roles,
-			Quorum:            t.Quorum,
-			PreventSelfReview: t.PreventSelfReview,
-			Timeout:           t.Timeout,
-			DecisionWindow:    t.DecisionWindow,
-		}
-	}
-	return approval.Config{
-		Name:              in.Name,
-		RiskClass:         in.RiskClass,
-		Reviewers:         in.Reviewers,
-		Roles:             in.Roles,
-		Quorum:            in.Quorum,
-		PreventSelfReview: in.PreventSelfReview,
-		Timeout:           in.Timeout,
-		DecisionWindow:    in.DecisionWindow,
-		OnTimeout:         in.OnTimeout,
-		EscalationChain:   tiers,
-		PredicateCEL:      in.PredicateCEL,
-	}
-}
-
 // listenerConfig is the bootListener seam; the test harness drives it directly so integration tests exercise the real boot path.
 type listenerConfig struct {
-	UI      bool
-	Addr    string
-	DB      *state.DB
-	Keyring canon.Keyring
-	Clock   func() time.Time
+	UI         bool
+	Addr       string
+	DB         *state.DB
+	Keyring    canon.Keyring
+	Clock      func() time.Time
+	// Authorizer is the OPA-backed gate built at runServe boot. Pre-T3
+	// the web handler does not yet consume it; the field is plumbed so
+	// W8 T3 can pick it up without touching listener wiring.
+	Authorizer *authz.OPAAuthorizer
 }
 
 // preflightUIBoot fires BEFORE state.Open so the operator sees the HMAC misconfig at the loud-at-boot moment (spec §1.3 open-q 9.8) rather than as a render-time lie.
@@ -661,6 +710,97 @@ func loadMarkdownCatalogRoot(repoRoot string) (string, bool) {
 		return "", false
 	}
 	return root, true
+}
+
+// buildAuthorizer constructs the W8 OPA authorizer and (when the
+// operator declares safety.authz.policy_dir) spawns the hot-reload
+// goroutine bound to ctx. Empty / missing regatta.yaml ⇒ embed.FS
+// default-deny only; the authorizer is still hydrated so call sites
+// always see a non-nil store.
+//
+// Reloader lifecycle: bound to ctx — SIGINT/SIGTERM cancel the parent,
+// which drains both the watcher and signal goroutines. SIGHUP is
+// claimed by the reloader's own signal.Notify, which does not steal
+// from the parent context's signal.NotifyContext (it listens on a
+// disjoint signal set).
+func buildAuthorizer(ctx context.Context, repoRoot string, slogger *slog.Logger) (*authz.OPAAuthorizer, error) {
+	cfg, _ := validateconfig.LoadConfigFile(filepath.Join(repoRoot, "regatta.yaml"))
+	authzCfg := cfg.AuthzConfig()
+
+	// disk.Loader with embedded fallback is the canonical wiring: an
+	// empty / missing policy_dir falls through to embed.FS so single-
+	// tenant deployments boot zero-config.
+	loader := &disk.Loader{Fallback: embedded.NewLoader()}
+	if authzCfg != nil && authzCfg.PolicyDir != "" {
+		dir := authzCfg.PolicyDir
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(repoRoot, dir)
+		}
+		loader.Dir = dir
+	}
+
+	az, err := authz.NewOPAAuthorizer(authz.Config{Loader: loader})
+	if err != nil {
+		return nil, fmt.Errorf("new authorizer: %w", err)
+	}
+	if err := az.Hydrate(ctx); err != nil {
+		return nil, fmt.Errorf("hydrate: %w", err)
+	}
+
+	// Reloader only spins up when policy_dir is set — there is nothing
+	// to hot-reload for an embed.FS-only deployment.
+	if loader.Dir == "" {
+		return az, nil
+	}
+
+	r := &reload.Reloader{
+		Authorizer: az,
+		Loader:     loader,
+		Tenant:     authz.DefaultTenant,
+		Logger:     slogger,
+	}
+	if d := parseAuthzDebounce(authzCfg.ReloadDebounce); d > 0 {
+		r.Debounce = d
+	}
+	if authzCfg.ReloadSighup != nil && !*authzCfg.ReloadSighup {
+		r.DisableSighup = true
+	}
+	if authzCfg.ReloadFsnotify != nil && !*authzCfg.ReloadFsnotify {
+		r.DisableFsnotify = true
+	}
+	// OnStart fires after BOTH triggers (watcher + SIGHUP handler) are
+	// registered — commit 6341256 added the SIGHUP-readiness gate so
+	// operators (and tests) can rely on this log as the
+	// pid-can-receive-SIGHUP signal.
+	r.OnStart = func() {
+		slogger.Info("authz reload: ready",
+			"policy_dir", loader.Dir,
+			"sighup_enabled", !r.DisableSighup,
+			"fsnotify_enabled", !r.DisableFsnotify,
+		)
+	}
+	go func() {
+		if err := r.Run(ctx); err != nil {
+			slogger.Error("authz reload: exited", "err", err)
+		}
+	}()
+	return az, nil
+}
+
+// parseAuthzDebounce parses the CUE-validated `^[0-9]+(ms|s)$` debounce
+// string. Returns 0 on empty / parse error — reload.Reloader.Run then
+// falls back to reload.DefaultDebounce. The CUE schema already rejects
+// malformed values at validate-config time, so the parse-error branch
+// covers only a forward-compat drift between schema + Go parsing.
+func parseAuthzDebounce(s string) time.Duration {
+	if s == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0
+	}
+	return d
 }
 
 // approvalKeyring reuses the brief HMAC key for approval-token signing.

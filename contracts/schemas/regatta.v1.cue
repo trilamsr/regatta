@@ -166,6 +166,21 @@ import "list"
 	spend_cap_usd:           *50 | int & >=0
 	spend_cap_usd_per_day:   *200 | int & >=0
 	canary_rate:             *0.05 | float & >=0 & <=0.2
+	// soft_cap_mode is the cost-governor soft-cap (80% threshold)
+	// posture. `enforce` (default) treats every soft-cap breach as a
+	// deny-or-downgrade decision per work_item annotation. `warn`
+	// permits the spawn past the soft-cap with only a slog/OTel
+	// breach event — a silent-correctness regression vector flagged
+	// in PR #211 adversarial review. To prevent accidental opt-in,
+	// `warn` requires `soft_cap_acknowledge_overrun: true` (Go-side
+	// validator returns ErrSoftCapNotAcknowledged otherwise). Spec
+	// §3.6 + issue #226.
+	soft_cap_mode:                *"enforce" | "warn"
+	// soft_cap_acknowledge_overrun is the explicit operator
+	// acknowledgement that `soft_cap_mode: warn` permits cost overruns
+	// past the soft cap. No-op when mode is `enforce` (the default);
+	// load-bearing only when paired with `warn`. See issue #226.
+	soft_cap_acknowledge_overrun: *false | bool
 	cost?:                   #CostGovernor
 	authz?:                  #Authz
 }

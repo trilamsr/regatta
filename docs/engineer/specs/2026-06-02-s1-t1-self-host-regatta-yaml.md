@@ -191,3 +191,7 @@ Per `feedback_grade_rubric` — every PR posts this scorecard verbatim in the bo
 
 - The repo-root `regatta.yaml` declares `gates.human-merge` as an `approval_gate` with `reviewers: [trilamsr]`. If the orchestrator runs unattended against an item that triggers the gate, it will block waiting for `trilamsr` to approve via `regatta approval decide`. That is the intended self-host behavior (human-merge enforced through the gate). Operators who want pure-automation can drop the gate. Not a defect.
 - Switching the schema field from `path` to `root` is a breaking change for any consumer outside the repo. Brief §1 establishes there are none. If discovery proves otherwise, file a v2-migration follow-up rather than reverting.
+
+## Resolution (2026-06-02)
+
+Shipped via #334 (`feat(self-host): S1-T1 — regatta.yaml + .regatta/items bootstrap`). All B/A/A+ criteria PASS; the seed `regatta.yaml` at repo root + `.regatta/items/S1-SEED-*.md` drive `regatta serve --tick-once` without `--items-root`.

@@ -142,6 +142,36 @@ func (r *Reader) CohortSpends(ctx context.Context, tenantID, operatorID, model s
 	return out, nil
 }
 
+// RecordedUSDForWindow returns the cumulative locally-recorded spend
+// (USD) for `tenantID` over `[start, end)`. The reconciler diffs this
+// against the Anthropic Cost/Usage API total to compute drift_pct.
+//
+// Unlike BudgetState (period anchored to `now-period`), the window here
+// is operator-supplied — the reconciler aligns to bucket boundaries via
+// WindowForTick and passes the exact pair the Anthropic API was queried
+// for. Same R9 tenant-scoping + parameter-bound `?` placeholders.
+func (r *Reader) RecordedUSDForWindow(ctx context.Context, tenantID string, start, end time.Time) (float64, error) {
+	if tenantID == "" {
+		return 0, errors.New("spend.Reader.RecordedUSDForWindow: tenant_id required")
+	}
+	startMS := start.UnixMilli()
+	endMS := end.UnixMilli()
+	var total float64
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(json_extract(payload_json, '$.usd')), 0)
+		 FROM substrate_events
+		 WHERE kind = 'token_spend'
+		   AND tenant_id = ?
+		   AND written_at >= ?
+		   AND written_at < ?`,
+		tenantID, startMS, endMS,
+	).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("spend.Reader.RecordedUSDForWindow: %w", err)
+	}
+	return total, nil
+}
+
 // LastReconciliation returns the most recent budget_reconciled row for
 // the tenant — raw payload bytes + written_at timestamp. Returns
 // (nil, zero, nil) when no row exists.

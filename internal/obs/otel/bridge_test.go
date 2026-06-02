@@ -17,6 +17,23 @@ import (
 	"github.com/trilamsr/regatta/internal/obstest"
 )
 
+// findAttr walks an OTel log record and returns the value for key, or
+// the zero log.Value if absent. Test-local helper — keeps every attr
+// assertion a one-liner so the test bodies stay focused on the claim.
+func findAttr(r sdklog.Record, key string) (log.Value, bool) {
+	var v log.Value
+	var found bool
+	r.WalkAttributes(func(kv log.KeyValue) bool {
+		if kv.Key == key {
+			v = kv.Value
+			found = true
+			return false
+		}
+		return true
+	})
+	return v, found
+}
+
 // textBuf is an io.Writer that serialises Write under a mutex so
 // concurrent TextHandler emissions in -race tests do not corrupt the
 // underlying bytes.Buffer.
@@ -287,5 +304,51 @@ func TestBridge_NilPrimary_FallsBackToTextHandler(t *testing.T) {
 
 	if got := len(mem.snapshot()); got != 1 {
 		t.Fatalf("OTel leg: want 1 got %d", got)
+	}
+}
+
+// TestObsBridge_CostReconcileFailing_RoutesToOTel pins issue #289: cost.reconcile_failing ERROR slogs surface as OTel SeverityError with period_start, reason, attempt_count attrs preserved.
+func TestObsBridge_CostReconcileFailing_RoutesToOTel(t *testing.T) {
+	t.Parallel()
+
+	primary := obstest.New()
+	lp, mem := newTestProvider()
+	t.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
+
+	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", obsotel.WithLoggerProvider(lp))
+	lg := slog.New(bridge)
+
+	const wantReason = "upstream_down"
+	const wantPeriodStart int64 = 1_733_011_200_000
+	const wantAttemptCount int64 = 5
+
+	lg.Error(string(obs.EventCostReconcileFailing),
+		slog.String(string(obs.KeyReason), wantReason),
+		slog.Int64(string(obs.KeyPeriodStart), wantPeriodStart),
+		slog.Int64(string(obs.KeyAttemptCount), wantAttemptCount),
+		slog.String(string(obs.KeyEventName), string(obs.EventCostReconcileFailing)),
+	)
+
+	recs := mem.snapshot()
+	if len(recs) != 1 {
+		t.Fatalf("OTel leg: want 1 record, got %d", len(recs))
+	}
+	r := recs[0]
+
+	if body := r.Body().AsString(); body != string(obs.EventCostReconcileFailing) {
+		t.Fatalf("OTel body: want %q got %q", obs.EventCostReconcileFailing, body)
+	}
+	if got, want := r.Severity(), log.SeverityError; got != want {
+		t.Fatalf("OTel severity: want %v (Error) got %v", want, got)
+	}
+
+	if v, ok := findAttr(r, string(obs.KeyReason)); !ok || v.AsString() != wantReason {
+		t.Fatalf("reason attr: want %q got (%v, found=%v)", wantReason, v, ok)
+	}
+	if v, ok := findAttr(r, string(obs.KeyPeriodStart)); !ok || v.AsInt64() != wantPeriodStart {
+		t.Fatalf("period_start attr: want %d got (%v, found=%v)", wantPeriodStart, v, ok)
+	}
+	if v, ok := findAttr(r, string(obs.KeyAttemptCount)); !ok || v.AsInt64() != wantAttemptCount {
+		t.Fatalf("attempt_count attr: want %d got (%v, found=%v)", wantAttemptCount, v, ok)
 	}
 }

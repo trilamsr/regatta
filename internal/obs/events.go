@@ -95,9 +95,9 @@ const (
 	// Approval gate lifecycle events (spec §4.1, §5.7). The gate
 	// handler emits these via the single recordEvent helper so the
 	// slog stream and approval_events row carry byte-equal payloads.
-	EventApprovalRequested   EventName = "approval.requested"
-	EventApprovalNotified    EventName = "approval.notified"
-	EventApprovalDecided     EventName = "approval.decided"
+	EventApprovalRequested EventName = "approval.requested"
+	EventApprovalNotified  EventName = "approval.notified"
+	EventApprovalDecided   EventName = "approval.decided"
 	// EventApprovalTokenMinted fires once per reviewer when the gate
 	// hands a signed token over to Notify. The corresponding
 	// approval_events row carries the per-JTI token_jti column so the
@@ -187,6 +187,16 @@ const (
 	KeyPolicy          AttrKey = "policy"
 	KeyPriorChainIndex AttrKey = "prior_chain_index"
 	KeyNewChainIndex   AttrKey = "new_chain_index"
+
+	// Cost-governor reconciler failure-mode attributes (spec §3.4
+	// line 247-248). KeyPeriodStart tags the reconcile window's start
+	// in epoch-millis so dashboards can join Failing ERROR records
+	// with the BudgetReconciledPayload rows from the prior happy-path
+	// tick. KeyAttemptCount carries the consecutive-retry count that
+	// crossed the persistent-failure threshold so on-call sees the
+	// retry budget exhaustion without re-reading the spec.
+	KeyPeriodStart  AttrKey = "period_start"
+	KeyAttemptCount AttrKey = "attempt_count"
 )
 
 // AllEventNames enumerates every EventName constant declared above.
@@ -266,5 +276,7 @@ func AllAttrKeys() []AttrKey {
 		KeyPolicy,
 		KeyPriorChainIndex,
 		KeyNewChainIndex,
+		KeyPeriodStart,
+		KeyAttemptCount,
 	}
 }

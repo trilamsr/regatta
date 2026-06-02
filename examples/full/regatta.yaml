@@ -69,6 +69,12 @@ safety:
   spend_cap_usd: 50
   spend_cap_usd_per_day: 200
   canary_rate: 0.05
+  # soft_cap_mode controls posture at the 80% soft cap. Default
+  # `enforce` denies-or-downgrades per work_item annotation. `warn`
+  # permits the spawn with only a log event — a silent-overrun risk;
+  # enabling it requires soft_cap_acknowledge_overrun: true (issue #226).
+  # soft_cap_mode: enforce
+  # soft_cap_acknowledge_overrun: false
   # cost-governor demo block (spec §3.6). Uncomment to enable
   # pre-call deny + reconciliation. Reader:
   # docs/operator/cost-governor.md.

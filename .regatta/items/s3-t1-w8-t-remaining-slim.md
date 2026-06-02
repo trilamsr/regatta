@@ -10,7 +10,7 @@ Source: docs/engineer/autonomous-session-prompt.md#L35
 
 OPA Authorizer impl + policy hot-reload. SKIP multi-tenant `tenant_id` propagation (Phase X). Slim W8 by ~60%. Spec #266 stays valid; subset only.
 
-<!-- source-sha256: 2fd0b77536d3cb0ee077f18a0c65705cf06961024f4380439ed17a6ce13e032a -->
+<!-- source-sha256: 32c4eb37010515f757630028ad5dd1235c4936f3c1ba4d2e702c062b7f9fb311 -->
 
 ## Acceptance criteria
 

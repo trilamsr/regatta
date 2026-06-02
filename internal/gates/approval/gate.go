@@ -196,7 +196,7 @@ func needsPostEscalationNotify(events []state.ApprovalEvent) bool {
 	lastNotified := -1
 	for i, e := range events {
 		switch e.Kind {
-		case kindEscalated:
+		case EventKindEscalated:
 			lastEscalated = i
 		case EventKindNotified:
 			lastNotified = i
@@ -213,7 +213,7 @@ func needsPostEscalationNotify(events []state.ApprovalEvent) bool {
 func sliceFromLastEscalated(events []state.ApprovalEvent) []state.ApprovalEvent {
 	idx := -1
 	for i, e := range events {
-		if e.Kind == kindEscalated {
+		if e.Kind == EventKindEscalated {
 			idx = i
 		}
 	}
@@ -274,7 +274,7 @@ func (g *Gate) notifyEscalatedTier(ctx context.Context, a state.Approval, cfg Co
 func tierDecisionWindow(a state.Approval, cfg Config, events []state.ApprovalEvent) time.Duration {
 	tierIdx := 0
 	for _, e := range events {
-		if e.Kind == kindEscalated {
+		if e.Kind == EventKindEscalated {
 			tierIdx++
 		}
 	}

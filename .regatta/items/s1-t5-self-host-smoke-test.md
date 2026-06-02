@@ -10,7 +10,7 @@ Source: docs/engineer/autonomous-session-prompt.md#L26
 
 end-to-end fixture: regatta picks one `[followup]` issue → PR → green gates → operator merges. Acceptance gate for Phase S1. NEW.
 
-<!-- source-sha256: 3116694d8fd65fe87b0c9d04567eb32bb89791e3458519c7dc69c394312ec1f3 -->
+<!-- source-sha256: 43571aed3b9df3685e764bc76ddfbfaf114f2d6f2d2b179705dc4b470ab16268 -->
 
 ## Acceptance criteria
 

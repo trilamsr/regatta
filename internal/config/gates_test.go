@@ -7,6 +7,7 @@ import (
 	"time"
 
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
+	"github.com/trilamsr/regatta/internal/gates/approval"
 )
 
 // minimalConfigWithGate returns a regatta.yaml string that validates
@@ -73,7 +74,7 @@ func TestLoadApprovalGates_HappyPath(t *testing.T) {
 	if g.Name != "prod-deploy-approval" {
 		t.Errorf("Name: want prod-deploy-approval, got %q", g.Name)
 	}
-	if g.RiskClass != RiskHigh {
+	if g.RiskClass != approval.RiskHigh {
 		t.Errorf("RiskClass: want high, got %q", g.RiskClass)
 	}
 	if g.Quorum != 2 {
@@ -88,7 +89,7 @@ func TestLoadApprovalGates_HappyPath(t *testing.T) {
 	if g.DecisionWindow != 4*time.Hour {
 		t.Errorf("DecisionWindow: want 4h, got %v", g.DecisionWindow)
 	}
-	if g.OnTimeout != OnTimeoutFail {
+	if g.OnTimeout != approval.OnTimeoutFail {
 		t.Errorf("OnTimeout: want fail, got %q", g.OnTimeout)
 	}
 	if len(g.Reviewers) != 2 || g.Reviewers[0] != "alice" || g.Reviewers[1] != "bob" {
@@ -178,32 +179,32 @@ func TestLoadApprovalGates_Invariants(t *testing.T) {
 		{
 			name:         "V11_NameBadChars",
 			yaml:         mutate(t, "name: prod-deploy-approval", "name: PROD!Deploy"),
-			wantSentinel: ErrInvalidGateName,
+			wantSentinel: approval.ErrInvalidGateName,
 			cueRejects:   true,
 			cueSubstring: "name",
 		},
 		{
 			name:         "V11_NameEmpty",
 			yaml:         mutate(t, "name: prod-deploy-approval", `name: ""`),
-			wantSentinel: ErrInvalidGateName,
+			wantSentinel: approval.ErrInvalidGateName,
 			cueRejects:   true,
 		},
 		{
 			name:         "V1_DecisionWindowZero",
 			yaml:         mutate(t, "decision_window: 4h", "decision_window: 0s"),
-			wantSentinel: ErrInvalidDecisionWindow,
+			wantSentinel: approval.ErrInvalidDecisionWindow,
 		},
 		{
 			// Timeout=0 also trips V3 (window>timeout) via errors.Join;
 			// asserting V2 is the primary signal.
 			name:         "V2_TimeoutZero",
 			yaml:         mutate(t, "timeout: 24h", "timeout: 0s"),
-			wantSentinel: ErrInvalidTimeout,
+			wantSentinel: approval.ErrInvalidTimeout,
 		},
 		{
 			name:         "V3_WindowExceedsTimeout",
 			yaml:         mutate(t, "decision_window: 4h", "decision_window: 48h"),
-			wantSentinel: ErrWindowExceedsTimeout,
+			wantSentinel: approval.ErrWindowExceedsTimeout,
 		},
 		{
 			name: "V4_ChainTierWindowExceedsTimeout",
@@ -216,7 +217,7 @@ func TestLoadApprovalGates_Invariants(t *testing.T) {
         quorum: 1
         timeout: 30m
         decision_window: 1h`, 1),
-			wantSentinel: ErrWindowExceedsTimeout,
+			wantSentinel: approval.ErrWindowExceedsTimeout,
 		},
 		{
 			// auto_approve + risk_class=high (unchanged from canonical)
@@ -226,30 +227,30 @@ func TestLoadApprovalGates_Invariants(t *testing.T) {
 			yaml: strings.Replace(canonicalApprovalGateYAML,
 				"on_timeout: fail",
 				"on_timeout: auto_approve", 1),
-			wantSentinel: ErrAutoApproveRequiresLowRisk,
+			wantSentinel: approval.ErrAutoApproveRequiresLowRisk,
 		},
 		{
 			name:         "V6_InvalidRiskClass",
 			yaml:         mutate(t, "risk_class: high", "risk_class: ultra"),
-			wantSentinel: ErrInvalidRiskClass,
+			wantSentinel: approval.ErrInvalidRiskClass,
 			cueRejects:   true,
 			cueSubstring: "ultra",
 		},
 		{
 			name:         "V7_QuorumZero",
 			yaml:         mutate(t, "quorum: 2", "quorum: 0"),
-			wantSentinel: ErrQuorumExceedsReviewers,
+			wantSentinel: approval.ErrQuorumExceedsReviewers,
 			cueRejects:   true,
 		},
 		{
 			name:         "V7_QuorumExceedsSet",
 			yaml:         mutate(t, "quorum: 2", "quorum: 99"),
-			wantSentinel: ErrQuorumExceedsReviewers,
+			wantSentinel: approval.ErrQuorumExceedsReviewers,
 		},
 		{
 			name:         "V8_InvalidOnTimeout",
 			yaml:         mutate(t, "on_timeout: fail", "on_timeout: maybe"),
-			wantSentinel: ErrInvalidOnTimeout,
+			wantSentinel: approval.ErrInvalidOnTimeout,
 			cueRejects:   true,
 			cueSubstring: "maybe",
 		},
@@ -265,12 +266,12 @@ func TestLoadApprovalGates_Invariants(t *testing.T) {
         timeout: 1h
         decision_window: 30m
 `, "", 1),
-			wantSentinel: ErrEscalateMissingChain,
+			wantSentinel: approval.ErrEscalateMissingChain,
 		},
 		{
 			name:         "V10_InvalidReviewerID",
 			yaml:         mutate(t, "reviewers: [alice, bob]", `reviewers: ["alice!!", "bob spaces"]`),
-			wantSentinel: ErrInvalidReviewerID,
+			wantSentinel: approval.ErrInvalidReviewerID,
 		},
 	}
 
@@ -321,11 +322,11 @@ func TestLoadApprovalGates_AccumulatesAllErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !errors.Is(err, ErrQuorumExceedsReviewers) {
-		t.Errorf("error chain missing ErrQuorumExceedsReviewers; got %v", err)
+	if !errors.Is(err, approval.ErrQuorumExceedsReviewers) {
+		t.Errorf("error chain missing approval.ErrQuorumExceedsReviewers; got %v", err)
 	}
-	if !errors.Is(err, ErrWindowExceedsTimeout) {
-		t.Errorf("error chain missing ErrWindowExceedsTimeout; got %v", err)
+	if !errors.Is(err, approval.ErrWindowExceedsTimeout) {
+		t.Errorf("error chain missing approval.ErrWindowExceedsTimeout; got %v", err)
 	}
 }
 
