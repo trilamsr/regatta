@@ -56,6 +56,11 @@ func TestSetup_OTLPEndpoint_BackendDown_StartupSucceeds(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_TIMEOUT", "200")
 	t.Setenv("OTEL_BSP_EXPORT_TIMEOUT", "500")
 	t.Setenv("OTEL_BSP_SCHEDULE_DELAY", "50")
+	// Pin ratio=1.0 so the probe span survives the spec §2.5 default
+	// head-sampling rate (0.1) and the BSP has work to flush — test
+	// asserts backend-down boot, not sampling.
+	t.Setenv("OTEL_TRACES_SAMPLER", "parentbased_traceidratio")
+	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "1.0")
 
 	// Install the capture handler before Setup so the very first export
 	// attempt (kicked off when the BSP drains during shutdown) routes

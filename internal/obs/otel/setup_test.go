@@ -96,6 +96,11 @@ func TestSetup_ShutdownIsIdempotent(t *testing.T) {
 
 func TestSetup_ResourceCarriesServiceNameAndTenant(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
+	// Pin ratio=1.0 so the single emitted span survives the spec §2.5
+	// default head-sampling rate (0.1) — test asserts resource attrs,
+	// not sampling.
+	t.Setenv("OTEL_TRACES_SAMPLER", "parentbased_traceidratio")
+	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "1.0")
 
 	var buf bytes.Buffer
 	shutdown, err := otelpkg.Setup(context.Background(), otelpkg.Config{
@@ -137,6 +142,11 @@ func TestSetup_OTLPEndpoint_WiresExporter(t *testing.T) {
 	t.Setenv("OTEL_EXPORTER_OTLP_INSECURE", "true")
 	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE", "true")
 	t.Setenv("OTEL_BSP_SCHEDULE_DELAY", "50")
+	// Test asserts exporter wiring, not sampling — pin ratio=1.0 so
+	// the single emitted span deterministically survives the spec §2.5
+	// default head-sampling rate (0.1).
+	t.Setenv("OTEL_TRACES_SAMPLER", "parentbased_traceidratio")
+	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "1.0")
 
 	shutdown, err := otelpkg.Setup(context.Background(), otelpkg.Config{
 		ServiceName:    "regatta",
