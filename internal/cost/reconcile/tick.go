@@ -235,7 +235,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		apiSource = "usage_fallback"
 		usageResp, ub, ferr := r.fetchUsageWithBackoff(spanCtx, start, end)
 		if ferr != nil {
-			return r.persistentFailure(spanCtx, span, ferr)
+			return r.persistentFailure(spanCtx, span, start, ferr)
 		}
 		body = ub
 		actualUSD, modelBreakdown, err = r.usageToActualUSD(spanCtx, usageResp)
@@ -244,7 +244,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		}
 
 	case err != nil:
-		return r.persistentFailure(spanCtx, span, err)
+		return r.persistentFailure(spanCtx, span, start, err)
 
 	default:
 		// Cost API happy path — Anthropic returned USD directly.
@@ -438,8 +438,13 @@ func perMillion(tokens int64, ratePerMTok float64) float64 {
 	return float64(tokens) * ratePerMTok / 1_000_000.0
 }
 
-// persistentFailure handles the 5xx-or-429 exhaustion path.
-func (r *Reconciler) persistentFailure(ctx context.Context, span trace.Span, cause error) error {
+// persistentFailure handles the 5xx-or-429 exhaustion path. The
+// period_start + attempt_count attrs ride along so the OTel ERROR
+// record (bridged via internal/obs/otel) carries the same join keys
+// dashboards already use on the happy-path BudgetReconciledPayload
+// row — operators reading Honeycomb/Loki/Datadog see the failed
+// window without cross-referencing slog stderr. Issue #289.
+func (r *Reconciler) persistentFailure(ctx context.Context, span trace.Span, periodStart time.Time, cause error) error {
 	reason := "upstream_down"
 	sentinel := ErrUpstreamPersistent5xx
 	var rl *RateLimitedError
@@ -452,6 +457,8 @@ func (r *Reconciler) persistentFailure(ctx context.Context, span trace.Span, cau
 	}
 	r.log.ErrorContext(ctx, string(obs.EventCostReconcileFailing),
 		slog.String(string(obs.KeyReason), reason),
+		slog.Int64(string(obs.KeyPeriodStart), periodStart.UnixMilli()),
+		slog.Int64(string(obs.KeyAttemptCount), int64(defaultRetryAttempts)),
 		slog.String(string(obs.KeyEventName), string(obs.EventCostReconcileFailing)),
 	)
 	span.SetAttributes(attribute.String("regatta.cost.api_source", "failed"))
