@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
 // Notifier is the channel-agnostic surface gates call to deliver a
@@ -64,11 +66,11 @@ type InteractiveNotifier interface {
 
 // Request carries the minimum primitives a notifier needs to render
 // an approval message and resume the gate. The spec §5.8 sketch
-// references state.Approval / state.WorkItem directly, but those rows
-// land in implementer A1's PR; passing primitives instead decouples
-// the notification adapter from the DB schema and lets this seam ship
-// independently of state-package churn. A thin adapter (state.Approval
-// → Request) wires the two in a follow-up.
+// references state.Approval / state.WorkItem directly; the primitive
+// shape decouples the notification adapter from the DB schema so a
+// Slack/PagerDuty/email impl has no business knowing the approvals
+// row layout. newNotifyRequest is the canonical state.Approval →
+// Request adapter (issue #133).
 type Request struct {
 	ApprovalID       string
 	WorkItemID       string
@@ -79,6 +81,25 @@ type Request struct {
 	// HMAC token component (A3). Notifiers embed the matching token
 	// into the per-reviewer rendered message.
 	Tokens map[string]string
+}
+
+// newNotifyRequest is the canonical state.Approval → Request adapter
+// (spec §5.8, issue #133). The Reviewers slice is sourced from
+// a.ReviewerSetSnapshot.Reviewers so len(req.Reviewers) equals the
+// reviewer_count attr written to approval_events.payload_json — the
+// byte-equality guarantee in spec §7. The slice is copied so a
+// downstream notifier reordering its own working copy cannot mutate
+// the snapshot the audit trail trusts.
+func newNotifyRequest(a state.Approval, wi state.WorkItem, deadline time.Time, tokens map[string]string) Request {
+	reviewers := append([]string(nil), a.ReviewerSetSnapshot.Reviewers...)
+	return Request{
+		ApprovalID:       a.ID,
+		WorkItemID:       wi.ID,
+		GateName:         a.GateName,
+		Reviewers:        reviewers,
+		DecisionDeadline: deadline,
+		Tokens:           tokens,
+	}
 }
 
 // Receipt records what the channel actually accomplished so the

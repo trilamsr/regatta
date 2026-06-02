@@ -88,6 +88,12 @@ import "list"
 	}
 	if type == "ai" {
 		model:               string             // e.g. "claude-opus-4-7"
+		// models maps a finding category (e.g. "security",
+		// "refactor") to a per-category model override. Unmapped
+		// categories fall back to the primary `model`. Used by the
+		// L4 adversarial gate to escalate `security` to Opus while
+		// keeping `refactor` on a cheaper tier.
+		models?:             [string]: string
 		prompt?:             string             // path relative to repo root
 		severity_block:      [...string] & list.MinItems(1)
 		rigorous_label?:     string
