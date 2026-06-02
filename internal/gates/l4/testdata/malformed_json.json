@@ -1,0 +1,19 @@
+Sure, here are my findings:
+
+```json
+{
+  "verdict": "fail",
+  "findings": [
+    {
+      "id": "L4-CORR-OFFBYONE",
+      "severity": "critical",
+      "category": "correctness",
+      "claim": "scheduler tick increments by 2 instead of 1 on retry path",
+      "evidence": {"path": "internal/sched/tick.go", "line_start": 88, "line_end": 92},
+      "remediation": "decrement tick once on retry-handled branch"
+    }
+  ]
+}
+```
+
+Let me know if you want a second pass.
