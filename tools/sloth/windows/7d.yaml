@@ -1,0 +1,32 @@
+# Sloth SLO-period window catalog — 7d budget period.
+#
+# Sloth ships 28d + 30d catalogs only; spec §5 SLO-1 + SLO-2 mandate a
+# 7d rolling window. Catalog values match the upstream Sloth example at
+# https://github.com/slok/sloth/blob/main/examples/windows/7d.yaml so
+# the burn-rate math stays inside the band the upstream test suite
+# already covers (Google SRE workbook multi-window multi-burn-rate
+# pattern; page-quick ≈ 13× fast, ticket-quick ≈ 3× slow).
+#
+# Loaded via `--slo-period-windows-path tools/sloth/windows/`.
+apiVersion: sloth.slok.dev/v1
+kind: AlertWindows
+spec:
+  sloPeriod: 7d
+  page:
+    quick:
+      errorBudgetPercent: 8
+      shortWindow: 5m
+      longWindow: 1h
+    slow:
+      errorBudgetPercent: 12.5
+      shortWindow: 30m
+      longWindow: 6h
+  ticket:
+    quick:
+      errorBudgetPercent: 20
+      shortWindow: 2h
+      longWindow: 1d
+    slow:
+      errorBudgetPercent: 42
+      shortWindow: 6h
+      longWindow: 3d

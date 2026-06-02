@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full crash-recovery-property-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups mutation-test mutation-test-install agent-status agent-status-test ci-flake-report ci-flake-report-test
+.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full crash-recovery-property-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups mutation-test mutation-test-install agent-status agent-status-test ci-flake-report ci-flake-report-test slo-compile slo-compile-test
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -70,6 +70,12 @@ ci-flake-report:  ## Rank tests by flake rate across recent CI runs (default top
 ci-flake-report-test:  ## Smoke test for scripts/ci-flake-report.sh (offline; stubbed gh).
 	bash scripts/ci-flake-report_test.sh
 
+slo-compile:  ## Compile every slo/*.yaml -> dashboards/prometheus/rules/ via pinned Sloth (tools/sloth/version). Deterministic; same input = byte-equal output (spec §9 R3).
+	bash scripts/slo-compile.sh
+
+slo-compile-test:  ## Assert pin file exists, every slo/*.yaml has a rendered rule, and re-compile is byte-deterministic.
+	bash scripts/slo-compile_test.sh
+
 cover:  ## Print cross-package coverage; useful before declaring "done".
 	go test -coverpkg=./... -coverprofile=/tmp/regatta.cover ./...
 	go tool cover -func=/tmp/regatta.cover | tail -30
@@ -123,7 +129,7 @@ verify-vendored-assets:  ## Assert on-disk SHA-256 of internal/web/static/htmx.m
 		fi; \
 		echo "verify-vendored-assets: htmx.min.js sha256 ok ($$ON_DISK)"'
 
-check: doc-check doc-check-test prose-dup vet lint tidy-check mod-verify verify-vendored-assets go-check property-test  ## Local gate; <60s. Single source of truth for what is verified locally.
+check: doc-check doc-check-test prose-dup vet lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test  ## Local gate; <60s. Single source of truth for what is verified locally.
 
 ci-check: check stale-todo  ## CI gate; supersedes `check` with longer-running scans (stale-todo).
 

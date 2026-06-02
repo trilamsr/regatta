@@ -1,0 +1,58 @@
+# SLO-1 — Scheduler tick latency
+#
+# Source spec: docs/engineer/specs/2026-06-02-observability-roadmap.md §5 SLO-1.
+# Objective: p95 of regatta_scheduler_tick_latency_ms_bucket ≤ 5000 ms.
+# Window:    7d rolling.
+# Budget:    5 % of ticks slower than 5 s.
+# Alarms:    multi-burn-rate (page on 14.4× fast burn; ticket on 6× slow burn)
+#            per Google SRE workbook §5 "The Multiwindow, Multi-Burn-Rate Alert".
+#
+# Metric origin: A-T3 (internal/orchestrator/scheduler). The Prom-wire form
+# `regatta_scheduler_tick_latency_ms_bucket` matches the §2.1 double-unit
+# suffix convention locked at A-T0a. The "good" bucket boundary `le="5000"`
+# must exist in the emitter's histogram view; A-T3 ships SDK-default
+# exponential buckets which include 5 s (`le="5"` in seconds → `le="5000"`
+# in ms wire form).
+#
+# Compile with `make slo-compile`; output lands at
+# dashboards/prometheus/rules/scheduler-tick.yaml (Sloth-rendered).
+version: "prometheus/v1"
+service: "regatta-scheduler"
+labels:
+  owner: "regatta"
+  tier: "1"
+  wave: "a"
+  slo_id: "slo-1"
+slos:
+  - name: "scheduler-tick-latency"
+    objective: 95.0
+    description: "p95 scheduler tick latency ≤ 5 s. Source: spec §5 SLO-1."
+    labels:
+      category: "latency"
+      runbook: "docs/operator/runbooks/scheduler-tick.md"
+    sli:
+      events:
+        error_query: |
+          (
+            sum(rate(regatta_scheduler_tick_latency_ms_count[{{.window}}]))
+            -
+            sum(rate(regatta_scheduler_tick_latency_ms_bucket{le="5000"}[{{.window}}]))
+          )
+        total_query: |
+          sum(rate(regatta_scheduler_tick_latency_ms_count[{{.window}}]))
+    alerting:
+      name: SchedulerTickLatencyHigh
+      labels:
+        category: "latency"
+        slo_id: "slo-1"
+      annotations:
+        summary: "Scheduler tick p95 latency budget burning"
+        runbook: "docs/operator/runbooks/scheduler-tick.md"
+      page_alert:
+        labels:
+          severity: critical
+          sloth_severity: page
+      ticket_alert:
+        labels:
+          severity: warning
+          sloth_severity: ticket

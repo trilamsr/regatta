@@ -1,6 +1,6 @@
 # Grafana dashboards (obs roadmap §6.4)
 
-Six dashboard JSON files realize the per-item dashboard tiles committed in
+Seven dashboard JSON files realize the per-item dashboard tiles committed in
 `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3. Metric names and
 label sets match §2.1 / §2.2 verbatim — drift between dashboard query and
 emitted metric is caught by the CI test `TestDashboardMetricNames_MatchEmitted`
@@ -13,6 +13,7 @@ once Wave-A lands (§4 anti-pattern #6).
 | [`per-dag-cost.json`](per-dag-cost.json) | Tier 1 (Wave A) | §3 item #1 | Per-DAG-run cost — slice `regatta.cost.usd` by `dag_id` / `operator_id` / `lane`; tokens by `direction` |
 | [`l4-gate.json`](l4-gate.json) | Tier 1 (Wave A) | §3 item #2 | L4 gate invocations by verdict, p50/p95/p99 latency, cache hit ratio, second-opinion fire-rate, per-category stack |
 | [`scheduler-tick.json`](scheduler-tick.json) | Tier 1 (Wave A) | §3 item #4 / SLO-1 | Scheduler tick latency p50/p95/p99, heatmap, per-step p95 breakdown |
+| [`slo.json`](slo.json) | Tier 1 (Wave A) | §5 SLO-1 + SLO-2 | Burn-rate over time (5m / 1h) + error-budget-remaining stat per SLO; Sloth recording rules under `dashboards/prometheus/rules/` |
 | [`substrate-event-rate.json`](substrate-event-rate.json) | Tier 2 (Wave B) | §3 item #5 / SLO-3 | Event rate by kind, chain-break counter, divergence-detection counter, ±3σ baseline band |
 | [`pr-lifecycle.json`](pr-lifecycle.json) | Tier 3 (Wave C) | §3 item #10 | PR stage duration heatmap, per-stage p50/p95, dispatch→first-commit alarm tile, merge-rate KPI |
 | [`trigger-clock.json`](trigger-clock.json) | Tier 4 (Wave D) | §3 item #15 | Days-remaining gauge by trigger (`30_day_green`, `external_customer_signal`, `phase_g_gate`), 30-day trend, snapshot table |
