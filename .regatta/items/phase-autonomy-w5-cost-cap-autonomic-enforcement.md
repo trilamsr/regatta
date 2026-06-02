@@ -3,7 +3,7 @@ id: PHASE-AUTONOMY-W5
 title: cost-cap autonomic enforcement — daily cap exceeded → regatta pause-all
 lane: self-host
 kind: feature
-status: blocked
+status: planned
 gate: phase-autonomy-landing-3 (W1+W2+W3 merged)
 source_ref: docs/engineer/briefs/2026-06-02-phase-autonomy-amendment.md §11 W5
 dependencies: PHASE-AUTONOMY-W2

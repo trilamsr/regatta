@@ -3,7 +3,7 @@ id: PHASE-AUTONOMY-W3
 title: service-supervisor — launchd + systemd units, /healthz, install-service cmd
 lane: self-host
 kind: feature
-status: blocked
+status: planned
 gate: phase-autonomy-landing-2 (W1+W2 merged)
 source_ref: docs/engineer/briefs/2026-06-02-phase-autonomy-amendment.md §11 W3
 dependencies: PHASE-AUTONOMY-W1, PHASE-AUTONOMY-W2

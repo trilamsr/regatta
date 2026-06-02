@@ -3,7 +3,7 @@ id: PHASE-AUTONOMY-W2
 title: auto-merge-on-gate-pass — regatta serve calls gh pr merge --auto on green
 lane: self-host
 kind: feature
-status: ready
+status: planned
 gate: phase-autonomy-entry (Phase S3 closed)
 source_ref: docs/engineer/briefs/2026-06-02-phase-autonomy-amendment.md §11 W2
 dependencies: PHASE-AUTONOMY-W1

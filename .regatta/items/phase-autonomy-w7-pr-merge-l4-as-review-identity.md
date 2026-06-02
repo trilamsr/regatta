@@ -3,7 +3,7 @@ id: PHASE-AUTONOMY-W7
 title: PR-merge L4-as-review identity — L4 ADOPT posts GH review with APPROVED state
 lane: self-host
 kind: feature
-status: blocked
+status: planned
 gate: phase-autonomy-landing-3 (W2 merged)
 source_ref: docs/engineer/briefs/2026-06-02-phase-autonomy-amendment.md §11 W7
 dependencies: PHASE-AUTONOMY-W2

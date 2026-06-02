@@ -3,7 +3,7 @@ id: PHASE-AUTONOMY-W4
 title: self-improvement detector — recurring-failure → self-improvement GH issue
 lane: self-host
 kind: feature
-status: blocked
+status: planned
 gate: phase-autonomy-landing-3 (W1+W2+W3 merged)
 source_ref: docs/engineer/briefs/2026-06-02-phase-autonomy-amendment.md §11 W4
 dependencies: PHASE-AUTONOMY-W1, PHASE-AUTONOMY-W2, PHASE-AUTONOMY-W3

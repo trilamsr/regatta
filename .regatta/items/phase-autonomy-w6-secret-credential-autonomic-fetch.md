@@ -3,7 +3,7 @@ id: PHASE-AUTONOMY-W6
 title: secret-credential autonomic fetch — supervisor unlocks via pass + gpg-agent
 lane: self-host
 kind: feature
-status: blocked
+status: planned
 gate: phase-autonomy-landing-2 (W3 merged)
 source_ref: docs/engineer/briefs/2026-06-02-phase-autonomy-amendment.md §11 W6
 dependencies: PHASE-AUTONOMY-W3

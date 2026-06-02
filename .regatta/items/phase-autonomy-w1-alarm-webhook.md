@@ -3,7 +3,7 @@ id: PHASE-AUTONOMY-W1
 title: alarm-webhook — AlertManager firing → GH issue with autonomous label
 lane: self-host
 kind: feature
-status: ready
+status: planned
 gate: phase-autonomy-entry (Phase S3 closed per next-horizon §4)
 source_ref: docs/engineer/briefs/2026-06-02-phase-autonomy-amendment.md §11 W1
 dependencies: none
