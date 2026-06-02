@@ -189,7 +189,7 @@ func TestGate_ReaperRevokesMintedTokens_RevokedTokenIsUnusable(t *testing.T) {
 	// reason=escalated row — this is the reaper-revoke audit signal.
 	revoked := false
 	for _, e := range events {
-		if e.Kind != kindTokenConsumed || e.TokenJTI != aliceTier0JTI {
+		if e.Kind != EventKindTokenConsumed || e.TokenJTI != aliceTier0JTI {
 			continue
 		}
 		var p struct {
@@ -308,7 +308,7 @@ func collectMintedJTIs(events []state.ApprovalEvent) []string {
 func collectRevokedJTIs(events []state.ApprovalEvent) []string {
 	out := make([]string, 0)
 	for _, e := range events {
-		if e.Kind != kindTokenConsumed || e.TokenJTI == "" {
+		if e.Kind != EventKindTokenConsumed || e.TokenJTI == "" {
 			continue
 		}
 		var p struct {
