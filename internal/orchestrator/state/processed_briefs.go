@@ -9,7 +9,7 @@ import (
 )
 
 // ProcessedBrief is one row of the processed_briefs watermark table.
-// Migration 0007. Issue #92 — restart-persistent brief replay defence.
+// Migration 0008. Issue #92 — restart-persistent brief replay defence.
 type ProcessedBrief struct {
 	ParentProgramID string
 	LastProducedAt  time.Time
