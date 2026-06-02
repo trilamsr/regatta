@@ -51,6 +51,12 @@ type Config struct {
 	// and Blocking stays false regardless of finding severity.
 	AdvisoryMode bool
 
+	// SecondOpinionModel is the alt model the gate escalates to
+	// when the PR body disputes a finding via [L4-DISPUTE]. Empty
+	// falls through ResolveSecondOpinionModel to env then default
+	// (Opus 4.7). Per-Run only; set at config-load.
+	SecondOpinionModel string
+
 	// AutoFix opts the gate into surfacing unified-diff Patch
 	// bodies on findings the model flags auto_fixable=true.
 	// Default false strips Patch + AutoFixable off every finding
@@ -63,6 +69,15 @@ type Config struct {
 	// Invoker is the model call-site. Tests inject a stub here.
 	// Nil panics at Run time so the wiring contract is explicit.
 	Invoker Invoker
+
+	// CategoryModels overrides the per-category model assignment.
+	// Keys are the spec §3.4 hunt-list category names (e.g.
+	// "security", "refactor"). When set, Run buckets categories by
+	// distinct resolved model and emits one Invoker call per bucket;
+	// findings merge into the gate result before severity routing.
+	// Unmapped categories fall back to the primary Model via
+	// ResolveCategoryModel (yaml > env > primary).
+	CategoryModels map[string]string
 }
 
 // Input is what the gate runs against. Constructed by the gate
@@ -75,6 +90,7 @@ type Input struct {
 	Diff      string // unified-diff text; gate clips to MaxDiffChars
 	Spec      string // binding-spec markdown inlined into the prompt
 	Scorecard string // implementer's PR-body A+ rubric scorecard, verbatim
+	PRBody    string // raw PR body; the gate greps it for [L4-DISPUTE] markers
 }
 
 // ResolveModel applies the spec §3.6 precedence: yaml > env > default.
