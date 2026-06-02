@@ -151,7 +151,7 @@ func Validate(provider string, table map[string]Row) error {
 // Single source of truth for the Portkey-trap field scan — Validate,
 // validateRow (override path), and Lookup share it so a future field
 // addition cannot leave one call site checking three rates and another
-// checking four (the drift PR #290 reviewer flagged).
+// checking four (the drift reviewer flagged).
 func rowFieldNonPositive(row Row) (field string, value float64, ok bool) {
 	if row.InputUSDPerMTok <= 0 {
 		return "InputUSDPerMTok", row.InputUSDPerMTok, true
