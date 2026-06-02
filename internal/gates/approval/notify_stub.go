@@ -2,6 +2,7 @@ package approval
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/trilamsr/regatta/internal/obs"
@@ -35,12 +36,26 @@ func NewStubNotifier(log *slog.Logger) Notifier {
 
 func (s *stubNotifier) Kind() string { return KindStub }
 
+// Notify honours the four Notifier conformance invariants (see
+// Notifier godoc). Ctx check + zero-reviewer check run BEFORE the
+// audit emission so a fail-closed exit leaves no misleading
+// "we notified" breadcrumb.
 func (s *stubNotifier) Notify(ctx context.Context, req Request) (Receipt, error) {
+	if err := ctx.Err(); err != nil {
+		return Receipt{}, fmt.Errorf("approval: notify cancelled: %w", err)
+	}
+	if len(req.Reviewers) == 0 {
+		return Receipt{}, fmt.Errorf("%w (approval_id=%q gate=%q)", ErrNoReviewers, req.ApprovalID, req.GateName)
+	}
 	s.log.LogAttrs(ctx, slog.LevelInfo, string(obs.EventApprovalNotifyStub),
 		slog.String(string(obs.KeyApprovalID), req.ApprovalID),
 		slog.String(string(obs.KeyWorkItemID), req.WorkItemID),
 		slog.String(string(obs.KeyGateID), req.GateName),
 		slog.Int(string(obs.KeyReviewerCount), len(req.Reviewers)),
 	)
-	return Receipt{DeliveredTo: req.Reviewers, Channel: KindStub}, nil
+	// Copy the reviewer slice so a caller mutating req.Reviewers after
+	// return cannot retroactively change the Receipt — same multiset
+	// invariant on DeliveredTo holds across the full Receipt lifetime.
+	delivered := append([]string(nil), req.Reviewers...)
+	return Receipt{DeliveredTo: delivered, Channel: KindStub}, nil
 }
