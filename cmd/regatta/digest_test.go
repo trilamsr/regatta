@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// TestDigest_WritesFileToDocsDigests asserts the CLI subcommand writes
-// `docs/digests/YYYY-MM-DD.md` relative to --root and exits 0 on the
-// happy path. Uses the noop source (no Prom env var) so the test runs
-// offline.
+// TestDigest_WritesFileToDocsDigests locks the --root → docs/digests/YYYY-MM-DD.md write contract.
 func TestDigest_WritesFileToDocsDigests(t *testing.T) {
 	root := t.TempDir()
 	// Unset any inherited Prom env vars so the no-source banner path
@@ -37,9 +34,7 @@ func TestDigest_WritesFileToDocsDigests(t *testing.T) {
 	}
 }
 
-// TestDigest_BadDateExits2 asserts a malformed --date surfaces a
-// usage-error exit code so the cron wrapper fails loud rather than
-// writing a corrupt digest file.
+// TestDigest_BadDateExits2 locks the exit-2 usage-error contract on malformed --date.
 func TestDigest_BadDateExits2(t *testing.T) {
 	root := t.TempDir()
 	code := runDigest([]string{"--date", "tomorrow", "--root", root})
@@ -48,8 +43,7 @@ func TestDigest_BadDateExits2(t *testing.T) {
 	}
 }
 
-// TestDigest_RegisteredInDispatch asserts the subcommand table carries
-// the new verb. Backstop against a forgotten append to subcommands[].
+// TestDigest_RegisteredInDispatch backstops a forgotten append to subcommands[] when adding the verb.
 func TestDigest_RegisteredInDispatch(t *testing.T) {
 	var found bool
 	for _, sc := range subcommands {

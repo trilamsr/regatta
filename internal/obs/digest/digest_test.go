@@ -21,9 +21,7 @@ func (s stubSource) Fetch(date string) (Snapshot, bool, error) {
 	return s.snap, s.backendUp, nil
 }
 
-// TestRender_FrontMatterShape asserts the YAML front-matter carries the
-// brief-pinned keys in declaration order (spec §6.2: "Front-matter keys
-// MUST be in declaration order, not map order").
+// TestRender_FrontMatterShape locks the spec §6.2 front-matter key set + declaration order.
 func TestRender_FrontMatterShape(t *testing.T) {
 	src := stubSource{
 		snap: Snapshot{
@@ -73,9 +71,7 @@ func TestRender_FrontMatterShape(t *testing.T) {
 	}
 }
 
-// TestRender_DegradedPlaceholdersVerbatim asserts the amendment §4
-// verbatim placeholder strings appear unchanged. Removal owners (C-T2,
-// D-T1) grep for these exact strings when they land.
+// TestRender_DegradedPlaceholdersVerbatim locks the amendment §4 verbatim strings C-T2 + D-T1 grep for.
 func TestRender_DegradedPlaceholdersVerbatim(t *testing.T) {
 	out, err := Render(Options{
 		Date:   "2026-06-03",
@@ -96,8 +92,7 @@ func TestRender_DegradedPlaceholdersVerbatim(t *testing.T) {
 	}
 }
 
-// TestRender_ZeroPRDayShowsContext asserts the spec §9 R6 banner fires
-// when PRsLandedCount=0; the empty PR section is skipped.
+// TestRender_ZeroPRDayShowsContext locks the spec §9 R6 banner on PRsLandedCount=0.
 func TestRender_ZeroPRDayShowsContext(t *testing.T) {
 	out, err := Render(Options{
 		Date:   "2026-06-03",
@@ -112,9 +107,7 @@ func TestRender_ZeroPRDayShowsContext(t *testing.T) {
 	}
 }
 
-// TestRender_BackendDownShowsBanner asserts the spec §9 R5 mirror —
-// when the metrics backend is unreachable, the digest carries a visible
-// banner so operators do not mistake zeros for "loop is quiet".
+// TestRender_BackendDownShowsBanner locks the spec §9 R5 mirror banner on backendUp=false.
 func TestRender_BackendDownShowsBanner(t *testing.T) {
 	out, err := Render(Options{
 		Date:   "2026-06-03",
@@ -128,9 +121,7 @@ func TestRender_BackendDownShowsBanner(t *testing.T) {
 	}
 }
 
-// TestRender_Deterministic asserts A+4 rubric: same inputs produce
-// byte-equal output across repeated calls. Maps are sorted, durations
-// canonicalised, USD formatted with fixed precision.
+// TestRender_Deterministic locks A+4 rubric: same Snapshot → byte-equal markdown across N renders.
 func TestRender_Deterministic(t *testing.T) {
 	src := stubSource{
 		snap: Snapshot{
@@ -174,8 +165,7 @@ func TestRender_Deterministic(t *testing.T) {
 	}
 }
 
-// TestRender_FrontMatterMatchesBody enforces spec §6.2 lock-step: every
-// front-matter key has a corresponding body section header. Drift gate.
+// TestRender_FrontMatterMatchesBody locks spec §6.2 lock-step: every front-matter key has a body header.
 func TestRender_FrontMatterMatchesBody(t *testing.T) {
 	out, err := Render(Options{
 		Date:   "2026-06-03",
@@ -201,9 +191,7 @@ func TestRender_FrontMatterMatchesBody(t *testing.T) {
 	}
 }
 
-// TestRender_ValidatesDate rejects malformed --date input at the seam
-// where the digest is built, not just at the CLI flag layer. Defends
-// against cron supplying a bad value.
+// TestRender_ValidatesDate rejects malformed --date at the renderer seam (defence against bad cron input).
 func TestRender_ValidatesDate(t *testing.T) {
 	_, err := Render(Options{Date: "yesterday", Source: stubSource{backendUp: true}})
 	if err == nil {

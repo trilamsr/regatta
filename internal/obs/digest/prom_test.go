@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// TestPromSource_FetchHappyPath asserts the PromQL queries map onto the
-// shipped emitters from T1 (regatta_cost_usd_total) and the digest's
-// expected Prom HTTP API response shape. Stub HTTP backend; no live
-// network. Covers spec §6.2 data-source contract.
+// TestPromSource_FetchHappyPath locks the spec §6.2 PromQL → Snapshot mapping against a stub HTTP backend.
 func TestPromSource_FetchHappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("query")
@@ -43,9 +40,7 @@ func TestPromSource_FetchHappyPath(t *testing.T) {
 	}
 }
 
-// TestPromSource_FetchBackendDown asserts the Source returns
-// backendUp=false (NOT an error) when the Prom endpoint is unreachable.
-// The renderer banner depends on that flag.
+// TestPromSource_FetchBackendDown locks the soft-fail contract: dial failure → backendUp=false, no error.
 func TestPromSource_FetchBackendDown(t *testing.T) {
 	// Use a guaranteed-unreachable URL — port 1 is reserved and any
 	// dial will fail immediately on a normal host.
