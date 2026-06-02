@@ -132,7 +132,7 @@ func newE2EHarness(t *testing.T, workItemLane string, cfgMutator ...func(*approv
 	if len(gates) != 1 {
 		t.Fatalf("LoadApprovalGates: got %d gates; want 1", len(gates))
 	}
-	gateCfg := convertApprovalGateConfig(gates[0])
+	gateCfg := gates[0]
 	for _, m := range cfgMutator {
 		if m != nil {
 			m(&gateCfg)

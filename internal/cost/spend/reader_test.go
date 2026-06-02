@@ -153,6 +153,42 @@ func contains(haystack, needle string) bool {
 	return len(haystack) >= len(needle) && indexOf(haystack, needle) >= 0
 }
 
+// TestReader_RecordedUSDForWindow_SumsTokenSpendInWindow pins the reconciler-side seam — SUM(usd) over [start, end) with tenant isolation.
+func TestReader_RecordedUSDForWindow_SumsTokenSpendInWindow(t *testing.T) {
+	db := openReaderDB(t)
+	start := time.Date(2026, 6, 1, 1, 0, 0, 0, time.UTC)
+	end := time.Date(2026, 6, 1, 2, 0, 0, 0, time.UTC)
+	// In window (start, mid, end-1ms).
+	insert(t, db, "token_spend", `{"usd":1.5}`, start, "default", "")
+	insert(t, db, "token_spend", `{"usd":2.0}`, start.Add(30*time.Minute), "default", "")
+	insert(t, db, "token_spend", `{"usd":0.5}`, end.Add(-time.Millisecond), "default", "")
+	// Out of window (before start, at end, after end).
+	insert(t, db, "token_spend", `{"usd":99}`, start.Add(-time.Millisecond), "default", "")
+	insert(t, db, "token_spend", `{"usd":99}`, end, "default", "")
+	insert(t, db, "token_spend", `{"usd":99}`, end.Add(time.Hour), "default", "")
+	// Wrong tenant — pinned out.
+	insert(t, db, "token_spend", `{"usd":42}`, start.Add(15*time.Minute), "other", "")
+
+	r := spend.NewReader(db, time.Now)
+	got, err := r.RecordedUSDForWindow(context.Background(), "default", start, end)
+	if err != nil {
+		t.Fatalf("RecordedUSDForWindow: %v", err)
+	}
+	want := 4.0
+	if got != want {
+		t.Fatalf("RecordedUSDForWindow=%v; want %v", got, want)
+	}
+}
+
+func TestReader_RecordedUSDForWindow_RequiresTenant(t *testing.T) {
+	db := openReaderDB(t)
+	r := spend.NewReader(db, time.Now)
+	_, err := r.RecordedUSDForWindow(context.Background(), "", time.Now(), time.Now())
+	if err == nil {
+		t.Fatal("RecordedUSDForWindow with empty tenant returned nil; want error")
+	}
+}
+
 func indexOf(s, sub string) int {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {

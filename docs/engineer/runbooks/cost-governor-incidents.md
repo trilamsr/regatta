@@ -160,12 +160,17 @@ affects".
 
 ## Pricing-table rollback
 
-- **Trigger.** A pricing PR landed with a bad row (e.g. wrong USD
-  rate, zero rate for an active SKU) and reconciliation drift is
-  surfacing the error.
+- **Trigger.** A pricing PR landed with a bad row and the failure
+  mode depends on the row shape. A zero rate on an active SKU is
+  caught by the boot validator (#290) and panics at process start
+  with `ErrPricingZeroRow` — no traffic served. A non-zero but wrong
+  USD rate passes the boot validator and surfaces later as
+  reconciliation drift against Anthropic's billed actuals.
 - **Symptoms.** Sustained `EventCostDriftAlert` after a pricing PR,
   with the drift sign matching the pricing direction (over-charged
-  → recorded < actual; under-charged → recorded > actual).
+  → recorded < actual; under-charged → recorded > actual). OR
+  process crash-loop with `ErrPricingZeroRow` in the boot log when
+  the bad row is a zero rate on an active SKU.
 - **First-check.** `git log -- internal/cost/pricing/anthropic.go`
   finds the bad PR. Confirm the affected SKUs from the PR diff.
 - **Diagnose.** Compare the bad row against
@@ -186,8 +191,11 @@ affects".
   append-only; the LWW reducer on `budget_reconciled` self-corrects
   on the next clean tick.
 - **Spec-cite.** §3.8 (Refresh runbook) + §3.5 (reducer semantics)
-  + §7 B3 (append-only invariant). A test fixture for known-bad
-  pricing tables is tracked at #290.
+  + §7 B3 (append-only invariant). The boot validator that catches
+  zero-rate rows before any Lookup is pinned by
+  `TestPricing_BootRejectsKnownBadTable` against the
+  `internal/cost/pricing/testdata/anthropic_bad_zero_row.go` fixture
+  (closes #290).
 
 ## Spawner SIGKILL drift recovery (R13)
 

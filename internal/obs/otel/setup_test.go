@@ -173,6 +173,45 @@ func TestSetup_OTLPEndpoint_WiresExporter(t *testing.T) {
 	}
 }
 
+// TestSetup_HonorsOTELTracesSamplerEnv asserts the SDK env-var sampler contract.
+func TestSetup_HonorsOTELTracesSamplerEnv(t *testing.T) {
+	srv, addr, sink := startStubOTLPCollector(t)
+	t.Cleanup(srv.Stop)
+
+	t.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://"+addr)
+	t.Setenv("OTEL_EXPORTER_OTLP_INSECURE", "true")
+	t.Setenv("OTEL_EXPORTER_OTLP_TRACES_INSECURE", "true")
+	t.Setenv("OTEL_BSP_SCHEDULE_DELAY", "50")
+	// traceidratio with arg 0.0 is the SDK's documented "drop every
+	// span" knob; we use the deterministic floor (0%) rather than a
+	// fractional rate so the assertion is exact, not statistical.
+	t.Setenv("OTEL_TRACES_SAMPLER", "traceidratio")
+	t.Setenv("OTEL_TRACES_SAMPLER_ARG", "0.0")
+
+	shutdown, err := otelpkg.Setup(context.Background(), otelpkg.Config{
+		ServiceName: "regatta",
+	})
+	if err != nil {
+		t.Fatalf("Setup err = %v; want nil", err)
+	}
+
+	tracer := otel.Tracer("setup-test")
+	const opened = 100
+	for i := 0; i < opened; i++ {
+		_, span := tracer.Start(context.Background(), "probe")
+		span.End()
+	}
+
+	if err := shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown err = %v; want nil", err)
+	}
+
+	if got := len(sink.spans()); got != 0 {
+		t.Errorf("OTEL_TRACES_SAMPLER=traceidratio arg=0.0 should drop all spans; "+
+			"stub collector received %d of %d", got, opened)
+	}
+}
+
 // stubSpanSink captures the span names a stub gRPC OTLP collector sees
 // so the export-wiring test can assert on flushed spans after shutdown.
 type stubSpanSink struct {

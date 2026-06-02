@@ -586,3 +586,68 @@ func newTestReaperWithMidTxAbort(t *testing.T, db *state.DB, t0 time.Time, abort
 type discardWriter struct{}
 
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+// TestReaper_SlogAuditPayloadMatchesRow — spec §5.7 byte-equality for reaper-emitted events (#146).
+func TestReaper_SlogAuditPayloadMatchesRow(t *testing.T) {
+	cases := []struct {
+		name        string
+		policy      string
+		nextTiers   []state.TierConfig
+		wantKind    string
+		wantEvent   obs.EventName
+	}{
+		{
+			name:      "fail_policy_timed_out_event",
+			policy:    "fail",
+			wantKind:  "timed_out",
+			wantEvent: obs.EventApprovalTimedOut,
+		},
+		{
+			name:      "auto_approve_policy_approved_event",
+			policy:    "auto_approve",
+			wantKind:  "approved",
+			wantEvent: obs.EventApprovalAutoApproved,
+		},
+		{
+			name:   "escalate_policy_escalated_event",
+			policy: "escalate",
+			nextTiers: []state.TierConfig{
+				{Reviewers: []string{"carol", "dave"}, Quorum: 2, Timeout: time.Hour},
+			},
+			wantKind:  "escalated",
+			wantEvent: obs.EventApprovalEscalated,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t0 := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
+			db := reaperTestDB(t, t0)
+			wiID := "wi-" + tc.name
+			aID := "a-" + tc.name
+			seedReaperWorkItem(t, db, wiID, t0)
+			seedApproval(t, db, aID, wiID, t0.Add(-time.Hour), t0.Add(-time.Minute), tc.policy, tc.nextTiers)
+
+			h := &captureHandler{}
+			r, err := NewReaper(db, slog.New(h), func() time.Time { return t0 })
+			if err != nil {
+				t.Fatalf("NewReaper: %v", err)
+			}
+			if err := r.Sweep(context.Background()); err != nil {
+				t.Fatalf("Sweep: %v", err)
+			}
+
+			row := findEvent(t, db, aID, tc.wantKind)
+			rec, ok := h.findEvent(tc.wantEvent)
+			if !ok {
+				t.Fatalf("slog event %q not emitted", tc.wantEvent)
+			}
+			v, ok := attrValue(rec, "audit_payload")
+			if !ok {
+				t.Fatalf("slog record missing audit_payload attr")
+			}
+			if string(row.Payload) != v.String() {
+				t.Fatalf("payload drift for %s:\n  row=%s\n slog=%s", tc.wantKind, string(row.Payload), v.String())
+			}
+		})
+	}
+}
