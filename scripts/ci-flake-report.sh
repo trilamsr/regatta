@@ -22,7 +22,6 @@
 
 set -euo pipefail
 
-# Argument parsing.
 for arg in "$@"; do
   case "$arg" in
     -h|--help)
@@ -58,7 +57,6 @@ runs_json=$(gh run list --limit "$RUN_LIMIT" \
   --json databaseId,conclusion,workflowName,createdAt,headBranch \
   2>/dev/null || echo "[]")
 
-# Optional workflow filter.
 if [ -n "$WORKFLOW" ]; then
   runs_json=$(echo "$runs_json" | jq --arg w "$WORKFLOW" '[.[] | select(.workflowName == $w)]')
 fi
