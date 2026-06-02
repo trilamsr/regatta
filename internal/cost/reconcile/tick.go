@@ -207,7 +207,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 
 	// Try Cost API (preferred). On 403/404 fall back to Usage API.
 	apiSource := "cost"
-	costResp, body, err := r.fetchWithBackoff(spanCtx, func(c context.Context) ([]byte, *bytes.Buffer, error) {
+	costResp, body, attempts, err := r.fetchWithBackoff(spanCtx, func(c context.Context) ([]byte, *bytes.Buffer, error) {
 		resp, b, e := r.client.FetchCost(c, start, end, r.cfg.BucketWidth)
 		if e != nil {
 			return nil, nil, e
@@ -234,9 +234,9 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 			slog.String(string(obs.KeyEventName), string(obs.EventCostReconcileFallback)),
 		)
 		apiSource = "usage_fallback"
-		usageResp, ub, ferr := r.fetchUsageWithBackoff(spanCtx, start, end)
+		usageResp, ub, uAttempts, ferr := r.fetchUsageWithBackoff(spanCtx, start, end)
 		if ferr != nil {
-			return r.persistentFailure(spanCtx, span, start, ferr)
+			return r.persistentFailure(spanCtx, span, start, uAttempts, ferr)
 		}
 		body = ub
 		actualUSD, modelBreakdown, err = r.usageToActualUSD(spanCtx, usageResp)
@@ -245,7 +245,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		}
 
 	case err != nil:
-		return r.persistentFailure(spanCtx, span, start, err)
+		return r.persistentFailure(spanCtx, span, start, attempts, err)
 
 	default:
 		// Cost API happy path — Anthropic returned USD directly.
@@ -342,19 +342,27 @@ func (r *Reconciler) Run(ctx context.Context) error {
 // fetchWithBackoff retries 429 + 5xx up to defaultRetryAttempts. On
 // ErrAdminKeyUnset or ErrCostAPIUnavailable we return immediately —
 // those are caller-handled signals, not retryable failures.
-func (r *Reconciler) fetchWithBackoff(ctx context.Context, fetcher func(context.Context) ([]byte, *bytes.Buffer, error)) (CostResponse, []byte, error) {
+//
+// Returned attempts counts the actual attempts made (1-indexed). On the
+// admin-key / cost-api-unavailable shortcut paths it is the iteration
+// the signal was seen on. On the exhaustion path it equals
+// defaultRetryAttempts. The cost.reconcile_failing emit pins this value
+// so dashboards joining on attempt_count see real numbers, not the
+// retry-budget ceiling (issue #439).
+func (r *Reconciler) fetchWithBackoff(ctx context.Context, fetcher func(context.Context) ([]byte, *bytes.Buffer, error)) (CostResponse, []byte, int, error) {
 	backoff := NewBackoff(time.Second, 5*time.Minute)
-	for attempt := 0; attempt < defaultRetryAttempts; attempt++ {
+	attempt := 0
+	for ; attempt < defaultRetryAttempts; attempt++ {
 		body, _, err := fetcher(ctx)
 		if err == nil {
 			var resp CostResponse
 			if jerr := json.Unmarshal(body, &resp); jerr != nil {
-				return CostResponse{}, nil, fmt.Errorf("decode cost: %w", jerr)
+				return CostResponse{}, nil, attempt + 1, fmt.Errorf("decode cost: %w", jerr)
 			}
-			return resp, body, nil
+			return resp, body, attempt + 1, nil
 		}
 		if errors.Is(err, ErrAdminKeyUnset) || errors.Is(err, ErrCostAPIUnavailable) {
-			return CostResponse{}, nil, err
+			return CostResponse{}, nil, attempt + 1, err
 		}
 		var rl *RateLimitedError
 		if errors.As(err, &rl) {
@@ -367,20 +375,21 @@ func (r *Reconciler) fetchWithBackoff(ctx context.Context, fetcher func(context.
 			continue
 		}
 		// Unknown — propagate so the caller does not silently retry.
-		return CostResponse{}, nil, err
+		return CostResponse{}, nil, attempt + 1, err
 	}
-	return CostResponse{}, nil, ErrUpstreamPersistent5xx
+	return CostResponse{}, nil, attempt, ErrUpstreamPersistent5xx
 }
 
-func (r *Reconciler) fetchUsageWithBackoff(ctx context.Context, start, end time.Time) (UsageResponse, []byte, error) {
+func (r *Reconciler) fetchUsageWithBackoff(ctx context.Context, start, end time.Time) (UsageResponse, []byte, int, error) {
 	backoff := NewBackoff(time.Second, 5*time.Minute)
-	for attempt := 0; attempt < defaultRetryAttempts; attempt++ {
+	attempt := 0
+	for ; attempt < defaultRetryAttempts; attempt++ {
 		resp, body, err := r.client.FetchUsage(ctx, start, end, r.cfg.BucketWidth)
 		if err == nil {
-			return resp, body, nil
+			return resp, body, attempt + 1, nil
 		}
 		if errors.Is(err, ErrAdminKeyUnset) {
-			return UsageResponse{}, nil, err
+			return UsageResponse{}, nil, attempt + 1, err
 		}
 		var rl *RateLimitedError
 		if errors.As(err, &rl) {
@@ -392,9 +401,9 @@ func (r *Reconciler) fetchUsageWithBackoff(ctx context.Context, start, end time.
 			r.sleep(backoff.Next())
 			continue
 		}
-		return UsageResponse{}, nil, err
+		return UsageResponse{}, nil, attempt + 1, err
 	}
-	return UsageResponse{}, nil, ErrUpstreamPersistent5xx
+	return UsageResponse{}, nil, attempt, ErrUpstreamPersistent5xx
 }
 
 // usageToActualUSD applies local pricing to the Usage API response.
@@ -439,13 +448,16 @@ func perMillion(tokens int64, ratePerMTok float64) float64 {
 	return float64(tokens) * ratePerMTok / 1_000_000.0
 }
 
-// persistentFailure handles the 5xx-or-429 exhaustion path. The
-// period_start + attempt_count attrs ride along so the OTel ERROR
-// record (bridged via internal/obs/otel) carries the same join keys
-// dashboards already use on the happy-path BudgetReconciledPayload
-// row — operators reading Honeycomb/Loki/Datadog see the failed
-// window without cross-referencing slog stderr. Issue #289.
-func (r *Reconciler) persistentFailure(ctx context.Context, span trace.Span, periodStart time.Time, cause error) error {
+// persistentFailure handles the 5xx-or-429 exhaustion path and the
+// non-retryable immediate-fail path (issue #439). The period_start +
+// attempt_count attrs ride along so the OTel ERROR record (bridged via
+// internal/obs/otel) carries the same join keys dashboards already use
+// on the happy-path BudgetReconciledPayload row — operators reading
+// Honeycomb/Loki/Datadog see the failed window without cross-referencing
+// slog stderr (issue #289). attempts is the real number of attempts the
+// retry loop made; dashboards alerting on attempt_count == retry budget
+// or aggregating by attempt_count see the actual value, not the ceiling.
+func (r *Reconciler) persistentFailure(ctx context.Context, span trace.Span, periodStart time.Time, attempts int, cause error) error {
 	reason := "upstream_down"
 	sentinel := ErrUpstreamPersistent5xx
 	var rl *RateLimitedError
@@ -459,7 +471,7 @@ func (r *Reconciler) persistentFailure(ctx context.Context, span trace.Span, per
 	r.log.ErrorContext(ctx, string(obs.EventCostReconcileFailing),
 		slog.String(string(obs.KeyReason), reason),
 		slog.Int64(string(obs.KeyPeriodStart), periodStart.UnixMilli()),
-		slog.Int64(string(obs.KeyAttemptCount), int64(defaultRetryAttempts)),
+		slog.Int64(string(obs.KeyAttemptCount), int64(attempts)),
 		slog.String(string(obs.KeyEventName), string(obs.EventCostReconcileFailing)),
 	)
 	span.SetAttributes(attribute.String("regatta.cost.api_source", "failed"))
