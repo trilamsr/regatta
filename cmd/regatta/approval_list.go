@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -77,18 +78,12 @@ func runApprovalListWith(deps approvalListDeps, args []string) int {
 	return emitApprovalsTable(deps.Stdout, approvals)
 }
 
-// approvalListRow is the contract surface for --format=json. Pinned by
-// TestApprovalList_JSONShape so a column drift in cmd/regatta cannot
-// silently break a downstream operator scriptr.
-type approvalListRow struct {
-	ApprovalID      string   `json:"approval_id"`
-	WorkItemID      string   `json:"work_item_id"`
-	GateName        string   `json:"gate_name"`
-	RequestedAtUnix int64    `json:"requested_at_unix"`
-	TimeoutAtUnix   int64    `json:"timeout_at_unix"`
-	ReviewerSet     []string `json:"reviewer_set"`
-	Quorum          int      `json:"quorum"`
-}
+// approvalListRow aliases the canonical schemas.ApprovalListRow — the contract
+// surface for --format=json. Adding/removing a column requires editing
+// contracts/schemas/approval_list.v1.json + approval_list.go together;
+// TestApprovalList_JSONMatchesSchema and TestApprovalListSchemaLockstep
+// fail on drift.
+type approvalListRow = schemas.ApprovalListRow
 
 func emitApprovalsJSON(out io.Writer, approvals []state.Approval) int {
 	rows := make([]approvalListRow, 0, len(approvals))

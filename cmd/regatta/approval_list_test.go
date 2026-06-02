@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/santhosh-tekuri/jsonschema/v6"
+
+	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -120,6 +123,56 @@ func TestApprovalList_JSONShape(t *testing.T) {
 	for _, k := range want {
 		if _, ok := rows[0][k]; !ok {
 			t.Errorf("missing key %q in %v", k, rows[0])
+		}
+	}
+}
+
+// TestApprovalList_JSONMatchesSchema validates every emitted row against the embedded JSON Schema contract.
+func TestApprovalList_JSONMatchesSchema(t *testing.T) {
+	db, dsn, t0 := newApprovalListHarness(t)
+	clock := func() time.Time { return t0 }
+	ctx := context.Background()
+	seedApprovalWorkItemForCLI(t, db, "F-1", t0)
+	a := state.Approval{
+		ID: "a-schema1", WorkItemID: "F-1", GateName: "ship-gate",
+		RequestedAt: t0, RequestedBy: "system",
+		ReviewerSetSnapshot: state.ReviewerSet{Reviewers: []string{"alice", "bob"}, Quorum: 2},
+		Quorum: 2, Status: state.ApprovalStatusPending,
+		TimeoutAt: t0.Add(2 * time.Hour), OnTimeout: "fail",
+	}
+	if err := db.CreateApproval(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runList(t, dsn, clock, "--format", "json")
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, stderr)
+	}
+
+	// Compile the embedded schema once.
+	schemaDoc, err := jsonschema.UnmarshalJSON(strings.NewReader(schemas.ApprovalListRowSchemaJSON))
+	if err != nil {
+		t.Fatalf("UnmarshalJSON schema: %v", err)
+	}
+	c := jsonschema.NewCompiler()
+	if err := c.AddResource(schemas.ApprovalListRowSchemaID, schemaDoc); err != nil {
+		t.Fatalf("AddResource: %v", err)
+	}
+	sch, err := c.Compile(schemas.ApprovalListRowSchemaID)
+	if err != nil {
+		t.Fatalf("Compile: %v", err)
+	}
+
+	// Validate each row individually against the row schema.
+	var rows []any
+	if err := json.Unmarshal([]byte(stdout), &rows); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	if len(rows) == 0 {
+		t.Fatalf("expected >=1 row, got 0")
+	}
+	for i, row := range rows {
+		if err := sch.Validate(row); err != nil {
+			t.Errorf("row[%d] failed schema: %v\nrow=%v", i, err, row)
 		}
 	}
 }
