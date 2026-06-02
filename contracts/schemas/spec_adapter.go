@@ -42,8 +42,9 @@ type SpecAdapter interface {
 	//
 	// Implementations MUST be idempotent: calling UpdateStatus with the same
 	// (id, status, citation) twice produces the same end state and never
-	// errors. Status transitions other than planned→in_progress→done MUST
-	// return ErrInvalidStatus.
+	// errors. Targets outside the Status enum (StatusPlanned,
+	// StatusInProgress, StatusDone, StatusClosedResolved) MUST return
+	// ErrInvalidStatus.
 	UpdateStatus(ctx context.Context, id WorkItemID, status Status, citation string) error
 
 	// Capabilities reports the adapter's supported features. Used by the

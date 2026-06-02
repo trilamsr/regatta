@@ -367,4 +367,59 @@ func TestMarkdownCatalogCapabilities(t *testing.T) {
 	if caps.MinPollInterval <= 0 {
 		t.Fatalf("min poll interval must be positive, got %v", caps.MinPollInterval)
 	}
+	// SupportedStatuses must enumerate every schema Status the parse
+	// path accepts; otherwise adaptersync silently drops items the
+	// adapter can in fact read+write (issue #493).
+	want := map[schemas.Status]bool{
+		schemas.StatusPlanned:        true,
+		schemas.StatusInProgress:     true,
+		schemas.StatusDone:           true,
+		schemas.StatusClosedResolved: true,
+	}
+	got := map[schemas.Status]bool{}
+	for _, s := range caps.SupportedStatuses {
+		got[s] = true
+	}
+	for s := range want {
+		if !got[s] {
+			t.Fatalf("Capabilities().SupportedStatuses missing %q (have %v)", s, caps.SupportedStatuses)
+		}
+	}
+}
+
+// TestMarkdownCatalogUpdateStatusClosedResolved anchors that the write path accepts the schema-defined terminal-via-supersession status (issue #493).
+func TestMarkdownCatalogUpdateStatusClosedResolved(t *testing.T) {
+	dir := t.TempDir()
+	writeItem(t, dir, "001.md", sampleItem)
+	a, _ := NewMarkdownCatalog(MarkdownCatalogConfig{Root: dir})
+
+	if err := a.UpdateStatus(context.Background(), "ITEM-001", schemas.StatusClosedResolved, "superseded=PARENT-BRIEF"); err != nil {
+		t.Fatalf("UpdateStatus(closed-resolved): %v", err)
+	}
+	it, err := a.Get(context.Background(), "ITEM-001")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if it.Status != schemas.StatusClosedResolved {
+		t.Fatalf("status not updated: %s", it.Status)
+	}
+	contents, _ := os.ReadFile(filepath.Join(dir, ".regatta", "items", "001.md"))
+	if !strings.Contains(string(contents), "status: closed-resolved") {
+		t.Fatalf("status line missing after update: %s", contents)
+	}
+	if !strings.Contains(string(contents), "citation: superseded=PARENT-BRIEF") {
+		t.Fatalf("citation line missing: %s", contents)
+	}
+}
+
+// TestMarkdownCatalogUpdateStatusRejectsBogus keeps the negative path covered after widening the enum check.
+func TestMarkdownCatalogUpdateStatusRejectsBogus(t *testing.T) {
+	dir := t.TempDir()
+	writeItem(t, dir, "001.md", sampleItem)
+	a, _ := NewMarkdownCatalog(MarkdownCatalogConfig{Root: dir})
+
+	err := a.UpdateStatus(context.Background(), "ITEM-001", schemas.Status("bogus"), "")
+	if !errors.Is(err, schemas.ErrInvalidStatus) {
+		t.Fatalf("UpdateStatus(bogus): want ErrInvalidStatus, got %v", err)
+	}
 }
