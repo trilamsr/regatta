@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-# --- Helpers ----------------------------------------------------------------
+# Helpers.
 #
 # strip_doc_spans <file> -> stdout
 #
