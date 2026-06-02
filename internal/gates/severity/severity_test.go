@@ -1,14 +1,15 @@
-package l4
+package severity_test
 
 import (
 	"testing"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/gates/severity"
 )
 
 // Blocks parses `critical` + `2*high` per spec §3.6 R1/R2.
-func TestL4_SeverityBlockRouting(t *testing.T) {
-	rules := []string{RuleCritical, RuleTwoHigh}
+func TestBlocksRouting(t *testing.T) {
+	rules := []string{severity.Critical, severity.TwoHigh}
 	cases := []struct {
 		name     string
 		findings []schemas.Finding
@@ -23,7 +24,7 @@ func TestL4_SeverityBlockRouting(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := Blocks(rules, c.findings)
+			got := severity.Blocks(rules, c.findings)
 			if got != c.want {
 				t.Fatalf("Blocks(%v, %d findings): got %v, want %v", rules, len(c.findings), got, c.want)
 			}
@@ -31,22 +32,22 @@ func TestL4_SeverityBlockRouting(t *testing.T) {
 	}
 }
 
-// Malformed mini-DSL tokens fail loud rather than silently passing.
-func TestL4_SeverityBlockMalformedRule(t *testing.T) {
-	if _, err := parseRules([]string{"not-a-rule"}); err == nil {
+// Malformed mini-DSL tokens fail Validate rather than silently passing.
+func TestValidateMalformedRule(t *testing.T) {
+	if err := severity.Validate([]string{"not-a-rule"}); err == nil {
 		t.Fatalf("expected error on unknown severity token, got nil")
 	}
-	if _, err := parseRules([]string{"0*high"}); err == nil {
+	if err := severity.Validate([]string{"0*high"}); err == nil {
 		t.Fatalf("expected error on zero-count NxSEV, got nil")
 	}
 }
 
-// ValidateRules is the load-time gate so misconfig fails at startup.
-func TestL4_ValidateRules(t *testing.T) {
-	if err := ValidateRules([]string{RuleCritical, RuleTwoHigh}); err != nil {
+// Validate is the load-time gate so misconfig fails at startup.
+func TestValidate(t *testing.T) {
+	if err := severity.Validate([]string{severity.Critical, severity.TwoHigh}); err != nil {
 		t.Fatalf("default rules must validate: %v", err)
 	}
-	if err := ValidateRules([]string{"garbage"}); err == nil {
+	if err := severity.Validate([]string{"garbage"}); err == nil {
 		t.Fatalf("expected validation error on garbage rule")
 	}
 }

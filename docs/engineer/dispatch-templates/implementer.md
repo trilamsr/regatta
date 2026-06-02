@@ -56,3 +56,13 @@ MEMORY CITES
 - [ ] no signatures
 - [ ] memory rules cited
 - [ ] worktree removed after merge (`feedback_worktree_cleanup_post_merge`)
+
+## RECURRING-FAILURE TRAPS (2026-06-02 session)
+
+1. **Test/Fuzz/Benchmark godocs 1 line max** per `feedback_test_godoc_one_line`. `scripts/doc-check.sh` test-godoc gate rejects multi-line. Multi-paragraph context belongs in the spec doc, not test files.
+
+2. **`gh pr create` / `gh pr edit` MUST use `--body-file <path>`** per `feedback_pr_body_file_only`. HEREDOC bodies (`--body "$(cat <<EOF ... EOF)"`) escape backticks and silently break the release-notes fence detector. Write body to `/tmp/pr-<branch>.md` first.
+
+3. **Comment-noise gate trip-traps** per #333 followup. Regex was tightened in #371; if it still over-matches your prose, hyphenate the matching token (`reviewer-Request` / `reviewer-JSON`) or lowercase the following capital. Banner regex rejects `# --- Section ---` — use plain `# Section.` instead.
+
+4. **GH base-sha drift workaround** per #343 (root-cause fix #347 merged): if check-tdd flags a file that isn't in your diff, the workflow's BASE_SHA env was stale. Now resolved live via `git merge-base`. If you still see ghost flags, add `[DOCS]` / `[CI]` / `[CHORE]` category prefix to the release-notes block to opt out.

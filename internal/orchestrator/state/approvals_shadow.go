@@ -41,9 +41,12 @@ const (
 
 // ShadowWriteConfig carries per-process knobs the shadow path needs.
 // Caller (cmd/regatta serve) builds it once from env at startup and
-// threads it to every approval write callsite.
+// threads it to every approval write callsite. ReadMode is the Phase C
+// extension — independent from Mode so an operator can ship the write
+// path a week before flipping reads (spec §3.4 tri-state knobs).
 type ShadowWriteConfig struct {
 	Mode     ShadowMode
+	ReadMode ReadMode
 	Key      []byte
 	KeyID    string
 	TenantID string

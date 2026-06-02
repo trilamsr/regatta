@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/gates/severity"
 	"github.com/trilamsr/regatta/internal/obs"
 )
 
 // defaultSeverityBlock matches examples/full/regatta.yaml gates[1]
 // and the spec §3.6 R1/R2 baseline: any critical OR >=2 high blocks.
-var defaultSeverityBlock = []string{RuleCritical, RuleTwoHigh}
+var defaultSeverityBlock = []string{severity.Critical, severity.TwoHigh}
 
 // Invoker is the model call-site seam. The real implementation
 // (stream-json adapter + prompt-template render + JSON-output parse)
@@ -133,7 +134,7 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 		}
 	}
 
-	if Blocks(rules, gr.Findings) {
+	if severity.Blocks(rules, gr.Findings) {
 		if cfg.AdvisoryMode {
 			gr.Verdict = schemas.VerdictAdvisory
 		} else {
