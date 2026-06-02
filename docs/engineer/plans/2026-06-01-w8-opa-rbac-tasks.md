@@ -19,11 +19,11 @@ Design priority for every decision below (`feedback_decision_priority`): **UX �
   - **Wave B (sequenced after W7 Wave 1 T7 lands):** T3 (Principal.Tenant wiring + cookie binding). T3 depends on the existence of `Principal.Tenant` field in `internal/web/auth.go` (W7 Wave 1 T7) + Authorizer interface (T1) for the new handler-side `authz.Check` calls.
   - **Wave C (sequenced last):** T5 (OTel attrs + audit event + property tests + operator doc + Makefile target). T5 depends on T1 (interface + Decision shape) + T2 (`KindPolicyRevision` constant) + T3 (handler middleware seam) + T4 (default bundle, for default-bundle stability test). T5 lands when T1-T4 are all on main.
   - Per `feedback_dispatch_strategy`: Wave A peaks at **3 parallel implementers** (T1, T2, T4) — well within the 10-lane cap and the 3-4 concurrency-cap heuristic. T3 + T5 each dispatch solo behind their dependency fences.
-- **Migration phasing (`feedback_migration_number_lock`):** **ZERO new SQL migrations.** `policies` lives entirely on existing `substrate_events` rows under `kind='policy_revision'` (spec §3.3, deletion-default citation: "Migrations file count delta: 0"). T2 adds an `init()`-block dispatch entry via the substrate's `RegisterPayloadValidator` open-extension hook — additive only; T-S1's `validate.go` is not modified. Migration #0007 remains reserved.
+- **Migration phasing (`feedback_migration_number_lock`):** **Migration #0007 owned by T2.** Lifts `substrate_events.kind` CHECK list to include `policy_revision`, lifts `payload_json` size cap to 1 MiB for that kind, adds `idx_substrate_events_tenant_kind(tenant_id, kind, id DESC)`. T1 + T3 + T4 + T5 add **ZERO** new migrations. Discovered by W8 T2 implementer (Lane ab284b) during initial dispatch — T-S1's CHECK list at `migrations/0006_substrate.sql:44-45` excludes `policy_revision` and the 1024-byte `payload_json` cap at `0006_substrate.sql:46` is too small for a single Rego file. Spec §3.3 records alternatives B (parallel `policies` SQL table) and C (CAS-blob payload split) as explicitly rejected; path A — one additive migration — is the smallest delta. T2 also adds an `init()`-block validator dispatch via T-S1's `substrate.RegisterPayloadValidator` open-extension hook (additive; T-S1's `validate.go` is **not** modified — but `substrate/event.go`'s `AllKinds()` and the new `substrate/fold.go` are touched by T2 in lockstep with migration #0007).
 - **Concurrency cap (`feedback_session_limit_dispatch`):** Wave A = 3 parallel implementers (T1, T2, T4). Below the 10-lane cap; well within the 3-4 heuristic ceiling. T3 + T5 sequenced solo. Zero risk of session-limit cascade.
 - **Deletion default (`feedback_deletion_default`):** every PR body MUST cite a concrete shrinkage. Pre-enumerated below per task; carried verbatim in PR body skeletons §2-§6:
   - **T1:** Authorizer interface born with TWO callers (web handler + CLI re-spawn for `regatta approve --decide` per spec §3.1). Closes the W7 R4 deferral — the interface justifies itself on day one, no premature-interface debt.
-  - **T2:** `policies` primitive ships via existing `substrate_events` rows via `RegisterPayloadValidator` open-extension — ZERO new SQL table, ZERO new migration, ZERO new reducer (default LWW over `(tenant_id, kind, bundle_sha256)` per spec §3.3.2). Rejects the alternative "new `policies` SQL table" shape from substrate spec §13 prior shape (cited in spec §4).
+  - **T2:** `policies` primitive ships via existing `substrate_events` rows via `RegisterPayloadValidator` open-extension — ZERO new SQL table, ZERO new reducer (default LWW over `(tenant_id, kind, bundle_sha256)` per spec §3.3.2). **ONE additive migration (#0007)** lifts the kind CHECK + payload cap + adds the tenant_id index — subtracts two alternative implementations (path B = parallel `policies` SQL table; path C = CAS-blob payload split — both rejected in spec §4). Migration #0007's three-line CHECK extension + one-line index + one-line cap lift is materially smaller than a new table's CREATE + indexes + reducer override OR a CAS-blob primitive's blob store + GC question. Net delta: +1 migration, -2 alternative storage primitives.
   - **T3:** wire-back-compat HMAC payload extension — legacy tokens with `Tenant=""` decode as `Tenant="default"`. Existing single-tenant deployments require **zero operator config change** for the rollout window (spec §3.4.1 + §3.5 default-deny baseline's HMAC-reviewer exception).
   - **T4:** `embed.FS` default-deny baseline ships in the binary. New single-tenant deployments need **zero per-tenant bootstrap config**. OPA off-the-shelf eliminates the entire custom-DSL design + maintenance burden (no parser, no evaluator, no debugger to ship — per spec §3.2 rejected-alternative recording).
   - **T5:** OTel `policy_revision` attribute clamped to 8-char SHA prefix — closes R7 cardinality blow-up without a separate "cardinality regression alarm" event kind. Reuses the W6 attribute infra; no new tracer factory.
@@ -36,7 +36,7 @@ Design priority for every decision below (`feedback_decision_priority`): **UX �
 | Task | Path (exclusive write scope) | Depends-on (W8 + main) | Effort | TDD tests (count: named) |
 | ---- | ---------------------------- | ---------------------- | ------ | ------------------------ |
 | **T1** | `internal/authz/authz.go` (NEW; interface + Action/Resource/Decision/sentinels per spec §3.1); `internal/authz/opa.go` (NEW; concrete `opaAuthorizer` + `Check` + `Hydrate` + `Reload` + `PreparedEvalQuery` cache per spec §3.2); `internal/authz/store.go` (NEW; `opaStore` + `atomic.Pointer` copy-on-write swap per spec §3.3.3); `internal/authz/ctx.go` (NEW; `WithPrincipal` / `PrincipalFromContext` ctx-binding helpers per spec §3.1); `internal/authz/*_test.go` (B-tier 4 + A-tier 2 named tests below) | substrate W1 T-S1 (#224, MERGED); `github.com/open-policy-agent/opa/rego` (new go.mod dep — Apache-2.0) | M | 7 named (B 4, A 2, perf-gate 1). Spec §6 T1 + §7 B/A. |
-| **T2** | `internal/authz/policies/payload.go` (NEW; `KindPolicyRevision` const + `PolicyRevisionPayload` struct + `validatePolicyRevision` + `init()` registration via `substrate.RegisterPayloadValidator` per spec §3.3.1); `internal/authz/policies/fold.go` (NEW; `ActiveBundle(ctx, db, tenant) (sha, files, err)` per spec §3.3.2); `internal/authz/policies/compile.go` (NEW; `opa.compile` wrapper for write-time validation per spec §3.3.1); `internal/authz/policies/payload_test.go` + `fold_test.go` + `compile_test.go` | substrate W1 T-S1 (#224, MERGED) | M | 6 named (B 4, A 2). Spec §6 T2 + §7 B/A. |
+| **T2** | `internal/authz/policies/payload.go` (NEW; `KindPolicyRevision` alias + `PolicyRevisionPayload` struct + `validatePolicyRevision` + `init()` registration via `substrate.RegisterPayloadValidator` per spec §3.3.1); `internal/authz/policies/fold.go` (NEW; `ActiveBundle(ctx, db, tenant) (sha, files, err)` wrapping `substrate.FoldByTenant` per spec §3.3.2); `internal/authz/policies/compile.go` (NEW; `opa.compile` wrapper for write-time validation per spec §3.3.1); `internal/authz/policies/payload_test.go` + `fold_test.go` + `compile_test.go`; **`internal/orchestrator/state/migrations/0007_w8_policy_revision.sql` (NEW; kind CHECK extension + 1 MiB payload cap for `policy_revision` + `idx_substrate_events_tenant_kind`)**; **`internal/orchestrator/state/substrate/fold.go` (NEW; `FoldByTenant(ctx, db, tenantID, kind)` helper — T-S1 followup; prepared statement against the new tenant_id index)**; **`internal/orchestrator/state/substrate/event.go` (MUTATE; ADD `KindPolicyRevision` const + extend `AllKinds()` slice — additive only, in lockstep with migration #0007's CHECK list)** | substrate W1 T-S1 (#224, MERGED) | M | 6 named (B 4, A 2). Spec §6 T2 + §7 B/A. |
 | **T3** | `internal/web/auth.go` (MUTATE — populate `Principal.Tenant` from HMAC payload + add `authz.Check` middleware call inside `PrincipalFromRequest` caller); `internal/web/approval.go` (MUTATE — add `tenant` URL segment routing + `tenant_mismatch` sentinel page + legacy `/approve/<approval_id>` 301 redirect); `internal/canon/approval_token.go` (MUTATE — extend `ApprovalTokenPayload` with optional `Tenant` field; legacy `Tenant=""` decodes as `"default"`); `internal/canon/approval_token_test.go` (MUTATE — add wire-back-compat decode test); `internal/web/auth_test.go` (NEW); `internal/web/templates/approval_error.tmpl` (MUTATE — add `tenant_mismatch` sentinel branch) | W7 Wave 1 T7 (`Principal{ID, Tenant, Roles}` type landed; plan #268); T1 (Authorizer interface) | M | 5 named (B 3, A 2). Spec §6 T3 + §7 B/A. |
 | **T4** | `internal/authz/policies/embedded/regatta/v1/default/approval.rego` (NEW; default-deny baseline + HMAC-reviewer exception per spec §3.5); `internal/authz/policies/embedded/regatta/v1/default/run.rego` (NEW; default-deny for run.view + run.cost.view per spec §3.5); `internal/authz/policies/embedded/regatta/v1/default/data.json` (NEW; optional static facts placeholder); `internal/authz/policies/embedded/embed.go` (NEW; `//go:embed regatta/v1/default` `embed.FS` export); `internal/authz/policies/embedded/embed_test.go` (NEW; bundle SHA stability + onboarding flow tests); `docs/operator/rbac-onboarding.md` (NEW; tenant onboarding tutorial); `tests/e2e/authz/onboarding_test.go` (NEW; CI-executable onboarding script) | T1 (boot loader API); T2 (`KindPolicyRevision` const for the onboarding flow test) | S | 4 named (B 2, A 2). Spec §6 T4 + §7 B/A. |
 | **T5** | `internal/authz/otel.go` (NEW; `regatta.authz.*` attribute setter on the Check span per spec §3.7); `internal/authz/audit.go` (NEW; `KindAuthzDenied` substrate event emission on every deny per spec §3.6 + new constant registered via T-S1's `RegisterPayloadValidator`); `internal/authz/property_test.go` (NEW; `pgregory.net/rapid` ≥ 5 000-case principal-tenant binding property test per spec §6 A+); `internal/authz/bench_test.go` (NEW; `BenchmarkAuthorizerCheck` p99 ≤ 200 µs per spec §6 A + §7 A); `Makefile` (MUTATE — add `e2e-authz-onboarding` target running T4's tutorial); `cmd/regatta/serve.go` (MUTATE — one-line `authz.NewOPAAuthorizer(...).Hydrate(ctx)` call at serve startup per spec §3.6); `docs/operator/rbac.md` (NEW; operator-facing RBAC doc per spec §3.7 + §10 references) | T1 + T2 + T3 + T4 all MERGED | M | 7 named (B 3, A 2, A+ 2). Spec §6 T5 + §7 B/A/A+. |
@@ -44,7 +44,7 @@ Design priority for every decision below (`feedback_decision_priority`): **UX �
 **Disjointness verification (`grep` at plan time):**
 
 - T1 writes only to `internal/authz/{authz,opa,store,ctx}*.go`.
-- T2 writes only to `internal/authz/policies/{payload,fold,compile}*.go`.
+- T2 writes only to `internal/authz/policies/{payload,fold,compile}*.go` + `internal/orchestrator/state/migrations/0007_w8_policy_revision.sql` + `internal/orchestrator/state/substrate/fold.go` (NEW) + `internal/orchestrator/state/substrate/event.go` (MUTATE — additive only).
 - T3 writes only to `internal/web/{auth,approval}*.go`, `internal/canon/approval_token*.go`, `internal/web/templates/approval_error.tmpl`.
 - T4 writes only to `internal/authz/policies/embedded/**` + `docs/operator/rbac-onboarding.md` + `tests/e2e/authz/onboarding_test.go`.
 - T5 writes only to `internal/authz/{otel,audit,property_test,bench_test}.go` + `Makefile` + `cmd/regatta/serve.go` (one-line addition) + `docs/operator/rbac.md`.
@@ -70,7 +70,8 @@ Design priority for every decision below (`feedback_decision_priority`): **UX �
   - Errors: `policies.ErrPolicyBundleHashMismatch`, `policies.ErrPolicyBundleEmpty`, `policies.ErrPolicyBundlePathInvalid`, `policies.ErrPolicyBundleCompileError`.
   - API: `policies.ActiveBundle(ctx, db state.DB, tenant string) (sha string, files map[string]string, err error)`.
   - T1 imports `policies.ActiveBundle` for `Hydrate` + `Reload`. T4 imports `policies.KindPolicyRevision` for its onboarding-flow test. T5 imports `policies.KindPolicyRevision` for the policy-revision OTel attribute extraction.
-- **T2 substrate registration:** T2 ships an `init()` block in `payload.go` that calls `substrate.RegisterPayloadValidator(KindPolicyRevision, validatePolicyRevision)` per T-S1 #224's open-extension contract. T2 does NOT modify `internal/orchestrator/state/substrate/validate.go`. The validator is hardcoded LWW reducer per substrate spec §4 default — no override needed.
+- **T2 substrate registration:** T2 ships an `init()` block in `payload.go` that calls `substrate.RegisterPayloadValidator(KindPolicyRevision, validatePolicyRevision)` per T-S1 #224's open-extension contract. T2 does NOT modify `internal/orchestrator/state/substrate/validate.go`. T2 DOES modify `internal/orchestrator/state/substrate/event.go` (additively — `KindPolicyRevision` const + `AllKinds()` slice extension; lockstep with migration #0007's CHECK list) AND adds `internal/orchestrator/state/substrate/fold.go` (NEW — `FoldByTenant` T-S1 followup helper). The validator is hardcoded LWW reducer per substrate spec §4 default — no override needed.
+- **T2 substrate exports (additive to T-S1):** `substrate.KindPolicyRevision` const, `substrate.FoldByTenant(ctx, db, tenantID, kind) ([]Event, error)`. The Go-side `policies.KindPolicyRevision` aliases `substrate.KindPolicyRevision` so the open-extension validator wiring stays in `internal/authz/policies/`. `FoldByTenant` uses a prepared statement against the new `idx_substrate_events_tenant_kind` index — direct `SELECT` outside the substrate package remains forbidden by the lint-substrate-queries gate.
 - **T3 ↔ T1 wire-in:** T3 mutates the body of `internal/web/auth.go::PrincipalFromRequest` to (a) read `Tenant` from the HMAC payload via T3's extended `internal/canon/approval_token.go` and (b) attach the `Principal` to the request ctx via `authz.WithPrincipal(ctx, p)`. The signature of `PrincipalFromRequest` stays stable (W7 §3.6.4 forward-compat seam). T3 calls `authz.Authorizer.Check` from the gated handlers (`internal/web/approval.go`).
 - **T3 ↔ canon:** `internal/canon/approval_token.go` extends `ApprovalTokenPayload` with `Tenant string \`json:"tenant,omitempty"\`` (zero-value omitempty preserves canonical-JSON forward-compat per spec §3.4.1 — legacy tokens without the field round-trip identically). Decode-side fills `Principal.Tenant = "default"` when `Tenant == ""`.
 - **T4 default bundle SHA constant:** T4 exports `policies.embedded.DefaultBundleSHA256 string` (computed at package-init time over the canonical-JSON of the embedded Rego files). T5 imports this constant for `TestDefaultBundleSHA256_Stable` (spec §6 B-tier).
@@ -109,7 +110,7 @@ Design priority for every decision below (`feedback_decision_priority`): **UX �
 - Spec §11 — OPA Rego library reference + Apache-2.0 license OK for vendoring.
 
 ### Existing patterns to reuse (do NOT reinvent)
-- **substrate.Fold / substrate.AppendEvent:** T-S1 #224 exports. `Hydrate` reads via `substrate.Fold(ctx, db, runID="", kind=policies.KindPolicyRevision)` to enumerate tenants; the per-tenant bundle load goes through `policies.ActiveBundle` (T2-owned).
+- **substrate.FoldByTenant / substrate.AppendEvent:** T-S1 #224 + T2's followup. `Hydrate` enumerates tenants via the new `substrate.FoldByTenant(ctx, db, tenantID, KindPolicyRevision)` helper (T2-owned, T-S1 followup) — NOT via the run_id-keyed `substrate.Fold` (policy events do not carry a run_id). Per-tenant bundle load goes through `policies.ActiveBundle` (T2-owned).
 - **W6 tracer pattern:** `cfg.Tracer trace.Tracer` field on `Config` per W6 T5 #210 normalization; fallback to `otel.Tracer("internal/authz")`. Existing convention; do NOT redefine.
 - **OPA Rego API:** `rego.New(...)` → `PrepareForEval(ctx)` → `PreparedEvalQuery.Eval(ctx, rego.EvalInput(input))`. Standard upstream pattern; reference https://pkg.go.dev/github.com/open-policy-agent/opa/rego.
 - **`web.Principal` type:** added by W7 Wave 1 T7 (#268) — `Principal{ID, Tenant, Roles}` in `internal/web/auth.go`. T1 imports the type; does NOT redefine.
@@ -430,23 +431,34 @@ Per `feedback_tdd_discipline`: failing-output capture required.
 ## Summary
 
 W8 T2 ships the `policies` substrate primitive (`KindPolicyRevision`
-+ payload validator + fold API) per
++ payload validator + fold API) + migration #0007 (kind CHECK +
+1 MiB payload cap + tenant_id index) + `substrate.FoldByTenant`
+T-S1 followup helper, per
 docs/engineer/specs/2026-06-01-w8-opa-rbac-design.md §3.3.
 
-- internal/authz/policies/payload.go — KindPolicyRevision const +
+- internal/authz/policies/payload.go — KindPolicyRevision alias +
   PolicyRevisionPayload struct (5 fields verbatim spec §3.3.1) +
   validatePolicyRevision (SHA + size + path grammar + opa.compile
   checks per §3.3.1) + init() registering via T-S1 #224's
   substrate.RegisterPayloadValidator open-extension hook.
 - internal/authz/policies/fold.go — ActiveBundle(ctx, db, tenant)
-  returning (sha, files, err) per §3.3.2. LWW reducer via
-  substrate.Fold; no override needed.
+  returning (sha, files, err) per §3.3.2. Wraps the NEW
+  substrate.FoldByTenant helper; LWW reducer via the prepared
+  statement against the new tenant_id index.
 - internal/authz/policies/compile.go — Compile(files) thin wrapper
   over opa.ast.CompileModules; centralizes the OPA AST import.
+- internal/orchestrator/state/migrations/0007_w8_policy_revision.sql
+  — additive: appends `policy_revision` to substrate_events.kind
+  CHECK list; lifts payload_json cap to 1 MiB for that kind only;
+  adds idx_substrate_events_tenant_kind(tenant_id, kind, id DESC).
+- internal/orchestrator/state/substrate/fold.go — FoldByTenant
+  helper (T-S1 followup); prepared statement; uses the new index.
+- internal/orchestrator/state/substrate/event.go — adds
+  KindPolicyRevision const + extends AllKinds() slice (additive
+  only; in lockstep with migration #0007's CHECK list).
 
-ZERO new SQL migration (`policies` lives entirely on substrate_events
-rows). T-S1 #224's open-extension contract honored: substrate's
-validate.go is NOT modified.
+ONE additive migration (#0007). T-S1 #224's open-extension contract
+honored: substrate's validate.go is NOT modified.
 
 ## Why
 
@@ -482,12 +494,15 @@ substrate spec §13 row #2's deferral closes here.
 
 `policies` ships via existing substrate_events rows (T-S1 #224's
 RegisterPayloadValidator open-extension hook). ZERO new SQL table,
-ZERO new migration, ZERO new reducer. Rejects the "new policies SQL
-table" alternative recorded in spec §4. Migrations file count
-delta: 0.
+ZERO new reducer. ONE additive migration (#0007) lifts the kind
+CHECK + 1 MiB payload cap for `policy_revision` + adds
+`idx_substrate_events_tenant_kind` — subtracts two alternative
+implementations (path B: parallel `policies` SQL table; path C:
+CAS-blob payload split — both rejected in spec §4). Net delta:
++1 migration, -2 alternative storage primitives.
 
 ```release-notes
-[FEATURE] policies substrate primitive (KindPolicyRevision + payload validator + fold API; W8 T2 — no schema migration)
+[FEATURE] policies substrate primitive (KindPolicyRevision + payload validator + fold API + migration #0007 + substrate.FoldByTenant; W8 T2)
 ```
 ````
 
@@ -524,12 +539,15 @@ Per feedback_doc_check_banned_phrases: see T1 prompt for token list.
 
 # Scope (exclusive write paths — file-disjoint with T1, T3, T4, T5)
 
-- internal/authz/policies/payload.go        (NEW; const + struct + validator + init())
-- internal/authz/policies/fold.go           (NEW; ActiveBundle)
-- internal/authz/policies/compile.go        (NEW; opa.ast.CompileModules wrapper)
-- internal/authz/policies/payload_test.go   (NEW)
-- internal/authz/policies/fold_test.go      (NEW)
-- internal/authz/policies/compile_test.go   (NEW)
+- internal/authz/policies/payload.go                                       (NEW; KindPolicyRevision alias + struct + validator + init())
+- internal/authz/policies/fold.go                                          (NEW; ActiveBundle wraps substrate.FoldByTenant)
+- internal/authz/policies/compile.go                                       (NEW; opa.ast.CompileModules wrapper)
+- internal/authz/policies/payload_test.go                                  (NEW)
+- internal/authz/policies/fold_test.go                                     (NEW)
+- internal/authz/policies/compile_test.go                                  (NEW)
+- internal/orchestrator/state/migrations/0007_w8_policy_revision.sql       (NEW; CHECK extension + 1 MiB cap for policy_revision + idx_substrate_events_tenant_kind)
+- internal/orchestrator/state/substrate/fold.go                            (NEW; FoldByTenant T-S1 followup helper)
+- internal/orchestrator/state/substrate/event.go                           (MUTATE; ADD KindPolicyRevision const + AllKinds() slice extension — additive only, in lockstep with #0007)
 
 You MUST NOT touch any other file. Specifically:
 - Do NOT touch internal/authz/ root (T1's scope) — your imports cross
@@ -539,6 +557,12 @@ You MUST NOT touch any other file. Specifically:
 - Do NOT touch internal/orchestrator/state/substrate/validate.go — use
   the RegisterPayloadValidator open-extension hook from your own
   init().
+- ADD `KindPolicyRevision` to substrate/event.go's enum const block AND
+  to AllKinds() AND to migration #0007's CHECK list in lockstep —
+  anywhere else NO. The Go enum, the SQL CHECK, and the validator
+  registration are one atomic edit set; if you find yourself wanting
+  to touch any other substrate file, STOP and re-spawn the design
+  subagent.
 - Do NOT register KindAuthzDenied — that is T5's scope.
 
 If you discover a missing seam in an out-of-scope file, STOP and
@@ -601,13 +625,28 @@ A-tier:
          caps + path grammar + opa.compile.
        - init() registers via substrate.RegisterPayloadValidator —
          NOT a direct edit to substrate/validate.go. Verify via grep.
-       - ActiveBundle reads via substrate.Fold — NOT a direct
-         `SELECT * FROM substrate_events`. Verify via grep.
+       - ActiveBundle reads via the NEW substrate.FoldByTenant helper
+         — NOT a direct `SELECT * FROM substrate_events` anywhere
+         outside `internal/orchestrator/state/substrate/`. Verify via
+         grep.
+       - substrate.FoldByTenant uses a **prepared statement** (not
+         string concatenation) and the new
+         `idx_substrate_events_tenant_kind` index. Verify via
+         `EXPLAIN QUERY PLAN` in a test + grep for `db.PrepareContext`
+         or equivalent.
        - Canonical JSON: uses internal/canon helper. Verify via
          grep + import list.
        - LWW reducer: ActiveBundle returns most recent by
          (written_at, id) DESC — no override registration.
-       - ZERO new SQL migration. Verify via `ls internal/orchestrator/state/migrations/` count unchanged.
+       - Migration #0007 is the ONLY new migration. Verify via
+         `ls internal/orchestrator/state/migrations/` count = T-S1 + 1.
+         No #0008+ in the diff.
+       - Migration #0007 lifts the kind CHECK to include
+         `policy_revision`; lifts the `payload_json` cap to 1 MiB
+         for that kind ONLY (other kinds still capped at 1024 bytes);
+         adds `idx_substrate_events_tenant_kind(tenant_id, kind, id DESC)`.
+       - substrate/event.go: KindPolicyRevision const ADDED;
+         AllKinds() slice EXTENDED — no other edits to that file.
        - No AI signatures (feedback_no_signatures).
        - Comments discipline.
   8. Apply findings; re-run pre-push-check + doc-check + stale-todo;
@@ -1408,7 +1447,7 @@ Per `feedback_unaddressed_load_bearing` + `feedback_followup_filing_universal`: 
 | # | Title | Owner-PR | Spec ref |
 |---|---|---|---|
 | F1 | `[w8-opa-rbac-followup] Policy bundle signing via cosign / sigstore` | T1 | §10 #1 |
-| F2 | `[w8-opa-rbac-followup] Dynamic policy reload via fs watcher or admin endpoint` | T2 | §10 #2 |
+| F2 | `[w8-opa-rbac-followup] Dynamic policy reload via fs watcher or admin endpoint` (note: T2's PR ships migration #0007 — kind CHECK + 1 MiB cap + tenant_id index — and `substrate.FoldByTenant` T-S1 followup helper; F2 builds atop both) | T2 | §10 #2 |
 | F3 | `[w8-opa-rbac-followup] Per-policy UI editor + Rego-aware playground (depends on W7.4 UI scope expansion)` | T4 | §10 #3 |
 | F4 | `[w8-opa-rbac-followup] OPA Wasm runtime for ~10x eval speedup` | T1 | §10 #4 |
 | F5 | `[w8-opa-rbac-followup] opa test harness in make check (lints tenant bundles in CI)` | T2 | §10 #5 |
