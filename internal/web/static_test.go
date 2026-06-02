@@ -3,7 +3,6 @@ package web
 import (
 	"bytes"
 	"crypto/sha256"
-	"embed"
 	"encoding/hex"
 	"io"
 	"os"
@@ -15,13 +14,9 @@ import (
 	"testing"
 )
 
-// assetsFS embeds the vendored Tailwind + htmx bytes. The Go test file lives
-// in package web at internal/web/static_test.go so the embed root can reach
-// both static/ and (later, after T4 lands) templates/. T5 only embeds static/
-// — T4's server.go owns the wider embed directive.
-//
-//go:embed static
-var assetsFS embed.FS
+// assetsFS lives in server.go (T4) under `//go:embed all:templates all:static`.
+// T5's tests reach static/* via that package-level handle — re-declaring the
+// embed here would shadow T4's wider directive.
 
 // htmxPinnedSHA256 is the SHA-256 hex digest of internal/web/static/htmx.min.js,
 // pinned at vendoring time. Any mutation of the on-disk bytes — accidental
