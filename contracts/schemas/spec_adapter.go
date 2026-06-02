@@ -95,20 +95,31 @@ type LaneID string
 type Status string
 
 // Status values; the only legal payload of WorkItem.Status.
+//
+// StatusClosedResolved is a terminal status distinct from StatusDone:
+// it marks items resolved via supersession (e.g. consolidated into a
+// parent brief, made moot by an upstream change) rather than via the
+// agent state-machine completing the work. adaptersync filters it out
+// the same way as StatusDone — terminal states never enqueue.
 const (
-	StatusPlanned    Status = "planned"
-	StatusInProgress Status = "in_progress"
-	StatusDone       Status = "done"
+	StatusPlanned        Status = "planned"
+	StatusInProgress     Status = "in_progress"
+	StatusDone           Status = "done"
+	StatusClosedResolved Status = "closed-resolved"
 )
 
 // CriterionState names a Criterion's lifecycle state.
 type CriterionState string
 
 // CriterionState values; the only legal payload of Criterion.State.
+// CriterionClosed mirrors StatusClosedResolved at the criterion level —
+// the bullet is terminal but was resolved via supersession, not via the
+// agent reaching the done state.
 const (
 	CriterionPlanned    CriterionState = "planned"
 	CriterionInProgress CriterionState = "in_progress"
 	CriterionDone       CriterionState = "done"
+	CriterionClosed     CriterionState = "closed"
 )
 
 // SourceRef is the immutable pointer L0 uses to verify a criterion has not
