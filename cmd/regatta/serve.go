@@ -32,6 +32,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/program"
+	"github.com/trilamsr/regatta/internal/web"
 )
 
 // defaultListenerAddr matches spec §1.3 — `--addr` default is `:8080`.
@@ -503,6 +504,14 @@ func bootListener(cfg listenerConfig) (*http.Server, error) {
 		Clock:   cfg.Clock,
 	})
 	mux.Handle(cbPath, cbHandler)
+	// W7.1 T4: mount the operator UI scaffold last so http.ServeMux's
+	// longest-prefix-wins rule keeps /healthz + /api/approval/callback above
+	// the `/` catch-all (TestServe_RootHandlerWiredIntoBootListener pins it).
+	webHandler, err := newWebHandler(cfg)
+	if err != nil {
+		return nil, err
+	}
+	mux.Handle("/", webHandler)
 	addr := cfg.Addr
 	if addr == "" {
 		addr = defaultListenerAddr
@@ -512,6 +521,24 @@ func bootListener(cfg listenerConfig) (*http.Server, error) {
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}, nil
+}
+
+// newWebHandler constructs the W7.1 T4 operator UI handler with templates
+// loaded from the package's embed.FS at boot. Template parse failure surfaces
+// as a bootListener error (spec §3.4 fail-loud) rather than a render-time lie.
+// RouteRegistrar is nil pre-T6; cmd/regatta passes the field unchanged.
+func newWebHandler(cfg listenerConfig) (http.Handler, error) {
+	tmpls, err := web.LoadTemplates(web.AssetsFS())
+	if err != nil {
+		return nil, fmt.Errorf("web templates: %w", err)
+	}
+	return web.NewHandler(web.Dependencies{
+		DB:             cfg.DB,
+		Keyring:        cfg.Keyring,
+		Templates:      tmpls,
+		Clock:          cfg.Clock,
+		RouteRegistrar: nil,
+	}), nil
 }
 
 // healthzHandler returns the spec §3.3 row 6 liveness probe — zero DB queries, literal `ok\n`, Cache-Control: no-store.
