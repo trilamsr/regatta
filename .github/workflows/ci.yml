@@ -34,12 +34,17 @@ jobs:
   # orchestrator_windows.go and unix-only e2e tests are build-tagged.
   # Doc-gates + golangci-lint stay ubuntu-only (verify + lint jobs)
   # because the bash scripts and pinned linter action are not portable.
+  #
+  # PHASE-S-RELAX: windows-latest dropped from the matrix during the
+  # self-host-first window (docs/engineer/briefs/2026-06-01-self-host-first.md).
+  # Restore alongside `os: [macos-latest, windows-latest]` at the 30-day-green
+  # trigger or first external-customer ask. Memory: feedback_gate_relaxation_phase_s.
   cross-platform-test:
     name: test (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     steps:
