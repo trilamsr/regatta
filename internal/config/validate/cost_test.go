@@ -142,3 +142,59 @@ func TestCUEValidate_SoftPctOutOfRange_Rejected(t *testing.T) {
 		t.Fatalf("err=%q; want CUE error naming soft_pct field", err)
 	}
 }
+
+// TestConfig_SoftCapRequiresExplicitAck pins issue #226 — warn mode without ack is rejected.
+func TestConfig_SoftCapRequiresExplicitAck(t *testing.T) {
+	yaml := baseYAML + `safety:
+  soft_cap_mode: warn
+  cost:
+    per_dag_usd: 100
+`
+	err := validate.ValidateConfig([]byte(yaml))
+	if err == nil {
+		t.Fatalf("ValidateConfig: nil; want ErrSoftCapNotAcknowledged (warn mode without ack is a silent-correctness regression)")
+	}
+	if !errors.Is(err, validate.ErrSoftCapNotAcknowledged) {
+		t.Fatalf("err=%v; want ErrSoftCapNotAcknowledged", err)
+	}
+	if !strings.Contains(err.Error(), "soft_cap_acknowledge_overrun") {
+		t.Fatalf("err=%q; want operator-friendly message naming soft_cap_acknowledge_overrun", err)
+	}
+}
+
+// TestConfig_SoftCapWarnWithAck_Accepted pins #226 happy path — explicit ack permits warn mode.
+func TestConfig_SoftCapWarnWithAck_Accepted(t *testing.T) {
+	yaml := baseYAML + `safety:
+  soft_cap_mode: warn
+  soft_cap_acknowledge_overrun: true
+  cost:
+    per_dag_usd: 100
+`
+	if err := validate.ValidateConfig([]byte(yaml)); err != nil {
+		t.Fatalf("ValidateConfig: %v; want nil (warn mode + explicit ack is valid)", err)
+	}
+}
+
+// TestConfig_SoftCapAckWithoutWarn_Accepted pins additive-default — ack is no-op when mode is enforce.
+func TestConfig_SoftCapAckWithoutWarn_Accepted(t *testing.T) {
+	yaml := baseYAML + `safety:
+  soft_cap_acknowledge_overrun: true
+  cost:
+    per_dag_usd: 100
+`
+	if err := validate.ValidateConfig([]byte(yaml)); err != nil {
+		t.Fatalf("ValidateConfig: %v; want nil (ack without warn mode is a harmless no-op)", err)
+	}
+}
+
+// TestConfig_SoftCapModeEnforce_NoAckRequired pins default mode — enforce needs no ack.
+func TestConfig_SoftCapModeEnforce_NoAckRequired(t *testing.T) {
+	yaml := baseYAML + `safety:
+  soft_cap_mode: enforce
+  cost:
+    per_dag_usd: 100
+`
+	if err := validate.ValidateConfig([]byte(yaml)); err != nil {
+		t.Fatalf("ValidateConfig: %v; want nil (enforce mode never requires ack)", err)
+	}
+}
