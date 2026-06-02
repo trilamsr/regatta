@@ -332,6 +332,70 @@ Data source: Prom HTTP API (if `OTEL_EXPORTER_OTLP_ENDPOINT` set) + sqlite (alwa
 
 UX target (per `feedback_decision_priority`): `regatta status` answers "is the loop healthy + what's the next operator action?" in < 3 seconds of cold start.
 
+#### 6.1.1 TUI mockup (ascii)
+
+Library: `github.com/charmbracelet/bubbletea` (per §1.9 scored comparison — 19/20, ADOPT). The mockup below is the **expanded 80×40 layout** used when the host terminal exceeds the 80×24 minimum (covers items the task brief calls out: in-flight agents, open PRs, CI state, keyring, substrate row count, today's spend vs cap, 30-day-green countdown). On 80×24 the panels collapse to the 5-panel budget in the table above; on 80×40 the loop pulse panel expands to show the agent + keyring + substrate rows below.
+
+Color contract (single source of truth — render path reads this map): **green** = within budget / healthy / passing. **yellow** = within 80 % of cap, retry-able fail, or stale ≥ 5 min. **red** = over cap, hard fail, or stale ≥ 15 min. No other colors; no bold-on-default for status (operators on `NO_COLOR` terminals get glyph prefixes `[ok]` / `[!]` / `[X]`).
+
+Refresh: **operator-tunable** via `--refresh=<duration>` flag (default `5s`; floor `1s` to avoid hammering the Prom HTTP API on shared infra; ceiling `60s`). `r` keybinding forces an immediate refresh without resetting the timer. Per `feedback_design_iteration_local`: the default was chosen by running the binary on a laptop tethered to a remote Prom instance — 1s saturated the link, 5s felt live.
+
+```text
++------------------------------------------------------------------------------+
+| regatta status                       2026-06-02 14:32:07   refresh: 5s  [r]  |
++------------------------------------------------------------------------------+
+| LOOP PULSE                                                                   |
+|   tick p50: 218 ms   p95: 1.94 s    [ok]      lanes: 7 / 10 active           |
+|   work items: 12 queued, 7 in-flight, 3 blocked-on-review                    |
+|   scheduler error rate (1h): 0.001                                  [ok]     |
++------------------------------------------------------------------------------+
+| IN-FLIGHT AGENTS (7)                                                         |
+|   #A23  D-T2 bubbletea TUI         dispatch+04m17s   subagent: implementer   |
+|   #A24  C-T4 emitter wave-C        dispatch+00m48s   subagent: reviewer      |
+|   #A25  doc-obs §6.1 ascii         dispatch+00m12s   subagent: doc-writer    |
+|   #A26  CI-T1 lane bisect          dispatch+11m02s   subagent: implementer   |
+|   ...                                                            [/ filter]  |
++------------------------------------------------------------------------------+
+| OPEN PRs (9)         CI STATE                                                |
+|   #401 D-T2  WIP     check-tdd: pass   pr-lint: pass   doc-check: pass [ok]  |
+|   #402 C-T4  REVIEW  check-tdd: pass   pr-lint: pass   doc-check: pass [ok]  |
+|   #403 OBS   STALE   check-tdd: FAIL   pr-lint: pass   doc-check: pass [X]   |
+|   #404 A-T7  AUTO    check-tdd: pass   pr-lint: WARN   doc-check: pass [!]   |
+|   oldest in REVIEW: #398 (3h 21m)                                            |
++------------------------------------------------------------------------------+
+| COST (USD)                          KEYRING                                  |
+|   this hour:  $4.21                   anthropic-1   ok        rate 38/60     |
+|   today:     $67.42 / cap $120  [ok]  anthropic-2   ok        rate 12/60     |
+|   week:     $411.30 / cap $700        openai-1      ok        rate  4/60     |
+|   spend trend (24h): ===============  github-app    ok        rate 87/5000   |
++------------------------------------------------------------------------------+
+| SUBSTRATE                           TRIGGERS                                 |
+|   rows:        1 248 117             30-day-green:    17 days remaining      |
+|   events/sec:        12.3   [ok]     ext-customer:    not-yet-set            |
+|   chain breaks:       0     [ok]     phase-G gate:    27 days remaining      |
+|   divergence count:   0     [ok]                                             |
++------------------------------------------------------------------------------+
+| ALARMS (last 24h, 2)                                                         |
+|   14:02  cost.hour_cap_warn       warn    fired 30m ago    auto-cleared      |
+|   09:11  tick.p95_breach          warn    fired 5h ago     resolved 09:14    |
++------------------------------------------------------------------------------+
+| q quit  r refresh  / filter  arrows navigate  enter drill-down               |
++------------------------------------------------------------------------------+
+```
+
+Key bindings:
+
+| Key | Action |
+|---|---|
+| `q` / `Ctrl-C` | quit |
+| `r` | force refresh (does not reset timer) |
+| `/` | filter (regex over current focused panel; ESC clears) |
+| `arrows` (`h/j/k/l` also bound) | move focus between panels + rows |
+| `enter` | drill-down (PR → `gh pr view` in `$PAGER`; agent → tail subagent log; alarm → open Grafana panel link) |
+| `?` | overlay this binding table |
+
+Per `feedback_research_design_principles` (proven OSS > build-from-scratch): bubbletea's Elm-architecture update loop is the load-bearing pick — the 5-panel state struct is one `Model`, each refresh tick is one `Msg`, and panel renderers compose via `lipgloss` (transitive dep of bubbletea, not a new direct dep). The mockup is the **target rendering**; D-T2 lands the binary and gold-files the frame against this layout (`testdata/status-frame.golden.txt`) so future panel edits stay in lock-step with the spec.
+
 ### 6.2 Daily digest (item 14) — machine + human surface
 
 `regatta digest --date 2026-MM-DD` reads the previous 24h of metrics + logs + PR-merge events and writes `docs/digests/2026-MM-DD.md` with a **YAML front-matter block** (for machine readers: trigger-clock derivation, the autonomous-session-prompt boot reader, future weekly-rollup) plus the human-readable markdown sections.
