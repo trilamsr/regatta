@@ -6,7 +6,7 @@ import (
 )
 
 // scopeName is the OTel instrumentation scope this package emits
-// metrics under. Mirrors the spend / l4 retrofit from PR #490 so the
+// metrics under. Mirrors the spend / l4 retrofit from T0a Config.Meter retrofit so the
 // per-scope query slice ("rejection_router") stays grep-able and the
 // cardinality lint walks the same surface across the orchestrator.
 const scopeName = "github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
@@ -14,7 +14,7 @@ const scopeName = "github.com/trilamsr/regatta/internal/orchestrator/rejectionro
 // ResolveMeter returns the Config.Meter or falls back to the global
 // provider's scoped meter. Fallback is lazy so a test that swaps the
 // global provider after Config construction still picks up the swap.
-// Mirrors spend.Config.ResolveMeter (PR #490).
+// Mirrors spend.Config.ResolveMeter.
 func (c Config) ResolveMeter() metric.Meter {
 	return resolveMeter(c.Meter)
 }

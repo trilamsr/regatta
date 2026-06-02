@@ -83,7 +83,7 @@ type Config struct {
 	// Meter is the OTel instrument factory for router telemetry
 	// (currently the gh-CLI label-failures counter wired by
 	// GHLabeler). Nil resolves to otel.Meter(scopeName) lazily —
-	// matches the spend / l4 Config.Meter pattern from PR #490 so
+	// matches the spend / l4 Config.Meter pattern from T0a Config.Meter retrofit so
 	// callers stay on one DI seam across the orchestrator.
 	Meter metric.Meter
 }
