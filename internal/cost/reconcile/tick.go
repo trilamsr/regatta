@@ -20,6 +20,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/trilamsr/regatta/internal/cost/pricing"
+	"github.com/trilamsr/regatta/internal/cost/spend"
 	"github.com/trilamsr/regatta/internal/obs"
 )
 
@@ -216,7 +217,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		return b, buf, nil
 	})
 	var actualUSD float64
-	var modelBreakdown []ModelBreakdownRow
+	var modelBreakdown []spend.ModelBreakdownRow
 
 	switch {
 	case errors.Is(err, ErrAdminKeyUnset):
@@ -250,7 +251,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		// Cost API happy path — Anthropic returned USD directly.
 		for _, row := range costResp.Data {
 			actualUSD += row.CostUSD
-			modelBreakdown = append(modelBreakdown, ModelBreakdownRow{
+			modelBreakdown = append(modelBreakdown, spend.ModelBreakdownRow{
 				Model: row.Model,
 				USD:   row.CostUSD,
 			})
@@ -288,7 +289,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		return fmt.Errorf("canonicalise response: %w", sigErr)
 	}
 
-	payload := BudgetReconciledPayload{
+	payload := spend.BudgetReconciledPayload{
 		PeriodStart:    start.UnixMilli(),
 		PeriodEnd:      end.UnixMilli(),
 		ActualUSD:      actualUSD,
@@ -401,9 +402,9 @@ func (r *Reconciler) fetchUsageWithBackoff(ctx context.Context, start, end time.
 // pricing table is wrong, drift will appear zero even when actual
 // billing differs. The fallback emit covers stream-json-parser drift
 // only; the operator runbook documents the limitation.
-func (r *Reconciler) usageToActualUSD(ctx context.Context, resp UsageResponse) (float64, []ModelBreakdownRow, error) {
+func (r *Reconciler) usageToActualUSD(ctx context.Context, resp UsageResponse) (float64, []spend.ModelBreakdownRow, error) {
 	var total float64
-	var rows []ModelBreakdownRow
+	var rows []spend.ModelBreakdownRow
 	for _, b := range resp.Data {
 		row, err := r.cfg.Pricing(b.Model)
 		if err != nil {
@@ -422,7 +423,7 @@ func (r *Reconciler) usageToActualUSD(ctx context.Context, resp UsageResponse) (
 			perMillion(b.CacheCreationInputTokens, row.CacheCreationUSDPerMTok) +
 			perMillion(b.OutputTokens, row.OutputUSDPerMTok)
 		total += usd
-		rows = append(rows, ModelBreakdownRow{
+		rows = append(rows, spend.ModelBreakdownRow{
 			Model:               b.Model,
 			InputTokens:         b.UncachedInputTokens,
 			OutputTokens:        b.OutputTokens,
@@ -459,7 +460,7 @@ func (r *Reconciler) persistentFailure(ctx context.Context, span trace.Span, cau
 }
 
 // maybeEmitDriftAlert is the (period_start, drift_pct@2dp) dedup gate.
-func (r *Reconciler) maybeEmitDriftAlert(ctx context.Context, p BudgetReconciledPayload) {
+func (r *Reconciler) maybeEmitDriftAlert(ctx context.Context, p spend.BudgetReconciledPayload) {
 	round := math.Round(p.DriftPct*100) / 100 // 2dp
 	key := fmt.Sprintf("%d|%.2f", p.PeriodStart, round)
 	r.alertMu.Lock()
@@ -529,32 +530,4 @@ func canonicalHashHex(raw []byte) (string, error) {
 	}
 	sum := sha256.Sum256(c)
 	return hex.EncodeToString(sum[:]), nil
-}
-
-// BudgetReconciledPayload is the spec §3.5 lines 278-289 typed shape.
-// T4 OWNS this struct locally until T3 lands `spend.BudgetReconciledPayload`
-// in `internal/cost/spend/payload.go` and the swap reduces to one import
-// change. Documented in PR body under `## Followup issues` so the
-// reviewer sees the seam evolution.
-type BudgetReconciledPayload struct {
-	PeriodStart    int64               `json:"period_start"`
-	PeriodEnd      int64               `json:"period_end"`
-	ActualUSD      float64             `json:"actual_usd"`
-	RecordedUSD    float64             `json:"recorded_usd"`
-	DeltaUSD       float64             `json:"delta_usd"`
-	DriftPct       float64             `json:"drift_pct"`
-	ModelBreakdown []ModelBreakdownRow `json:"model_breakdown"`
-	APIResponseSig string              `json:"api_response_sig"`
-}
-
-// ModelBreakdownRow is one per-model row inside BudgetReconciledPayload.
-// Tokens are populated on the Usage API fallback path; the Cost API
-// happy path leaves token fields zero and only USD set.
-type ModelBreakdownRow struct {
-	Model               string  `json:"model"`
-	InputTokens         int64   `json:"input_tokens"`
-	OutputTokens        int64   `json:"output_tokens"`
-	CacheReadTokens     int64   `json:"cache_read_tokens"`
-	CacheCreationTokens int64   `json:"cache_creation_tokens"`
-	USD                 float64 `json:"usd"`
 }
