@@ -12,10 +12,18 @@ import (
 	obsotel "github.com/trilamsr/regatta/internal/obs/otel"
 )
 
-// TestBridge_Handle_BothLegs_OverheadUnder5Micros guards the issue #175 budget by running the 5-attr both-legs bench and asserting steady-state ns/op stays under bridgeBenchBudgetNsPerOp.
+// TestBridge_Handle_BothLegs_OverheadUnder5Micros guards the issue #175 ns/op and issue #467 allocs/op budgets by running the 5-attr both-legs bench and asserting steady-state.
 func TestBridge_Handle_BothLegs_OverheadUnder5Micros(t *testing.T) {
 	if testing.Short() {
 		t.Skip("perf guard skipped under -short")
+	}
+	// Coverage instrumentation adds ~30-50% overhead on slow CI runners,
+	// which would push the 5-attr ns/op past the 5µs budget and flake
+	// `make cover`. The contract being asserted is steady-state
+	// production overhead, not instrumented overhead — same shape as
+	// the -race build-tag exclusion above (issue #468).
+	if testing.CoverMode() != "" {
+		t.Skip("perf guard skipped under coverage instrumentation")
 	}
 	// Steady-state ns/op is measured by the bench framework, not by an
 	// ad-hoc time.Since loop, because the framework adapts b.N until the
@@ -32,7 +40,7 @@ func TestBridge_Handle_BothLegs_OverheadUnder5Micros(t *testing.T) {
 	// production contract without flaking the race gate.
 	res := testing.Benchmark(func(b *testing.B) {
 		primary := slog.NewTextHandler(io.Discard, nil)
-		lp, _ := newTestProvider()
+		lp, _ := newBenchProvider()
 		defer func() { _ = lp.Shutdown(context.Background()) }()
 
 		bridge := obsotel.NewBridgeHandler(primary, "regatta-bench", obsotel.WithLoggerProvider(lp))
@@ -41,13 +49,19 @@ func TestBridge_Handle_BothLegs_OverheadUnder5Micros(t *testing.T) {
 		ctx := context.Background()
 
 		b.ResetTimer()
+		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
 			lg.LogAttrs(ctx, slog.LevelInfo, string(obs.EventTickStarted), attrs...)
 		}
 	})
 	nsPerOp := res.NsPerOp()
-	t.Logf("bridge 5-attr overhead: %d ns/op (budget %d)", nsPerOp, bridgeBenchBudgetNsPerOp)
+	allocsPerOp := res.AllocsPerOp()
+	t.Logf("bridge 5-attr overhead: %d ns/op (budget %d), %d allocs/op (budget %d)",
+		nsPerOp, bridgeBenchBudgetNsPerOp, allocsPerOp, bridgeBenchBudgetAllocsPerOp)
 	if nsPerOp > bridgeBenchBudgetNsPerOp {
 		t.Fatalf("bridge overhead %d ns/op > budget %d ns/op (issue #175)", nsPerOp, bridgeBenchBudgetNsPerOp)
+	}
+	if allocsPerOp > bridgeBenchBudgetAllocsPerOp {
+		t.Fatalf("bridge overhead %d allocs/op > budget %d allocs/op (issue #467)", allocsPerOp, bridgeBenchBudgetAllocsPerOp)
 	}
 }
