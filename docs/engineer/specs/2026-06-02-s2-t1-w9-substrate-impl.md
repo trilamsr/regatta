@@ -53,7 +53,7 @@ What this spec deliberately does NOT re-litigate:
 
 ## §2 Prior art adopted (research-first per `feedback_research_design_principles`)
 
-The decision priority in force is **UX → ease → performance → best-practices → speed → velocity** (`feedback_decision_priority`); the design-time refinement is **UX → best-in-class → best-practices → long-term** (`feedback_research_design_principles`). The interface signature is anchored on shapes operators already know.
+The decision priority in force is **UX → ease → performance → best-practices → speed → velocity** (`feedback_decision_priority`); the design-time refinement is **UX → the leading existing impl → best-practices → long-term** (`feedback_research_design_principles`). The interface signature is anchored on shapes operators already know.
 
 | Prior art | What we adopt | What we drop | Source |
 |---|---|---|---|
