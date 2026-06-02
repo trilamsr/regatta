@@ -675,7 +675,6 @@ func (b *BriefLoader) cascadeDependencyArchiveOnce(ctx context.Context, at time.
 		return false, scanErr
 	}
 
-	stamp := at.UTC().Unix()
 	applied := false
 	for _, r := range rowsList {
 		for _, dep := range r.deps {
@@ -689,9 +688,27 @@ func (b *BriefLoader) cascadeDependencyArchiveOnce(ctx context.Context, at time.
 			if depItem.Status != state.WorkStatusArchived {
 				continue
 			}
-			if _, err := b.db.SQL().ExecContext(ctx,
-				`UPDATE work_items SET status = ?, updated_at = ? WHERE id = ?`,
-				string(state.WorkStatusArchived), stamp, r.id); err != nil {
+			// Fetch the child's current status to CAS-from. The outer
+			// SELECT excluded status=archived, but two BriefLoader
+			// passes can race on the same row: the typed transition
+			// wins exactly once (whichever pass commits first), the
+			// loser observes ErrInvalidWorkItemTransition and treats
+			// the row as already archived. Idempotent against the
+			// fixed-point retry loop.
+			child, err := b.db.GetWorkItem(ctx, r.id)
+			if err != nil {
+				if errors.Is(err, state.ErrWorkItemNotFound) {
+					continue
+				}
+				return false, err
+			}
+			if child.Status == state.WorkStatusArchived {
+				continue
+			}
+			if err := b.db.TransitionWorkItemAt(ctx, r.id, child.Status, state.WorkStatusArchived, at); err != nil {
+				if errors.Is(err, state.ErrInvalidWorkItemTransition) {
+					continue
+				}
 				return false, err
 			}
 			applied = true
