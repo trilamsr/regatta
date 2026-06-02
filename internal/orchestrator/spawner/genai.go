@@ -57,6 +57,23 @@ type streamUsage struct {
 	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 }
 
+// StreamResultEvent is the cross-package projection of one stream-json
+// `result` event — the only event shape ResultEventCallback consumers
+// need. Mirroring just the cost-governor-required fields keeps the
+// internal streamEvent private (future field additions stay non-breaking
+// for callback authors) and prevents accidental coupling to
+// claude-CLI-internal fields the caller has no business reading.
+type StreamResultEvent struct {
+	Model                    string
+	MessageID                string
+	StopReason               string
+	IsError                  bool
+	InputTokens              int64
+	OutputTokens             int64
+	CacheReadInputTokens     int64
+	CacheCreationInputTokens int64
+}
+
 // ResultEventCallback fires once per `result` event after the W6 attrs
 // are set but before span.End. Cost-governor (P8) wires this to write a
 // substrate `token_spend` row inside the parser's span-close path so
@@ -64,7 +81,7 @@ type streamUsage struct {
 // returned error marks the span Error+error.type=record_call_failed per
 // the R4 open-span-as-smoke-alarm contract; it is not propagated to
 // ParseStream's return value (callers classify subprocess errors apart).
-type ResultEventCallback func(ctx context.Context, ev *streamEvent) error
+type ResultEventCallback func(ctx context.Context, ev StreamResultEvent) error
 
 // ParseStream reads claude CLI stream-json events from r and opens one
 // `chat <model>` span on the system.init line, closing it on the matching
@@ -140,7 +157,19 @@ func ParseStream(ctx context.Context, tracer trace.Tracer, r io.Reader, onResult
 			}
 			finalizeResult(span, ev)
 			if onResult != nil {
-				if err := onResult(ctx, &ev); err != nil {
+				proj := StreamResultEvent{
+					Model:      ev.Model,
+					MessageID:  ev.MessageID,
+					StopReason: ev.StopReason,
+					IsError:    ev.IsError,
+				}
+				if ev.Usage != nil {
+					proj.InputTokens = ev.Usage.InputTokens
+					proj.OutputTokens = ev.Usage.OutputTokens
+					proj.CacheReadInputTokens = ev.Usage.CacheReadInputTokens
+					proj.CacheCreationInputTokens = ev.Usage.CacheCreationInputTokens
+				}
+				if err := onResult(ctx, proj); err != nil {
 					span.RecordError(err)
 					span.SetStatus(codes.Error, err.Error())
 					span.SetAttributes(rotel.ErrorTypeAttr("record_call_failed"))

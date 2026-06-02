@@ -240,14 +240,10 @@ func TestParseStream_NilOnResult_NoCallback_BackwardsCompat(t *testing.T) {
 func TestParseStream_OnResultFiresExactlyOncePerResultEvent(t *testing.T) {
 	_, tracer := newRecorder(t)
 	var calls int
-	cb := func(_ context.Context, ev *streamEvent) error {
+	var got StreamResultEvent
+	cb := func(_ context.Context, ev StreamResultEvent) error {
 		calls++
-		if ev == nil {
-			t.Fatalf("callback received nil event")
-		}
-		if ev.Type != "result" {
-			t.Fatalf("callback event type=%q, want result", ev.Type)
-		}
+		got = ev
 		return nil
 	}
 	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl"), cb); err != nil {
@@ -256,12 +252,19 @@ func TestParseStream_OnResultFiresExactlyOncePerResultEvent(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("callback fired %d times, want 1", calls)
 	}
+	if got.MessageID != "msg_01abc" || got.Model != "claude-sonnet-4-7" {
+		t.Fatalf("projection mis-mapped: msgid=%q model=%q", got.MessageID, got.Model)
+	}
+	if got.InputTokens != 120 || got.OutputTokens != 42 || got.CacheReadInputTokens != 80 {
+		t.Fatalf("usage projection mis-mapped: in=%d out=%d cache_read=%d",
+			got.InputTokens, got.OutputTokens, got.CacheReadInputTokens)
+	}
 }
 
 // TestParseStream_OnResultErrorMarksSpanError pins R4 — callback error ⇒ span Error + error.type=record_call_failed.
 func TestParseStream_OnResultErrorMarksSpanError(t *testing.T) {
 	sr, tracer := newRecorder(t)
-	cb := func(context.Context, *streamEvent) error {
+	cb := func(context.Context, StreamResultEvent) error {
 		return errors.New("synthetic")
 	}
 	if err := ParseStream(context.Background(), tracer, openFixture(t, "success.jsonl"), cb); err != nil {
