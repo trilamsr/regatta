@@ -14,31 +14,27 @@ BOOT
 2. make check && bash scripts/cleanup-merged-branches.sh
 3. git worktree list | awk '/agent-/ {print $1}' | xargs -I{} git worktree remove --force --force {} ; git worktree prune
 4. gh pr list --state open  (note current state; in-flight PRs are normal)
-5. Read MEMORY.md + AGENTS.md (auto-loaded). Round-2 specs are canonical (v2 supersedes v1; review files in docs/superpowers/ describe v1 issues now fixed and are not load-bearing for execution).
+5. Read MEMORY.md + AGENTS.md (auto-loaded). Specs in `docs/engineer/specs/` are canonical for execution.
 
 PRIORITY (top-down, skip if blocked)
-1. **MVP-3 W7.0 listener prereq finish** — T2 (`internal/orchestrator/state/dbtest/query_counter`) + T3 (lift `decideTx` → `internal/gates/approval/decide.DecideTx`) dispatched 2026-06-01 (background agents in `.claude/worktrees/agent-aa696079445f3df46` + `agent-a285cfa1f06e1de89`); confirm their PRs landed. Then dispatch T1 (`cmd/regatta/serve.go` HTTP listener + `CallbackRoute()` impl) — solo dispatch since T1 imports T3's `approval.DecideTx`. Plan: `docs/engineer/plans/2026-06-01-w7-prereq-listener.md` (PR #236 merged).
-2. **MVP-3 W7 Wave 1 (T4-T7)** — once W7.0 lands, dispatch T4 (`internal/web/` scaffold + CSP + healthz) + T5 (vendored Tailwind + htmx + `build-tailwind`) + T7 (`Principal` + cookie-bound HMAC + CSRF + Origin) in parallel; T6 (`/approve/*` handlers + templates + 8 KiB diff cap) dispatches LAST (depends on T4+T7 merge). Reference plan at `docs/engineer/plans/2026-06-01-w7-operator-ui-w0-w1-tasks.md` (1757 LoC — written but un-committed; dedupe vs PR #236 plan before dispatching).
-3. **Cost-governor (P8) Wave 2** — T3 (spawner post-stream `token_spend` emission) + T4 (reconciler + Anthropic Cost+Usage API) per cost-governor plan §4 handoff. Wave 1 SHIPPED (T1 #250 + T2 #246). Wave 2 ungated post-#250 merge.
-4. Open follow-up issues (~50+) by load-bearing weight — A+ tier rubric checkboxes from earlier waves (mutation testing, fuzz, key-rotation drill, etc.). Plus #194 (reaper-escalate gate.Evaluate mint+notify gap) + 8 substrate followups #216-#223. Spawn a triage subagent (≤5 trivial PRs/session cap) to sweep. Per feedback_session_2026_05_31_lessons.
-5. **MVP-3 W8 OPA RBAC + multi-tenant** — plugs into W7's `Authorizer` interface seam (designed pre-W8 in W7 spec §3.6.4 — one-file impl swap, no re-architecture). Substrate `policies` primitive ships in W8 (deferred from substrate W1 per spec §13). Dispatch AFTER W7 land.
+1. **Cost-governor (P8) Wave 3 dispatch** — T5 (operator CLI doc) + T6 (ops runbook) + T7 (dashboard reference) per plan #267. Wave 2 SHIPPED (T3 amendment #270 + T3 primary #283 + T4 reconciler #279) — Wave 3 ungated. File-disjoint trio, single batch dispatch.
+2. **MVP-3 W7 Wave 1 (T4-T7)** — plan PR #268 OPEN (review + merge first). Once #268 lands, dispatch T4 (`internal/web/` scaffold + CSP + healthz) + T5 (vendored Tailwind + htmx + `build-tailwind`) + T7 (`Principal` + cookie-bound HMAC + CSRF + Origin) in parallel; T6 (`/approve/*` handlers + templates + 8 KiB diff cap) dispatches LAST (depends on T4+T7 merge).
+3. **MVP-3 W8 OPA RBAC implementer plan + dispatch** — spec SHIPPED #266. Plan subagent gated on W7 Wave 1 plan #268 land (W8 plugs into W7's `Authorizer` interface seam — designed pre-W8 in W7 spec §3.6.4 — one-file impl swap, no re-architecture). Substrate `policies` primitive ships in W8 (deferred from substrate W1 per spec §13).
+4. **Cost-gov #282 spawner-callback production wiring** — single-PR followup: wire `spend.SpawnerCallback` into `cmd/regatta/serve.go::buildSpawner`. Closes #282 (filed session C).
+5. Open follow-up issues (~50+) by load-bearing weight — A+ tier rubric checkboxes from earlier waves (mutation testing, fuzz, key-rotation drill, etc.). Plus session-C followups #272 #273 #274 #275 #276 #277 #282 (cost-gov) + #265 (approval). Spawn a triage subagent (≤5 trivial PRs/session cap) to sweep. Per feedback_session_2026_05_31_lessons.
 6. **MVP-3 W9 replay+diff harness** — ships AFTER W6/W7/W8 land; substrate-default `DurableHistory` impl, Temporal-backed impl gated behind refined P2.5 trigger — spec `docs/engineer/specs/2026-06-01-w9-temporal-vs-bespoke-redteam.md` picks option C (hybrid).
-7. **MVP-4 wedges + P3.8 swap-out adapters** — W10 Sigstore / W11 blackboard (substrate blobs primitive) / W12 billing per `docs/engineer/briefs/2026-05-31-mvp-3-next-level.md`. P3.8 adapters spec at `docs/engineer/specs/2026-06-01-adapter-contracts-design.md`; trigger = first customer ask for hosted backend.
+7. **MVP-4 wedges + P3.8 swap-out adapters** — specs SHIPPED: W10 Sigstore #284, W11 blackboard #281, W12 billing #280. Plan + dispatch unblocked once W7 Wave 1 lands. P3.8 adapters spec at `docs/engineer/specs/2026-06-01-adapter-contracts-design.md`; trigger = first customer ask for hosted backend.
 
 Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -40`:
-- #98 #101 #115 #116 (Wave 0 prereqs)
-- **MVP-2 W1-W5 approval-gates SHIPPED** (#114 umbrella) — #123 #126 #127 (W1) · #143 #144 (W2) · #154 #155 #168 (W3) · #170 (W4 program-plan) · #191 (W5 E2E lifecycle) · #197 (W5 log-format) · #203 (W5 reaper auto_approve fix)
 - **MVP-3 W6 OTel backbone COMPLETE** (#159 umbrella) — T1 #172 (SDK setup) · T2 #169 (slog bridge) · T3 #209 (migration 0005 trace_id) · T4 #213 (GenAI semconv parser) · T5 #210 (Config.Tracer × 8 components) · T6+T7 #215 (Jaeger E2E + operator doc)
-- Cleanup + sweep: #160 (cel-go) #163 (single-NewReaper) #164 (kid sentinels) #166 (state dedupe) #177 (Kahn cycle-check)
-- #99 spawner orphan-journal reconcile (#186) · #88 scheduler single-tx reservation (#171) · #180 atomicWriteBrief 8 MiB cap · #184 Jaeger compose scaffold (W6 T6 pre-position)
+- **MVP-3 W7.0 listener prereq COMPLETE** — T1 #263 (HTTP listener + CallbackRoute impl) · T2 #255 (dbtest.QueryCounter) · T3 #253 (DecideTx lift)
+- **MVP-3 substrate W1 COMPLETE** — T-S1 #224 (event log + 0005 migration + HMAC) · T-S2 #232 (CELDecider + gate_verdict validator) · T-S3 #233 (lint + property + adversarial) · #237 property-test Makefile
+- **Cost-governor (P8) Wave 1+2 SHIPPED** — Wave 1: T1 #250 (gate + reader + scheduler hook) + T2 #246 (UpperBound estimator + pricing). Wave 2: T3 amendment #270 (onResult seam) + T3 primary #283 (token_spend writer + validator) + T4 #279 (reconciler + Cost/Usage API)
+- **MVP-4 specs SHIPPED** — W8 OPA RBAC #266 · W10 Sigstore #284 · W11 blackboard #281 · W12 billing #280 · cost-gov Wave 3 plan #267
 - **2026-06-01 design specs landed**: unified-substrate, W7 operator web UI, W9 Temporal-vs-bespoke red-team (option C hybrid picked), adapter contracts (5 swap-out), cost-governor P8 (#211)
-- **2026-06-01 plans landed**: substrate W1 implementer task breakdown (#212)
-- **2026-06-01 MVP-3 substrate W1 T-S1 SHIPPED**: #224 (event log primitive + 0006 migration + HMAC sign + Kahn cycle-check); followups F1-F4, F6-F8, F10 filed as #216-#223
-- **2026-06-01 cost-governor followups filed**: #225-#228 (R-A3 admin-key vault, soft-cap opt-in, W6-T4 tx-export, sampler-customization E2E)
-- **2026-06-01 boot-prompt extension**: #208 — indefinite-mode framing + 3 new feedback rules in MEMORY.md
-- **2026-06-01 session B SHIPPED**: substrate W1 finish (#232 T-S2 + #233 T-S3 + #237 property-test Makefile) · cost-governor Wave 1 (#246 T2 + #250 T1) · W7.0 listener plan #236 · W6 spec semconv bump #230 (closes #178)
-- **2026-06-01 session B followups filed**: cost-gov #238 #239 #240 #242 #243 #247 #248 #249 #251 · substrate #234 — dup pairs #241 #244 #245 #252 closed
-- **2026-06-01 session B lessons**: [[feedback_agent_tree_spillage]] (stash before reset when primary tree dirty from agents) · [[feedback_parallel_dup_followups]] (pre-file shared followups main-thread) · [[feedback_plan_subagent_dup_files]] (specify exact output path in plan dispatch)
+- **2026-06-01 session C fixes**: #269 (decideTx pre-check race; closes #206) · #285 (lift t.Skip(#194))
+- **2026-06-01 session C followups filed**: cost-gov #272 #273 #274 #275 #276 #277 #282 · approval #265
+- **2026-06-01 boot-prompt extensions**: #208 (indefinite-mode framing + 3 new rules) · #256 (post-session-B refresh) · #262 (require A+ scorecard) · #271 (doc-check banned-phrase pre-push) · #264 (rubric sentinel clarification)
 
 WORKFLOW per item
 1. Spawn design subagent → spec (w/ grade rubric per feedback_grade_rubric)
