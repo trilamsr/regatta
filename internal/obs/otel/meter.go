@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strconv"
@@ -113,11 +114,19 @@ func startPrometheusServer(port int, reg *prometheus.Registry) (*http.Server, er
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	// ListenAndServe blocks; running it in a goroutine matches the
-	// stdlib pattern. Errors after Shutdown surface as ErrServerClosed,
-	// which is the expected idempotent-exit signal.
+	// Bind the listener synchronously so a port-in-use error surfaces
+	// from Setup rather than disappearing into a background goroutine.
+	// Errors after Shutdown surface as ErrServerClosed, the expected
+	// idempotent-exit signal — we drop it explicitly to match.
+	lis, err := net.Listen("tcp", srv.Addr)
+	if err != nil {
+		return nil, err
+	}
 	go func() {
-		_ = srv.ListenAndServe()
+		serveErr := srv.Serve(lis)
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			otel.Handle(serveErr)
+		}
 	}()
 	return srv, nil
 }
