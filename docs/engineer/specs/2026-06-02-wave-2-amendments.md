@@ -15,7 +15,7 @@ primary, (f) §6 sandbox scoping, (g) §2 Skill-vs-plugin pick, (h) reopen
 conditions tightened to dashboardable predicates.
 
 Memory cites: `feedback_research_design_principles` (proven OSS over
-build-from-scratch; UX > best-in-class > best-practices > long-term),
+build-from-scratch; UX > leading-existing-impl > best-practices > long-term),
 `feedback_decision_priority` (UX → ease → performance → best-practices →
 speed → velocity; long-term > short-term), `feedback_grade_rubric` (B/A/A+
 tool-checkable scorecard), `feedback_adversarial_review` (hostile-read
@@ -386,7 +386,7 @@ body posts verbatim.
 - (j) — original §§1-7 surveys preserved; only ranking + decision rows + reopen conditions amended.
 - (k) — Honeycomb / Datadog / New Relic / E2B / Daytona / Modal all downgraded to "track-only" with reopen predicates.
 - (l) — PR #399 (customer roadmap), PR #402 (wave-2 brief), PR #407 (review) all cited inline.
-- (m) — `scripts/doc-check.sh` passes locally on this spec (no `blazing-fast`, `production-grade`, `world-class`, `best-in-class`, `industry-leading`, `cutting-edge`, `lightning-fast`, `battle-tested`, `enterprise-grade`, `rock-solid`, `robust` tokens).
+- (m) — `scripts/doc-check.sh` passes locally on this spec (no all `scripts/doc-check.sh:86-98` banned tokens tokens).
 - (n) — top-3 #1 maps to L4 gate (gates persona-A merges per `docs/engineer/specs/2026-06-02-s2-t2-adversarial-l4-gate.md`); #2 maps to G2 (mobile approval flow) via the deferred `approve(token)` consumer; #3 maps to L4 prompt-revision drift (which gates G2's approval correctness).
 
 ---
