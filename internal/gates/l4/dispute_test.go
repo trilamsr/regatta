@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/gates/severity"
 )
 
 // ParseDisputes extracts finding IDs from a PR body's [L4-DISPUTE]
@@ -86,7 +87,7 @@ func TestL4_Run_DisputedFindingDropped_WhenSecondOpinionClears(t *testing.T) {
 		GateID:              "l4_adversarial",
 		Model:               DefaultModel,
 		SecondOpinionModel:  DefaultSecondOpinionModel,
-		SeverityBlock:       []string{RuleCritical, RuleTwoHigh},
+		SeverityBlock:       []string{severity.Critical, severity.TwoHigh},
 		Invoker: func(_ context.Context, req InvokeRequest) (InvokeResponse, error) {
 			if req.Model == DefaultSecondOpinionModel {
 				secondCalls++
@@ -133,7 +134,7 @@ func TestL4_Run_DisputedFindingKept_WhenSecondOpinionConfirms(t *testing.T) {
 		GateID:             "l4_adversarial",
 		Model:              DefaultModel,
 		SecondOpinionModel: DefaultSecondOpinionModel,
-		SeverityBlock:      []string{RuleCritical, RuleTwoHigh},
+		SeverityBlock:      []string{severity.Critical, severity.TwoHigh},
 		Invoker: func(_ context.Context, req InvokeRequest) (InvokeResponse, error) {
 			if req.Model == DefaultSecondOpinionModel {
 				// Second opinion confirms the same finding.
@@ -168,7 +169,7 @@ func TestL4_Run_NoDispute_NoSecondOpinionCall(t *testing.T) {
 		GateID:             "l4_adversarial",
 		Model:              DefaultModel,
 		SecondOpinionModel: DefaultSecondOpinionModel,
-		SeverityBlock:      []string{RuleCritical, RuleTwoHigh},
+		SeverityBlock:      []string{severity.Critical, severity.TwoHigh},
 		Invoker: func(_ context.Context, req InvokeRequest) (InvokeResponse, error) {
 			if req.Model == DefaultSecondOpinionModel {
 				secondCalls++
@@ -196,7 +197,7 @@ func TestL4_Run_DisputeForUnknownFinding_NoSecondOpinionCall(t *testing.T) {
 		GateID:             "l4_adversarial",
 		Model:              DefaultModel,
 		SecondOpinionModel: DefaultSecondOpinionModel,
-		SeverityBlock:      []string{RuleCritical, RuleTwoHigh},
+		SeverityBlock:      []string{severity.Critical, severity.TwoHigh},
 		Invoker: func(_ context.Context, req InvokeRequest) (InvokeResponse, error) {
 			if req.Model == DefaultSecondOpinionModel {
 				secondCalls++
@@ -225,7 +226,7 @@ func TestL4_Run_SecondOpinionError_KeepsPrimaryFindings(t *testing.T) {
 		GateID:             "l4_adversarial",
 		Model:              DefaultModel,
 		SecondOpinionModel: DefaultSecondOpinionModel,
-		SeverityBlock:      []string{RuleCritical, RuleTwoHigh},
+		SeverityBlock:      []string{severity.Critical, severity.TwoHigh},
 		Invoker: func(_ context.Context, req InvokeRequest) (InvokeResponse, error) {
 			if req.Model == DefaultSecondOpinionModel {
 				return InvokeResponse{}, context.DeadlineExceeded
@@ -256,7 +257,7 @@ func TestL4_Run_SecondOpinionModelDefault_AppliesWhenUnset(t *testing.T) {
 	cfg := Config{
 		GateID:        "l4_adversarial",
 		Model:         DefaultModel,
-		SeverityBlock: []string{RuleCritical, RuleTwoHigh},
+		SeverityBlock: []string{severity.Critical, severity.TwoHigh},
 		Invoker: func(_ context.Context, req InvokeRequest) (InvokeResponse, error) {
 			requestedModels = append(requestedModels, req.Model)
 			if req.Model == DefaultSecondOpinionModel {
