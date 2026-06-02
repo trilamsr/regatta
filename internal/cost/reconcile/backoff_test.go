@@ -5,8 +5,7 @@ import (
 	"time"
 )
 
-// TestBackoff_ExponentialBaseAndCap pins spec §3.4 line 247:
-// "Exponential backoff (1s × 2^n, capped 5min)".
+// TestBackoff_ExponentialBaseAndCap pins spec §3.4 line 247 — 1s × 2^n capped 5min.
 func TestBackoff_ExponentialBaseAndCap(t *testing.T) {
 	b := NewBackoff(time.Second, 5*time.Minute)
 	want := []time.Duration{
@@ -44,10 +43,7 @@ func TestBackoff_ResetClearsAttempt(t *testing.T) {
 	}
 }
 
-// TestBackoff_RetryAfterHonoured — when the server sends a retry-after
-// duration, NextWithRetryAfter returns max(retryAfter, exp_backoff).
-// Pins spec §3.4 + R3 + A3 rubric: "Anthropic Usage API client respects
-// retry-after header on 429."
+// TestBackoff_RetryAfterHonoured pins R3 + A3 — NextWithRetryAfter returns max(retryAfter, exp).
 func TestBackoff_RetryAfterHonoured(t *testing.T) {
 	b := NewBackoff(time.Second, 5*time.Minute)
 	// First attempt: exp=1s, retryAfter=12s → expect 12s.

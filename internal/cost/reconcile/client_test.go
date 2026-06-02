@@ -16,10 +16,7 @@ import (
 // prove the key never appears in any record.
 const adminKeyFixture = "sk-ant-admin-fixture-DO-NOT-LEAK"
 
-// TestClient_FetchCost_SendsExpectedHeadersAndQuery — pins spec §3.4:
-//   - GET /v1/organizations/cost_report/messages
-//   - starting_at + ending_at + bucket_width + group_by[]=model
-//   - headers: anthropic-version, x-api-key, User-Agent
+// TestClient_FetchCost_SendsExpectedHeadersAndQuery pins spec §3.4 cost-report wire shape.
 func TestClient_FetchCost_SendsExpectedHeadersAndQuery(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 
@@ -74,8 +71,7 @@ func TestClient_FetchCost_SendsExpectedHeadersAndQuery(t *testing.T) {
 	}
 }
 
-// TestClient_FetchCost_404ReturnsErrCostAPIUnavailable — pins spec §3.4:
-// Cost API 404/403 → fallback signal so caller switches to Usage API.
+// TestClient_FetchCost_404ReturnsErrCostAPIUnavailable pins spec §3.4 fallback signal.
 func TestClient_FetchCost_404ReturnsErrCostAPIUnavailable(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -95,9 +91,7 @@ func TestClient_FetchCost_404ReturnsErrCostAPIUnavailable(t *testing.T) {
 	}
 }
 
-// TestClient_429ReturnsErrRateLimitedWithRetryAfter — pins R3 + A3.
-// retry-after header is parsed and surfaced via ErrRateLimited's
-// RetryAfter().
+// TestClient_429ReturnsErrRateLimitedWithRetryAfter pins R3 + A3 retry-after parsing.
 func TestClient_429ReturnsErrRateLimitedWithRetryAfter(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -122,10 +116,7 @@ func TestClient_429ReturnsErrRateLimitedWithRetryAfter(t *testing.T) {
 	}
 }
 
-// TestClient_NeverLogsKeyValue — pins R15. Across every failure path
-// (404, 429, 500, network err), the captured request body / error
-// content must NOT contain the admin key fixture. This is a structural
-// invariant: errors include path + status only.
+// TestClient_NeverLogsKeyValue pins R15 — admin key absent from every error string.
 func TestClient_NeverLogsKeyValue(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 
@@ -169,8 +160,7 @@ func TestClient_NeverLogsKeyValue(t *testing.T) {
 	}
 }
 
-// TestClient_FetchUsage_DecodesUsageBuckets — sanity check the Usage
-// API fallback decoder.
+// TestClient_FetchUsage_DecodesUsageBuckets pins the Usage API fallback decoder shape.
 func TestClient_FetchUsage_DecodesUsageBuckets(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

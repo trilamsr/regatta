@@ -5,10 +5,7 @@ import (
 	"time"
 )
 
-// TestReconciler_BucketWindowMatchesAnthropicSpec pins spec §3.4 line 225:
-// "Reconciler runs at top-of-hour + 2min jitter; fetches the just-closed
-// hour's bucket." Tick at 01:02 with bucketWidth=1h returns the closed
-// bucket [00:00, 01:00).
+// TestReconciler_BucketWindowMatchesAnthropicSpec pins spec §3.4 line 225 — just-closed bucket window.
 func TestReconciler_BucketWindowMatchesAnthropicSpec(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -52,9 +49,7 @@ func TestReconciler_BucketWindowMatchesAnthropicSpec(t *testing.T) {
 	}
 }
 
-// TestNextTickTime_AlignsToTopOfHourPlusJitter asserts that scheduling
-// the next tick lands at the next top-of-(bucketWidth) + jitter offset.
-// Spec §3.4 line 225 — "top-of-hour + 2min jitter".
+// TestNextTickTime_AlignsToTopOfHourPlusJitter pins spec §3.4 line 225 — top-of-hour + jitter.
 func TestNextTickTime_AlignsToTopOfHourPlusJitter(t *testing.T) {
 	now := time.Date(2026, 6, 1, 1, 30, 0, 0, time.UTC)
 	got := NextTickTime(now, time.Hour, 2*time.Minute)
@@ -64,8 +59,7 @@ func TestNextTickTime_AlignsToTopOfHourPlusJitter(t *testing.T) {
 	}
 }
 
-// TestNextTickTime_AlreadyPastJitterSkipsToNextWindow — if now is already
-// past the current window's jitter mark, schedule for the window after.
+// TestNextTickTime_AlreadyPastJitterSkipsToNextWindow pins past-jitter-mark advance behaviour.
 func TestNextTickTime_AlreadyPastJitterSkipsToNextWindow(t *testing.T) {
 	now := time.Date(2026, 6, 1, 2, 5, 0, 0, time.UTC) // past 02:02 already
 	got := NextTickTime(now, time.Hour, 2*time.Minute)

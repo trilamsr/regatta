@@ -139,10 +139,6 @@ func (c *capturingHandler) eventCounts() map[string]int {
 	return m
 }
 
-// ====================================================================
-// Helpers
-// ====================================================================
-
 func mkRecorder(t *testing.T, recorded float64) *fakeRecordedReader {
 	t.Helper()
 	return &fakeRecordedReader{usd: recorded}
@@ -164,11 +160,8 @@ func fixedTime() time.Time {
 	return time.Date(2026, 6, 1, 1, 2, 0, 0, time.UTC)
 }
 
-// ====================================================================
-// B-tier tests — spec §6 T4 + §7 B
-// ====================================================================
+// B-tier — spec §6 T4 / §7 B.
 
-// 1. TestReconciler_TickEmitsBudgetReconciled_CostAPIPreferred
 func TestReconciler_TickEmitsBudgetReconciled_CostAPIPreferred(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 
@@ -234,7 +227,6 @@ func TestReconciler_TickEmitsBudgetReconciled_CostAPIPreferred(t *testing.T) {
 	}
 }
 
-// 2. TestReconciler_FallsBackToUsageAPI_WhenCostAPI404
 func TestReconciler_FallsBackToUsageAPI_WhenCostAPI404(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 
@@ -278,7 +270,6 @@ func TestReconciler_FallsBackToUsageAPI_WhenCostAPI404(t *testing.T) {
 	}
 }
 
-// 3. TestReconciler_DriftBelowThreshold_NoAlert
 func TestReconciler_DriftBelowThreshold_NoAlert(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -313,7 +304,6 @@ func TestReconciler_DriftBelowThreshold_NoAlert(t *testing.T) {
 	}
 }
 
-// 4. TestReconciler_DriftAboveThreshold_EmitsAlert
 func TestReconciler_DriftAboveThreshold_EmitsAlert(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -347,7 +337,6 @@ func TestReconciler_DriftAboveThreshold_EmitsAlert(t *testing.T) {
 	}
 }
 
-// 5. TestReconciler_AdminKeyUnset_LogsAndSkips — env unset → no HTTP, no row, WARN log.
 func TestReconciler_AdminKeyUnset_LogsAndSkips(t *testing.T) {
 	// Explicitly unset.
 	t.Setenv(adminKeyEnv, "")
@@ -388,10 +377,7 @@ func TestReconciler_AdminKeyUnset_LogsAndSkips(t *testing.T) {
 	}
 }
 
-// 6. TestReconciler_BucketWindowMatchesAnthropicSpec — covered by
-// window_test.go::TestReconciler_BucketWindowMatchesAnthropicSpec. Here
-// we additionally pin the Tick-side query parameters by capturing HTTP
-// query against the just-closed hour.
+// TestReconciler_TickWindowQueryParamsMatchSpec complements window_test.go by pinning Tick-side HTTP query params.
 func TestReconciler_TickWindowQueryParamsMatchSpec(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 	var seenQuery string
@@ -428,13 +414,9 @@ func TestReconciler_TickWindowQueryParamsMatchSpec(t *testing.T) {
 	}
 }
 
-// ====================================================================
-// A-tier tests — spec §7 A3 + A4 + audit invariant
-// ====================================================================
+// A-tier — spec §7 A3 + A4 + audit invariant.
 
-// 7. TestReconciler_DriftAlertDedupedAcrossTicks — same period_start +
-// same drift_pct (rounded 2dp) across 3 consecutive ticks → exactly ONE
-// alert. Pins A4.
+// TestReconciler_DriftAlertDedupedAcrossTicks pins A4 — one alert per (period_start, drift@2dp).
 func TestReconciler_DriftAlertDedupedAcrossTicks(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -472,10 +454,7 @@ func TestReconciler_DriftAlertDedupedAcrossTicks(t *testing.T) {
 	}
 }
 
-// 8. TestReconciler_429Backoff_RespectsRetryAfterHeader — pins R3 + A3.
-// Stub returns 429 with retry-after: 12 three times then 200; the
-// reconciler honours the header (a mock clock asserts that the
-// reconciler's wait calls totalled ≥ 36s) and succeeds on attempt 4.
+// TestReconciler_429Backoff_RespectsRetryAfterHeader pins R3 + A3 — total wait ≥ 3×retry-after.
 func TestReconciler_429Backoff_RespectsRetryAfterHeader(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 	var attempt int64
@@ -528,9 +507,7 @@ func TestReconciler_429Backoff_RespectsRetryAfterHeader(t *testing.T) {
 	}
 }
 
-// 9. TestReconciler_Network5xx_KeepsTickingAndNeverPanics — stub returns
-// 500 persistently; reconciler emits EventCostReconcileFailing after 5
-// attempts; Tick returns the persistent-5xx sentinel; no goroutine leak.
+// TestReconciler_Network5xx_KeepsTickingAndNeverPanics pins persistent-5xx sentinel + no goroutine leak.
 func TestReconciler_Network5xx_KeepsTickingAndNeverPanics(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -577,9 +554,7 @@ func TestReconciler_Network5xx_KeepsTickingAndNeverPanics(t *testing.T) {
 	}
 }
 
-// 10. TestReconciler_AnthropicResponseSig_IsSHA256OfCanonicalBody —
-// payload.api_response_sig is sha256(canonical(response body)).
-// Canonicalisation: decode then re-marshal with sorted keys.
+// TestReconciler_AnthropicResponseSig_IsSHA256OfCanonicalBody pins A2 audit-replay invariant.
 func TestReconciler_AnthropicResponseSig_IsSHA256OfCanonicalBody(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 	body := mustReadTestdata(t, "anthropic_cost_2026_06_01_01h.json")
@@ -629,16 +604,9 @@ func canonicalSHA256(t *testing.T, body []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ====================================================================
-// A+-tier tests — spec §7 A+ + R15 + LWW pin
-// ====================================================================
+// A+-tier — spec §7 A+ + R15 + LWW pin.
 
-// 11. TestReconciler_LWWCorrectionEmitsNewRow — first Tick writes a
-// reconciled row; second Tick same period writes ANOTHER row. The
-// reducer is LWW per substrate v2 §4 (R6 backfill-as-first-class) —
-// the reconciler emits raw rows; the Fold layer (substrate) picks the
-// later one. Test asserts: BOTH rows land + the second's actual_usd
-// reflects the corrected response.
+// TestReconciler_LWWCorrectionEmitsNewRow pins R6 — two raw rows per period; Fold picks later.
 func TestReconciler_LWWCorrectionEmitsNewRow(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 	var attempt int64
@@ -693,9 +661,7 @@ func TestReconciler_LWWCorrectionEmitsNewRow(t *testing.T) {
 	}
 }
 
-// 12. TestReconciler_NeverLogsKeyValue — across every error path (401,
-// 403, 404, 429, 500, network-down), log capture asserts the admin key
-// fixture string NEVER appears in any log record. Pins R15.
+// TestReconciler_NeverLogsKeyValue pins R15 across 6 error paths × text+JSON handlers.
 func TestReconciler_NeverLogsKeyValue(t *testing.T) {
 	t.Setenv(adminKeyEnv, adminKeyFixture)
 
