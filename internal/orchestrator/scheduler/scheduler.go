@@ -234,6 +234,14 @@ type Scheduler struct {
 	// warn so a misconfigured brief logs once per (program_id, from_id)
 	// per scheduler-process lifetime instead of every tick.
 	multiDefaultLogged sync.Map
+
+	// WriteHook is test-only; see
+	// docs/engineer/specs/2026-06-02-s3-t4-crash-recovery-property.md §3.3.
+	// Fires before every substrate-bound write inside Tick with a
+	// monotonically-incrementing writeIndex. Returning non-nil aborts
+	// Tick mid-flight, simulating a crash at write index k.
+	// Production wires nil — the field stays out of the hot path.
+	WriteHook func(writeIndex int) error
 }
 
 // New constructs a Scheduler. The Config is copied; later mutations to
@@ -306,8 +314,9 @@ var activeStates = []state.AgentState{
 //     last tick, hotspot-blocked, or a future failure mode), letting
 //     the next tick retry the reservation tx.
 func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
+	tc := &tickCtx{}
 	if s.cfg.Evaluator != nil {
-		if err := s.evalPendingEdges(ctx); err != nil {
+		if err := s.evalPendingEdges(ctx, tc); err != nil {
 			return nil, fmt.Errorf("scheduler: eval edges: %w", err)
 		}
 	}
@@ -324,7 +333,7 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 	// from this tick (re-evaluated next tick because status stays
 	// planned), Reject flips status to 'rejected' so future ticks no
 	// longer surface it via ListSpawnable.
-	spawnable, err = s.applyApprovalGates(ctx, spawnable)
+	spawnable, err = s.applyApprovalGates(ctx, tc, spawnable)
 	if err != nil {
 		return nil, fmt.Errorf("scheduler: apply approval gates: %w", err)
 	}
@@ -341,16 +350,48 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 		return nil, err
 	}
 
-	reserved, attempted, err := s.reserveFromSpawnable(ctx, spawnable, occupancy)
+	reserved, attempted, err := s.reserveFromSpawnable(ctx, tc, spawnable, occupancy)
 	if err != nil {
 		return reserved, err
 	}
 
-	rest, err := s.reserveOrphans(ctx, occupancy, attempted)
+	rest, err := s.reserveOrphans(ctx, tc, occupancy, attempted)
 	if err != nil {
 		return reserved, err
 	}
 	return append(reserved, rest...), nil
+}
+
+// tickCtx threads the per-tick WriteHook counter through Tick's
+// substrate-bound write sites. Heap-once-per-tick allocation cost is
+// negligible vs. sqlite-tx overhead; pointer keeps the counter shared
+// across the helpers reserveFromSpawnable, reserveOrphans, etc.
+type tickCtx struct{ writeIndex int }
+
+// writeHookErr wraps a non-nil WriteHook return so the per-item err
+// swallow inside reserveFromSpawnable can errors.Is-detect the
+// crash-sim path and propagate it up to Tick's caller. Production
+// WriteHook=nil never constructs this.
+type writeHookErr struct{ inner error }
+
+func (e *writeHookErr) Error() string { return "scheduler: write-hook aborted: " + e.inner.Error() }
+func (e *writeHookErr) Unwrap() error { return e.inner }
+
+// fireWriteHook is the test-only crash-injection seam (spec §3.3). Nil
+// hook short-circuits the production path with one branch + one
+// pointer-deref, no allocs. Each call increments writeIndex even when
+// the hook is nil so the counter's meaning is independent of test
+// wiring.
+func (s *Scheduler) fireWriteHook(tc *tickCtx) error {
+	idx := tc.writeIndex
+	tc.writeIndex++
+	if s.WriteHook == nil {
+		return nil
+	}
+	if err := s.WriteHook(idx); err != nil {
+		return &writeHookErr{inner: err}
+	}
+	return nil
 }
 
 // reserveFromSpawnable walks the gate-pass-filtered spawnable slice
@@ -359,7 +400,7 @@ func (s *Scheduler) Tick(ctx context.Context) ([]int64, error) {
 // Lane-capped items still get their pending row materialized
 // (committed in a no-transition tx) so the next tick's reserveOrphans
 // pass picks them up once capacity frees.
-func (s *Scheduler) reserveFromSpawnable(ctx context.Context, spawnable []state.WorkItem, occupancy map[string]int) (reserved []int64, attempted map[int64]struct{}, err error) {
+func (s *Scheduler) reserveFromSpawnable(ctx context.Context, tc *tickCtx, spawnable []state.WorkItem, occupancy map[string]int) (reserved []int64, attempted map[int64]struct{}, err error) {
 	attempted = map[int64]struct{}{}
 	var failures int
 	for _, w := range spawnable {
@@ -375,9 +416,16 @@ func (s *Scheduler) reserveFromSpawnable(ctx context.Context, spawnable []state.
 				attribute.String("regatta.kind", string(w.Kind)),
 			))
 		hasCap := s.laneHasCapacity(w.Lane, occupancy)
-		agentID, transitioned, err := s.reserveOne(itemCtx, w.ID, w.Lane, hasCap)
+		agentID, transitioned, err := s.reserveOne(itemCtx, tc, w.ID, w.Lane, hasCap)
 		itemSpan.End()
 		if err != nil {
+			// WriteHook crash-sim error MUST abort the tick (spec §3.3) —
+			// bypass the per-item swallow that protects against production
+			// row-shape errors.
+			var hookErr *writeHookErr
+			if errors.As(err, &hookErr) {
+				return reserved, attempted, err
+			}
 			if errors.Is(err, state.ErrLockHeld) {
 				// The full reservation tx rolled back, so the pending
 				// row is not yet materialized for this work_item.
@@ -387,6 +435,9 @@ func (s *Scheduler) reserveFromSpawnable(ctx context.Context, spawnable []state.
 				// rather than the rolled-back rowid. Mark the agent as
 				// already-attempted so reserveOrphans does not re-try
 				// the same lock acquisition this same tick.
+				if hookErr := s.fireWriteHook(tc); hookErr != nil {
+					return reserved, attempted, hookErr
+				}
 				if a, upErr := s.db.UpsertPending(ctx, w.ID, w.Lane); upErr == nil {
 					agentID = a.ID
 					attempted[a.ID] = struct{}{}
@@ -438,7 +489,7 @@ func (s *Scheduler) reserveFromSpawnable(ctx context.Context, spawnable []state.
 // recovery requeue). Each gets a single-tx reservation (locks +
 // transition). The agent row already exists, so the tx omits the
 // upsert step.
-func (s *Scheduler) reserveOrphans(ctx context.Context, occupancy map[string]int, attempted map[int64]struct{}) ([]int64, error) {
+func (s *Scheduler) reserveOrphans(ctx context.Context, tc *tickCtx, occupancy map[string]int, attempted map[int64]struct{}) ([]int64, error) {
 	pending, err := s.db.ListAgentsByState(ctx, state.AgentPending)
 	if err != nil {
 		return nil, fmt.Errorf("scheduler: list pending: %w", err)
@@ -456,7 +507,13 @@ func (s *Scheduler) reserveOrphans(ctx context.Context, occupancy map[string]int
 		}
 		locks := s.resolveLocks(a.WorkItemID)
 		err := s.db.WithTx(ctx, func(tx *sql.Tx) error {
+			if err := s.fireWriteHook(tc); err != nil {
+				return err
+			}
 			if err := s.db.TryAcquireLocksTx(ctx, tx, locks, a.ID, s.cfg.LockTTL); err != nil {
+				return err
+			}
+			if err := s.fireWriteHook(tc); err != nil {
 				return err
 			}
 			_, err := s.db.TransitionAgentTx(ctx, tx, a.ID, state.AgentSpawning, state.AgentMutation{})
@@ -484,9 +541,12 @@ func (s *Scheduler) reserveOrphans(ctx context.Context, occupancy map[string]int
 // pending and the next tick's reserveOrphans retries the
 // locks+transition portion. Returns transitioned=true only when the
 // agent left pending for spawning inside this tx.
-func (s *Scheduler) reserveOne(ctx context.Context, workItemID, lane string, hasCap bool) (agentID int64, transitioned bool, err error) {
+func (s *Scheduler) reserveOne(ctx context.Context, tc *tickCtx, workItemID, lane string, hasCap bool) (agentID int64, transitioned bool, err error) {
 	locks := s.resolveLocks(workItemID)
 	err = s.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if hookErr := s.fireWriteHook(tc); hookErr != nil {
+			return hookErr
+		}
 		a, upErr := s.db.UpsertPendingTx(ctx, tx, workItemID, lane)
 		if upErr != nil {
 			return upErr
@@ -495,8 +555,14 @@ func (s *Scheduler) reserveOne(ctx context.Context, workItemID, lane string, has
 		if !hasCap {
 			return nil
 		}
+		if hookErr := s.fireWriteHook(tc); hookErr != nil {
+			return hookErr
+		}
 		if lockErr := s.db.TryAcquireLocksTx(ctx, tx, locks, a.ID, s.cfg.LockTTL); lockErr != nil {
 			return lockErr
+		}
+		if hookErr := s.fireWriteHook(tc); hookErr != nil {
+			return hookErr
 		}
 		if _, trErr := s.db.TransitionAgentTx(ctx, tx, a.ID, state.AgentSpawning, state.AgentMutation{}); trErr != nil {
 			return trErr
@@ -523,7 +589,7 @@ func (s *Scheduler) reserveOne(ctx context.Context, workItemID, lane string, has
 // healthy. Reject-transition failures DO halt the tick because a wi
 // stuck in 'planned' after a reject verdict would silently retry until
 // the operator notices.
-func (s *Scheduler) applyApprovalGates(ctx context.Context, spawnable []state.WorkItem) ([]state.WorkItem, error) {
+func (s *Scheduler) applyApprovalGates(ctx context.Context, tc *tickCtx, spawnable []state.WorkItem) ([]state.WorkItem, error) {
 	if s.cfg.Gate == nil || s.cfg.GateResolver == nil {
 		return spawnable, nil
 	}
@@ -559,7 +625,7 @@ func (s *Scheduler) applyApprovalGates(ctx context.Context, spawnable []state.Wo
 		case approval.ResultProceed:
 			kept = append(kept, wi)
 		case approval.ResultReject:
-			if err := s.markWorkItemRejected(ctx, wi.ID); err != nil {
+			if err := s.markWorkItemRejected(ctx, tc, wi.ID); err != nil {
 				return nil, fmt.Errorf("mark %s rejected: %w", wi.ID, err)
 			}
 			s.log.Info(string(obs.EventApprovalDecided),
@@ -643,7 +709,10 @@ func (s *Scheduler) applyCostGovernor(ctx context.Context, spawnable []state.Wor
 // work_item transition yet, so the raw-SQL pattern matches the
 // brief_loader.go archive-on-archived-dep precedent. A followup will
 // consolidate both into a state-package API.
-func (s *Scheduler) markWorkItemRejected(ctx context.Context, id string) error {
+func (s *Scheduler) markWorkItemRejected(ctx context.Context, tc *tickCtx, id string) error {
+	if err := s.fireWriteHook(tc); err != nil {
+		return err
+	}
 	now := time.Now().UTC().Unix()
 	res, err := s.db.SQL().ExecContext(ctx,
 		`UPDATE work_items SET status = ?, updated_at = ? WHERE id = ? AND status = ?`,
@@ -688,7 +757,7 @@ func (s *Scheduler) laneHasCapacity(lane string, occupancy map[string]int) bool 
 // journal sha. BriefLoader validation (W2-A CheckReachability) has
 // already pinned the default's target as a live feature, so the
 // fallback never strands flow.
-func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
+func (s *Scheduler) evalPendingEdges(ctx context.Context, tc *tickCtx) error {
 	edges, err := s.db.ListPendingEdgesFromMerged(ctx)
 	if err != nil {
 		return fmt.Errorf("list pending edges: %w", err)
@@ -737,6 +806,9 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 			firedStr := edgeFiredFalse
 			if fired {
 				firedStr = edgeFiredTrue
+			}
+			if err := s.fireWriteHook(tc); err != nil {
+				return err
 			}
 			if err := s.db.MarkEdgeFired(ctx, e.ID, firedStr, journal.ContentSHA); err != nil {
 				s.log.Warn(string(obs.EventEdgeMarkFailed),
@@ -793,6 +865,9 @@ func (s *Scheduler) evalPendingEdges(ctx context.Context) error {
 		}
 		if agg.AnyNonDefaultTrue || agg.AnyNonDefaultPending || agg.NonDefaultCount == 0 {
 			continue
+		}
+		if err := s.fireWriteHook(tc); err != nil {
+			return err
 		}
 		if err := s.db.MarkEdgeFired(ctx, agg.DefaultEdgeID, edgeFiredTrue, journal.ContentSHA); err != nil {
 			s.log.Warn("edge.default_mark_failed",
