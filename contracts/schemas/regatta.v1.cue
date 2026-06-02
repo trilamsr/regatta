@@ -48,7 +48,10 @@ import "list"
 		acceptance_section?: *"## Acceptance" | string
 	}
 	if type == "markdown_catalog" {
-		path:    string                          // path relative to repo root
+		// Directory containing .regatta/items/*.md, relative to repo
+		// root. Default "." matches the self-host layout where items
+		// live at <repo>/.regatta/items/.
+		root:    *"." | string
 		format:  *"github_checkbox" | "rubric"   // - [ ] / - [x]  vs.  ☐/⧗/☑
 	}
 	if type == "jira" {

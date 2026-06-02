@@ -18,14 +18,38 @@ import (
 // Notifier is the channel-agnostic surface gates call to deliver a
 // pending-approval message. Real implementations hold their own
 // credentials; the gate only sees Request/Receipt.
+//
+// Conformance — every Notify implementation MUST honour the four
+// invariants pinned by TestNotifier_InterfaceContract (spec §5.8,
+// §7 audit-trail). Channel PRs (slack, pagerduty, email) earn
+// conformance by appending a factory row; the contract suite mutates
+// each invariant and the impl MUST fail-closed:
+//
+//  1. On nil error, len(Receipt.DeliveredTo) == len(req.Reviewers).
+//     Partial fan-out (e.g. one Slack DM bounces) MUST surface as a
+//     non-nil error rather than a partial Receipt — callers cannot
+//     silently lose a reviewer.
+//  2. The impl MUST emit at least one obs record carrying the
+//     canonical four attrs (KeyApprovalID, KeyWorkItemID, KeyGateID,
+//     KeyReviewerCount). Event name MAY be channel-specific
+//     (approval.notify_stub, approval.notified, …); attrs MUST NOT.
+//  3. len(req.Reviewers) == 0 MUST return ErrNoReviewers (wrapped is
+//     fine — callers use errors.Is) without emitting an audit record;
+//     an approval pause with no reviewers would stall indefinitely.
+//  4. A cancelled or expired ctx MUST surface ctx.Err() before any
+//     external side effect or audit emission. Implementations MAY
+//     check ctx.Err() at entry and again before commit; either way
+//     a cancelled call MUST NOT leave a "we notified" breadcrumb.
+//
+// Implementations must be safe to call concurrently and must not
+// block past their own transport timeout.
 type Notifier interface {
 	// Kind returns the registry key — "slack", "pagerduty", "email",
 	// "stub", etc. The same value MUST appear in regatta.yaml channel
 	// config; mismatch fails at startup (fail-closed contract below).
 	Kind() string
-	// Notify delivers the approval request. Implementations must be
-	// safe to call concurrently and must not block past their own
-	// transport timeout.
+	// Notify delivers the approval request. See the Notifier godoc for
+	// the four conformance invariants every impl MUST satisfy.
 	Notify(ctx context.Context, req Request) (Receipt, error)
 }
 
@@ -59,8 +83,10 @@ type Request struct {
 
 // Receipt records what the channel actually accomplished so the
 // caller can persist it on the approval row for the auditor's later
-// reconciliation. DeliveredTo may be a strict subset of req.Reviewers
-// when a channel partial-fans (e.g. Slack DM bounce for one user).
+// reconciliation. On nil error from Notify, DeliveredTo MUST contain
+// the full req.Reviewers set (same multiset, order may differ) —
+// partial fan-out surfaces as a non-nil error, never as a shorter
+// DeliveredTo. See Notifier godoc for the full invariant.
 type Receipt struct {
 	DeliveredTo []string
 	Channel     string
@@ -73,6 +99,13 @@ type Receipt struct {
 // default — silent fall-through to stub in production would silently
 // drop approvals (spec §5.8 fail-closed invariant).
 var ErrUnknownNotifier = errors.New("approval: unknown notifier kind")
+
+// ErrNoReviewers is returned by Notifier.Notify when req.Reviewers is
+// empty. The notification seam is fail-closed by design (spec §5.8):
+// an approval pause with no reviewers would stall the work item
+// forever with no audit trail, so the gate-tick aborts rather than
+// emits a misleading "we notified" breadcrumb. Callers use errors.Is.
+var ErrNoReviewers = errors.New("approval: zero reviewers in request")
 
 // Registry is a fail-closed lookup table from notifier kind to
 // concrete adapter. Construction is process-local; tests get a fresh

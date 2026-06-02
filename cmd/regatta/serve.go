@@ -22,6 +22,7 @@ import (
 
 	"github.com/trilamsr/regatta/internal/canon"
 	"github.com/trilamsr/regatta/internal/config"
+	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
 	"github.com/trilamsr/regatta/internal/cost/spend"
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/orchestrator"
@@ -112,7 +113,7 @@ func (l laneCapsFlag) Set(s string) error {
 func runServe(args []string) int {
 	fs := flag.NewFlagSet(subcmdServe, flag.ExitOnError)
 	dbPath := fs.String("db", "regatta.db", "Path to sqlite state DB")
-	itemsRoot := fs.String("items-root", ".", "Repo root containing .regatta/items/*.md")
+	itemsRoot := fs.String("items-root", ".", "Repo root containing .regatta/items/*.md (overrides regatta.yaml spec_adapter.root when set explicitly)")
 	tickOnce := fs.Bool("tick-once", false, "Run one poll+schedule cycle and exit")
 	pollDur := fs.Duration("poll", 30*time.Second, "SpecAdapter poll interval")
 	tickDur := fs.Duration("tick", 5*time.Second, "Scheduler tick interval")
@@ -129,6 +130,30 @@ func runServe(args []string) int {
 	addr := fs.String("addr", defaultListenerAddr, "HTTP listener bind address when --ui=true")
 	ui := fs.Bool("ui", true, "Boot the operator HTTP listener; --ui=false skips bind entirely")
 	_ = fs.Parse(args)
+
+	// Resolution priority for the adapter items-root (spec
+	// docs/engineer/specs/2026-06-02-s1-t1-self-host-regatta-yaml.md §5):
+	//   1. explicit --items-root flag wins;
+	//   2. else regatta.yaml spec_adapter.root (markdown_catalog only);
+	//   3. else the flag default ".".
+	// flag.Visit reports only flags the operator passed; the default
+	// value never visits, so an absent --items-root falls through to
+	// the yaml field if one is declared.
+	itemsRootExplicit := false
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "items-root" {
+			itemsRootExplicit = true
+		}
+	})
+	if !itemsRootExplicit {
+		if yamlRoot, ok := loadMarkdownCatalogRoot(*repoRoot); ok {
+			resolved := yamlRoot
+			if !filepath.IsAbs(resolved) {
+				resolved = filepath.Join(*repoRoot, resolved)
+			}
+			*itemsRoot = resolved
+		}
+	}
 
 	logger := log.New(os.Stderr, "regatta: ", log.LstdFlags|log.Lmicroseconds)
 	// logFormat was validated at Parse-time; the err branch fires only
@@ -547,6 +572,26 @@ func healthzHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte(healthzBody))
+}
+
+// loadMarkdownCatalogRoot reads regatta.yaml at repoRoot and returns
+// (spec_adapter.root, true) when the adapter type is markdown_catalog.
+// Returns ("", false) when the yaml is missing, malformed, or declares
+// a different adapter type — callers fall back to the --items-root
+// flag default. Malformed-yaml is intentionally not fatal here: the
+// approval-gate loader catches the same yaml a few lines later and
+// fails loud there, so this codepath stays read-only-best-effort.
+func loadMarkdownCatalogRoot(repoRoot string) (string, bool) {
+	cfgPath := filepath.Join(repoRoot, "regatta.yaml")
+	cfg, err := validateconfig.LoadConfigFile(cfgPath)
+	if err != nil {
+		return "", false
+	}
+	root := cfg.MarkdownCatalogRoot()
+	if root == "" {
+		return "", false
+	}
+	return root, true
 }
 
 // approvalKeyring reuses the brief HMAC key for approval-token signing.
