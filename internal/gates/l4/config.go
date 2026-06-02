@@ -51,6 +51,12 @@ type Config struct {
 	// and Blocking stays false regardless of finding severity.
 	AdvisoryMode bool
 
+	// SecondOpinionModel is the alt model the gate escalates to
+	// when the PR body disputes a finding via [L4-DISPUTE]. Empty
+	// falls through ResolveSecondOpinionModel to env then default
+	// (Opus 4.7). Per-Run only; set at config-load.
+	SecondOpinionModel string
+
 	// Invoker is the model call-site. Tests inject a stub here.
 	// Nil panics at Run time so the wiring contract is explicit.
 	Invoker Invoker
@@ -66,6 +72,7 @@ type Input struct {
 	Diff      string // unified-diff text; gate clips to MaxDiffChars
 	Spec      string // binding-spec markdown inlined into the prompt
 	Scorecard string // implementer's PR-body A+ rubric scorecard, verbatim
+	PRBody    string // raw PR body; the gate greps it for [L4-DISPUTE] markers
 }
 
 // ResolveModel applies the spec §3.6 precedence: yaml > env > default.

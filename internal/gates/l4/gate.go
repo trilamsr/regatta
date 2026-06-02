@@ -111,6 +111,28 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 	gr.Telemetry.TokensInput = resp.TokensIn
 	gr.Telemetry.TokensOutput = resp.TokensOut
 
+	// Second-opinion loop (issue #353): if the PR body disputes a
+	// finding the primary actually returned, re-invoke with the alt
+	// model and drop any disputed finding the second opinion did NOT
+	// confirm. Second-opinion error fails-closed (keeps primary).
+	if disputed := ParseDisputes(in.PRBody); len(disputed) > 0 {
+		toReview := intersect(disputed, gr.Findings)
+		if len(toReview) > 0 {
+			soModel := ResolveSecondOpinionModel(cfg.SecondOpinionModel)
+			soResp, soErr := cfg.Invoker(ctx, InvokeRequest{
+				Model:    soModel,
+				Input:    in,
+				GateID:   cfg.GateID,
+				MaxChars: maxChars,
+			})
+			if soErr == nil {
+				gr.Findings = mergeDisputed(gr.Findings, toReview, soResp.Findings)
+				gr.Telemetry.TokensInput += soResp.TokensIn
+				gr.Telemetry.TokensOutput += soResp.TokensOut
+			}
+		}
+	}
+
 	if Blocks(rules, gr.Findings) {
 		if cfg.AdvisoryMode {
 			gr.Verdict = schemas.VerdictAdvisory
