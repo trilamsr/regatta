@@ -87,8 +87,41 @@ type Prompts struct {
 // validated by LoadBytes against the CUE schema. New fields go in
 // alongside their CUE peer in contracts/schemas/regatta.v1.cue.
 type Config struct {
-	Prompts      *Prompts      `yaml:"prompts,omitempty" json:"prompts,omitempty"`
-	SpecAdapter  *SpecAdapter  `yaml:"spec_adapter,omitempty" json:"spec_adapter,omitempty"`
+	Prompts     *Prompts     `yaml:"prompts,omitempty" json:"prompts,omitempty"`
+	SpecAdapter *SpecAdapter `yaml:"spec_adapter,omitempty" json:"spec_adapter,omitempty"`
+	Safety      *Safety      `yaml:"safety,omitempty" json:"safety,omitempty"`
+}
+
+// Safety is the typed view of `regatta.yaml::safety`. Only the fields a
+// Go consumer needs land here; everything else stays CUE-only until a
+// callsite emerges. Schema authority: contracts/schemas/regatta.v1.cue
+// §Safety.
+type Safety struct {
+	// Authz carries the OPA policy hot-reload config. Nil ⇒ embed.FS
+	// default-deny only, no watcher, no SIGHUP handler.
+	Authz *Authz `yaml:"authz,omitempty" json:"authz,omitempty"`
+}
+
+// Authz mirrors `safety.authz` in the CUE schema. Slim single-tenant W8
+// spec (docs/engineer/specs/2026-06-02-s3-t1-w8-opa-slim.md §3.5). All
+// fields optional — an absent block keeps zero-config deployments running
+// off the embed.FS default-deny bundle.
+type Authz struct {
+	// PolicyDir is the operator-supplied path to <policy_dir>; the disk
+	// loader appends `regatta/v1/<tenant>/`. Empty ⇒ serve embed.FS and
+	// skip both reload triggers.
+	PolicyDir string `yaml:"policy_dir,omitempty" json:"policy_dir,omitempty"`
+	// ReloadDebounce is the fsnotify event coalesce window (e.g. "250ms").
+	// Empty ⇒ reload.DefaultDebounce.
+	ReloadDebounce string `yaml:"reload_debounce,omitempty" json:"reload_debounce,omitempty"`
+	// ReloadSighup defaults to true via the CUE schema. Operator sets
+	// false to opt the SIGHUP handler out (HR3 — windows / CI / any
+	// process that already owns SIGHUP).
+	ReloadSighup *bool `yaml:"reload_sighup,omitempty" json:"reload_sighup,omitempty"`
+	// ReloadFsnotify defaults to true via the CUE schema. Operator sets
+	// false on filesystems where inotify / kqueue is unreliable (NFS,
+	// certain container overlays).
+	ReloadFsnotify *bool `yaml:"reload_fsnotify,omitempty" json:"reload_fsnotify,omitempty"`
 }
 
 // SpecAdapter is the typed view of `regatta.yaml::spec_adapter`. Only
@@ -115,6 +148,17 @@ func (c *Config) PlannerPromptSHA() string {
 		return ""
 	}
 	return c.Prompts.PlannerSHA
+}
+
+// AuthzConfig returns the resolved safety.authz block, or nil when the
+// operator omitted it. Nil-safe at every level so a fresh Config{} or a
+// nil receiver both yield nil. cmd/regatta calls this to decide whether
+// to start the OPA hot-reload Reloader goroutine.
+func (c *Config) AuthzConfig() *Authz {
+	if c == nil || c.Safety == nil {
+		return nil
+	}
+	return c.Safety.Authz
 }
 
 // MarkdownCatalogRoot returns the resolved spec_adapter.root when the

@@ -125,23 +125,4 @@ func TestLoader_UnknownTenant(t *testing.T) {
 }
 
 // embeddedFallback returns a BundleLoader that serves the T4 embed.FS bundle.
-func embeddedFallback() authz.BundleLoader {
-	return &embedFallback{}
-}
-
-type embedFallback struct{}
-
-func (e *embedFallback) Tenants(_ context.Context) ([]string, error) {
-	return []string{authz.DefaultTenant}, nil
-}
-
-func (e *embedFallback) ActiveBundle(_ context.Context, tenant string) (string, map[string]string, error) {
-	if tenant != authz.DefaultTenant {
-		return "", nil, authz.ErrPolicyMissing
-	}
-	files, err := embedded.Files()
-	if err != nil {
-		return "", nil, err
-	}
-	return embedded.DefaultBundleSHA256, files, nil
-}
+func embeddedFallback() authz.BundleLoader { return embedded.NewLoader() }
