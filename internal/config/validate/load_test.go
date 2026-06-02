@@ -441,3 +441,71 @@ safety: {}
 		t.Fatalf("expected nil error with safety: {} (defaults must apply); got %v", err)
 	}
 }
+
+// AuthzConfig surfaces the operator-supplied policy_dir for serve wiring.
+func TestLoad_Authz_PolicyDirSurfacedOnConfig(t *testing.T) {
+	yaml := strings.Replace(minimalValid, `safety:
+  destructive_ops_deny: []
+  agent_creds_scope: dev_only
+`, `safety:
+  destructive_ops_deny: []
+  agent_creds_scope: dev_only
+  authz:
+    policy_dir: /etc/regatta/policies
+`, 1)
+	cfg, err := LoadConfig([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	az := cfg.AuthzConfig()
+	if az == nil {
+		t.Fatalf("AuthzConfig()=nil; want non-nil after operator declared safety.authz.policy_dir")
+	}
+	if az.PolicyDir != "/etc/regatta/policies" {
+		t.Fatalf("policy_dir=%q; want /etc/regatta/policies", az.PolicyDir)
+	}
+}
+
+// Absent safety.authz block returns a nil AuthzConfig — serve.go skips Reloader.
+func TestLoad_Authz_AbsentSurfacesNil(t *testing.T) {
+	cfg, err := LoadConfig([]byte(minimalValid))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.AuthzConfig() != nil {
+		t.Fatalf("AuthzConfig()=%+v; want nil when safety.authz is omitted", cfg.AuthzConfig())
+	}
+}
+
+// Operator opt-out toggles surface as *bool=false; CUE default is true.
+func TestLoad_Authz_ReloadToggles(t *testing.T) {
+	yaml := strings.Replace(minimalValid, `safety:
+  destructive_ops_deny: []
+  agent_creds_scope: dev_only
+`, `safety:
+  destructive_ops_deny: []
+  agent_creds_scope: dev_only
+  authz:
+    policy_dir: /etc/regatta/policies
+    reload_sighup: false
+    reload_fsnotify: false
+    reload_debounce: 500ms
+`, 1)
+	cfg, err := LoadConfig([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	az := cfg.AuthzConfig()
+	if az == nil {
+		t.Fatalf("AuthzConfig()=nil")
+	}
+	if az.ReloadSighup == nil || *az.ReloadSighup {
+		t.Fatalf("ReloadSighup=%v; want *false", az.ReloadSighup)
+	}
+	if az.ReloadFsnotify == nil || *az.ReloadFsnotify {
+		t.Fatalf("ReloadFsnotify=%v; want *false", az.ReloadFsnotify)
+	}
+	if az.ReloadDebounce != "500ms" {
+		t.Fatalf("ReloadDebounce=%q; want 500ms", az.ReloadDebounce)
+	}
+}

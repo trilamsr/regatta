@@ -22,6 +22,10 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/authz"
+	"github.com/trilamsr/regatta/internal/authz/policies/disk"
+	"github.com/trilamsr/regatta/internal/authz/policies/embedded"
+	"github.com/trilamsr/regatta/internal/authz/policies/reload"
 	"github.com/trilamsr/regatta/internal/canon"
 	"github.com/trilamsr/regatta/internal/config"
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
@@ -275,12 +279,25 @@ func runServe(args []string) int {
 		return 1
 	}
 
+	// W8 T1/T-HR: Hydrate the OPA authorizer + (optionally) start the
+	// disk-driven hot-reload goroutine. The Authorizer is plumbed to
+	// listenerConfig so W8 T3 can wire it through the web handler
+	// without touching boot code. Hydrate failure is fail-loud because a
+	// broken authz bundle MUST surface at boot — a serve that runs with
+	// an unhydrated store would deny every request mid-evaluation.
+	authzr, err := buildAuthorizer(ctx, *repoRoot, slogger)
+	if err != nil {
+		logger.Printf("authz: %v", err)
+		return 2
+	}
+
 	httpSrv, err := bootListener(listenerConfig{
-		UI:      *ui,
-		Addr:    *addr,
-		DB:      db,
-		Keyring: canon.MapKeyring(loadBriefKeyring()),
-		Clock:   time.Now,
+		UI:         *ui,
+		Addr:       *addr,
+		DB:         db,
+		Keyring:    canon.MapKeyring(loadBriefKeyring()),
+		Clock:      time.Now,
+		Authorizer: authzr,
 	})
 	if err != nil {
 		logger.Printf("listener boot: %v", err)
@@ -530,11 +547,15 @@ func buildApprovalGate(db *state.DB, repoRoot string, logger *slog.Logger) (sche
 
 // listenerConfig is the bootListener seam; the test harness drives it directly so integration tests exercise the real boot path.
 type listenerConfig struct {
-	UI      bool
-	Addr    string
-	DB      *state.DB
-	Keyring canon.Keyring
-	Clock   func() time.Time
+	UI         bool
+	Addr       string
+	DB         *state.DB
+	Keyring    canon.Keyring
+	Clock      func() time.Time
+	// Authorizer is the OPA-backed gate built at runServe boot. Pre-T3
+	// the web handler does not yet consume it; the field is plumbed so
+	// W8 T3 can pick it up without touching listener wiring.
+	Authorizer *authz.OPAAuthorizer
 }
 
 // preflightUIBoot fires BEFORE state.Open so the operator sees the HMAC misconfig at the loud-at-boot moment (spec §1.3 open-q 9.8) rather than as a render-time lie.
@@ -630,6 +651,97 @@ func loadMarkdownCatalogRoot(repoRoot string) (string, bool) {
 		return "", false
 	}
 	return root, true
+}
+
+// buildAuthorizer constructs the W8 OPA authorizer and (when the
+// operator declares safety.authz.policy_dir) spawns the hot-reload
+// goroutine bound to ctx. Empty / missing regatta.yaml ⇒ embed.FS
+// default-deny only; the authorizer is still hydrated so call sites
+// always see a non-nil store.
+//
+// Reloader lifecycle: bound to ctx — SIGINT/SIGTERM cancel the parent,
+// which drains both the watcher and signal goroutines. SIGHUP is
+// claimed by the reloader's own signal.Notify, which does not steal
+// from the parent context's signal.NotifyContext (it listens on a
+// disjoint signal set).
+func buildAuthorizer(ctx context.Context, repoRoot string, slogger *slog.Logger) (*authz.OPAAuthorizer, error) {
+	cfg, _ := validateconfig.LoadConfigFile(filepath.Join(repoRoot, "regatta.yaml"))
+	authzCfg := cfg.AuthzConfig()
+
+	// disk.Loader with embedded fallback is the canonical wiring: an
+	// empty / missing policy_dir falls through to embed.FS so single-
+	// tenant deployments boot zero-config.
+	loader := &disk.Loader{Fallback: embedded.NewLoader()}
+	if authzCfg != nil && authzCfg.PolicyDir != "" {
+		dir := authzCfg.PolicyDir
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(repoRoot, dir)
+		}
+		loader.Dir = dir
+	}
+
+	az, err := authz.NewOPAAuthorizer(authz.Config{Loader: loader})
+	if err != nil {
+		return nil, fmt.Errorf("new authorizer: %w", err)
+	}
+	if err := az.Hydrate(ctx); err != nil {
+		return nil, fmt.Errorf("hydrate: %w", err)
+	}
+
+	// Reloader only spins up when policy_dir is set — there is nothing
+	// to hot-reload for an embed.FS-only deployment.
+	if loader.Dir == "" {
+		return az, nil
+	}
+
+	r := &reload.Reloader{
+		Authorizer: az,
+		Loader:     loader,
+		Tenant:     authz.DefaultTenant,
+		Logger:     slogger,
+	}
+	if d := parseAuthzDebounce(authzCfg.ReloadDebounce); d > 0 {
+		r.Debounce = d
+	}
+	if authzCfg.ReloadSighup != nil && !*authzCfg.ReloadSighup {
+		r.DisableSighup = true
+	}
+	if authzCfg.ReloadFsnotify != nil && !*authzCfg.ReloadFsnotify {
+		r.DisableFsnotify = true
+	}
+	// OnStart fires after BOTH triggers (watcher + SIGHUP handler) are
+	// registered — commit 6341256 added the SIGHUP-readiness gate so
+	// operators (and tests) can rely on this log as the
+	// pid-can-receive-SIGHUP signal.
+	r.OnStart = func() {
+		slogger.Info("authz reload: ready",
+			"policy_dir", loader.Dir,
+			"sighup_enabled", !r.DisableSighup,
+			"fsnotify_enabled", !r.DisableFsnotify,
+		)
+	}
+	go func() {
+		if err := r.Run(ctx); err != nil {
+			slogger.Error("authz reload: exited", "err", err)
+		}
+	}()
+	return az, nil
+}
+
+// parseAuthzDebounce parses the CUE-validated `^[0-9]+(ms|s)$` debounce
+// string. Returns 0 on empty / parse error — reload.Reloader.Run then
+// falls back to reload.DefaultDebounce. The CUE schema already rejects
+// malformed values at validate-config time, so the parse-error branch
+// covers only a forward-compat drift between schema + Go parsing.
+func parseAuthzDebounce(s string) time.Duration {
+	if s == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0
+	}
+	return d
 }
 
 // approvalKeyring reuses the brief HMAC key for approval-token signing.
