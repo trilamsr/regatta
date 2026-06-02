@@ -16,6 +16,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"reflect"
 	"sync"
@@ -285,14 +286,17 @@ func TestE2E_ApprovalGateLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ListApprovalEvents: %v", err)
 		}
-		if len(events) != 2 {
-			t.Fatalf("events=%d; want 2 (requested + notified)", len(events))
+		// Per #195: gate emits one token_minted row per reviewer between
+		// requested and notified so reaper.outstandingJTIs is reachable.
+		wantEvents := 2 + len(h.gateCfg.Reviewers)
+		if len(events) != wantEvents {
+			t.Fatalf("events=%d; want %d (requested + N×token_minted + notified)", len(events), wantEvents)
 		}
 		if events[0].Kind != approval.EventKindRequested {
 			t.Errorf("events[0].kind=%q; want %q", events[0].Kind, approval.EventKindRequested)
 		}
-		if events[1].Kind != approval.EventKindNotified {
-			t.Errorf("events[1].kind=%q; want %q", events[1].Kind, approval.EventKindNotified)
+		if events[len(events)-1].Kind != approval.EventKindNotified {
+			t.Errorf("events[last].kind=%q; want %q", events[len(events)-1].Kind, approval.EventKindNotified)
 		}
 
 		wi, err := h.db.GetWorkItem(ctx, "WI-E2E-1")
@@ -594,8 +598,25 @@ func TestE2E_TimeoutEscalatePath(t *testing.T) {
 	}
 
 	// Tier-0 token is off-snapshot → decideTx must surface NotReviewer.
-	// This is the observable revocation regardless of #194's missing
-	// token_consumed reason=escalated rows (requires token_minted events).
+	// Now that #195 is fixed (gate persists token_minted rows), the
+	// reaper also writes one token_consumed-reason=escalated row per
+	// outstanding JTI — assert that revocation audit signal is present.
+	revoked := 0
+	for _, e := range events {
+		if e.Kind != "token_consumed" {
+			continue
+		}
+		var p struct {
+			Reason string `json:"reason"`
+		}
+		if err := json.Unmarshal(e.Payload, &p); err == nil && p.Reason == "escalated" {
+			revoked++
+		}
+	}
+	if revoked != len(h.gateCfg.Reviewers) {
+		t.Errorf("token_consumed reason=escalated rows=%d; want %d (one per tier-0 JTI)",
+			revoked, len(h.gateCfg.Reviewers))
+	}
 	if code, _ := h.decideViaCLI(aliceTier0Tok, "allow", "alice"); code != exitNotReviewer {
 		t.Errorf("post-escalate tier-0 decide exit=%d; want %d (NotReviewer)", code, exitNotReviewer)
 	}

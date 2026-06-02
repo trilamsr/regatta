@@ -91,6 +91,57 @@ func (r *Reader) BudgetState(ctx context.Context, scope ScopeKey, period time.Du
 	return total, nil
 }
 
+// CohortSpends returns the USD column of every token_spend row matching
+// (tenant_id, model) — optionally filtered by operator_id — within the
+// period window ending at the Reader clock's now. Consumed by the
+// opt-in `history` estimator (spec §10 S1, issue #238) to compute p95
+// of recent same-cohort spend; cold-start falls back to upper_bound
+// when fewer than the configured threshold of rows exist.
+//
+// operatorID="" means "all operators in tenant" — the History estimator
+// scopes to the model cohort when the gate.EstHint surface does not
+// carry an operator_id (current Wave-1 wiring). Pinning operator_id
+// once EstHint extends is a one-arg change.
+//
+// R9 tenant-scoping + parameter-bound IDs match BudgetState's pattern.
+func (r *Reader) CohortSpends(ctx context.Context, tenantID, operatorID, model string, period time.Duration) ([]float64, error) {
+	if tenantID == "" {
+		return nil, errors.New("spend.Reader.CohortSpends: tenant_id required")
+	}
+	if model == "" {
+		return nil, errors.New("spend.Reader.CohortSpends: model required")
+	}
+	cutoff := r.clock().Add(-period).UnixMilli()
+	q := `SELECT json_extract(payload_json, '$.usd')
+	      FROM substrate_events
+	      WHERE kind = 'token_spend'
+	        AND tenant_id = ?
+	        AND written_at >= ?
+	        AND json_extract(payload_json, '$.model') = ?`
+	args := []any{tenantID, cutoff, model}
+	if operatorID != "" {
+		q += ` AND json_extract(payload_json, '$.operator_id') = ?`
+		args = append(args, operatorID)
+	}
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("spend.Reader.CohortSpends: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []float64
+	for rows.Next() {
+		var v float64
+		if err := rows.Scan(&v); err != nil {
+			return nil, fmt.Errorf("spend.Reader.CohortSpends scan: %w", err)
+		}
+		out = append(out, v)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("spend.Reader.CohortSpends rows: %w", err)
+	}
+	return out, nil
+}
+
 // LastReconciliation returns the most recent budget_reconciled row for
 // the tenant — raw payload bytes + written_at timestamp. Returns
 // (nil, zero, nil) when no row exists.

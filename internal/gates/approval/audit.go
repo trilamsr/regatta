@@ -15,12 +15,18 @@ import (
 // Event kinds for approval_events.kind — single source of truth so the
 // fold's switch table and the gate's append site cannot drift.
 const (
-	EventKindRequested = "requested"
-	EventKindNotified  = "notified"
-	EventKindDecided   = "decided"
-	EventKindApproved  = "approved"
-	EventKindRejected  = "rejected"
-	EventKindTimedOut  = "timed_out"
+	EventKindRequested   = "requested"
+	EventKindNotified    = "notified"
+	EventKindDecided     = "decided"
+	EventKindApproved    = "approved"
+	EventKindRejected    = "rejected"
+	EventKindTimedOut    = "timed_out"
+	// EventKindTokenMinted marks one approval_events row per JTI the
+	// gate hands to a reviewer. Reaper.outstandingJTIs reads these rows
+	// to decide which tokens to revoke on escalate (spec §3.3.1.3).
+	// Issue #195: until the gate writes these, reaper revocation is
+	// unreachable code.
+	EventKindTokenMinted = "token_minted"
 )
 
 // Decision payload values per spec §3.2 schema.

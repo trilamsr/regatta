@@ -60,9 +60,10 @@ func (r *rawSafety) UnmarshalYAML(node *yaml.Node) error {
 }
 
 type rawCost struct {
-	PerDAGUSD      *int `yaml:"per_dag_usd"`
-	PerOperatorUSD *int `yaml:"per_operator_usd"`
-	PerWorkItemUSD *int `yaml:"per_work_item_usd"`
+	PerDAGUSD          *int    `yaml:"per_dag_usd"`
+	PerOperatorUSD     *int    `yaml:"per_operator_usd"`
+	PerWorkItemUSD     *int    `yaml:"per_work_item_usd"`
+	EstimationStrategy *string `yaml:"estimation_strategy"`
 }
 
 func (c *rawCost) anyCapSet() bool {
