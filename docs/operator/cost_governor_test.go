@@ -99,6 +99,16 @@ func TestCostGovernorDoc_PrecedenceRuleIsMostRestrictiveWins(t *testing.T) {
 	}
 }
 
+// TestCostGovernorDoc_DocumentsSoftCapPostureFields pins issue #226 — paired posture fields are cited verbatim.
+func TestCostGovernorDoc_DocumentsSoftCapPostureFields(t *testing.T) {
+	body := readDoc(t, costGovernorDoc)
+	for _, name := range []string{"soft_cap_mode", "soft_cap_acknowledge_overrun"} {
+		if !strings.Contains(body, name) {
+			t.Errorf("cost-governor.md missing posture field %q (issue #226)", name)
+		}
+	}
+}
+
 // checkDocLinks runs the same relative-.md-link resolver as the
 // inline observability link test, with a per-doc allowlist for
 // in-flight forward refs.

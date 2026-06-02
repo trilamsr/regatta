@@ -15,6 +15,13 @@ var ErrCostBlockEmpty = errors.New("safety.cost is set but no caps are configure
 // legacy safety.spend_cap_usd) is explicitly zero. Spec §3.6 + R7.
 var ErrCostCapsAllZero = errors.New("all configured caps are zero — this would deny every spawn. To opt out of cost governance entirely, omit the `safety.cost` block; to allow unbounded, omit individual caps")
 
+// ErrSoftCapNotAcknowledged fires when `safety.soft_cap_mode: warn` is
+// set without the paired `safety.soft_cap_acknowledge_overrun: true`
+// opt-in. Closes the silent-correctness regression: warn-but-allow lets
+// spend cross the soft cap with only a log event, which a reviewer who
+// skims the diff for `soft_cap_mode: warn` may not realise.
+var ErrSoftCapNotAcknowledged = errors.New("safety.soft_cap_mode=warn requires safety.soft_cap_acknowledge_overrun=true — warn mode permits spawns past the 80% soft cap with only a log event; set the ack field to confirm the silent-overrun risk is understood, or change soft_cap_mode to enforce")
+
 // ValidateConfig validates YAML bytes against the CUE schema AND runs
 // the cost-governor cross-field checks the CUE language does not
 // express cleanly (empty-block detection, all-zero-caps trap). Tests
@@ -35,9 +42,11 @@ type rawConfig struct {
 }
 
 type rawSafety struct {
-	SpendCapUSD *int      `yaml:"spend_cap_usd"`
-	Cost        *rawCost  `yaml:"cost"`
-	costPresent bool
+	SpendCapUSD               *int     `yaml:"spend_cap_usd"`
+	SoftCapMode               *string  `yaml:"soft_cap_mode"`
+	SoftCapAcknowledgeOverrun *bool    `yaml:"soft_cap_acknowledge_overrun"`
+	Cost                      *rawCost `yaml:"cost"`
+	costPresent               bool
 }
 
 // UnmarshalYAML records whether the `cost:` key was present (even if
@@ -81,7 +90,20 @@ func validateCost(data []byte) error {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("cost-validate: %w", err)
 	}
-	if cfg.Safety == nil || !cfg.Safety.costPresent {
+	if cfg.Safety == nil {
+		return nil
+	}
+	// soft_cap_mode=warn without explicit ack is rejected even when no
+	// cost block is configured — the mode field itself signals intent
+	// and the operator must own the silent-overrun risk regardless of
+	// whether caps are wired up yet. Issue #226.
+	if cfg.Safety.SoftCapMode != nil && *cfg.Safety.SoftCapMode == "warn" {
+		ack := cfg.Safety.SoftCapAcknowledgeOverrun
+		if ack == nil || !*ack {
+			return ErrSoftCapNotAcknowledged
+		}
+	}
+	if !cfg.Safety.costPresent {
 		return nil
 	}
 	cost := cfg.Safety.Cost

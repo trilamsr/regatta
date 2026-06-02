@@ -153,6 +153,29 @@ Per spec §9 R10 anti-thrash ratchet: once soft-cap fires for a (scope,
 period) tuple, the period stays in soft-cap state until the period
 rolls. No flapping between WARN and clean within a single bucket.
 
+### Posture gate — `soft_cap_mode` + `soft_cap_acknowledge_overrun`
+
+Two paired safety fields gate the WARN-mode posture itself (issue #226):
+
+| Field | Default | Effect |
+| --- | --- | --- |
+| `safety.soft_cap_mode` | `enforce` | `enforce` denies-or-downgrades per work_item annotation (the default flow above). `warn` permits the spawn past the soft cap with only a log event — silent-overrun. |
+| `safety.soft_cap_acknowledge_overrun` | `false` | Required `true` opt-in when `soft_cap_mode: warn`. Validator returns `ErrSoftCapNotAcknowledged` otherwise. No-op under `enforce`. |
+
+Why the second field exists: a reviewer skimming a diff for
+`soft_cap_mode: warn` may miss that warn-but-allow lets every spawn
+past the cap. Forcing the paired ack key surfaces the silent-overrun
+risk into the YAML itself — `git blame` lands on the operator who
+acknowledged it.
+
+```yaml
+safety:
+  soft_cap_mode: warn
+  soft_cap_acknowledge_overrun: true   # without this, ValidateConfig rejects
+  cost:
+    per_dag_usd: 100
+```
+
 ## Pricing refresh
 
 The pricing tables under `internal/cost/pricing/` are the hermetic
