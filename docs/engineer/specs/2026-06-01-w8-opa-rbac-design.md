@@ -126,9 +126,27 @@ Rejected alternatives (recorded for traceability):
 
 ### 3.3 `policies` substrate primitive
 
-W8 lands the substrate `policies` primitive deferred per substrate spec §13 row #2. **Reuses T-S1 pattern verbatim** (substrate W1 plan §"Cross-task seam contracts"): a new `EventKind`, a `RegisterPayloadValidator` registration in an `init()` block, signed events on the existing `substrate_events` table, fold via `Fold(ctx, db, runID="", kind=KindPolicyRevision)`. **No new SQL table**; no migration after substrate `0006_substrate.sql`.
+W8 lands the substrate `policies` primitive deferred per substrate spec §13 row #2. **Reuses T-S1 pattern verbatim** (substrate W1 plan §"Cross-task seam contracts"): a new `EventKind`, a `RegisterPayloadValidator` registration in an `init()` block, signed events on the existing `substrate_events` table, fold via a new tenant-scoped helper (§3.3.2). **No new SQL table.**
+
+**Migration #0007** (owned by W8 T2) is required to make T-S1's `substrate_events` schema accept policy bundles:
+- Add `policy_revision` to the `substrate_events.kind` CHECK list (T-S1's `0006_substrate.sql:44-45` lists kinds explicitly; new kinds need a CHECK extension).
+- Lift `payload_json` size cap to **1 MiB** for rows where `kind='policy_revision'` (T-S1's default cap is 1024 bytes per `0006_substrate.sql:46` — a single typical Rego file exceeds that, and spec §3.3.1's bundle cap is 1 MiB per R3).
+- Add index `idx_substrate_events_tenant_kind ON substrate_events(tenant_id, kind, id DESC)` to support the tenant-scoped fold (§3.3.2) without a full table scan.
+
+This is the **only** new migration W8 ships. T1, T3, T4, T5 add zero migrations.
+
+Discovered by W8 T2 implementer (Lane ab284b) during initial dispatch: T-S1's `substrate.AllKinds()` enum in `internal/orchestrator/state/substrate/event.go` AND the SQL CHECK list AND the 1024-byte payload cap together gate policy-event ingest. Two alternatives considered and rejected (recorded in §4): (B) a parallel `policies` SQL table; (C) a CAS-blob payload split. Path A — one additive migration — is the smallest delta and the simplest reasoning path; it preserves the spec's "policies = event log, not a new table" axiom.
 
 #### 3.3.1 Event kind + payload
+
+`policy_revision` joins the existing T-S1 kind enum. Two synchronized edits land in migration #0007 + T-S1's Go-side enum (the **only** files outside `internal/authz/` T2 touches — lockstep edits, no drift):
+
+| Layer | File | Edit |
+|---|---|---|
+| SQL CHECK | `internal/orchestrator/state/migrations/0007_w8_policy_revision.sql` (NEW) | Drop+recreate `substrate_events.kind` CHECK list with `policy_revision` appended; conditional 1 MiB payload cap for that kind; add `idx_substrate_events_tenant_kind` |
+| Go enum | `internal/orchestrator/state/substrate/event.go` (MUTATE — additive only) | `KindPolicyRevision` const + `AllKinds()` slice extension |
+
+The Go-side `policies.KindPolicyRevision` constant in `internal/authz/policies/payload.go` aliases `substrate.KindPolicyRevision` so the open-extension `RegisterPayloadValidator` hook from T-S1 still owns the validator wiring (no edit to `internal/orchestrator/state/substrate/validate.go`).
 
 ```go
 // internal/authz/policies/payload.go
@@ -164,9 +182,21 @@ Registered from `init()` via `substrate.RegisterPayloadValidator(KindPolicyRevis
 func ActiveBundle(ctx context.Context, db state.DB, tenant string) (sha string, files map[string]string, err error)
 ```
 
+`ActiveBundle` reads via a new tenant-scoped helper exported by substrate in W8 Wave A T2:
+
+```go
+// internal/orchestrator/state/substrate/fold.go (W8 Wave A T2 — NEW helper, additive to T-S1)
+// FoldByTenant returns events filtered by (tenant_id, kind) using the
+// idx_substrate_events_tenant_kind index added in migration #0007.
+// Prepared statement; no direct SELECT escapes substrate.
+func FoldByTenant(ctx context.Context, db state.DB, tenantID string, kind EventKind) ([]Event, error)
+```
+
+`FoldByTenant` is a **T-S1 followup addition shipped in W8 Wave A** (the existing `substrate.Fold(ctx, db, runID, kind)` from T-S1 #224 keys on `run_id`, which policy events do not carry — they key on `tenant_id`). The helper preserves T-S1's lint-substrate-queries invariant (no direct `SELECT` outside `internal/orchestrator/state/substrate/`).
+
 Fold call sites:
-- Boot: `Authorizer.Hydrate(ctx)` walks every tenant ID present in `substrate_events WHERE kind='policy_revision'`, loads each into the OPA store.
-- Runtime: every successful `AppendEvent(KindPolicyRevision, ...)` triggers `Authorizer.Reload(ctx, tenant)` in the same transaction (post-commit callback).
+- Boot: `Authorizer.Hydrate(ctx)` walks every tenant ID present in `substrate_events WHERE kind='policy_revision'`, calls `FoldByTenant(ctx, db, tenantID, KindPolicyRevision)`, loads each into the OPA store.
+- Runtime: every successful `AppendEvent(KindPolicyRevision, ...)` triggers `Authorizer.Reload(ctx, tenant)` in the same transaction (post-commit callback); `Reload` calls `FoldByTenant` for the one affected tenant.
 
 #### 3.3.3 Atomic OPA store swap on policy change
 
@@ -307,12 +337,13 @@ Per `feedback_deletion_default` — every adoption MUST cite the existing patter
 **What got smaller**:
 - Default-deny baseline eliminates per-tenant bootstrap config for single-tenant deployments (the embed.FS `default` bundle covers them with zero operator action).
 - OPA off-the-shelf eliminates the entire custom-DSL design + maintenance burden (no parser, no evaluator, no debugger to ship).
-- No new SQL migration — `policies` lives on `substrate_events` rows. Migrations file count delta: 0.
+- `policies` lives on `substrate_events` rows — **no new table**. One additive migration (#0007) lifts the kind enum + payload cap + adds the tenant_id index; alternative shapes (B + C below) would have added a new table or a parallel CAS-blob primitive. Path A subtracts two alternative implementations at the cost of one migration row.
 - W7 R4 deferred the `Authorizer` interface until a second caller existed. W8 lands with exactly two callers at birth (web handler + CLI), so the interface justifies itself.
 
 **Rejected** (recorded):
 - **Postgres Row-Level-Security pattern** (mentioned in brief): SQLite has no RLS; emulating at app layer duplicates OPA's job. Rejected.
-- **Building a new `policies` SQL table** (substrate spec §13 prior shape): violates `feedback_deletion_default` when `substrate_events` already serves this need verbatim. Reducer over event log = policy table.
+- **Building a new `policies` SQL table** (substrate spec §13 prior shape — referred to as **path B** in the W8 T2 dispatch discovery): violates `feedback_deletion_default` when `substrate_events` already serves this need verbatim. Reducer over event log = policy table. Path A's migration #0007 makes the event-log path viable for ≤ 1 MiB bundles without splitting storage across two primitives.
+- **CAS-blob payload split** (**path C** in the W8 T2 dispatch discovery): policy bundle bytes would live in `substrate_blobs` (also requires a migration), and the `substrate_events.payload_json` row would carry only the sha256 reference. Smallest payload-cap impact, biggest design surface — adds a second store + a join + a GC question (when does the blob become collectable). Deferred to followup if a future kind ships bundles > 1 MiB; not justified for v1 where the 1 MiB cap is comfortable headroom.
 
 ---
 
@@ -432,7 +463,7 @@ Full plan PR comes after this spec lands. Preview only; **NOT a task breakdown f
 | # | Task | Files touched | OWNER notes |
 |---|---|---|---|
 | **T1** | `Authorizer` interface + concrete OPA impl + atomic store swap + ctx-bound principal helpers | `internal/authz/authz.go`, `internal/authz/opa.go`, `internal/authz/store.go`, `internal/authz/ctx.go`, `internal/authz/*_test.go` | OWNS the interface; T3 + T5 import it |
-| **T2** | `policies` substrate primitive — `KindPolicyRevision` registration + payload validator + fold API + bundle compile validator | `internal/authz/policies/payload.go`, `internal/authz/policies/fold.go`, `internal/authz/policies/payload_test.go`, `internal/authz/policies/fold_test.go` | Independent of T1; can dispatch in parallel |
+| **T2** | `policies` substrate primitive — `KindPolicyRevision` registration + payload validator + fold API + bundle compile validator + migration #0007 (kind CHECK + payload cap + tenant_id index) + `substrate.FoldByTenant` helper | `internal/authz/policies/payload.go`, `internal/authz/policies/fold.go`, `internal/authz/policies/payload_test.go`, `internal/authz/policies/fold_test.go`, `internal/orchestrator/state/migrations/0007_w8_policy_revision.sql`, `internal/orchestrator/state/substrate/fold.go` (NEW — `FoldByTenant`), `internal/orchestrator/state/substrate/event.go` (MUTATE — `KindPolicyRevision` + `AllKinds()` extension) | Independent of T1; can dispatch in parallel. **OWNS migration #0007 + the `FoldByTenant` T-S1 followup** |
 | **T3** | `Principal.Tenant` wiring + HMAC payload extension + cookie path tightening + `tenant_mismatch` sentinel + legacy redirect | `internal/web/auth.go`, `internal/web/approval.go` (handler signature additions only), `internal/canon/approval_token.go`, `internal/canon/approval_token_test.go`, `internal/web/auth_test.go`, `internal/web/templates/approval_error.tmpl` | Depends on T1 (imports Authorizer); file-disjoint from T2 |
 | **T4** | Default-deny bundle (`embedded/regatta/v1/default/*.rego`) + tenant onboarding doc + CI fixture | `internal/authz/policies/embedded/regatta/v1/default/approval.rego`, `internal/authz/policies/embedded/regatta/v1/default/run.rego`, `internal/authz/policies/embedded/regatta/v1/default/data.json`, `docs/operator/authz-onboarding.md`, `tests/e2e/authz/onboarding_test.go` | Depends on T1 (boot loader); file-disjoint from T2 + T3 |
 | **T5** | OTel attribute wiring + audit event (`kind=authz_denied`) + property tests + `make e2e-authz-onboarding` Makefile target + spec/A-tier benchmarks | `internal/authz/otel.go`, `internal/authz/audit.go`, `internal/authz/property_test.go`, `internal/authz/bench_test.go`, `Makefile`, `cmd/regatta/serve.go` (one-line authorizer-hydrate call) | Depends on T1 + T2; file-disjoint from T3 + T4 |
@@ -461,6 +492,11 @@ W7 Wave 1 (T4-T7)                         ├─► W8 T1 (Authorizer impl)
 ```
 
 T2 may merge before T1; T1 boots `Authorizer.Hydrate` against whatever policy_revisions already exist (zero is the legal case → only embed.FS default bundle in store).
+
+**Wave A T2 ships (additive to the substrate W1 surface):**
+- Migration `0007_w8_policy_revision.sql` — adds `policy_revision` to `substrate_events.kind` CHECK list, lifts `payload_json` cap to 1 MiB for that kind, adds `idx_substrate_events_tenant_kind` to support the tenant-scoped fold.
+- `substrate.FoldByTenant(ctx, db, tenantID, kind)` — T-S1 followup helper exported from `internal/orchestrator/state/substrate/fold.go`. Preserves the lint-substrate-queries invariant (no direct `SELECT` outside the substrate package); uses a prepared statement against the new tenant_id index.
+- `substrate.KindPolicyRevision` const + `AllKinds()` slice extension in `internal/orchestrator/state/substrate/event.go`. The Go enum and the SQL CHECK move in lockstep — anywhere else, NO. T2 is the only task that touches files outside `internal/authz/`.
 
 ---
 
