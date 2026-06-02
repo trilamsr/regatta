@@ -222,6 +222,40 @@ affects".
 - **Spec-cite.** §9 R13 (SIGKILL drift) + §3.4 (Cost API drift
   semantics).
 
+## regatta.rejection_router.label_failures_total fires
+
+- **Trigger.** OTel counter incremented every time the gh CLI
+  invocation behind `rejectionrouter.GHLabeler.AddLabel` exits non-zero.
+  Emitted from `internal/orchestrator/rejectionrouter/gh_labeler.go`
+  on the escalation path (K=3 rejections → `needs-human` label).
+- **Symptoms.** Agent state advances to `escalated` and a durable
+  `escalated` event lands in the events table, but the PR is never
+  labeled — operators that filter the queue by `label:needs-human`
+  miss the escalation. Sweep in `Router.sweepUnlabeled` retries every
+  Tick, so a sustained spike means a persistent upstream condition.
+- **First-check.** Group the counter by the `reason` attribute.
+  `reason="absent"` → the repo is missing the `needs-human` label
+  (one-shot `gh label create needs-human --repo <owner/name>` fixes
+  it). `reason="rate_limited"` → GitHub API quota exhausted; wait out
+  the window or bump `GH_TOKEN` to a fresh PAT. `reason="unknown"` →
+  inspect daemon slog for the wrapped stderr line
+  (`gh pr edit ... --add-label needs-human: ...`).
+- **Diagnose.** Three classes mapped from gh CLI stderr substrings:
+  "rate limit"/"HTTP 429" → `rate_limited`; "not found"/"could not
+  add label"/"label does not exist" → `absent`; everything else →
+  `unknown`. The classifier lives in `classifyGHError`; new buckets
+  require both a constant + this legend update.
+- **Recovery.** `absent`: create the label once per repo.
+  `rate_limited`: the sweep retries on its own once quota recovers
+  (default backoff = next Tick interval). `unknown`: triage the
+  stderr line; common past causes are an expired PAT (gh exits with
+  `HTTP 401: Bad credentials`) or a network blip.
+- **Rollback.** None — the metric is a signal, not a control surface.
+  Disabling the labeler is the only way to silence it; that defeats
+  the K=3 escalation path and is not the right lever.
+- **Spec-cite.** docs/design.md §Orchestrator-shape item 5
+  (RejectionRouter) + issue #480.
+
 ## Where to find config
 
 The full `safety.cost` config surface lives at

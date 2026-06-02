@@ -40,6 +40,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -77,6 +79,13 @@ type Config struct {
 	// Logger is the structured-event sink. Nil falls back to
 	// slog.Default().
 	Logger *slog.Logger
+
+	// Meter is the OTel instrument factory for router telemetry
+	// (currently the gh-CLI label-failures counter wired by
+	// GHLabeler). Nil resolves to otel.Meter(scopeName) lazily —
+	// matches the spend / l4 Config.Meter pattern from PR #490 so
+	// callers stay on one DI seam across the orchestrator.
+	Meter metric.Meter
 }
 
 const (

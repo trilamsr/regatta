@@ -286,7 +286,7 @@ func runServe(args []string) int {
 	// modes; no regatta.yaml keys are introduced for MVR-1 — operators
 	// who want richer routing land it when a real customer use-case
 	// shows up.
-	o.SetRejectionRouter(buildRejectionRouter(db, rejectionrouter.GHLabeler{}, slogger))
+	o.SetRejectionRouter(buildRejectionRouter(db, rejectionrouter.NewGHLabeler(rejectionrouter.GHLabelerOptions{}), slogger))
 
 	if err := o.Recover(ctx); err != nil {
 		logger.Printf("recover: %v", err)
