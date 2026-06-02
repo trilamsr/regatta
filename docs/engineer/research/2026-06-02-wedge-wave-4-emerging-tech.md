@@ -3,7 +3,7 @@
 **Date:** 2026-06-02
 **Author:** research subagent
 **Scope:** Brand-new (≤12mo) projects, releases, and patterns regatta should track, adopt, or reject.
-**Memory cite:** `feedback_research_design_principles` (proven OSS > build-from-scratch; UX > best-in-class > best-practices > long-term).
+**Memory cite:** `feedback_research_design_principles` (proven OSS > build-from-scratch; UX > leading existing impl > best-practices > long-term).
 
 > Scorecard at end. PR body posts it verbatim per `feedback_grade_rubric`.
 
