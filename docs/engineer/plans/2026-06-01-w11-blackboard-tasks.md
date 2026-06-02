@@ -17,7 +17,8 @@ Design priority for every decision below (`feedback_decision_priority`): **UX �
   - Substrate Wave 1 (#224) — provides `kind=fact` event channel, `RegisterPayloadValidator(kind, fn)` open-extension hook, `AppendEvent`, `Fold`, HMAC signing, `tenant_id` propagation, OTel attrs via W6. **Already shipped.**
   - Migration #0006 (`0006_substrate.sql`) applied. **Already shipped.**
   - W6 T3 (#209) — `trace_id` columns. Substrate already populates `trace_id`; W11 inherits. **Soft prereq; not a blocker.**
-- **Migration phasing (`feedback_migration_number_lock`):** Migration **#0007** is LOCKED for `0007_blackboard_blobs.sql` (owned by T1). T2/T3/T4 add NO migrations — they layer over substrate's existing event log. T5 adds NO migration. Implementers MUST NOT renumber. If an implementer believes a different number is needed, STOP and re-spawn design.
+- **Migration phasing (`feedback_migration_number_lock`):** Migration **#0008** is LOCKED for `0008_blackboard_blobs.sql` (owned by T1). Migration #0007 is owned by W8 `policy_revision` per amendment PR #311 (in flight) — W11 takes #0008 to avoid collision. T2/T3/T4 add NO migrations — they layer over substrate's existing event log. T5 adds NO migration. Implementers MUST NOT renumber. If an implementer believes a different number is needed, STOP and re-spawn design.
+- **W11 Wave A dispatch sequencing (HARD GATE):** Wave A dispatch is GATED on (a) W8 amendment PR #311 merge to `main`, AND (b) verification at dispatch time that `internal/orchestrator/state/migrations/0008_*.sql` is unallocated on `origin/main` (run `ls internal/orchestrator/state/migrations/` and confirm no `0008_*.sql` exists). If either fails, STOP — do NOT dispatch.
 - **Concurrency cap (`feedback_dispatch_strategy`):** Wave A peaks at 4 parallel implementers. Wave B is solo. Well under the 10-lane operator ceiling.
 - **Open spec question to resolve before Wave A (`feedback_spec_pattern_authority` per spec §11):** validator re-registration semantics. Substrate v2 Wave 1 ships a placeholder validator for `KindFact`; T2's `init()` re-registers `validateFact`. If `RegisterPayloadValidator` panics on duplicate registration, T2 needs an upstream substrate-side API addition (`Re-Register`-shaped) **before T2 dispatches**. Plan-time grep against substrate `validate.go` MUST confirm the panic-on-duplicate behaviour; if it panics, file a substrate-side spec amendment first.
 - **Deletion default (`feedback_deletion_default`) — what got smaller across this wave:**
@@ -25,7 +26,7 @@ Design priority for every decision below (`feedback_decision_priority`): **UX �
   - **No bespoke `signature`, `written_by`, `tenant_id`, `TTL_at`, `tags_json` columns** — all inherited from substrate.
   - **Read API collapsed from 3 to 2** — `GetFact(topic)` + `TailFacts(topic, since)`. Drops `fact.list(tag=...)` + `fact.semantic(query, k)` until a real consumer forces them (deferred to `[blackboard-followup]` F2, F3).
   - **Sweep, not ref-counting** — GC uses mark-and-sweep over the fact log. Saves one column on every fact row + one mutation per write.
-  - Net per spec §1: **one new table (`substrate_blobs`), one new package (`internal/orchestrator/blackboard/`), one new migration (`0007_blackboard_blobs.sql`)**. Plus one auxiliary package (`internal/orchestrator/blackboard_gc/`) for the sweep job. T5 adds one operator doc + three optional A+-tier lint binaries.
+  - Net per spec §1: **one new table (`substrate_blobs`), one new package (`internal/orchestrator/blackboard/`), one new migration (`0008_blackboard_blobs.sql`)**. Plus one auxiliary package (`internal/orchestrator/blackboard_gc/`) for the sweep job. T5 adds one operator doc + three optional A+-tier lint binaries.
 - **Followup filing (`feedback_unaddressed_load_bearing`):** every load-bearing named-but-deferred item in spec §10 (F1-F10) is filed as a `[blackboard-followup]` issue **PRE-MERGE of Wave A's first PR**. T1's PR body cites every issue number. §7 below enumerates the 10 templates.
 
 ---
@@ -34,7 +35,7 @@ Design priority for every decision below (`feedback_decision_priority`): **UX �
 
 | Task | Path (exclusive write scope) | Depends-on (Wave + main) | Effort | TDD tests (count: named) |
 | ---- | ---------------------------- | ------------------------ | ------ | ------------------------ |
-| **T1 — Blobs primitive + migration #0007** | `internal/orchestrator/state/migrations/0007_blackboard_blobs.sql` (NEW; spec §3.3 DDL verbatim); `internal/orchestrator/state/substrate/blob.go` (NEW; `PutBlob` + `GetBlob` + `ErrBlobNotFound` + `ErrBlobTooLarge`) + `blob_test.go`; `internal/orchestrator/state/migrate.go` (CurrentSchemaVersion bump 6 → 7, ONE-LINE delta) + `migrate_test.go` (assert new version) | Substrate W1 (#224) merged; migration #0006 applied | M | **7 named** (B 5, A 2). Spec §6 T1 verbatim. |
+| **T1 — Blobs primitive + migration #0008** | `internal/orchestrator/state/migrations/0008_blackboard_blobs.sql` (NEW; spec §3.3 DDL verbatim); `internal/orchestrator/state/substrate/blob.go` (NEW; `PutBlob` + `GetBlob` + `ErrBlobNotFound` + `ErrBlobTooLarge`) + `blob_test.go`; `internal/orchestrator/state/migrate.go` (CurrentSchemaVersion bump 7 → 8, ONE-LINE delta) + `migrate_test.go` (assert new version) | Substrate W1 (#224) merged; migration #0006 applied; W8 amendment PR #311 merged (#0007) | M | **7 named** (B 5, A 2). Spec §6 T1 verbatim. |
 | **T2 — Fact-kind registry + reducer dispatch** | `internal/orchestrator/blackboard/` NEW package: `payload.go`, `payload_test.go`, `registry.go`, `registry_test.go`, `fact.go`, `errors.go`, `get_fact.go`, `get_fact_test.go`; `internal/orchestrator/blackboard/reducers/` NEW sub-package: `lww.go`, `set_union.go`, `write_once.go`, `append.go`, plus matching `_test.go` siblings | T1 (uses `substrate.PutBlob` indirectly via `blob_refs` validation); substrate's `RegisterPayloadValidator` open-extension hook (T-S1 #224) | M | **9 named** (B 6, A 2, A+ 1). Spec §6 T2 verbatim. |
 | **T3 — TailFacts API + cursor semantics** | `internal/orchestrator/blackboard/tail.go` (NEW), `tail_test.go`; `internal/orchestrator/blackboard/cursor.go` (NEW), `cursor_test.go` | T2 (imports `Fact` type + `Registry`) | M | **9 named** (B 5, A 3, A+ 1). Spec §6 T3 verbatim. |
 | **T4 — Blob orphan GC sweep job** | `internal/orchestrator/blackboard_gc/` NEW package: `sweep.go`, `sweep_test.go`, `config.go`, `config_test.go` | T1 (DELETE on `substrate_blobs`); T2 (reads `payload_json.blob_refs`) | S | **6 named** (B 4, A 2). Spec §6 T4 verbatim. |
@@ -44,7 +45,7 @@ Design priority for every decision below (`feedback_decision_priority`): **UX �
 
 ### Disjointness verification (`grep` at plan time)
 
-- T1 writes only to `migrations/0007_blackboard_blobs.sql`, `substrate/blob.go` + `blob_test.go`, and a ONE-LINE bump in `state/migrate.go`. T1 does NOT touch the `blackboard/` or `blackboard_gc/` packages.
+- T1 writes only to `migrations/0008_blackboard_blobs.sql`, `substrate/blob.go` + `blob_test.go`, and a ONE-LINE bump in `state/migrate.go`. T1 does NOT touch the `blackboard/` or `blackboard_gc/` packages.
 - T2 owns the entire new `internal/orchestrator/blackboard/` package (registry + reducers + payload + get_fact + fact + errors). T2 does NOT touch `substrate/`, does NOT touch `migrations/`, does NOT touch `blackboard_gc/`, does NOT touch the files T3 owns (`tail.go` + `cursor.go`).
 - T3 adds two new files to `internal/orchestrator/blackboard/`: `tail.go` + `cursor.go`. File-disjoint with T2 within the same Go package; both file sets compile against a single `package blackboard` declaration. T3 does NOT touch T2's files.
 - T4 owns the entire new `internal/orchestrator/blackboard_gc/` package. T4 does NOT touch `blackboard/`, does NOT touch `substrate/`, does NOT touch `migrations/`.
@@ -64,16 +65,16 @@ Design priority for every decision below (`feedback_decision_priority`): **UX �
 
 ---
 
-## §2 Task T1 — Blobs primitive + migration #0007
+## §2 Task T1 — Blobs primitive + migration #0008
 
 ### Scope
 
-- **`internal/orchestrator/state/migrations/0007_blackboard_blobs.sql`** — NEW. DDL verbatim from spec §3.3 lines 215-232:
+- **`internal/orchestrator/state/migrations/0008_blackboard_blobs.sql`** — NEW. DDL verbatim from spec §3.3 lines 215-232:
   - `substrate_blobs` table: `digest TEXT NOT NULL PRIMARY KEY` (64-char lower-case sha256 hex, enforced via SQL CHECK), `bytes BLOB NOT NULL`, `size_bytes INTEGER NOT NULL`, `content_type TEXT NOT NULL DEFAULT 'application/octet-stream'`, `created_at INTEGER NOT NULL` (unix ms UTC).
   - `CHECK (length(digest) = 64 AND digest NOT GLOB '*[^0-9a-f]*')` — lower-case sha256 hex only.
   - `CHECK (size_bytes > 0 AND size_bytes <= 16777216)` — hard cap 16 MiB.
   - `CREATE INDEX idx_substrate_blobs_created_at ON substrate_blobs(created_at)` — orphan-GC sweep selectivity.
-  - File-header comment cites spec §3.3 + "Migration #0007 reserved per plan §1 — DO NOT renumber".
+  - File-header comment cites spec §3.3 + "Migration #0008 reserved per plan §1 — DO NOT renumber" + "Migration #0007 owned by W8 policy_revision per amendment PR #311".
 - **`internal/orchestrator/state/substrate/blob.go`** — NEW. Go API per spec §3.3 lines 239-261:
   - `PutBlob(ctx context.Context, tx *sql.Tx, content []byte, sizeMax int) (digest string, err error)`:
     1. Validate `len(content) > 0`.
@@ -87,8 +88,8 @@ Design priority for every decision below (`feedback_decision_priority`): **UX �
     3. Return bytes + nil.
   - Sentinels: `ErrBlobNotFound = errors.New("substrate: blob not found")`, `ErrBlobTooLarge = errors.New("substrate: blob exceeds size cap")`.
 - **`internal/orchestrator/state/substrate/blob_test.go`** — NEW. 7 named tests (see below).
-- **`internal/orchestrator/state/migrate.go`** — ONE-LINE delta: `CurrentSchemaVersion` constant bumps from 6 → 7. NO other change. Migration runner already auto-applies `0007_*.sql` by filename ordering.
-- **`internal/orchestrator/state/migrate_test.go`** — add `TestMigration0007_AppliesAndCreatesSchema` (B-tier) asserting fresh DB → migrate → schema-version is 7 + `substrate_blobs` + `idx_substrate_blobs_created_at` exist via `sqlite_master` introspection.
+- **`internal/orchestrator/state/migrate.go`** — ONE-LINE delta: `CurrentSchemaVersion` constant bumps from 7 → 8. NO other change. Migration runner already auto-applies `0008_*.sql` by filename ordering.
+- **`internal/orchestrator/state/migrate_test.go`** — add `TestMigration0008_AppliesAndCreatesSchema` (B-tier) asserting fresh DB → migrate → schema-version is 8 + `substrate_blobs` + `idx_substrate_blobs_created_at` exist via `sqlite_master` introspection.
 
 ### Prereqs (cite spec sections)
 
@@ -114,7 +115,7 @@ Per `feedback_tdd_discipline`: implementer writes each test first, runs `go test
 
 **B-tier (5 named tests; spec §6 T1 + §7 B):**
 
-1. `TestMigration0007_AppliesAndCreatesSchema` — fresh DB → migrate → `substrate_blobs` table + `idx_substrate_blobs_created_at` index present; schema-version bump 6 → 7.
+1. `TestMigration0008_AppliesAndCreatesSchema` — fresh DB → migrate → `substrate_blobs` table + `idx_substrate_blobs_created_at` index present; schema-version bump 7 → 8.
 2. `TestBlackboard_PutBlobRoundTrip` — `PutBlob(content)` returns `hex(sha256(content))`; subsequent `GetBlob(digest)` returns identical bytes.
 3. `TestBlackboard_PutBlobIdempotent` — same content twice ⇒ same digest; row count unchanged (assert via `SELECT COUNT(*) FROM substrate_blobs`); no UNIQUE-collision error surfaces.
 4. `TestBlackboard_PutBlobRejectsOversize` — content `len > sizeMax` ⇒ returns `ErrBlobTooLarge`; assert ZERO rows written via row count.
@@ -135,17 +136,18 @@ Total T1: **7 named tests**. PR body lists every name + pasted failing-output ex
 W11 blackboard T1: ships the CAS blobs primitive per
 docs/engineer/specs/2026-06-01-w11-blackboard-design.md §3.3.
 
-- internal/orchestrator/state/migrations/0007_blackboard_blobs.sql — NEW.
+- internal/orchestrator/state/migrations/0008_blackboard_blobs.sql — NEW.
   substrate_blobs table (sha256 PK + BLOB column + 16 MiB hard cap +
   created_at index for GC sweep selectivity).
 - internal/orchestrator/state/substrate/blob.go — NEW. PutBlob /
   GetBlob / ErrBlobNotFound / ErrBlobTooLarge. Caller owns tx; PutBlob
   ON CONFLICT(digest) DO NOTHING for content-addressed idempotency.
 - internal/orchestrator/state/migrate.go — ONE-LINE delta:
-  CurrentSchemaVersion 6 → 7.
+  CurrentSchemaVersion 7 → 8.
 
-Migration #0007 is LOCKED per docs/engineer/plans/2026-06-01-w11-blackboard-tasks.md
-§1. T2/T3/T4 add NO migrations.
+Migration #0008 is LOCKED per docs/engineer/plans/2026-06-01-w11-blackboard-tasks.md
+§1. Migration #0007 is owned by W8 policy_revision per amendment PR #311.
+T2/T3/T4 add NO migrations.
 
 ## Why
 
@@ -158,7 +160,7 @@ once a real consumer needs >16 MiB.
 
 ## Test plan
 
-- [x] TestMigration0007_AppliesAndCreatesSchema
+- [x] TestMigration0008_AppliesAndCreatesSchema
 - [x] TestBlackboard_PutBlobRoundTrip
 - [x] TestBlackboard_PutBlobIdempotent
 - [x] TestBlackboard_PutBlobRejectsOversize
@@ -193,7 +195,7 @@ F8 followup (materialized index if profiling demands).
 - [blackboard-followup] F10 — Listen/notify-backed TailFacts on Postgres adapter (#NNN)
 
 ```release-notes
-[FEATURE] substrate CAS blobs primitive (PutBlob/GetBlob + migration #0007 substrate_blobs table)
+[FEATURE] substrate CAS blobs primitive (PutBlob/GetBlob + migration #0008 substrate_blobs table)
 ```
 ````
 
@@ -217,7 +219,7 @@ Plan: docs/engineer/plans/2026-06-01-w11-blackboard-tasks.md §2 (this
 task).
 
 Per feedback_spec_pattern_authority: if you want to deviate from any
-spec-mandated pattern (T1 OWNS migration #0007 + PutBlob + GetBlob +
+spec-mandated pattern (T1 OWNS migration #0008 + PutBlob + GetBlob +
 ErrBlobNotFound + ErrBlobTooLarge; sqlite BLOB column; sha256 PK with
 lower-case hex CHECK; 16 MiB hard cap as SQL CHECK; caller-owns-tx
 contract; ON CONFLICT DO NOTHING idempotency), STOP and report — do
@@ -225,9 +227,11 @@ NOT pick an alternative yourself. Re-spawn the design subagent.
 
 # Migration number lock (feedback_migration_number_lock)
 
-Migration #0007 is LOCKED. File MUST be named exactly
-`0007_blackboard_blobs.sql`. Do NOT renumber under any circumstance.
-If you believe a different number is needed, STOP and re-spawn design.
+Migration #0008 is LOCKED. File MUST be named exactly
+`0008_blackboard_blobs.sql`. Do NOT renumber under any circumstance.
+Migration #0007 is owned by W8 policy_revision per amendment PR #311
+— W11 explicitly takes #0008 to avoid collision. If you believe a
+different number is needed, STOP and re-spawn design.
 
 # Pre-flight verification
 
@@ -237,16 +241,18 @@ Before starting, run:
   grep -n "CurrentSchemaVersion" internal/orchestrator/state/migrate.go
   grep -n "func newTestDB" internal/orchestrator/state/substrate/helpers_test.go
 
-Confirm: 0006 is the latest migration; CurrentSchemaVersion is 6;
-newTestDB helper exists. If any fails, STOP and report.
+Confirm: 0007 is the latest migration on `origin/main` (W8 amendment
+PR #311 merged); CurrentSchemaVersion is 7; `0008_*.sql` does NOT yet
+exist; newTestDB helper exists. If any fails (especially if #311 has
+NOT merged), STOP and report — Wave A is gated on #311 per plan §1.
 
 # Scope (exclusive write paths)
 
-- internal/orchestrator/state/migrations/0007_blackboard_blobs.sql  (NEW)
+- internal/orchestrator/state/migrations/0008_blackboard_blobs.sql  (NEW)
 - internal/orchestrator/state/substrate/blob.go                     (NEW)
 - internal/orchestrator/state/substrate/blob_test.go                (NEW)
-- internal/orchestrator/state/migrate.go                            (ONE-LINE delta: CurrentSchemaVersion 6 → 7)
-- internal/orchestrator/state/migrate_test.go                       (add ONE new test: TestMigration0007_AppliesAndCreatesSchema)
+- internal/orchestrator/state/migrate.go                            (ONE-LINE delta: CurrentSchemaVersion 7 → 8)
+- internal/orchestrator/state/migrate_test.go                       (add ONE new test: TestMigration0008_AppliesAndCreatesSchema)
 
 You MUST NOT touch any other file. Specifically:
 - Do NOT touch internal/orchestrator/blackboard/  — that is T2/T3/T5's scope.
@@ -283,7 +289,7 @@ For each of the 7 named tests:
 
 # Tests to land (7 named — spec §6 T1)
 
-1. TestMigration0007_AppliesAndCreatesSchema
+1. TestMigration0008_AppliesAndCreatesSchema
 2. TestBlackboard_PutBlobRoundTrip
 3. TestBlackboard_PutBlobIdempotent
 4. TestBlackboard_PutBlobRejectsOversize
@@ -308,7 +314,7 @@ For each of the 7 named tests:
   6. File the 10 [blackboard-followup] issues per the plan §7 list
      BEFORE opening this PR. Gather issue numbers.
   7. Push branch.
-  8. Open PR via `gh pr create --base main --title "feat(w11): T1 blobs primitive + migration #0007" --body-file <path>` (NEVER heredoc per feedback_pr_lint_gates). PR body MUST cite the 10 followup issue numbers + end with the release-notes fence below.
+  8. Open PR via `gh pr create --base main --title "feat(w11): T1 blobs primitive + migration #0008" --body-file <path>` (NEVER heredoc per feedback_pr_lint_gates). PR body MUST cite the 10 followup issue numbers + end with the release-notes fence below.
   9. Verify the PR body's last line is the closing ` ``` ` of the
      release-notes fence (per feedback_pr_body_release_notes_fence).
      `gh pr view <NUM> --json body --jq .body | tail -3` MUST show:
@@ -328,8 +334,8 @@ For each of the 7 named tests:
 
 # Adversarial reviewer hunt list
 
-- Migration filename is exactly `0007_blackboard_blobs.sql`. Not
-  `0007_blobs.sql`, not `0007_substrate_blobs.sql`. Match plan §1.
+- Migration filename is exactly `0008_blackboard_blobs.sql`. Not
+  `0008_blobs.sql`, not `0008_substrate_blobs.sql`. Match plan §1.
 - DDL CHECK constraints match spec §3.3 verbatim: digest is 64 lower-case
   hex chars; size_bytes is (0, 16777216].
 - PutBlob does NOT begin/commit tx. Caller owns. Confirm via signature
@@ -1044,10 +1050,10 @@ STOP and report — do NOT pick an alternative. Re-spawn the design subagent.
 
 # Pre-flight verification
 
-  ls internal/orchestrator/state/migrations/0007_blackboard_blobs.sql
+  ls internal/orchestrator/state/migrations/0008_blackboard_blobs.sql
   grep -n "substrate_blobs" internal/orchestrator/state/substrate/blob.go
 
-Confirm T1 has merged (0007 migration + PutBlob exist). If T1 has not
+Confirm T1 has merged (0008 migration + PutBlob exist). If T1 has not
 merged, branch off T1's PR and rebase after T1 lands.
 
 # Scope (exclusive write paths — file-disjoint with T1/T2/T3)
@@ -1299,7 +1305,7 @@ STOP and report — do NOT pick an alternative.
 
   ls internal/orchestrator/blackboard/         # T2 + T3 files present
   ls internal/orchestrator/blackboard_gc/      # T4 files present
-  ls internal/orchestrator/state/migrations/0007_blackboard_blobs.sql
+  ls internal/orchestrator/state/migrations/0008_blackboard_blobs.sql
 
 Confirm all of T1/T2/T3/T4 have merged. If any has not, do NOT proceed
 — Wave B is sequenced after Wave A.
