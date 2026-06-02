@@ -43,12 +43,16 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// PRLabeler attaches a label to the PR that backs a work_item. The
-// concrete implementation calls `gh pr edit --add-label`; tests use a
-// fake. nil-safe: New() substitutes a no-op so callers without a PR
-// surface (in-process tests, simulators) still work.
+// PRLabeler attaches a label to the PR that backs an agent. The
+// concrete implementation (GHLabeler) resolves agentID → branch → PR
+// number → `gh pr edit --add-label`; tests use a fake. The interface
+// takes agentID rather than work_item_id because work_item_id is
+// brief-derived (e.g. "F-1") and bears no relation to any GitHub PR
+// number — see issue #476 for the failure mode the prior shape caused.
+// nil-safe: New() substitutes a no-op so callers without a PR surface
+// (in-process tests, simulators) still work.
 type PRLabeler interface {
-	AddLabel(ctx context.Context, workItemID, label string) error
+	AddLabel(ctx context.Context, agentID int64, label string) error
 }
 
 // Config holds the deps + tunables for a Router. DB is required;
@@ -187,8 +191,8 @@ func (r *Router) sweepUnlabeled(ctx context.Context) error {
 		if len(labeled) > 0 {
 			continue
 		}
-		if err := r.cfg.Labeler.AddLabel(ctx, a.WorkItemID, r.cfg.EscalationLabel); err != nil {
-			return fmt.Errorf("rejectionrouter: retry label PR %q: %w", a.WorkItemID, err)
+		if err := r.cfg.Labeler.AddLabel(ctx, a.ID, r.cfg.EscalationLabel); err != nil {
+			return fmt.Errorf("rejectionrouter: retry label for agent %d (work_item %q): %w", a.ID, a.WorkItemID, err)
 		}
 		_ = r.cfg.DB.RecordEvent(ctx, a.ID, EventKindLabeled,
 			fmt.Sprintf(`{"label":%q}`, r.cfg.EscalationLabel))
@@ -291,4 +295,4 @@ func (r *Router) handle(ctx context.Context, ev state.Event) error {
 
 type noopLabeler struct{}
 
-func (noopLabeler) AddLabel(context.Context, string, string) error { return nil }
+func (noopLabeler) AddLabel(context.Context, int64, string) error { return nil }

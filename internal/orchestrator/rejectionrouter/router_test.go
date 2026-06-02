@@ -127,8 +127,8 @@ func TestTick_KEscalation_LabelsPRAndMarksEscalated(t *testing.T) {
 	labeler.mu.Lock()
 	calls := append([]labelCall(nil), labeler.calls...)
 	labeler.mu.Unlock()
-	if len(calls) != 1 || calls[0].workItem != "wi-esc" || calls[0].label != "needs-human" {
-		t.Errorf("labeler calls=%+v; want one call with workItem=wi-esc label=needs-human", calls)
+	if len(calls) != 1 || calls[0].agentID != id || calls[0].label != "needs-human" {
+		t.Errorf("labeler calls=%+v; want one call with agentID=%d label=needs-human", calls, id)
 	}
 
 	// Heartbeat-stop invariant: locks released so Orchestrator.Heartbeat
@@ -260,8 +260,8 @@ func countLocks(t *testing.T, db *state.DB, agentID int64) int {
 }
 
 type labelCall struct {
-	workItem string
-	label    string
+	agentID int64
+	label   string
 }
 
 type fakeLabeler struct {
@@ -272,14 +272,14 @@ type fakeLabeler struct {
 	successCount int
 }
 
-func (f *fakeLabeler) AddLabel(_ context.Context, workItemID, label string) error {
+func (f *fakeLabeler) AddLabel(_ context.Context, agentID int64, label string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.failFirst && !f.failed {
 		f.failed = true
 		return errFakeLabeler
 	}
-	f.calls = append(f.calls, labelCall{workItem: workItemID, label: label})
+	f.calls = append(f.calls, labelCall{agentID: agentID, label: label})
 	f.successCount++
 	return nil
 }

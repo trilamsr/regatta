@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -190,9 +191,9 @@ type capturingLabeler struct {
 	calls []string
 }
 
-func (c *capturingLabeler) AddLabel(_ context.Context, workItemID, label string) error {
+func (c *capturingLabeler) AddLabel(_ context.Context, agentID int64, label string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.calls = append(c.calls, workItemID+":"+label)
+	c.calls = append(c.calls, fmt.Sprintf("%d:%s", agentID, label))
 	return nil
 }
