@@ -44,13 +44,13 @@ func CSRFTokenFromRequest(r *http.Request) string {
 	return c.Value
 }
 
-// newCSRFValue mints a 32-hex-char (16-byte) CSRF cookie value from
-// crypto/rand. math/rand is forbidden by repo lint TestNoMathRandImport
-// for security primitives.
+// newCSRFValue mints a hex-encoded CSRF cookie value (csrfTokenByteWidth
+// bytes of crypto/rand → 2× hex chars). math/rand is forbidden by repo lint
+// TestNoMathRandImport for security primitives.
 func newCSRFValue() (string, error) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
+	b := make([]byte, csrfTokenByteWidth)
+	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	return hex.EncodeToString(b[:]), nil
+	return hex.EncodeToString(b), nil
 }

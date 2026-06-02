@@ -46,8 +46,8 @@ func TestPrincipalFromRequest_HappyPath(t *testing.T) {
 	wire := mintWire(t, kr, kid, reviewer, "01H8AID", "wi-1", now.Add(5*time.Minute))
 
 	r := httptest.NewRequest(http.MethodGet, "/approve/01H8AID", nil)
-	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: wire})
-	r.AddCookie(&http.Cookie{Name: reviewerHintCookieName, Value: reviewer})
+	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: wire}) //nolint:gosec // G124: test fixture replays server-set cookie; production attrs validated by TestRedeemHandler_HappyPathSetsCookiesAnd303
+	r.AddCookie(&http.Cookie{Name: reviewerHintCookieName, Value: reviewer}) //nolint:gosec // G124: test fixture replays server-set cookie
 
 	p, payload, err := PrincipalFromRequest(r, kr, now)
 	if err != nil {
@@ -82,8 +82,8 @@ func TestPrincipalFromRequest_ExpiredTokenReturnsErrTokenExpired(t *testing.T) {
 	wire := mintWire(t, kr, kid, reviewer, "01H8AID", "wi-1", past.Add(-time.Minute))
 
 	r := httptest.NewRequest(http.MethodGet, "/approve/01H8AID", nil)
-	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: wire})
-	r.AddCookie(&http.Cookie{Name: reviewerHintCookieName, Value: reviewer})
+	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: wire}) //nolint:gosec // G124: test fixture replays server-set cookie
+	r.AddCookie(&http.Cookie{Name: reviewerHintCookieName, Value: reviewer}) //nolint:gosec // G124: test fixture replays server-set cookie
 
 	_, _, err := PrincipalFromRequest(r, kr, past)
 	if !errors.Is(err, ErrTokenExpired) {

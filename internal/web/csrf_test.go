@@ -22,7 +22,7 @@ func TestCSRFMiddleware_RejectsOnMismatch(t *testing.T) {
 	form := strings.NewReader("csrf=deadbeefdeadbeefdeadbeefdeadbeef")
 	r := httptest.NewRequest(http.MethodPost, "/approve/x", form)
 	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	r.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: "1111111111111111111111111111ffff"})
+	r.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: "1111111111111111111111111111ffff"}) //nolint:gosec // G124: test fixture replays server-set cookie
 
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
@@ -50,7 +50,7 @@ func TestCSRFMiddleware_ConstantTimeCompare(t *testing.T) {
 		r := httptest.NewRequest(http.MethodPost, "/approve/x",
 			strings.NewReader("csrf="+form))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: "ffffffffffffffffffffffffffffffff"})
+		r.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: "ffffffffffffffffffffffffffffffff"}) //nolint:gosec // G124: test fixture replays server-set cookie
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 		if w.Code != http.StatusForbidden {
@@ -68,7 +68,7 @@ func TestCSRFMiddleware_RandomizedCookieFormPairs(t *testing.T) {
 		r := httptest.NewRequest(http.MethodPost, "/approve/x",
 			strings.NewReader("csrf="+form))
 		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: cookie})
+		r.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: cookie}) //nolint:gosec // G124: test fixture replays server-set cookie
 		w := httptest.NewRecorder()
 		h.ServeHTTP(w, r)
 
