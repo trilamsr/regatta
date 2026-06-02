@@ -277,10 +277,24 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("orchestrator: load agent %d: %w", id, err)
 		}
+		// #295: DAGID = parent program id when the work_item belongs to a
+		// multi-feature program; otherwise the work_item is its own DAG
+		// root and DAGID falls back to the work_item id. RunID = agent id
+		// so retries of the same work_item produce distinct runs.
+		// Lookup failure is non-fatal — the spawn proceeds with the
+		// work_item-id fallback in spend.SpawnerCallback so a transient
+		// state read does not strand the reservation.
+		dagID := a.WorkItemID
+		if wi, werr := o.db.GetWorkItem(ctx, a.WorkItemID); werr == nil && wi.ParentProgramID != "" {
+			dagID = wi.ParentProgramID
+		}
 		result, err := o.spawner.Spawn(ctx, spawner.Request{
 			AgentID:    a.ID,
 			WorkItemID: a.WorkItemID,
 			Lane:       a.Lane,
+			OperatorID: fmt.Sprintf("agent-%d", a.ID),
+			DAGID:      dagID,
+			RunID:      fmt.Sprintf("agent-%d", a.ID),
 		})
 		if err != nil {
 			_, _ = o.db.TransitionAgent(ctx, a.ID, state.AgentCrashed, state.AgentMutation{})

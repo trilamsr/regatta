@@ -25,6 +25,14 @@ type CallScope struct {
 // the closure runs inside ParseStream's result-event handler, opens a
 // substrate tx, calls RecordCall, and commits on success.
 //
+// Identifier sourcing (#295): the closure reads OperatorID/DAGID/RunID
+// directly from spawner.Request. Pre-#295 the wave-2 wiring collapsed
+// these three onto Lane+WorkItemID; the orchestrator now supplies the
+// distinct values per spec §3.5. Empty fields fall back to the legacy
+// shortcut so a caller that has not yet been threaded still writes a
+// valid row (defense in depth — the orchestrator threads all three
+// today, but defaulting here keeps the writer seam single-source).
+//
 // Rollback-on-error: the deferred Rollback is a no-op after a successful
 // Commit, so the happy path commits exactly one substrate row. A
 // RecordCall failure (pricing_missing, replay, marshal) returns the
@@ -36,6 +44,18 @@ func SpawnerCallback(db *sql.DB, opt WriteOptions, scope CallScope) func(spawner
 		tenant = substrate.DefaultTenantID
 	}
 	return func(req spawner.Request) spawner.ResultEventCallback {
+		operatorID := req.OperatorID
+		if operatorID == "" {
+			operatorID = req.Lane
+		}
+		dagID := req.DAGID
+		if dagID == "" {
+			dagID = req.WorkItemID
+		}
+		runID := req.RunID
+		if runID == "" {
+			runID = req.WorkItemID
+		}
 		return func(ctx context.Context, ev spawner.StreamResultEvent) error {
 			tx, err := db.BeginTx(ctx, nil)
 			if err != nil {
@@ -50,12 +70,12 @@ func SpawnerCallback(db *sql.DB, opt WriteOptions, scope CallScope) func(spawner
 				OutputTokens:        ev.OutputTokens,
 				CacheReadTokens:     ev.CacheReadInputTokens,
 				CacheCreationTokens: ev.CacheCreationInputTokens,
-				OperatorID:          req.Lane,
-				DAGID:               req.WorkItemID,
+				OperatorID:          operatorID,
+				DAGID:               dagID,
 				WorkItemID:          req.WorkItemID,
 				TenantID:            tenant,
 				WrittenBy:           scope.WrittenBy,
-				RunID:               req.WorkItemID,
+				RunID:               runID,
 			}, opt)
 			if err != nil {
 				return err
