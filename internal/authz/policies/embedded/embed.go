@@ -26,9 +26,8 @@ var FS embed.FS
 // stability test asserts this constant equals a hard-coded hex string.
 var DefaultBundleSHA256 = computeBundleSHA256()
 
-// computeBundleSHA256 walks FS in sorted order, hashes (path||content) per
-// file, and returns the hex digest. Sorted-key map → canonical-JSON via
-// encoding/json guarantees byte-stable output across Go versions.
+// computeBundleSHA256 hashes a sorted [path, content] slice; the slice
+// shape (not a map) guarantees byte-stable order across Go versions.
 func computeBundleSHA256() string {
 	files := map[string]string{}
 	if err := fs.WalkDir(FS, ".", func(path string, d fs.DirEntry, err error) error {

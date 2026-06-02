@@ -12,9 +12,7 @@ import (
 	"testing"
 )
 
-// CIDocFixture exec's the tenant-onboarding tutorial's shell blocks
-// sequentially. The doc is the operator-facing contract; an unrun
-// step is a doc rot. Spec §6 T4 A-tier rubric pin.
+// Exec onboarding-tutorial shell blocks in order — doc rot guard (spec §6 T4 A).
 func TestTenantOnboarding_CIDocFixture(t *testing.T) {
 	doc := docPath(t)
 	src, err := os.ReadFile(doc)
@@ -46,17 +44,12 @@ func TestTenantOnboarding_CIDocFixture(t *testing.T) {
 	}
 }
 
-// FromEmptyToActive — spec §6 T4 A-tier: write a policy_revision event
-// for tenant "acme"; assert ActiveBundle returns the written SHA; assert
-// Check allows the tenant's role-gated path. T2's policies primitive +
-// T1's Authorizer are imports that land at integration time; the body
-// skips until then to keep the e2e tag green before W8 fully wires.
+// Spec §6 T4 A — write policy_revision, ActiveBundle matches, Check allows; blocked on T1+T2.
 func TestTenantOnboardingFlow_FromEmptyToActive(t *testing.T) {
 	t.Skip("blocked on W8 T1 (Authorizer.Check) + T2 (policies.AppendPolicyRevision + ActiveBundle); rebase wires the body when both land")
 }
 
-// docPath walks up from the test binary's CWD to find the
-// repo-root-relative onboarding doc. Worktree-safe.
+// docPath walks parents to find the operator doc (worktree-safe).
 func docPath(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()
@@ -79,7 +72,6 @@ func docPath(t *testing.T) string {
 var fenceRE = regexp.MustCompile("(?ms)^```sh[ \\t]*\\n(.+?)^```")
 
 // extractShellBlocks returns every ```sh fenced block in source order.
-// Matches the bash convention used in the operator tutorial.
 func extractShellBlocks(src string) []string {
 	matches := fenceRE.FindAllStringSubmatch(src, -1)
 	out := make([]string, 0, len(matches))

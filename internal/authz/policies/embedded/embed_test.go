@@ -11,9 +11,7 @@ import (
 	"github.com/trilamsr/regatta/internal/authz/policies/embedded"
 )
 
-// Drift sentinel: any change to the *.rego files MUST update this constant.
-// Spec R11 — silent default-bundle drift between binary versions is a
-// security regression; the failing assertion forces an explicit review.
+// Drift sentinel — any *.rego edit MUST update the pinned constant (R11).
 func TestDefaultBundleSHA256_Stable(t *testing.T) {
 	t.Parallel()
 	const want = defaultBundleSHA256Expected
@@ -24,8 +22,7 @@ func TestDefaultBundleSHA256_Stable(t *testing.T) {
 	}
 }
 
-// Spec §3.5 — the ONE built-in exception: Principal{Tenant=="default", ID!=""}
-// gets approval.decide allowed. Single-tenant zero-config deployments rely on it.
+// Spec §3.5 — Principal{Tenant=="default", ID!=""} gets approval.decide allowed.
 func TestDefaultBundle_HMACReviewer_AllowsApprovalDecide(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -60,8 +57,7 @@ func TestDefaultBundle_HMACReviewer_AllowsApprovalDecide(t *testing.T) {
 	}
 }
 
-// Empty Principal.ID + Tenant="default" MUST fall through to default-deny.
-// Pins spec §3.5 — exception requires BOTH conditions (tenant + non-empty id).
+// Empty Principal.ID falls through to default-deny (spec §3.5 BOTH-conditions guard).
 func TestDefaultBundle_EmptyPrincipal_Denies(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -89,8 +85,7 @@ func TestDefaultBundle_EmptyPrincipal_Denies(t *testing.T) {
 	}
 }
 
-// Non-default tenant MUST fall through to default-deny; only "default" tenant
-// gets the built-in HMAC-reviewer exception per spec §3.5.
+// Non-default tenant falls through to default-deny (spec §3.5).
 func TestDefaultBundle_NonDefaultTenant_Denies(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -115,8 +110,7 @@ func TestDefaultBundle_NonDefaultTenant_Denies(t *testing.T) {
 	}
 }
 
-// Run actions have no built-in exception; default-deny across the board
-// pins the spec §3.5 layout (run.rego defines run.{view,cost.view} only).
+// Run actions have no built-in exception; spec §3.5 layout default-denies both.
 func TestDefaultBundle_RunActions_AllDeny(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -139,8 +133,7 @@ func TestDefaultBundle_RunActions_AllDeny(t *testing.T) {
 	}
 }
 
-// Embedded FS scope guard: tenant bundles MUST NEVER appear on disk in the
-// embed. Spec §3.5 — tenant bundles live in substrate events, not the binary.
+// FS scope guard (R5) — tenant bundles never on disk in the binary.
 func TestDefaultBundle_EmbedScopeIsDefaultOnly(t *testing.T) {
 	t.Parallel()
 	paths := walk(t, embedded.FS, ".")
@@ -172,8 +165,7 @@ func loadModules(t *testing.T) map[string]string {
 	return out
 }
 
-// prepareDecision compiles the embed.FS modules and prepares a query.
-// Helper closes the slice-splat ergonomic gap in rego.New's variadic signature.
+// prepareDecision compiles embed.FS modules and prepares the query.
 func prepareDecision(t *testing.T, ctx context.Context, query string) rego.PreparedEvalQuery {
 	t.Helper()
 	mods := loadModules(t)
