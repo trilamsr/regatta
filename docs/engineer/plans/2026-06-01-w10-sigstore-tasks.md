@@ -95,8 +95,8 @@ criteria + the mandatory PR-body scorecard.
   prior tasks.
 - **Hygiene gates** (per `feedback_doc_check_banned_phrases` + `feedback_pr_lint_gates`):
   every PR runs `bash scripts/doc-check.sh` (markdown link integrity + banned-phrase lint) +
-  `bash scripts/stale-todo.sh` (issue-ref required on TODO/FIXME/XXX past
-  WINDOW_DAYS) before push. This plan deliberately references the script + the memory file
+  `bash scripts/stale-todo.sh` (issue-ref required on stale untagged
+  deferred-debt markers past WINDOW_DAYS) before push. This plan deliberately references the script + the memory file
   `feedback_doc_check_banned_phrases.md` rather than inlining the literal banned-token list —
   per #297 + #296 fix cycles, plans that inline the token list self-trip the very gate they
   describe. **Implementers READ the memory file for the current list; do NOT copy it into PR
@@ -610,9 +610,10 @@ For each named test below:
   the memory file (do NOT copy the list into PR body or commit messages,
   per #297 + #296 fix cycles which showed plans/PRs that inlined the list
   self-tripped the gate).
-- Stale-TODO check: `bash scripts/stale-todo.sh` — exit 0. Any
-  TODO/FIXME/XXX in your diff MUST cite an issue (#NNN or URL) OR be added
-  within the WINDOW_DAYS window.
+- Stale-marker check: `bash scripts/stale-todo.sh` — exit 0. Any
+  deferred-debt keyword the scanner watches (see the script's regex)
+  in your diff MUST cite an issue (#NNN or URL) OR be added within the
+  WINDOW_DAYS window.
 - PR body release-notes fence: every PR ends with ```release-notes\n<note
   or "none">\n```. Grep-verify before push.
 
