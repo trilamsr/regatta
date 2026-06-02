@@ -86,6 +86,19 @@ W6 already chose Jaeger for the dev fixture. Tempo is supported via OTLP env-var
 
 **OTel SDK (trace+log+metric) → OTLP → Prometheus + Grafana (self-host default) / Honeycomb (operator swap via env var); dashboards-as-JSON; OpenSLO + Sloth for SLO compilation; W6 unchanged.**
 
+### 1.9 TUI library — bubbletea vs tview vs tcell
+
+D-T2 lands `regatta status` as a TUI; the TUI library is its own primitive and deserves a scored comparison rather than the bare pick that PR #400 carried.
+
+| Candidate | Maintenance | Ecosystem | Regatta-fit | Swap cost | Score | Verdict |
+|---|---|---|---|---|---|---|
+| **`charmbracelet/bubbletea`** (Elm architecture, Go) | 5 (Charm; active) | 5 (large CLI ecosystem) | 5 (component model maps to §6.1 5-panel budget; renders + tests cleanly; indirect `charmbracelet/*` deps already in `go.mod`) | 4 (one new direct dep; D-T2 adds) | 19/20 | **ADOPT** |
+| `rivo/tview` | 4 (active) | 3 | 3 (widget-tree model; less natural for the 5-panel single-screen budget; harder to unit-test) | 3 | 13/20 | reject — less testable |
+| `gdamore/tcell` (lower-level primitive) | 5 | 4 | 2 (hand-roll the rendering loop; spec §6.1 explicit "single-screen" budget forces a layout layer we'd otherwise write) | 2 | 13/20 | reject — too low-level |
+| hand-rolled ANSI | n/a | n/a | 1 | 1 | 3/20 | reject |
+
+**Decision:** `charmbracelet/bubbletea`. Added to `go.mod` by D-T2; not present today (the indirect `charmbracelet/colorprofile`/`ultraviolet`/`x/ansi`/`x/term`/`x/termios` deps are from other usage and do not satisfy the direct-dep requirement).
+
 ---
 
 ## §2 Standardization (metric naming + tag schema + cardinality budget)
@@ -162,6 +175,18 @@ A single new file `internal/obs/otel/meter.go` exports:
 // Per feedback_spec_pattern_authority: one pattern, mirrors Config.Logger
 // (#115) and Config.Tracer (#159).
 ```
+
+### 2.5 Trace head-sampling policy (high-volume signal containment)
+
+Metrics carry the cardinality budget (§2.2). Traces carry their own volume budget: scheduler ticks at sub-second cadence × per-step spans × per-agent fan-out blow past 10⁴ spans/sec in steady state, which fills the OTLP pipe and the backend's ingest bill before the operator notices. W6 (#159) shipped trace export but did not pin a sampling policy — this spec pins it.
+
+**Policy.** OTel SDK `ParentBased(TraceIDRatioBased(p))` with `p` set from `OTEL_TRACES_SAMPLER_ARG` (default `0.1` = 10% head-sampling). Sampling decision is sticky-per-trace (every span in the trace shares the parent's `sampled` bit). High-signal traces (any span with `error.type` set, or any span emitted by `internal/orchestrator/state/substrate/sign.go` chain-verify) flip to `AlwaysOn` via the OTel `ParentBased` `RemoteParentSampled`/`LocalParentSampled` override — i.e. once a chain-break or HMAC error opens a span, the whole trace from that point ships at 100%.
+
+**Why head-sampling, not tail-sampling.** Tail-sampling needs a collector tier (OTel Collector) buffering full traces before deciding. Self-host default has no collector — direct OTLP to backend. Head-sampling at the SDK is the OTel-idiomatic shape for that topology; the OTel Collector is an operator-side concern and supported via env-var swap (zero regatta code change).
+
+**A-T0a wires this:** `internal/obs/otel/setup.go` calls `sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(p)))` on TracerProvider construction. The `ErrorOverride` is a custom `sdktrace.Sampler` that wraps the parent sampler and returns `RecordAndSample` whenever the span has an `error.type` attribute or originates in a designated package list (chain-verify, divergence-audit). A-T0a's PR body documents the sampled-vs-unsampled trace ratio measured against a synthetic 10⁴-span/sec fixture.
+
+**Operator override.** `OTEL_TRACES_SAMPLER=always_on` for debug (full fidelity, expect cost spike); `OTEL_TRACES_SAMPLER=always_off` for emergency cost-stop. Documented in A-T6's `docs/operator/observability-metrics.md`.
 
 ---
 
@@ -485,11 +510,13 @@ Per `feedback_grade_rubric`. Applies to every PR in every wave. Implementer scor
 
 ## §9 [OBS-followup] tracking issues (filed at this spec's merge)
 
-Per `feedback_unaddressed_load_bearing` — every load-bearing leftover gets a tracking issue. Two filed:
+Per `feedback_unaddressed_load_bearing` — every load-bearing leftover gets a tracking issue. Three filed:
 
 1. **`[OBS-followup] SLO-2 budget widen (5% OR 28d window) + SLO-3 quantile rewrite (P99 of 30d trailing)`** — owner: TBD at Wave-B kickoff; trigger: 30 days of real burn-rate data from Wave-B in the warehouse. Linked from §5 SLO-2 + SLO-3 entries.
 
 2. **`[OBS-followup] Dashboard-UI-drift nightly diff job (Grafana HTTP export vs checked-in JSON) + cardinality-cost "active series count" panel on dashboards/grafana/meta.json`** — owner: TBD at Wave-D kickoff. Linked from §4 trap #10 + trap #11. Bundles two related concerns into one issue because both ship on the meta-dashboard surface.
+
+3. **`[OBS-followup] Cost-per-agent rollup (Prom recording rule OR sqlite view joining event_token_spend × dispatch trace tree on trace_id → agent_id)`** — owner: C-T3 by default; reassign at Wave-C kickoff if scope grows. Linked from §11 RISK-B. Filed because adding `agent_id` to the cost-counter labels would breach the cardinality budget; the rollup ships as a derived view, not as a new label.
 
 Trap #9 (missing-metric AST-walk lint) ships in-band with A-T0a — no followup needed.
 
@@ -557,6 +584,12 @@ Trap #9 (missing-metric AST-walk lint) ships in-band with A-T0a — no followup 
 **Mitigation**: clock reads SLO-3-source histogram (PR-merge-rate via C-T2) + the actual git history; no manual override. Validator in `internal/obs/triggers/clock_test.go` asserts the gauge derives only from sealed inputs.
 **Verify**: `TestTriggerClock_NoManualOverride`.
 
+### R11 — Trace ingest volume cliff at steady state
+
+**Threat**: W6 trace export without a sampling policy + the scheduler-tick fan-out lights up 10⁴+ spans/sec in steady state. OTLP pipe fills; ingest bill clips operator budget; tail latency on the export path back-pressures the loop.
+**Mitigation**: §2.5 head-sampling policy — `ParentBased(TraceIDRatioBased(0.1))` default with always-on override for `error.type` spans + chain-verify + divergence-audit packages. A-T0a wires the sampler; A-T6 documents the env-var override knobs.
+**Verify**: `TestTracerSetup_HeadSamplingRatioEnforced` + A-T0a PR body shows sampled-vs-unsampled ratio against a 10⁴-span/sec synthetic fixture.
+
 ---
 
 ## §11 Open at impl time (deferred RISK from second-tier review)
@@ -571,6 +604,16 @@ Per `feedback_design_iteration_local` — one RISK was deferred at the PR #413 r
 
 **Why deferred, not amended.** The spec's intent is recoverable from context (A-T0a is the DI-wire-up half, not the emit-the-counter half); the conflict is detectable at A-T0a PR review (reviewer sees `writer.go` edited and asks why); the fix is a one-line dispatch-prompt fence, not a spec rewrite. Per `feedback_design_iteration_local`: keep spec stable, recover at impl review.
 
+### RISK-B — Cost attribution at the `agent_id` granularity (deferred to Wave-C+)
+
+**Defect surface.** A-T1 emits `regatta.cost.usd` + `regatta.cost.tokens` with `dag_id` + `operator_id` + `direction` labels. C-T1 emits dispatch attribution with `agent_id` (≤ 50). Neither surface joins cost and agent — operators cannot answer "which agent burned $X this week?" at the metric layer; they must drill metric → trace → log via `trace_id` correlation.
+
+**Resolution at impl time.** The drill path works (metric → exemplar → trace → spend log carries `agent_id`), so this is a UX gap, not a correctness gap. File `[OBS-followup] Cost-per-agent rollup` as part of A-T1 merge: targets a derived recording rule (Prom) or a sqlite view that joins `event_token_spend` rows with the dispatch span tree on `trace_id` → `agent_id`. Lands in Wave-C alongside C-T1/C-T3 or as an A-T6 doc note (operator drill recipe) — owner picked at Wave-C kickoff.
+
+<!-- FOLLOWUP: confirm at Wave-C kickoff whether the cost-per-agent rollup ships as a Prom recording rule (preferred — no new infra) or as a sqlite view (fallback if Prom recording-rule cardinality budget blocks it). Owner is C-T3 by default since C-T3 already extends writer.go; reassign if scope grows. -->
+
+**Why deferred, not amended.** Adding `agent_id` to the cost-counter labels at A-T1 would breach the cardinality budget (≤ 50 dag × ≤ 100 operator × 3 direction × ≤ 50 agent = 750k cells, 5× the documented cap). The drill path is the OTel-blessed shape; the rollup is a follow-on convenience, not a load-bearing primitive.
+
 ---
 
 ## §12 Per-item dispatch briefs (copy-paste ready)
@@ -579,7 +622,7 @@ Each brief below is ready to drop into an implementer-subagent dispatch prompt. 
 
 ### A-T0a (foundation — meter DI + 2 Config retrofits + trap #9 lint)
 
-> **Task**: extend `internal/obs/otel/setup.go` to init an OTel MeterProvider alongside the existing TracerProvider. New file `internal/obs/otel/meter.go` exports the helpers. Wire OTLP-metric exporter when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; wire Prometheus exporter when `OTEL_METRICS_PROMETHEUS_PORT` is set; mutual-exclusion validator rejects both via `ErrOTelMetricExporterConflict`. Add new lint test `TestEveryGateAdapterHasInvocationsCounter` covering §4 trap #9. Add `Config.Meter metric.Meter` field to the **2 Config structs A-T1 + A-T2 touch first** (`cost/spend`, `gates/l4`) — **Config struct only; do NOT edit `writer.go` or gate-decide paths** (per §11 RISK-A). Nil falls back to `otel.Meter("<component>")`. Per `feedback_research_design_principles`: adopt the OTel SDK verbatim; if you find yourself writing > 50 LoC of metric primitives, STOP and re-spawn the design subagent. PR body MUST show one sample `/metrics` Prom-scrape line for `regatta.scheduler.tick.latency_ms` (per §2.1 double-unit-suffix lock). A+ rubric scorecard mandatory in PR body. Pre-`gh pr create`: `grep -c '^\`\`\`release-notes' /tmp/pr-body.md` ≥ 1. Use `--body-file` only. Test godocs 1 line max.
+> **Task**: extend `internal/obs/otel/setup.go` to init an OTel MeterProvider alongside the existing TracerProvider. New file `internal/obs/otel/meter.go` exports the helpers. Wire OTLP-metric exporter when `OTEL_EXPORTER_OTLP_ENDPOINT` is set; wire Prometheus exporter when `OTEL_METRICS_PROMETHEUS_PORT` is set; mutual-exclusion validator rejects both via `ErrOTelMetricExporterConflict`. Wire trace head-sampling per §2.5 — `ParentBased(TraceIDRatioBased(p))` with `p` from `OTEL_TRACES_SAMPLER_ARG` (default 0.1) + always-on override for `error.type` spans and chain-verify/divergence-audit packages (see §10 R11). Add new lint test `TestEveryGateAdapterHasInvocationsCounter` covering §4 trap #9. Add `Config.Meter metric.Meter` field to the **2 Config structs A-T1 + A-T2 touch first** (`cost/spend`, `gates/l4`) — **Config struct only; do NOT edit `writer.go` or gate-decide paths** (per §11 RISK-A). Nil falls back to `otel.Meter("<component>")`. Per `feedback_research_design_principles`: adopt the OTel SDK verbatim; if you find yourself writing > 50 LoC of metric primitives, STOP and re-spawn the design subagent. PR body MUST show one sample `/metrics` Prom-scrape line for `regatta.scheduler.tick.latency_ms` (per §2.1 double-unit-suffix lock) PLUS sampled-vs-unsampled trace ratio on a 10⁴-span/sec synthetic fixture (per §10 R11). A+ rubric scorecard mandatory in PR body. Pre-`gh pr create`: `grep -c '^\`\`\`release-notes' /tmp/pr-body.md` ≥ 1. Use `--body-file` only. Test godocs 1 line max.
 
 ### A-T0b (remaining 6 Config retrofits)
 
@@ -699,7 +742,7 @@ Renovate bot manages bumps.
 | SLO definition | bespoke PromQL hand-written | OpenSLO is the CNCF-sandbox vendor-neutral spec; Sloth compiles to Prom rules. Backend swap survives without rewriting SLOs. |
 | Per-PR cost attribution | metric labelled by `pr_number` | Cardinality cliff. Log + trace correlation is the OTel-blessed shape per semconv anti-pattern docs. |
 | Trigger-clock gauge derivation | manual operator override | Goodhart's law. SLO-3-source histogram + git history are the sealed inputs. |
-| TUI library | `tview` / hand-rolled tcell | `bubbletea` adopted at D-T2 (added to go.mod then); Elm-architecture renders + tests cleanly. |
+| TUI library | `tview` / hand-rolled tcell | `bubbletea` adopted at D-T2 (added to go.mod then); Elm-architecture renders + tests cleanly. Scored comparison in §1.9. |
 
 ---
 

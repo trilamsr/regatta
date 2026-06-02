@@ -26,6 +26,8 @@ Retrofit `Config.Meter metric.Meter` field onto the TWO Config structs A-T1 + A-
 
 Ship the AST-walk lint test `TestMetricCardinality_PRNumberLabelBanned` in this PR (per §9 trap #1) — walks `meter.*Counter`/`*Histogram`/`*Gauge` call sites and fails on `pr_number`/`run_id`/`work_item_id` label literals.
 
+Wire the §2.5 trace head-sampling policy: `sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(p)))` reading `p` from `OTEL_TRACES_SAMPLER_ARG` (default `0.1`). Custom `ErrorOverride` sampler returns `RecordAndSample` whenever a span carries `error.type` or originates in `internal/orchestrator/state/substrate/sign.go` (chain-verify) / `internal/orchestrator/state/substrate/divergence_emit.go` (divergence-audit). A-T0a PR body shows sampled-vs-unsampled ratio on a synthetic 10⁴-span/sec fixture per §10 R11.
+
 Hand-off for R8: meter hardcodes `tenant_id=default` at this PR; W8 swaps for `ctx`-derived lookup later. PR body cites the hand-off + files an `[OBS-followup] Phase-X tenant_id propagation` tracking issue at merge.
 
 Per `feedback_research_design_principles`: adopt the OTel SDK verbatim. If you find yourself writing more than 50 LoC of metric primitives, STOP and re-spawn the design subagent.
@@ -43,3 +45,4 @@ Per `feedback_research_design_principles`: adopt the OTel SDK verbatim. If you f
 - [planned] c3: `Config.Meter` field added to `internal/cost/spend` Config struct and `internal/gates/l4` Config struct only — no other Config retrofits, no writer.go or gate-decide edits (amendment §7 RISK-A).
 - [planned] c4: `TestMetricCardinality_PRNumberLabelBanned` AST-walk lint ships and passes (spec §9 R1 + R7).
 - [planned] c5: PR body carries A+ rubric scorecard + release-notes fence + sample `/metrics` scrape; submitted via `--body-file`; `[OBS-followup] Phase-X tenant_id propagation` tracking issue filed at merge (spec §9 R8).
+- [planned] c6: Trace head-sampling wired per spec §2.5: `ParentBased(TraceIDRatioBased(p))` with `p` from `OTEL_TRACES_SAMPLER_ARG` (default 0.1) + always-on override for `error.type` spans and chain-verify/divergence-audit packages; `TestTracerSetup_HeadSamplingRatioEnforced` ships (spec §10 R11).
