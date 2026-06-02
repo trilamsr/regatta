@@ -54,9 +54,7 @@ func TestDB_TransitionWorkItem_UnknownIDFails(t *testing.T) {
 	}
 }
 
-// TestDB_TransitionWorkItem_ArchiveBeatsRejected pins issue #165's
-// race acceptance — when a cancel/archive lands between the gate's
-// fold and the rejected write, the gate must not resurrect the row.
+// TestDB_TransitionWorkItem_ArchiveBeatsRejected pins archive-beats-rejected CAS race.
 func TestDB_TransitionWorkItem_ArchiveBeatsRejected(t *testing.T) {
 	ctx := context.Background()
 	db := openOrphanTestDB(t)
