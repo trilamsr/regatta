@@ -47,7 +47,6 @@ func TestPrincipalFromRequest_HappyPath(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodGet, "/approve/01H8AID", nil)
 	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: wire}) //nolint:gosec // G124: test fixture replays server-set cookie; production attrs validated by TestRedeemHandler_HappyPathSetsCookiesAnd303
-	r.AddCookie(&http.Cookie{Name: reviewerHintCookieName, Value: reviewer}) //nolint:gosec // G124: test fixture replays server-set cookie
 
 	p, payload, err := PrincipalFromRequest(r, kr, now)
 	if err != nil {
@@ -83,7 +82,6 @@ func TestPrincipalFromRequest_ExpiredTokenReturnsErrTokenExpired(t *testing.T) {
 
 	r := httptest.NewRequest(http.MethodGet, "/approve/01H8AID", nil)
 	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: wire}) //nolint:gosec // G124: test fixture replays server-set cookie
-	r.AddCookie(&http.Cookie{Name: reviewerHintCookieName, Value: reviewer}) //nolint:gosec // G124: test fixture replays server-set cookie
 
 	_, _, err := PrincipalFromRequest(r, kr, past)
 	if !errors.Is(err, ErrTokenExpired) {
@@ -152,22 +150,41 @@ func TestRedeemHandler_HappyPathSetsCookiesAnd303(t *testing.T) {
 	}
 }
 
-func TestRedeemHandler_MissingReviewerReturnsTypedSentinel(t *testing.T) {
-	kr, _, _, _ := testKeyring(t)
+// TestRedeemHandler_NoRParam_DerivesReviewerFromClaim asserts the cookie-bound flow no longer requires `?r=<reviewer>` — the signed claim is the source of identity (issue #305).
+func TestRedeemHandler_NoRParam_DerivesReviewerFromClaim(t *testing.T) {
+	kr, kid, reviewer, _ := testKeyring(t)
+	now := time.Unix(1_700_000_000, 0)
+	aid := "01H8AID"
+	wire := mintWire(t, kr, kid, reviewer, aid, "wi-1", now.Add(15*time.Minute))
+
 	deps := Dependencies{
 		Keyring: kr,
-		Clock:   time.Now,
-		Config:  Config{DecisionWindow: 5 * time.Minute},
+		Clock:   func() time.Time { return now },
+		Config:  Config{DecisionWindow: 15 * time.Minute},
 	}
 	h := RedeemHandler(deps)
+
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest(http.MethodGet, "/approve/redeem?t=some.token", nil)
+	// No &r= query param — handler must derive reviewer from claim.
+	r := httptest.NewRequest(http.MethodGet, "/approve/redeem?t="+wire, nil)
 	h.ServeHTTP(w, r)
-	if w.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d want 400", w.Code)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d want 303 (body=%q)", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "reviewer_missing") {
-		t.Fatalf("body missing reviewer_missing sentinel: %q", w.Body.String())
+	loc := w.Header().Get("Location")
+	if loc != "/approve/"+aid {
+		t.Fatalf("Location = %q want /approve/%s", loc, aid)
+	}
+	// Hint cookie must still be set from claim (operator UX, not auth).
+	var hintC *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == reviewerHintCookieName {
+			hintC = c
+		}
+	}
+	if hintC == nil || hintC.Value != reviewer {
+		t.Fatalf("reviewer-hint cookie = %+v want value=%q", hintC, reviewer)
 	}
 }
 
