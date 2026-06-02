@@ -242,14 +242,7 @@ func (g *Gate) notifyEscalatedTier(ctx context.Context, a state.Approval, cfg Co
 	if err := g.persistTokenMintedRows(ctx, a.ID, jtis, now); err != nil {
 		return err
 	}
-	req := Request{
-		ApprovalID:       a.ID,
-		WorkItemID:       a.WorkItemID,
-		GateName:         a.GateName,
-		Reviewers:        a.ReviewerSetSnapshot.Reviewers,
-		DecisionDeadline: now.Add(decisionWindow),
-		Tokens:           tokens,
-	}
+	req := newNotifyRequest(a, state.WorkItem{ID: a.WorkItemID}, now.Add(decisionWindow), tokens)
 	receipt, err := g.notifier.Notify(ctx, req)
 	if err != nil {
 		return fmt.Errorf("approval: post-escalation notify: %w", err)
@@ -389,14 +382,7 @@ func (g *Gate) createApprovalAndNotify(ctx context.Context, wi state.WorkItem, c
 		return nil, err
 	}
 
-	req := Request{
-		ApprovalID:       approvalID,
-		WorkItemID:       wi.ID,
-		GateName:         cfg.Name,
-		Reviewers:        snapshot.Reviewers,
-		DecisionDeadline: now.Add(cfg.DecisionWindow),
-		Tokens:           tokens,
-	}
+	req := newNotifyRequest(approval, wi, now.Add(cfg.DecisionWindow), tokens)
 	receipt, err := g.notifier.Notify(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("approval: notify: %w", err)
