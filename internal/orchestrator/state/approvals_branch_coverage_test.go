@@ -14,8 +14,7 @@ import (
 // paths (issue #139). Pairs with approvals_test.go (happy paths +
 // the constraint and race tests).
 
-// TestApproval_CreateApproval_StatusEmptyDefaultsPending pins the
-// zero-Status → "pending" branch in CreateApproval (line 117).
+// TestApproval_CreateApproval_StatusEmptyDefaultsPending asserts empty status defaults to pending.
 func TestApproval_CreateApproval_StatusEmptyDefaultsPending(t *testing.T) {
 	t0 := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
@@ -35,8 +34,7 @@ func TestApproval_CreateApproval_StatusEmptyDefaultsPending(t *testing.T) {
 	}
 }
 
-// TestApproval_CreateApproval_OnTimeoutEmptyDefaultsFail pins the
-// zero-OnTimeout default branch in CreateApproval (line 121).
+// TestApproval_CreateApproval_OnTimeoutEmptyDefaultsFail asserts empty on_timeout defaults to fail.
 func TestApproval_CreateApproval_OnTimeoutEmptyDefaultsFail(t *testing.T) {
 	t0 := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
@@ -61,10 +59,7 @@ func TestApproval_CreateApproval_OnTimeoutEmptyDefaultsFail(t *testing.T) {
 	}
 }
 
-// TestApproval_CreateApproval_NonUniqueErrorWraps drives the generic
-// (non-collision) ExecContext error path in CreateApproval (line 140)
-// by violating the work_item_id FK — sqlite returns a constraint
-// error that is NOT the work_item_id/gate_name UNIQUE tuple.
+// TestApproval_CreateApproval_NonUniqueErrorWraps asserts generic SQL errors wrap with context.
 func TestApproval_CreateApproval_NonUniqueErrorWraps(t *testing.T) {
 	t0 := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
@@ -83,8 +78,7 @@ func TestApproval_CreateApproval_NonUniqueErrorWraps(t *testing.T) {
 	}
 }
 
-// TestApproval_GetApproval_NotFoundWrapsErr drives the scanApproval
-// non-nil error path in GetApproval (line 158).
+// TestApproval_GetApproval_NotFoundWrapsErr asserts NotFound surfaces ErrApprovalNotFound.
 func TestApproval_GetApproval_NotFoundWrapsErr(t *testing.T) {
 	db := newTestDB(t)
 	_, err := db.GetApproval(context.Background(), "a-missing")
@@ -96,10 +90,7 @@ func TestApproval_GetApproval_NotFoundWrapsErr(t *testing.T) {
 	}
 }
 
-// TestApproval_GetApprovalForWorkItem_CorruptJSONWrapsErr drives the
-// non-NoRows scan-error branch in GetApprovalForWorkItem (line 176)
-// by mutating the JSON column to be unparseable, which makes
-// scanApproval return an unmarshal error rather than sql.ErrNoRows.
+// TestApproval_GetApprovalForWorkItem_CorruptJSONWrapsErr asserts corrupt JSON wraps the unmarshal error.
 func TestApproval_GetApprovalForWorkItem_CorruptJSONWrapsErr(t *testing.T) {
 	t0 := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
@@ -123,8 +114,7 @@ func TestApproval_GetApprovalForWorkItem_CorruptJSONWrapsErr(t *testing.T) {
 	}
 }
 
-// TestApproval_MarkDecided_NotFoundReturnsErr drives the rows == 0
-// branch in MarkApprovalDecided (line 294).
+// TestApproval_MarkDecided_NotFoundReturnsErr asserts zero-rows MarkDecided returns ErrApprovalNotFound.
 func TestApproval_MarkDecided_NotFoundReturnsErr(t *testing.T) {
 	t0 := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
@@ -138,10 +128,7 @@ func TestApproval_MarkDecided_NotFoundReturnsErr(t *testing.T) {
 	}
 }
 
-// TestApproval_ListAndScan_PropagateUnmarshalErr drives the scan-error
-// branches in scanApproval (lines 321-329) and in scanApprovals (lines
-// 337-339) and ListApprovalEvents' rows.Scan wrap (line 228) via
-// reaching list paths that re-encounter the corrupt JSON.
+// TestApproval_ListAndScan_PropagateUnmarshalErr asserts ListApprovals scan-error path propagates.
 func TestApproval_ListAndScan_PropagateUnmarshalErr(t *testing.T) {
 	t0 := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
@@ -177,11 +164,7 @@ func TestApproval_ListAndScan_PropagateUnmarshalErr(t *testing.T) {
 	}
 }
 
-// TestApproval_ClosedDBPropagatesQueryErrors drives the ExecContext /
-// QueryContext error wraps that fire when the *sql.DB has been closed
-// — covers ListPendingApprovals/ListApprovalsTimedOutBefore/
-// ListApprovalEvents/MarkApprovalDecided/AppendApprovalEvent error
-// returns at the I/O boundary.
+// TestApproval_ClosedDBPropagatesQueryErrors asserts closed-DB errors propagate through Exec/Query.
 func TestApproval_ClosedDBPropagatesQueryErrors(t *testing.T) {
 	t0 := time.Date(2026, 5, 31, 12, 0, 0, 0, time.UTC)
 	dsn := DSN(filepath.Join(t.TempDir(), "closed.db"))
@@ -222,10 +205,7 @@ func TestApproval_ClosedDBPropagatesQueryErrors(t *testing.T) {
 	}
 }
 
-// TestApproval_UniqueProbes_NilGuard pins the nil-err short-circuit
-// in isUniqueTokenConsume and isUniqueWorkItemGate. Probes are
-// package-private so the test lives next to them; the nil guard
-// matters because callers chain through fmt.Errorf wrapping.
+// TestApproval_UniqueProbes_NilGuard asserts nil-err short-circuits the unique-probe path.
 func TestApproval_UniqueProbes_NilGuard(t *testing.T) {
 	if isUniqueTokenConsume(nil) {
 		t.Fatalf("isUniqueTokenConsume(nil) = true; want false")
