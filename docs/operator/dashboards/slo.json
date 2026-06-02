@@ -1,0 +1,142 @@
+{
+  "uid": "regatta-slo",
+  "title": "Regatta — SLO Burn-Rate (SLO-1 + SLO-2)",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["regatta", "slo", "wave-a", "tier-1"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-7d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "SLO-1 scheduler-tick — burn-rate over time (5m / 1h windows)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 13.44 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(slo:sli_error:ratio_rate5m{sloth_id=\"regatta-scheduler-scheduler-tick-latency\"}) / 0.05",
+          "legendFormat": "burn 5m"
+        },
+        {
+          "refId": "B",
+          "expr": "max(slo:sli_error:ratio_rate1h{sloth_id=\"regatta-scheduler-scheduler-tick-latency\"}) / 0.05",
+          "legendFormat": "burn 1h"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "SLO-1 — error budget remaining (7d)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.25 },
+              { "color": "green", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(slo:period_error_budget_remaining:ratio{sloth_id=\"regatta-scheduler-scheduler-tick-latency\"})",
+          "legendFormat": "budget remaining"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "SLO-2 L4 latency — burn-rate over time (5m / 1h windows)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 13.44 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(slo:sli_error:ratio_rate5m{sloth_id=\"regatta-l4-gate-l4-gate-latency\"}) / 0.01",
+          "legendFormat": "burn 5m"
+        },
+        {
+          "refId": "B",
+          "expr": "max(slo:sli_error:ratio_rate1h{sloth_id=\"regatta-l4-gate-l4-gate-latency\"}) / 0.01",
+          "legendFormat": "burn 1h"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "SLO-2 — error budget remaining (7d)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.25 },
+              { "color": "green", "value": 0.5 }
+            ]
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(slo:period_error_budget_remaining:ratio{sloth_id=\"regatta-l4-gate-l4-gate-latency\"})",
+          "legendFormat": "budget remaining"
+        }
+      ]
+    }
+  ]
+}

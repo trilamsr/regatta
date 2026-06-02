@@ -20,3 +20,8 @@ coverage.out
 node_modules/
 package-lock.json
 package.json
+
+# Sloth binary cache (downloaded by scripts/slo-compile.sh per
+# tools/sloth/version pin; never committed — the pin file is the
+# source of truth).
+tools/sloth/bin/
