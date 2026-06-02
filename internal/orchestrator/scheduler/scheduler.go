@@ -14,6 +14,7 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -250,6 +251,12 @@ type schedulerDB interface {
 	// previously issued raw-SQL UPDATEs through *state.DB.SQL();
 	// consolidating here keeps the CAS shape in one place.
 	TransitionWorkItem(ctx context.Context, id string, from, to state.WorkItemStatus) error
+	// GetAgentByWorkItemID + RecordEvent are the seam applyL4Gate uses
+	// to emit `gate_rejected` audit rows the RejectionRouter drains
+	// (issue #479). agent_id=NULL when no row exists yet — the gate
+	// can fire pre-spawn, so audit visibility cannot wait on UpsertPending.
+	GetAgentByWorkItemID(ctx context.Context, workItemID string) (*state.Agent, error)
+	RecordEvent(ctx context.Context, agentID int64, kind, payloadJSON string) error
 }
 
 // Scheduler is single-caller: Tick must not be invoked concurrently.
@@ -789,12 +796,62 @@ func (s *Scheduler) applyL4Gate(ctx context.Context, spawnable []state.WorkItem)
 				string(obs.KeyVerdict), string(gr.Verdict),
 				string(obs.KeyReason), reason,
 			)
+			s.emitGateRejected(ctx, wi.ID, in.PRSHA, reason)
 			continue
 		}
 		kept = append(kept, wi)
 	}
 	return kept, nil
 }
+
+// emitGateRejected writes the audit row the RejectionRouter drains
+// (issue #479). agent_id resolves to the existing agents row when one
+// exists; sql.ErrNoRows → agent_id=NULL audit-only row so the gate can
+// fire before the wi is ever reserved (planned → spawning happens AFTER
+// applyL4Gate per spec §3.2 step 0.7). Emit errors warn rather than
+// abort the tick: a missed audit row is recoverable on re-evaluation,
+// but a failed tick drops every wi behind this one.
+func (s *Scheduler) emitGateRejected(ctx context.Context, workItemID, prSHA, reason string) {
+	var agentID int64
+	a, err := s.db.GetAgentByWorkItemID(ctx, workItemID)
+	switch {
+	case err == nil:
+		agentID = a.ID
+	case errors.Is(err, sql.ErrNoRows):
+		// audit-only: no agent yet
+	default:
+		s.log.Warn("scheduler.l4_gate_emit_lookup_error",
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyErr), err.Error(),
+		)
+		return
+	}
+	payload, err := json.Marshal(struct {
+		PRSHA  string `json:"pr_sha"`
+		Reason string `json:"reason"`
+	}{PRSHA: prSHA, Reason: reason})
+	if err != nil {
+		// Hand-built struct; marshal cannot fail in practice.
+		s.log.Warn("scheduler.l4_gate_emit_marshal_error",
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyErr), err.Error(),
+		)
+		return
+	}
+	if err := s.db.RecordEvent(ctx, agentID, eventKindGateRejected, string(payload)); err != nil {
+		s.log.Warn("scheduler.l4_gate_emit_record_error",
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyErr), err.Error(),
+		)
+	}
+}
+
+// eventKindGateRejected duplicates rejectionrouter.EventKindGateRejected
+// to avoid a scheduler → rejectionrouter import (rejectionrouter is the
+// downstream consumer of scheduler-emitted events, so the dependency
+// must stay one-way). The constant's value is the contract; both
+// packages assert it against the same string literal.
+const eventKindGateRejected = "gate_rejected"
 
 // markWorkItemRejected flips work_items.status='rejected' atomically
 // against the planned-source state via state.TransitionWorkItem. The
