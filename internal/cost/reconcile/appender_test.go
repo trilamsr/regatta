@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/cost/spend"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
@@ -33,7 +34,7 @@ func TestSubstrateAppender_AppendsBudgetReconciledRow(t *testing.T) {
 	})
 
 	at := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
-	payload := mustJSON(t, BudgetReconciledPayload{
+	payload := mustJSON(t, spend.BudgetReconciledPayload{
 		PeriodStart: at.Add(-time.Hour).UnixMilli(),
 		PeriodEnd:   at.UnixMilli(),
 		ActualUSD:   1.23,
@@ -111,7 +112,7 @@ func TestSubstrateAppender_TickEndToEnd(t *testing.T) {
 	).Scan(&raw); err != nil {
 		t.Fatalf("scan payload: %v", err)
 	}
-	var p BudgetReconciledPayload
+	var p spend.BudgetReconciledPayload
 	if err := json.Unmarshal(raw, &p); err != nil {
 		t.Fatalf("decode payload: %v", err)
 	}
