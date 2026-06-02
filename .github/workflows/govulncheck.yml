@@ -27,5 +27,9 @@ jobs:
           cache: true
       - uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee  # v1.0.4
         with:
+          # go-version-input overrides go-version-file in setup-go; pin to a patched
+          # release (GO-2026-5037, GO-2026-5039) so the scan reflects the toolchain
+          # ci.yml/release.yml/mutation-testing.yml resolve from go.mod.
+          go-version-input: 1.25.11
           go-version-file: go.mod
           repo-checkout: false
