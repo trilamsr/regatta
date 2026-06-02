@@ -13,7 +13,7 @@ import (
 // labelFailuresCounterName is the OTel counter the router exports
 // every gh CLI label failure under. The name follows the
 // `regatta.<package>.<event>_total` convention pinned by the spend +
-// l4 retrofits (PR #490); the cardinality lint walks for banned
+// l4 retrofits; the cardinality lint walks for banned
 // per-request labels (pr_number, work_item_id, run_id) on this scope.
 const labelFailuresCounterName = "regatta.rejection_router.label_failures_total"
 
