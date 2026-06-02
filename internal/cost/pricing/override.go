@@ -64,24 +64,16 @@ func LoadOverride(path string) error {
 }
 
 // validateRow enforces the Portkey-trap invariant for override rows.
-// Mirrors TestPricing_AllActiveSKUsHavePositiveRows so operator-supplied
-// rows clear the same bar as the in-tree table. Retired rows are
-// exempt — operators may load a historical snapshot for replay.
+// Shares rowFieldNonPositive with Validate + Lookup so a future field
+// addition cannot drift between in-tree and operator-supplied paths.
+// Retired rows are exempt — operators may load a historical snapshot
+// for replay.
 func validateRow(model string, row Row) error {
 	if !row.RetiredAfter.IsZero() {
 		return nil
 	}
-	if row.InputUSDPerMTok <= 0 {
-		return fmt.Errorf("%w: %s InputUSDPerMTok=%v", ErrOverrideInvalid, model, row.InputUSDPerMTok)
-	}
-	if row.CacheReadUSDPerMTok <= 0 {
-		return fmt.Errorf("%w: %s CacheReadUSDPerMTok=%v", ErrOverrideInvalid, model, row.CacheReadUSDPerMTok)
-	}
-	if row.CacheCreationUSDPerMTok <= 0 {
-		return fmt.Errorf("%w: %s CacheCreationUSDPerMTok=%v", ErrOverrideInvalid, model, row.CacheCreationUSDPerMTok)
-	}
-	if row.OutputUSDPerMTok <= 0 {
-		return fmt.Errorf("%w: %s OutputUSDPerMTok=%v", ErrOverrideInvalid, model, row.OutputUSDPerMTok)
+	if field, value, ok := rowFieldNonPositive(row); ok {
+		return fmt.Errorf("%w: %s %s=%v", ErrOverrideInvalid, model, field, value)
 	}
 	return nil
 }
