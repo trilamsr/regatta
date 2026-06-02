@@ -257,6 +257,8 @@ TTL = `cfg.DecisionWindow` (existing token's `Window` field). Expired → `appro
 
 Single-use: token's `jti` consumed on POST via existing `token_consumed` event in `approval_events`. Second POST → `token_replay` page.
 
+**Sentinel folding (HTTP layer only)**: `classifyDecideErr` in `internal/gates/approval/notify_http.go` maps both `state.ErrTokenReplay` (UNIQUE-`token_jti` constraint trip) AND `approval.ErrDoubleVote` (in-memory `DecidedBy` guard in `DecideTx`) to HTTP 409 + `token_replay` sentinel. Reason: `DecideTx`'s in-memory guard fires before the constraint when the same reviewer re-clicks a Slack button on the same approval id with two different tokens — operator-facing semantic ("your vote already counted") is identical, Slack-button retries are the dominant trigger, and a distinct `double_vote` HTTP sentinel would surface a Go-side implementation ordering detail to operators with no actionable difference. The CLI (`cmd/regatta/approval_decide.go::exitCodeFor`) keeps them distinct — `ErrTokenReplay` → exit 4, `ErrDoubleVote` → exit 1 (generic) — because terminal exit codes are stable contract surfaces grepped by runbooks. Audit trail in `approval_events` is unchanged: the underlying kind (`token_consumed` UNIQUE-trip vs no row written by the in-mem guard) reveals which path tripped.
+
 Self-review prevention: server-side, before render. If `payload.Reviewer == approval.RequestedBy && cfg.PreventSelfReview`, error page.
 
 View (GET) does NOT consume the token. Refresh is safe; only POST mutates state.
