@@ -424,6 +424,13 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		for _, c := range brief.ParentCriteria {
 			acceptanceByFulfilled[c.ID] = c.Text
 		}
+		// Stage this brief's surviving children, then flush in one
+		// BatchUpsertWorkItems call (issue #89). Per-brief flush preserves
+		// the cross-brief CycleCheck contract: the next brief sees the
+		// prior brief's rows in work_items before its own CycleCheck runs.
+		// Intra-brief cycles are already rejected by brief.Validate /
+		// checkDAG before this loop.
+		staged := make([]state.WorkItem, 0, len(brief.Features))
 		for _, feat := range brief.Features {
 			if firstPath, dup := seenFeature[feat.ID]; dup {
 				b.log.Warn(string(obs.EventBriefRejected), "path", path,
@@ -451,9 +458,10 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 				b.log.Warn(string(obs.EventBriefRejected), "path", path, "reason", cycErr.Error())
 				continue
 			}
-			if upErr := b.db.UpsertWorkItem(ctx, child, state.SourceBrief, pollStartedAt); upErr != nil {
-				return fmt.Errorf("brief_loader: upsert %s: %w", feat.ID, upErr)
-			}
+			staged = append(staged, child)
+		}
+		if err := b.db.BatchUpsertWorkItems(ctx, staged, state.SourceBrief, pollStartedAt); err != nil {
+			return fmt.Errorf("brief_loader: batch upsert children of %s: %w", brief.ParentWorkItemID, err)
 		}
 		if v2 != nil {
 			if err := b.materialiseEdges(ctx, v2, pollStartedAt); err != nil {

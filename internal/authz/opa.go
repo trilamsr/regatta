@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -187,6 +188,18 @@ func buildEvalInput(p web.Principal, act Action, r Resource) (ast.Value, error) 
 	return obj, nil
 }
 
+// CurrentRevision returns the 8-char SHA prefix of the active bundle for
+// tenant, or "" if no bundle is loaded. Lock-free atomic.Pointer load —
+// same hot-path discipline as Check. Reloader uses it for the SHA short-
+// circuit (skip a redundant compile+swap when bundle bytes are unchanged).
+func (a *OPAAuthorizer) CurrentRevision(tenant string) string {
+	s := a.store.Load()
+	if s == nil {
+		return ""
+	}
+	return s.revisions[tenant]
+}
+
 // ReloadTenantForTest installs a synthetic per-revision Rego module for
 // the test tenant. It is the load-bearing seam for TestOpaStore_SwapIsAtomic
 // + TestOpaStore_ReloadDuringEval_NoTorn — production code uses Reload.
@@ -253,6 +266,13 @@ func prepareQueries(ctx context.Context, files map[string]string) (map[Action]*r
 		opts := make([]func(*rego.Rego), 0, 1+len(files))
 		opts = append(opts, rego.Query(q))
 		for name, src := range files {
+			// data.json is a data document, not a Rego module. T-HR
+			// extended the loader surface to include it (slim spec §3.3.1)
+			// so the canonical SHA covers data edits, but the compiler
+			// still only consumes .rego modules.
+			if !strings.HasSuffix(name, ".rego") {
+				continue
+			}
 			opts = append(opts, rego.Module(name, src))
 		}
 		pq, err := rego.New(opts...).PrepareForEval(ctx)
