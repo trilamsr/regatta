@@ -1,0 +1,189 @@
+// Package web hosts the operator UI HTTP surface (spec §3.6); auth.go owns Principal + sentinels + cookie-bound HMAC.
+package web
+
+import (
+	"errors"
+	"fmt"
+	"net/http"
+	"time"
+
+	"github.com/trilamsr/regatta/internal/canon"
+)
+
+// Principal is the identity contract consumed by approval handlers.
+type Principal struct {
+	ID     string
+	Tenant string
+	Roles  []string
+}
+
+// Sentinel errors. Package-level vars so callers can errors.Is-match
+// without string compare. The sentinel name == operator-facing slug
+// rendered by T6's approval_error.tmpl.
+var (
+	// ErrCookieMissing signals no regatta_approval_token cookie on the request.
+	ErrCookieMissing = errors.New("web: approval token cookie missing")
+	// ErrReviewerMissing signals the redeem URL lacked the reviewer hint param `r`.
+	ErrReviewerMissing = errors.New("web: redeem URL missing reviewer hint")
+	// ErrTokenInvalid wraps canon.ErrTokenInvalid (framing / b64 / kid scan).
+	ErrTokenInvalid = errors.New("web: approval token invalid")
+	// ErrTokenExpired wraps canon.ErrTokenExpired (now >= window).
+	ErrTokenExpired = errors.New("web: approval token expired")
+	// ErrTokenReplay signals reuse of a consumed token (decide path sentinel).
+	ErrTokenReplay = errors.New("web: approval token already consumed")
+	// ErrUnknownKey wraps canon.ErrUnknownKeyID (kid not in keyring).
+	ErrUnknownKey = errors.New("web: approval token unknown key_id")
+	// ErrNotReviewer wraps approval.ErrNotReviewer (reviewer not in approval snapshot).
+	ErrNotReviewer = errors.New("web: reviewer not in approval snapshot")
+	// ErrSelfReview wraps approval.ErrSelfReview (reviewer == requested_by under prevent_self_review).
+	ErrSelfReview = errors.New("web: self-review blocked by policy")
+)
+
+// reviewerHintCookieName carries the reviewer claim across the redeem
+// → /approve/<aid> hop. The hint is non-authoritative; the HMAC token
+// is the sole source of trust. See PR body for the follow-up that
+// folds the hint into the token's claim once canon supports
+// reviewer-from-claim verification.
+const reviewerHintCookieName = "regatta_reviewer_hint"
+
+// PrincipalFromRequest authenticates the cookie-bound approval token via canon.VerifyToken and returns the Principal claim.
+func PrincipalFromRequest(r *http.Request, kr canon.Keyring, now time.Time) (Principal, canon.TokenPayload, error) {
+	c, err := r.Cookie(ApprovalTokenCookieName)
+	if err != nil || c.Value == "" {
+		return Principal{}, canon.TokenPayload{}, ErrCookieMissing
+	}
+	hint, err := r.Cookie(reviewerHintCookieName)
+	reviewer := ""
+	if err == nil {
+		reviewer = hint.Value
+	}
+	payload, verr := canon.VerifyToken(kr, c.Value, reviewer, now)
+	if verr != nil {
+		return Principal{}, canon.TokenPayload{}, mapCanonErr(verr)
+	}
+	return Principal{ID: payload.Reviewer, Tenant: "default"}, payload, nil
+}
+
+// mapCanonErr folds canon sentinels into the web-layer sentinel set so
+// errors.Is-match works against the web sentinels without leaking
+// canon's internal envelope-vs-mismatch distinction.
+func mapCanonErr(err error) error {
+	switch {
+	case errors.Is(err, canon.ErrTokenExpired):
+		return fmt.Errorf("%w: %w", ErrTokenExpired, err)
+	case errors.Is(err, canon.ErrUnknownKeyID):
+		return fmt.Errorf("%w: %w", ErrUnknownKey, err)
+	case errors.Is(err, canon.ErrTokenInvalid), errors.Is(err, canon.ErrUnverifiable):
+		return fmt.Errorf("%w: %w", ErrTokenInvalid, err)
+	default:
+		return fmt.Errorf("%w: %w", ErrTokenInvalid, err)
+	}
+}
+
+// RedeemHandler verifies ?t=<wire>&r=<reviewer>, sets HMAC + CSRF cookies (spec §3.6.1), and 303s to /approve/<aid>.
+func RedeemHandler(deps Dependencies) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wire := r.URL.Query().Get("t")
+		if wire == "" {
+			writeSentinelError(w, "token_invalid", http.StatusBadRequest)
+			return
+		}
+		reviewer := r.URL.Query().Get("r")
+		if reviewer == "" {
+			writeSentinelError(w, "reviewer_missing", http.StatusBadRequest)
+			return
+		}
+		now := time.Now()
+		if deps.Clock != nil {
+			now = deps.Clock()
+		}
+		payload, err := canon.VerifyToken(deps.Keyring, wire, reviewer, now)
+		if err != nil {
+			writeSentinelError(w, sentinelSlug(mapCanonErr(err)), errStatus(err))
+			return
+		}
+
+		path := "/approve/" + payload.AID
+		maxAge := int(deps.Config.DecisionWindow.Seconds())
+		http.SetCookie(w, &http.Cookie{
+			Name:     ApprovalTokenCookieName,
+			Value:    wire,
+			Path:     path,
+			MaxAge:   maxAge,
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteStrictMode,
+		})
+		http.SetCookie(w, &http.Cookie{
+			Name:     reviewerHintCookieName,
+			Value:    payload.Reviewer,
+			Path:     path,
+			MaxAge:   maxAge,
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteStrictMode,
+		})
+
+		csrf, err := newCSRFValue()
+		if err != nil {
+			http.Error(w, "csrf mint failure", http.StatusInternalServerError)
+			return
+		}
+		http.SetCookie(w, &http.Cookie{
+			Name:     CSRFCookieName,
+			Value:    csrf,
+			Path:     path,
+			MaxAge:   maxAge,
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteStrictMode,
+		})
+
+		w.Header().Set("Cache-Control", "no-store, no-cache")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Location", path)
+		w.WriteHeader(http.StatusSeeOther)
+	})
+}
+
+// writeSentinelError emits a tiny text body containing the sentinel
+// slug so curl + integration tests can grep for the exact token.
+// T6 renders operator-facing HTML via approval_error.tmpl; this is
+// the pre-cookie redeem-failure fallback.
+func writeSentinelError(w http.ResponseWriter, slug string, code int) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(code)
+	_, _ = w.Write([]byte(slug + "\n"))
+}
+
+// sentinelSlug maps a wrapped sentinel error to its operator-facing slug.
+func sentinelSlug(err error) string {
+	switch {
+	case errors.Is(err, ErrTokenExpired):
+		return "token_expired"
+	case errors.Is(err, ErrUnknownKey):
+		return "unknown_key"
+	case errors.Is(err, ErrTokenReplay):
+		return "token_replay"
+	case errors.Is(err, ErrNotReviewer):
+		return "not_reviewer"
+	case errors.Is(err, ErrSelfReview):
+		return "self_review"
+	default:
+		return "token_invalid"
+	}
+}
+
+// errStatus picks an HTTP status proportional to the sentinel; 4xx
+// covers every operator-actionable failure so a reverse-proxy alerting
+// on 5xx does not flap on routine wrong-token clicks.
+func errStatus(err error) int {
+	switch {
+	case errors.Is(err, canon.ErrTokenExpired):
+		return http.StatusGone
+	case errors.Is(err, canon.ErrUnknownKeyID):
+		return http.StatusForbidden
+	default:
+		return http.StatusBadRequest
+	}
+}

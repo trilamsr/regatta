@@ -46,3 +46,6 @@ const (
 // usdMicroPerDollar bridges substrate `usd_micros` payload values to displayable
 // USD; named here so TestConstNoZeroValueMagic stays green.
 const usdMicroPerDollar = 1_000_000
+
+// csrfTokenByteWidth is the crypto/rand byte width hex-encoded into CSRFCookieName values (16 → 32 hex chars).
+const csrfTokenByteWidth = 16
