@@ -122,7 +122,7 @@ Covered in §0. Summary table:
 
 | Pattern                       | Source                | Where it lands in this spec                  |
 | ----------------------------- | --------------------- | -------------------------------------------- |
-| JSON-structured reviewer JSON | qodo-ai/pr-agent      | §3.4 prompt I/O contract                     |
+| JSON-structured reviewer-JSON | qodo-ai/pr-agent      | §3.4 prompt I/O contract                     |
 | Diff-clip ceiling             | qodo-ai/pr-agent      | §3.3 input construction                      |
 | Prompt as versioned `.tmpl`   | openai/evals          | §3.4 + `Telemetry.PromptSHA`                 |
 | Reviewer categories list      | qodo-ai/pr-agent      | §3.4 prompt template                         |
