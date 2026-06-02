@@ -161,6 +161,29 @@ import "list"
 	spend_cap_usd_per_day:   *200 | int & >=0
 	canary_rate:             *0.05 | float & >=0 & <=0.2
 	cost?:                   #CostGovernor
+	authz?:                  #Authz
+}
+
+// #Authz configures the OPA policy hot-reload surface. Slim single-tenant
+// W8 spec (docs/engineer/specs/2026-06-02-s3-t1-w8-opa-slim.md §3.5).
+// All fields optional; empty block ⇒ embed.FS default-deny only, no
+// watcher, no SIGHUP handler.
+#Authz: {
+	// Absolute or repo-relative path to <policy_dir>/regatta/v1/default/.
+	// Empty ⇒ serve embed.FS bundle and skip both reload triggers.
+	policy_dir?:      string
+
+	// fsnotify event coalesce window. Vim atomic-rename + multi-file
+	// saves emit storms that 250 ms collapses safely.
+	reload_debounce?: *"250ms" | =~"^[0-9]+(ms|s)$"
+
+	// SIGHUP trigger toggle. Operator opts out for windows / CI / any
+	// process that already owns SIGHUP (HR3 mitigation).
+	reload_sighup?:   *true | bool
+
+	// fsnotify watcher toggle. Operator opts out on filesystems where
+	// inotify / kqueue is unreliable (NFS, certain container overlays).
+	reload_fsnotify?: *true | bool
 }
 
 // #CostGovernor is the optional MVP-4 cost-governor block (spec §3.6).
