@@ -1,10 +1,13 @@
-.PHONY: help check ci-check doc-check go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items
+.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
+
+doc-check-test:  ## Assert banned-phrase gate strips fenced + inline backtick spans (#329 regression guard).
+	bash scripts/doc-check_test.sh
 
 items:  ## Regenerate .regatta/items/*.md from docs/engineer/autonomous-session-prompt.md. Idempotent.
 	go run ./cmd/boot-prompt-to-items
@@ -90,7 +93,7 @@ verify-vendored-assets:  ## Assert on-disk SHA-256 of internal/web/static/htmx.m
 		fi; \
 		echo "verify-vendored-assets: htmx.min.js sha256 ok ($$ON_DISK)"'
 
-check: doc-check prose-dup vet lint tidy-check mod-verify verify-vendored-assets go-check property-test  ## Local gate; <60s. Single source of truth for what is verified locally.
+check: doc-check doc-check-test prose-dup vet lint tidy-check mod-verify verify-vendored-assets go-check property-test  ## Local gate; <60s. Single source of truth for what is verified locally.
 
 ci-check: check stale-todo  ## CI gate; supersedes `check` with longer-running scans (stale-todo).
 

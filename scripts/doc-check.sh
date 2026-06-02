@@ -13,6 +13,28 @@
 
 set -euo pipefail
 
+# Helpers.
+#
+# strip_doc_spans <file> -> stdout
+#
+# Streams a markdown file with fenced code blocks (``` ... ```) and inline
+# backtick spans (`...`) blanked out, preserving line count so downstream
+# `grep -n` line numbers still point at the source file's real line.
+#
+# Why both: a doc that *names* a banned token (e.g. a style guide listing
+# what's forbidden) is meta-documentation, not a marketing claim. The
+# author signals "code/literal" with backticks; the gate must respect that
+# signal or it fights its own documentation (#329).
+strip_doc_spans() {
+  perl -ne '
+    BEGIN { $in_fence = 0 }
+    if (/^```/) { $in_fence = !$in_fence; print "\n"; next }
+    if ($in_fence) { print "\n"; next }
+    s/`[^`]*`//g;
+    print;
+  ' "$1"
+}
+
 # --- Markdown link integrity ------------------------------------------------
 #
 # Drift pattern this gate closes: a doc rename / deletion leaves a
@@ -102,19 +124,30 @@ banned_union=$(IFS='|'; echo "${banned_tokens[*]}")
 banned_regex="\\b(${banned_union})\\b"
 
 mdfiles=$(git ls-files '*.md' 2>/dev/null \
-  | grep -vE '^(research/|docs/rfcs/)' \
+  | grep -vE '^(research/|docs/rfcs/|scripts/testdata/)' \
   || true)
 mdcount=$(echo "$mdfiles" | grep -c . || true)
 
+banned_hits=""
 if [ -n "$mdfiles" ]; then
-  banned_hits=$(echo "$mdfiles" | tr '\n' '\0' \
-    | xargs -0 grep -niE -- "$banned_regex" 2>/dev/null || true)
+  while IFS= read -r mdfile; do
+    [ -z "$mdfile" ] && continue
+    # Strip fenced + inline-backtick spans before scanning so that
+    # meta-docs naming the banned tokens (style guide, dispatch templates)
+    # don't trip the gate they document. See strip_doc_spans helper above.
+    hits=$(strip_doc_spans "$mdfile" | grep -niE -- "$banned_regex" || true)
+    if [ -n "$hits" ]; then
+      # Prefix each match with the source file so the user can locate it.
+      banned_hits="${banned_hits}$(echo "$hits" | sed "s|^|${mdfile}:|")"$'\n'
+    fi
+  done <<< "$mdfiles"
 
   if [ -n "$banned_hits" ]; then
     echo "doc-check: banned-phrase hit(s) detected:"
-    echo "$banned_hits" | sed 's/^/  - /'
+    printf '%s' "$banned_hits" | sed 's/^/  - /'
     echo
     echo "Reword to a falsifiable claim, or move the prose into research/ or docs/rfcs/."
+    echo "Tip: code spans (backticks) and fenced blocks are exempt — wrap literal tokens in \`...\` to mention them."
     exit 1
   fi
 fi
