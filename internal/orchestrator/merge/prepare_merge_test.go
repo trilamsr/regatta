@@ -1,8 +1,8 @@
-// prepare_merge_test pins Coordinator.PrepareMerge added by PR #558
-// adversarial-review Bug-1. WriteIntent existed but had no production
-// call site — PrepareMerge is the seam c2's auto-merge policy engine
-// calls before the external `gh pr merge`, atomically writing the
-// merge_intent row + GatesRunning → AwaitingMerge transition.
+// prepare_merge_test pins Coordinator.PrepareMerge — the seam c2's
+// auto-merge policy engine calls before the external `gh pr merge`,
+// atomically writing the merge_intent row + GatesRunning →
+// AwaitingMerge transition so a crash mid-policy-tx leaves a
+// recoverable intent on file.
 package merge_test
 
 import (

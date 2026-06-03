@@ -139,7 +139,7 @@ func (d *DB) TryAcquireLock(ctx context.Context, name string, agentID int64, ttl
 // older one's commit order. A rows-affected of zero is a no-op — the
 // row already carries a newer (or equal) timestamp — and is not an
 // error; the stale-lock sweep keys off MAX(heartbeat_at), not on which
-// writer last touched the row (PR #558 adversarial-review Bug-2).
+// writer last touched the row.
 func (d *DB) HeartbeatLock(ctx context.Context, agentID int64) (int64, error) {
 	now := d.now().UTC().Unix()
 	res, err := d.sql.ExecContext(ctx,

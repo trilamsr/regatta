@@ -1,8 +1,8 @@
-// locks_heartbeat_cas_test pins the CAS-guard contract on HeartbeatLock
-// added by PR #558 adversarial-review Bug-2. Two orchestrator instances
-// may run HeartbeatLock concurrently against the same row; the raw
-// UPDATE without a monotonic guard lost newer writes to LIFO commit
-// order, which then false-positived the stale-lock sweep.
+// locks_heartbeat_cas_test pins the CAS-guard contract on HeartbeatLock.
+// Two orchestrator instances may run HeartbeatLock concurrently against
+// the same row; the raw UPDATE without a monotonic guard lost newer
+// writes to LIFO commit order, which then false-positived the
+// stale-lock sweep.
 package state
 
 import (

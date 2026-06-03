@@ -262,8 +262,7 @@ func (c *Coordinator) markFailed(ctx context.Context, a state.Agent, prNumber in
 // "the other instance already recorded this outcome" and continue —
 // without the suppression the loser's per-agent reconcile errors,
 // gets logged as a sweep failure, and a future W4 self-improvement
-// detector mistakes routine multi-instance recovery for a real bug
-// (PR #558 adversarial-review Bug-3).
+// detector mistakes routine multi-instance recovery for a real bug.
 func (c *Coordinator) recordMergeEvent(ctx context.Context, a state.Agent, kind, payloadJSON string) error {
 	err := c.db.RecordEvent(ctx, a.ID, kind, payloadJSON)
 	if err == nil {

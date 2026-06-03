@@ -1,8 +1,8 @@
 // coordinator_concurrent_test pins the duplicate-event-suppression
-// contract added by PR #558 adversarial-review Bug-3. Two
-// orchestrator instances may both enumerate the same awaiting_merge
-// agent and both probe GitHub; the storage-layer UNIQUE index on
-// (agent_id, kind) for merge terminal kinds is the load-bearing guard.
+// contract on Coordinator.Reconcile. Two orchestrator instances may
+// both enumerate the same awaiting_merge agent and both probe GitHub;
+// the storage-layer UNIQUE index on (agent_id, kind) for merge
+// terminal kinds is the load-bearing guard.
 package merge_test
 
 import (
