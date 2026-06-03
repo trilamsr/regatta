@@ -22,6 +22,7 @@ func TestMain_DispatchTableCoversAllCommands(t *testing.T) {
 		subcmdAudit,
 		subcmdSecret,
 		subcmdStatus,
+		subcmdTriggers,
 		subcmdCost,
 		subcmdResume,
 		subcmdSelfImprove,

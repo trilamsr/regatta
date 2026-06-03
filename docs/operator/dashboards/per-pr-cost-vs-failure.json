@@ -1,0 +1,106 @@
+{
+  "uid": "regatta-per-pr-cost-vs-failure",
+  "title": "Regatta — Per-PR Cost vs Failure",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["regatta", "cost", "failure", "wave-d", "tier-4"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      },
+      {
+        "name": "repo",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(pr:cost_usd_micro:sum_increase24h, repo)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "xychart",
+      "title": "Per-PR cost (USD micro) vs failure count (24h) — outliers above the line are high-cost failures",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 12, "w": 16, "x": 0, "y": 0 },
+      "options": {
+        "mapping": "auto",
+        "seriesMapping": "auto",
+        "legend": { "displayMode": "table" }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "pointSize": 6 }
+        }
+      },
+      "targets": [
+        {
+          "refId": "X",
+          "expr": "pr:cost_usd_micro:sum_increase24h{repo=~\"$repo\"}",
+          "legendFormat": "cost {{pr_number}}",
+          "format": "table",
+          "instant": true
+        },
+        {
+          "refId": "Y",
+          "expr": "sum by (pr_number) (pr:failure_total:sum24h{repo=~\"$repo\"})",
+          "legendFormat": "failures {{pr_number}}",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Top-20 most expensive PRs (24h)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 12, "w": 8, "x": 16, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(20, pr:cost_usd_micro:sum_increase24h{repo=~\"$repo\"})",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "PRs above cost p95 with at least 1 failure (24h)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 12 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(pr:cost_usd_micro:sum_increase24h{repo=~\"$repo\"} > quantile(0.95, pr:cost_usd_micro:sum_increase24h{repo=~\"$repo\"}) and on(pr_number) sum by (pr_number) (pr:failure_total:sum24h{repo=~\"$repo\"}) > 0)"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "barchart",
+      "title": "Cost by failure taxonomy (24h) — which buckets burn the most",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 16, "x": 8, "y": 12 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (taxonomy) (pr:failure_total:sum24h{repo=~\"$repo\"} * on(pr_number) group_left() pr:cost_usd_micro:sum_increase24h{repo=~\"$repo\"})",
+          "legendFormat": "{{taxonomy}}"
+        }
+      ]
+    }
+  ]
+}

@@ -17,6 +17,7 @@ once Wave-A lands (§4 anti-pattern #6).
 | [`substrate-event-rate.json`](substrate-event-rate.json) | Tier 2 (Wave B) | §3 item #5 / SLO-3 | Event rate by kind, chain-break counter, divergence-detection counter, ±3σ baseline band |
 | [`pr-lifecycle.json`](pr-lifecycle.json) | Tier 3 (Wave C) | §3 item #10 | PR stage duration heatmap, per-stage p50/p95, dispatch→first-commit alarm tile, merge-rate KPI |
 | [`trigger-clock.json`](trigger-clock.json) | Tier 4 (Wave D) | §3 item #15 | Days-remaining gauge by trigger (`30_day_green`, `external_customer_signal`, `phase_g_gate`), 30-day trend, snapshot table |
+| [`per-pr-cost-vs-failure.json`](per-pr-cost-vs-failure.json) | Tier 4 (Wave D) | #635 (OBS-C wedge §13 #2) | Per-PR cost scatter vs failure count (24h); top-20 expensive PRs; PRs above cost-p95 with failures; cost-by-taxonomy. Joins `pr:cost_usd_micro:sum_increase24h` × `pr:failure_total:sum24h` on `pr_number` — recording rules at [`dashboards/prometheus/rules/per-pr-cost.yaml`](../../../dashboards/prometheus/rules/per-pr-cost.yaml) |
 
 ## Import instructions
 
