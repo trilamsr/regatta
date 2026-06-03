@@ -201,11 +201,7 @@ func countOpenDBFiles(t *testing.T, dbPath string) int {
 	return n
 }
 
-// TestRunCostStatus_ClosesDB invokes runCostStatusWith N times and
-// asserts no FDs point at the sqlite file after the calls return.
-// Without #649's defer-closeDB() each invocation leaks one FD — directly
-// observable via /dev/fd. Opener counter additionally proves each
-// invocation opened exactly once.
+// TestRunCostStatus_ClosesDB asserts deferred close prevents per-invocation FD leak (#649).
 func TestRunCostStatus_ClosesDB(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "state.db")
@@ -248,9 +244,7 @@ func TestRunCostStatus_ClosesDB(t *testing.T) {
 	}
 }
 
-// TestRunResume_ClosesDB mirrors TestRunCostStatus_ClosesDB for the
-// resume CLI path — buildEnforcer is shared, but resume.go has its own
-// defer closeDB() the fix must add.
+// TestRunResume_ClosesDB asserts resume CLI defers closeDB to prevent leak (#649).
 func TestRunResume_ClosesDB(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "state.db")
