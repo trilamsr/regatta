@@ -70,10 +70,7 @@ func TestSubstrate_GateVerdictReducerIsAppend(t *testing.T) {
 	}
 }
 
-// TestVerdict_RequiresMetadata_RejectsEmptyTool pins issue #550's
-// core invariant: a verdict payload constructed without a Tool field
-// is rejected at construction time — operators cannot accidentally
-// record a verdict whose producer is anonymous.
+// TestVerdict_RequiresMetadata_RejectsEmptyTool pins issue #550's core invariant: a verdict payload constructed without a Tool field is rejected at construction time so operators cannot record anonymous-producer verdicts.
 func TestVerdict_RequiresMetadata_RejectsEmptyTool(t *testing.T) {
 	_, err := substrate.NewGateVerdictPayload(
 		"approval", "WI-1", /*tool*/ "", "sha:abc123", 12, true, true, "ok",
@@ -105,9 +102,7 @@ func TestVerdict_RequiresMetadata_RejectsEmptyTool(t *testing.T) {
 	}
 }
 
-// TestVerdict_NonDeterministic_AuditMarksVerifyOnly pins the issue #550
-// reframe: a non-deterministic verdict's audit posture is "verify-only",
-// meaning "chain is tamper-evident, verdict is NOT replayable".
+// TestVerdict_NonDeterministic_AuditMarksVerifyOnly pins issue #550 reframe: a non-deterministic verdict's audit posture is "verify-only" — chain is tamper-evident, verdict is NOT replayable.
 func TestVerdict_NonDeterministic_AuditMarksVerifyOnly(t *testing.T) {
 	p, err := substrate.NewGateVerdictPayload(
 		"ai-threat-model", "WI-1", "anthropic-api", "claude-opus-4-7", 12,
@@ -121,9 +116,7 @@ func TestVerdict_NonDeterministic_AuditMarksVerifyOnly(t *testing.T) {
 	}
 }
 
-// TestVerdict_Deterministic_AuditAllowsReproduce pins the other arm of
-// the issue #550 reframe: Deterministic=true ⇒ audit posture allows
-// replay-compare against the recorded verdict.
+// TestVerdict_Deterministic_AuditAllowsReproduce pins the other arm of issue #550 reframe: Deterministic=true means audit posture allows replay-compare against the recorded verdict.
 func TestVerdict_Deterministic_AuditAllowsReproduce(t *testing.T) {
 	p, err := substrate.NewGateVerdictPayload(
 		"cel-approval", "WI-1", "cel", "sha:abc123", 12,

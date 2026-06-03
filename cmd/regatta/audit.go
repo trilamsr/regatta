@@ -122,6 +122,9 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 		_, _ = fmt.Fprintln(deps.Stderr, "Audit posture per row:")
 		_, _ = fmt.Fprintln(deps.Stderr, "  reproduce   verdict.deterministic=true — same input must yield same verdict")
 		_, _ = fmt.Fprintln(deps.Stderr, "  verify-only verdict.deterministic=false — chain is tamper-evident but verdict is non-replayable")
+		_, _ = fmt.Fprintln(deps.Stderr, "")
+		_, _ = fmt.Fprintln(deps.Stderr, "Keyring (REGATTA_AUDIT_HMAC_KEY env): when unset the command exits non-zero")
+		_, _ = fmt.Fprintln(deps.Stderr, "with every row marked chain-unverifiable; it does NOT silently skip verification.")
 	}
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -193,7 +196,14 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 				row.AuditPosture = postureVerifyOnly
 			}
 		} else {
+			// Decode-error rows are non-replayable by construction: we
+			// could not even parse the recorded bytes, so Deterministic
+			// must be explicit (not the implicit zero-value) so the
+			// verify-only bucket counter increments and the JSON column
+			// reflects the actual posture instead of relying on field
+			// ordering invariants.
 			row.Tool = "decode-error"
+			row.Deterministic = false
 			row.AuditPosture = postureVerifyOnly
 		}
 		row.RunningSchema = state.CurrentSchemaVersion
