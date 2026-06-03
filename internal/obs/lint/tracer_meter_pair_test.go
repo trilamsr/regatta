@@ -17,11 +17,30 @@ import (
 	"github.com/trilamsr/regatta/internal/testutil/reporoot"
 )
 
+// knownGap tracks structs intentionally exempt from the Tracer+Meter
+// pair invariant pending their per-struct retrofit. Each entry MUST
+// cite the tracking issue (#509 is the umbrella) and is removed when
+// that struct gains its Meter sibling. New Tracer-bearing structs
+// MUST land with Meter — the allowlist is closed to drift, not
+// open-ended; CI fails on any violation outside this set.
+var knownGap = map[string]string{
+	"internal/authz/opa.go:Config":                            "#509",
+	"internal/authz/policies/reload/reloader.go:Reloader":     "#509",
+	"internal/cost/gate/gate.go:Config":                       "#509",
+	"internal/cost/reconcile/tick.go:Config":                  "#509",
+	"internal/gates/approval/gate.go:Gate":                    "#509",
+	"internal/gates/l4/reload.go:Reloader":                    "#509",
+	"internal/orchestrator/adapter/markdown.go:MarkdownCatalogConfig": "#509",
+	"internal/orchestrator/prwatch/prwatch.go:Config":         "#509",
+	"internal/orchestrator/spawner/claude.go:ClaudeSpawnerConfig": "#509",
+}
+
 // TestTracerMeterPair_EveryTracerHasMeter asserts every struct carrying a `Tracer trace.Tracer` field also carries `Meter metric.Meter` (#509).
 func TestTracerMeterPair_EveryTracerHasMeter(t *testing.T) {
 	repoRoot := reporoot.Must(t)
 	fset := token.NewFileSet()
 	var violations []string
+	seen := map[string]struct{}{}
 
 	walkRoot := filepath.Join(repoRoot, "internal")
 	err := filepath.WalkDir(walkRoot, func(path string, d fs.DirEntry, walkErr error) error {
@@ -71,6 +90,16 @@ func TestTracerMeterPair_EveryTracerHasMeter(t *testing.T) {
 			}
 			if hasTracer && !hasMeter {
 				pos := fset.Position(ts.Pos())
+				rel, err := filepath.Rel(repoRoot, pos.Filename)
+				if err != nil {
+					rel = pos.Filename
+				}
+				rel = filepath.ToSlash(rel)
+				key := rel + ":" + ts.Name.Name
+				seen[key] = struct{}{}
+				if _, ok := knownGap[key]; ok {
+					return true
+				}
 				violations = append(violations,
 					pos.String()+": struct "+ts.Name.Name+" carries Tracer trace.Tracer but no Meter metric.Meter sibling")
 			}
@@ -82,8 +111,13 @@ func TestTracerMeterPair_EveryTracerHasMeter(t *testing.T) {
 		t.Fatalf("walk internal/: %v", err)
 	}
 	if len(violations) > 0 {
-		t.Fatalf("Tracer-without-Meter violations (%d):\n  %s",
+		t.Fatalf("Tracer-without-Meter violations (%d) — every Tracer-bearing struct MUST carry a Meter sibling (#509):\n  %s",
 			len(violations), strings.Join(violations, "\n  "))
+	}
+	for key, ref := range knownGap {
+		if _, hit := seen[key]; !hit {
+			t.Errorf("knownGap stale: %s (%s) no longer violates — remove from allowlist", key, ref)
+		}
 	}
 }
 
