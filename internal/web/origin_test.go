@@ -76,6 +76,19 @@ func TestOriginCheck_PublicHostOverride(t *testing.T) {
 	}
 }
 
+// TestOrigin_PublicHostOverride_AllowsExternalHostname asserts #304 reverse-proxy host override.
+func TestOrigin_PublicHostOverride_AllowsExternalHostname(t *testing.T) {
+	h := OriginCheck("regatta.example.com", passThrough())
+	r := httptest.NewRequest(http.MethodPost, "/approve/x", nil)
+	r.Host = "pod-inner-1.svc:8080"
+	r.Header.Set("Origin", "https://regatta.example.com")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("reverse-proxy public-host: status = %d want 200", w.Code)
+	}
+}
+
 func TestOriginCheck_AcceptsMatchingOrigin(t *testing.T) {
 	h := OriginCheck("", passThrough())
 	r := httptest.NewRequest(http.MethodPost, "/approve/x", nil)
