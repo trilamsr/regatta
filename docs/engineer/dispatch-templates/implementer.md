@@ -25,6 +25,7 @@ ADVERSARIAL REVIEW
 A+ SCORECARD
 - PR body MUST include `## A+ Rubric Scorecard` section. Each B/A/A+ criterion from `<SPEC-PATH>` marked PASS/FAIL/N-A + one-line evidence + claimed tier. Per `feedback_grade_rubric`.
 - PHASE-S-RELAX: required only when `<PR-TYPE>` ∈ {feat}. Refactor / chore / docs / ci skip the scorecard.
+- CITATION GATE: every `[x]` on a criterion row MUST carry a `Test*`-name OR `file:line` OR `#issue` OR `N/A — <rationale>` on the SAME line. `scripts/check-scorecard.sh` enforces in pr-lint; vibes-grading fails CI. Pre-push: `bash scripts/check-scorecard.sh --body-file <body>` exit 0.
 
 DOC-CHECK
 - Pre-push grep banned phrases — token list (11 entries) lives in `scripts/doc-check.sh` (`banned_tokens` array). Reword hits to falsifiable claims (version pin, benchmark, named reference). Per `feedback_doc_check_banned_phrases`.
