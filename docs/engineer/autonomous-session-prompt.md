@@ -7,7 +7,7 @@ Copy-paste this prompt to bootstrap a fully autonomous regatta dev session. Desi
 ## Prompt
 
 ```
-Continue regatta development autonomously. Operate INDEFINITELY in auto mode — execute don't ask, ship don't explain, stop only when externally interrupted. **Self-host-first; Phase S1+S2+S3 SHIPPED 2026-06-02 (96+ PRs merged in single autonomous session).** Direct path to autonomous self-improvement loop: Phase OBS-A (meter + dashboards + SLOs, ACTIVE) → Phase OBS-B/C/D (substrate + agent-loop telemetry + operator surface) → Phase AUTONOMY (#458 — 7 wedges closing the autonomous-loop gaps) → Phase DEPLOY (container + systemd/launchd, READY) → Phase GREEN-CLOCK (30-day-green trigger) → Phase MVR-1 (first external-customer wedges, gated on customer-0 interview). External-buyer wedges (W8 multi-tenant, W10 Sigstore, W11 blackboard, W12 billing, P3.8 swap-out adapters, W9 Temporal-backed impl) stay Phase X until 30-day-green OR external-customer-ask fires. Never bottleneck on roadmap depth — pre-fetch next horizon per feedback_roadmap_pre_fetch when current wave drains. NEVER ask for clarification; decide via subagent + memory rules per feedback_decision_priority (UX > ease > performance > best-practices > speed > velocity). When blocked: file [followup] issue + add to watch-triggers list + pick next priority. Pause only for genuinely irreversible action (tag signing, secret rotation, branch-protection downgrade).
+Continue regatta development autonomously. Operate INDEFINITELY in auto mode — execute don't ask, ship don't explain, stop only when externally interrupted. **Self-host-first; Phase S1+S2+S3 SHIPPED 2026-06-02 (96+ PRs merged in single autonomous session).** Direct path to autonomous self-improvement loop: Phase OBS-A (meter + dashboards + SLOs, ACTIVE) → Phase OBS-B/C/D (substrate + agent-loop telemetry + operator surface) → Phase AUTONOMY (#458 — 7 wedges closing the autonomous-loop gaps) → Phase DEPLOY (container + systemd/launchd, READY) → Phase GREEN-CLOCK (30-day-green trigger) → Phase MVR-1 (first external-customer wedges + DW-superset T7 strategy iface, gated on customer-0 interview) → Phase MVR-2 (paying-customer wedges + DW substrate bridge T6 + /workflows UI T7) → Phase MVR-3 (DW-superset capstone — script gate T5 + JS runtime T6 — makes regatta superset of Claude-Code Dynamic Workflows). External-buyer wedges (W8 multi-tenant, W10 Sigstore, W11 blackboard, W12 billing, P3.8 swap-out adapters, W9 Temporal-backed impl) stay Phase X until 30-day-green OR external-customer-ask fires. Never bottleneck on roadmap depth — pre-fetch next horizon per feedback_roadmap_pre_fetch when current wave drains. NEVER ask for clarification; decide via subagent + memory rules per feedback_decision_priority (UX > ease > performance > best-practices > speed > velocity). When blocked: file [followup] issue + add to watch-triggers list + pick next priority. Pause only for genuinely irreversible action (tag signing, secret rotation, branch-protection downgrade).
 
 BOOT
 1. cd /Users/treedesk/Desktop/Projects/regatta && git fetch && git pull --ff-only main
@@ -46,15 +46,37 @@ PHASE GREEN-CLOCK — 30-day-green trigger [BLOCKED on DEPLOY]
   Metric: ≥10 PRs/day green-merge ≥30 consecutive days unattended. Each green-merge from regatta-the-binary increments the day-count. Operator intervention (manual merge) resets to day-0. Trigger fires → unlocks Phase X.
 
 PHASE MVR-1 — First external-customer wedges [BLOCKED on GREEN-CLOCK OR external-customer-ask]
-  Per #433 unified next-horizon roadmap. 4 items in .regatta/items/mvr-1-*.md:
+  Per #433 unified next-horizon roadmap + §14 DW-superset integration. 5 items in .regatta/items/mvr-1-*.md:
     MVR-1 T1: W7 Wave 1 htmx UI MVP
     MVR-1 T2: regatta init bundle (GoReleaser + GH-issue adapter)
     MVR-1 T3: P3.8 SCM adapter (Gitea first)
     MVR-1 T6: pricing — support contracts
-  GATED on: customer-0 interview (#423 — must interview ≥3 OSS-maintainers-of-large-repos before dispatch). Estimated 6 weeks once customer-0 confirmed.
+    MVR-1 T7: strategy interface + concurrency-policy unify (DW-superset Wave A; pieces 1+5 from roadmap §14) — refactor only, parallel with T1, internal-velocity compound
+  GATED on: customer-0 interview (#423 — must interview ≥3 OSS-maintainers-of-large-repos before dispatch). Estimated 7 weeks once customer-0 confirmed.
+
+PHASE MVR-2 — First paying customer [DEFERRED until MVR-1 closes AND 1 signed pilot LOI from persona-B/D per roadmap §2 Gate 2 tier 2]
+  Per #433 §4 + §14. Adds two DW-superset pieces alongside W7 Wave 2/3:
+    MVR-2 T1: W7 Wave 2 htmx (DAG read view + reviewer-rich PR UI)
+    MVR-2 T2: W8 multi-tenant tenant_id routing
+    MVR-2 T3: Retract primitive (G10)
+    MVR-2 T4: P3.8 LLM-gateway adapter (LiteLLM | portkey)
+    MVR-2 T5: W7 Wave 3 polish + docs
+    MVR-2 T6: substrate bridge for script-runs (DW-superset Wave B piece 4) — every script step writes kind=fact event, replay-grade
+    MVR-2 T7: /workflows progress UI (DW-superset Wave A piece 6) — reuses W7 htmx scaffold
+  Estimated 14 weeks.
+
+PHASE MVR-3 — 5+ paying customers + DW-superset capstone [DEFERRED until 5 paying customers signed across persona B/C/D per roadmap §2 Gate 2 tier 3 OR week 24 of MVR-3 window closes]
+  Per #433 §4 + §14. Two new DW pieces alongside Sigstore/Stripe/blackboard/research-mode:
+    MVR-3 T1: W10 Sigstore (cosign behind signer adapter)
+    MVR-3 T2: W12 Stripe Metering behind billing adapter
+    MVR-3 T3: W11 blackboard sqlite-CAS
+    MVR-3 T4: research-mode overlay
+    MVR-3 T5: script-plan gate adapter (DW-superset Wave B piece 3) — L0-L6 + CUE validates LLM-emitted DAG before runtime accepts
+    MVR-3 T6: LLM-authored JS runtime via goja (DW-superset Wave C piece 2) — pure-Go ES5.1+, sandboxed bridge (spawn/fanout/gather only, no FS/eval/net)
+  Estimated 20 weeks. T6 is the customer-facing capstone — regatta becomes superset of Claude-Code Dynamic Workflows with gates + substrate replay + signed handoffs DW lacks.
 
 PHASE X — External-buyer wedges [DEFERRED]
-  W8 multi-tenant tenant_id scoping · W10 Sigstore · W11 blackboard · W12 billing · P3.8 swap-out adapters · W9 Temporal-backed DurableHistory. Specs in main. DO NOT dispatch implementers. Reopen on: external-customer-ask OR 30-day-green trigger.
+  P3.8 swap-out adapters · W9 Temporal-backed DurableHistory. Specs in main. DO NOT dispatch implementers. Reopen on: external-customer-ask OR 30-day-green trigger. (W8/W10/W11/W12 moved into MVR-2/MVR-3 above.)
 
 OPEN FOLLOWUPS (sweep when between phase items, ≤5 trivial PRs/session cap)
 - RISK followups #423 #424 #426 #427 (filed 2026-06-02 strategic-design closeout)

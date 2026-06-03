@@ -36,7 +36,7 @@ trust-bar, and Phase-X surface fit (the matrix lives in PRs
 1. **Lowest time-to-value.** Multi-PR-per-day shape is native; single-tenant binary acceptable; public repo audit-trail already public — no new trust contract.
 2. **UX-first per the decision-priority spine.** Solo maintainer UX = self-operator UX. CLI flow shipping in Phase S3 IS the v1 product surface.
 3. **Marketing flywheel.** Persona-A wins are public. Every green PR on a popular repo carries organic discovery; persona-B/C/D wins are private.
-4. **Discriminator vs Claude Code Dynamic Workflows.** Persona A needs the multi-PR ledger (cost cap + signed audit + queue), not just "ran an agent in a session." CC owns one-shot; regatta owns the queue.
+4. **Discriminator vs Claude Code Dynamic Workflows.** Persona A needs the multi-PR ledger (cost cap + signed audit + queue), not just "ran an agent in a session." CC owns one-shot; regatta owns the queue. The superset story (MVR-3-T6 — hosts DW-style LLM-authored scripts inside the gate envelope with substrate-replay and signed handoffs DW lacks) is a 16-20 week commitment, NOT MVR-1's pitch. MVR-1's persona-A pitch stays "multi-PR ledger" alone; T7 (strategy refactor) is internal-only with zero customer-visible surface.
 5. **Phase-X minimization.** Persona A unblocks with W7 Wave 1 htmx + CLI-only. W8/W10/W11/W12 stay deferred.
 
 **Revenue path note.** Persona A's WTP is $0 in OSS mode; this brief
@@ -142,20 +142,27 @@ hours, returns the following weekend.
 | MVR-1-T3 | GoReleaser release pipeline | XS (1-2d) | GoReleaser | none |
 | MVR-1-T4 | GH-issue adapter (`[autonomous]` label) | S (3-5d) | go-github | substrate Wave 1 (shipped) |
 | MVR-1-T5 | P3.8 SCM-adapter contract + Gitea second consumer | M (1-2 wks) | go-gitea/sdk | P3.8 spec (deferred — landed concurrently) |
+| MVR-1-T7 | Strategy interface + concurrency-policy unify (DW-superset Wave A piece 1+5) | S (1 wk) | none — refactor | substrate Wave 1 (shipped) |
 
 Numbering note: §3's three top-3 wedges expand into the five MVR-1
 table rows here — rank-1 (W7 UI) → T1, rank-2 (init bundle) → T2/T3/T4
 (wizard + GoReleaser + GH-issue adapter, dispatched as one program),
 rank-3 (SCM adapter) → T5. The impl-ready item filenames in `.regatta/
 items/` preserve the rank-3 nomenclature (`mvr-1-t3-p38-scm-adapter-*`).
+T7 is added for the Dynamic-Workflows-superset wedge — see §14.
 
-**Honest week estimate: 6 calendar weeks** (range 5-7).
+**Honest week estimate: 7 calendar weeks** (range 6-8).
 Composition: T1 2-3 wks + T2/T3/T4 dispatched as one program 2 wks
-+ T5 1-2 wks. Basis: per-task adopt-row in `.regatta/items/mvr-1-
-t1-w7-wave1-htmx-ui-mvp.md`, `mvr-1-t2-regatta-init-bundle.md`,
-`mvr-1-t3-p38-scm-adapter-gitea-first.md`. Subagent-week vs
-calendar-week diverges because T2/T3/T4 fan out under one
-dispatch.
++ T5 1-2 wks + T7 1 wk (parallel-IF T1 surface is stable on
+strategy boundaries; otherwise sequence T7 after T1 — adds ~1 wk to
+range). Basis: per-task adopt-row in `.regatta/items/mvr-1-t1-w7-
+wave1-htmx-ui-mvp.md`, `mvr-1-t2-regatta-init-bundle.md`, `mvr-1-
+t3-p38-scm-adapter-gitea-first.md`. T7 spec filename `mvr-1-t7-
+dw-superset-strategy-iface.md` to-be-filed at MVR-1-T1 dispatch
+slot open (per `feedback_plan_subagent_dup_files` — implementer
+must NOT pick the filename; the dispatch prompt pins it). T7
+refactor-only; no new surface. Subagent-week vs calendar-week
+diverges because T2/T3/T4 fan out under one dispatch.
 
 **Abandon-criterion:** if MVR-1-T1 takes >4 wks OR no persona-A
 install lands within 60 days of MVR-1 ship (measured as GitHub
@@ -178,9 +185,13 @@ decided (see §10).
 | MVR-2-T3 | Retract primitive (G10) | XS (1-2d) | go-github |
 | MVR-2-T4 | P3.8 LLM-gateway adapter (LiteLLM or portkey, score at the time) | M (2-3 wks) | LiteLLM / portkey |
 | MVR-2-T5 | W7 Wave 3 htmx — last polish + docs | S (1 wk) | htmx |
+| MVR-2-T6 | Substrate bridge for script-runs (DW-superset Wave B piece 4) | S (1 wk) | none — reuses substrate `kind=fact` | MVR-1-T7 |
+| MVR-2-T7 | `/workflows` progress UI (DW-superset Wave A piece 6) | S (1-2 wks) | htmx | MVR-2-T6 |
 
-**Honest week estimate: 12 calendar weeks** (range 8-12). Basis:
-T1 3-4 wks + T2 2-3 wks + T3 ≤1 wk + T4 2-3 wks + T5 ~1 wk.
+**Honest week estimate: 14 calendar weeks** (range 10-14). Basis:
+T1 3-4 wks + T2 2-3 wks + T3 ≤1 wk + T4 2-3 wks + T5 ~1 wk + T6 1 wk
+(parallel with T4) + T7 1-2 wks (parallel with T5; reuses W7 htmx
+scaffold).
 Per-task estimates cite the wave-2 + wave-4 impl-ready items
 (`.regatta/items/wave-4-01-claude-skill-publish.md`,
 `wave-4-02-mcp-server-registry.md`, `wave-4-03-g-eval-l4-
@@ -209,11 +220,14 @@ is among the 5).
 | MVR-3-T2 | W12 Stripe Metering behind P3.8 billing adapter | M (2-3 wks) | Stripe SDK |
 | MVR-3-T3 | W11 blackboard sqlite-CAS (`blob_digest` column already forward-fit) | M (2-3 wks) | sqlite |
 | MVR-3-T4 | Research-mode overlay (per `2026-06-01-regatta-research-vision.md`) | L (6-8 wks) | per research-mode spec |
+| MVR-3-T5 | Script-plan gate adapter (DW-superset Wave B piece 3) | S (1-2 wks) | reuses L0-L6 + CUE | MVR-2-T6 |
+| MVR-3-T6 | LLM-authored JS runtime (DW-superset Wave C piece 2) | M (3-4 wks) | goja | MVR-3-T5 |
 
-**Honest week estimate: 16 calendar weeks** (range 12-16). Basis:
+**Honest week estimate: 20 calendar weeks** (range 16-20). Basis:
 T1 1-2 wks + T2 2-3 wks + T3 2-3 wks + T4 6-8 wks (research-mode
-overlay is the load-bearing line item). Cite: `docs/wedges/
-research-mode.md` + `2026-06-01-regatta-research-vision.md`.
+overlay is the load-bearing line item) + T5 1-2 wks (parallel with
+T2) + T6 3-4 wks (sequential after T5). Cite: `docs/wedges/
+research-mode.md` + `2026-06-01-regatta-research-vision.md` + §14.
 
 **Abandon-criterion:** **MVR-3 abandons if fewer than 5 paying
 customers across persona B/C/D by week 24 of the MVR-3 window**
@@ -248,13 +262,22 @@ scheduler tick on dev fixture, halt + reassess against alternatives
 
 | Phase | Honest wks | Range | Subagent wks | New OSS adoptions | Bespoke wedges |
 |---|---|---|---|---|---|
-| MVR-1 | 6 | 5-7 | ~7 | 4 (survey, GoReleaser, go-github, go-gitea) | 0 |
-| MVR-2 | 12 | 8-12 | ~12 | 1 (LiteLLM OR portkey) | 0 |
-| MVR-3 | 16 | 12-16 | ~14 | 3 (cosign, Stripe, sqlite-CAS) | 0 |
+| MVR-1 | 7 | 6-8 | ~8 | 4 (survey, GoReleaser, go-github, go-gitea) | 0 |
+| MVR-2 | 14 | 10-14 | ~14 | 1 (LiteLLM OR portkey) | 0 |
+| MVR-3 | 20 | 16-20 | ~18 | 4 (cosign, Stripe, sqlite-CAS, goja) | 0 |
 | MVR-4 | 8 | 6-8 | ~7 | 2 (Temporal, pgx) | 0 |
 
 Zero bespoke wedges across four phases per
-`feedback_research_design_principles` adoption-first.
+`feedback_research_design_principles` adoption-first. DW-superset
+adds goja (pure-Go JS runtime, MIT) as the only new MVR-3 dep; all
+other DW pieces are refactors over shipped substrate. **Bespoke-
+wedge count caveat:** the goja sandbox-bridge layer (MVR-3-T6
+`bridge.go` + `sandbox.go`, ~400 LOC) IS new custom code — it
+counts as wedge surface, NOT a bespoke wedge in the
+`feedback_research_design_principles` sense (which targets
+reinvented orchestration/storage primitives). Sandbox bridge =
+necessary glue around an adopted runtime; treated as integration
+cost, not a wedge.
 
 ---
 
@@ -817,6 +840,7 @@ chain consolidation. Dispatch in the order below.
 - `.regatta/items/mvr-1-t2-regatta-init-bundle.md` — `regatta init` wizard + GoReleaser + GH-issue adapter.
 - `.regatta/items/mvr-1-t3-p38-scm-adapter-gitea-first.md` — P3.8 SCM adapter contract + Gitea second consumer.
 - `.regatta/items/mvr-1-t6-pricing-support-contracts.md` — pricing + support-contract design (lands alongside license decision §10 Q5).
+- `.regatta/items/mvr-1-t7-dw-superset-strategy-iface.md` — strategy interface + concurrency-policy unify (DW-superset Wave A; pieces 1 + 5 from §14).
 
 ### MVR-2 (first external paying customer)
 
@@ -827,12 +851,130 @@ Wave-2 + wave-4 picks compose into MVR-2:
 - `.regatta/items/wave-4-03-g-eval-l4-rubric.md` — DeepEval-backed L4 reviewer gate (CUE-validated rubric).
 - `.regatta/items/wave-4-04-claude-skills-track.md` — track Claude Skills format evolution quarterly.
 - `.regatta/items/wave-4-nits-1-g1-spec-vs-impl-gate.md` through `wave-4-nits-5-g5-tier-2-vendor-signal-caveat.md` — 5 nit resolutions wired into MVR-2 dispatch prompts.
+- `.regatta/items/mvr-2-t6-dw-superset-substrate-bridge.md` — script-run events on substrate (DW-superset Wave B piece 4).
+- `.regatta/items/mvr-2-t7-dw-superset-workflows-ui.md` — `/workflows` progress UI (DW-superset Wave A piece 6).
 
 ### MVR-3 (5+ paying customers + research-mode overlay)
 
 - `.regatta/items/wave-4-05-sandbox-validation-spike.md` — sandbox-runtime swap validation (E2B alternative).
 - `.regatta/items/wave-4-06-semantic-merge-layer-design.md` — blackboard reducer layer design (Yjs spike).
 - `.regatta/items/wave-4-07-operator-cua-tracking.md` — operator CUA (Claude / OpenAI / Gemini) tracking matrix for the publish-bundle adoption-trigger.
+- `.regatta/items/mvr-3-t5-dw-superset-script-gate.md` — script-plan gate adapter (DW-superset Wave B piece 3).
+- `.regatta/items/mvr-3-t6-dw-superset-llm-scripted-runtime.md` — LLM-authored JS runtime via goja (DW-superset Wave C piece 2).
+
+---
+
+## 14. Claude-Code Dynamic-Workflows superset — wedge integration
+
+**Trigger.** Anthropic shipped Dynamic Workflows (research preview)
+2026-05-28: LLM writes a JavaScript orchestration script per
+request, a background runtime executes it, subagents fan out (16
+concurrent, 1000 total cap), checkpointed resume, `/workflows`
+progress UI. Regatta already orchestrates — DW is one ephemeral-
+script execution mode. **Regatta can host it as one execution
+strategy among many** without dropping gates, signed handoffs, or
+event-sourced replay.
+
+Source: `claude.com/blog/introducing-dynamic-workflows-in-claude-
+code`, `code.claude.com/docs/en/workflows`.
+
+**Decision-priority application.** Autonomous-build velocity is the
+primary axis (`feedback_self_improvement` + autonomous-session-
+prompt). Six pieces ranked by internal × customer benefit:
+
+| # | Piece | Cust | Int | Wave | Phase |
+|---|---|---|---|---|---|
+| 1 | Strategy interface | M | H | A | MVR-1-T7 |
+| 5 | Concurrency-policy unify | M | H | A | MVR-1-T7 |
+| 4 | Substrate bridge (script→events) | M | H | B | MVR-2-T6 |
+| 6 | `/workflows` progress UI | H | H | A | MVR-2-T7 |
+| 3 | Script-plan gate adapter | H | H | B | MVR-3-T5 |
+| 2 | LLM-authored JS runtime | H | M | C | MVR-3-T6 |
+
+Pieces 1 + 5 land MVR-1 (refactor, no surface): internal velocity
+compound. Pieces 4 + 6 land MVR-2 (substrate bridge + UI): customer
+visibility + replay/audit. Pieces 3 + 2 land MVR-3 (script gate +
+runtime): the customer-facing moat — regatta becomes a superset of
+DW with gates DW cannot match.
+
+### 14.1 Why superset works
+
+- DW's runtime is closed (Anthropic-side); regatta reimplements
+  with goja (pure-Go ES5.1+, no CGo) — ~3-4 weeks for piece 2 alone.
+- DW's script vars are ephemeral. Regatta's substrate (`kind=fact`
+  events + reducers, MVP-4 W11 shipped) gives replayable history of
+  every script run for free. Single new event topic
+  `workflow.<run_id>.<step>`.
+- DW has zero gate primitive. Regatta's L0-L6 + CUE pipeline plugs
+  in as a new gate kind `script_plan` — script's emitted DAG shape
+  validated before runtime accepts it. Forbid: unbounded loops, raw
+  `spawn` without budget, missing convergence check.
+- DW's 16/1000 concurrency cap lives in Anthropic's runtime;
+  regatta's 8-10 lane cap lives in `feedback_dispatch_discipline`.
+  Piece 5 codifies it as `regatta.yaml: orchestrator.concurrency:
+  {global, per_strategy}` — a global semaphore.
+- DW's `/workflows` progress view is direct analog of OBS-WAVE-A
+  operator dashboard already on roadmap. Piece 6 reuses the htmx
+  scaffold from MVR-1-T1.
+
+### 14.2 What it costs
+
+- ~3700 LOC across 6 pieces; only piece 2 (runtime + bridge +
+  sandbox) is large (~1250 LOC).
+- One new dep: `github.com/dop251/goja`. Pure Go, MIT, single
+  module, no CGo. Adoption-first per
+  `feedback_research_design_principles`.
+- Sandbox tax: bridge surface must be tight — no `eval`, no FS, no
+  net except via `spawn`. Sandbox-escape is the load-bearing risk;
+  treated as a security gate during MVR-3-T6 review.
+
+### 14.3 Customer-facing positioning
+
+After MVR-3-T6 lands, regatta = **gate-enforced, event-sourced,
+multi-PR program platform** that ALSO runs ephemeral LLM-authored-
+script workflows the way DW does. The discriminator vs DW: every
+script-run is replayable from substrate, every plan passes L0-L6
+gates before execution, every output carries signed handoffs.
+
+DW owns one-shot dev-task ergonomics. Regatta owns the queue +
+audit + replay. The superset wedge brings the ergonomics inside
+the gate envelope.
+
+### 14.4 Abandon-criterion
+
+If MVR-1-T7 strategy refactor balloons past 2 weeks (>2× estimate)
+OR no inbound persona-A/B/D ask for ad-hoc workflow execution
+within **60 days** of MVR-2-T7 ship (extended from 30 — UI adoption
+signal lags runtime demand by 6-8 weeks per reviewer feedback) OR
+zero pilot-customer runs a script via the `/workflows` UI in that
+window, demote MVR-3-T6 (runtime) to track-only. Pieces 1, 5, 4, 6
+ship regardless — they earn their keep on internal velocity alone
+(every wave dispatch becomes a strategy instance, every dispatch
+run becomes a substrate-queryable artifact).
+
+### 14.45 Load-bearing leftovers (tracking issues to file)
+
+Per `feedback_unaddressed_load_bearing` — every load-bearing
+leftover gets a filed tracking issue before MVR-3 dispatch:
+
+| Leftover | Filed-as | When |
+|---|---|---|
+| Substrate cardinality under 1000-agent-script load (16k events/run worst case). Stress-test design pre-T6. | `[FOLLOWUP] DW-superset T6 substrate cardinality stress-test` | Before MVR-2-T6 dispatch |
+| Script-DAG CUE schema spec (forbid unbounded loops, raw `spawn` without budget, missing convergence checks) | `[FOLLOWUP] DW-superset T5 script-plan CUE schema design` | Before MVR-3-T5 dispatch |
+| goja security audit + sandbox-escape blast-radius spike + supply-chain attestation (goja is permissive but JS runtimes have a long CVE history) | `[FOLLOWUP] DW-superset T6 goja security review + sandbox-escape spike` | Before MVR-3-T6 dispatch |
+
+All three filed when MVR-2-T1 dispatches (so MVR-3 plans see them
+load-bearing). Filing format: GH issue with `[FOLLOWUP]` prefix +
+`dw-superset` label.
+
+### 14.5 Cuts within the wedge
+
+| Cut | Reason | Reopen |
+|---|---|---|
+| Wrap Anthropic's runtime directly | Closed source; no API exposed | Anthropic ships an embeddable runtime |
+| Build our own JS-emitting LLM | Tool-use on Claude API returns script text fine | Anthropic deprecates tool-use |
+| Match DW's 1000-agent cap | Regatta's 8-10 lane cap is policy-driven; matching DW's cap requires re-architecting fleet allocator. Premature. | A paying customer signs requiring >100-concurrent script runs |
+| Ship `/deep-research` clone bundled | DW's bundled workflow is marketing; regatta's bundled equivalent is the autonomous-session-prompt loop itself. No duplicate. | Persona-B ask specifically for a research-style bundled workflow |
 
 ---
 
@@ -849,7 +991,8 @@ Wave-2 + wave-4 picks compose into MVR-2:
 - W9 spec: `docs/engineer/specs/2026-06-01-w9-temporal-vs-bespoke-redteam.md`.
 - Adapter contracts: `docs/engineer/specs/2026-06-01-adapter-contracts-design.md`.
 - Cost-gov dashboard: `docs/observability/dashboards/cost-governor.md`.
-- htmx — htmx.org (BSD-2); AlecAivazis/survey (MIT); GoReleaser (Apache 2); go-github (BSD-3); go-gitea/sdk (MIT); cosign / Sigstore (Apache 2); Stripe Metering; OPA (Apache 2, CNCF); LiteLLM (MIT); portkey-ai/gateway (MIT); Temporal Go SDK (MIT); DeepEval; Promptfoo; Honeycomb; Langfuse (MIT); Anthropic Agent Skills; MCP Server Registry; Yjs; Automerge.
+- htmx — htmx.org (BSD-2); AlecAivazis/survey (MIT); GoReleaser (Apache 2); go-github (BSD-3); go-gitea/sdk (MIT); cosign / Sigstore (Apache 2); Stripe Metering; OPA (Apache 2, CNCF); LiteLLM (MIT); portkey-ai/gateway (MIT); Temporal Go SDK (MIT); DeepEval; Promptfoo; Honeycomb; Langfuse (MIT); Anthropic Agent Skills; MCP Server Registry; Yjs; Automerge; goja (MIT — pure-Go JS runtime for §14 DW-superset).
+- Claude Code Dynamic Workflows: `claude.com/blog/introducing-dynamic-workflows-in-claude-code` (announce); `code.claude.com/docs/en/workflows` (operator docs). §14 wedge integration source.
 - Memory cites: `feedback_design_iteration_local`, `feedback_drop_ceremony`, `feedback_self_improvement`, `feedback_research_design_principles`, `feedback_pr_body_file_only`, `feedback_pr_body_release_notes_mandatory`, `feedback_decision_priority`, `feedback_deletion_default`, `feedback_grade_rubric`, `feedback_adversarial_review`, `feedback_unaddressed_load_bearing`.
 
 ---
