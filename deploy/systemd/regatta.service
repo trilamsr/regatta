@@ -1,0 +1,41 @@
+[Unit]
+Description=Regatta orchestrator (self-host serve)
+Documentation=https://github.com/treedesk-ai/regatta/blob/main/docs/operator/native-deploy.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=regatta
+Group=regatta
+WorkingDirectory=/var/lib/regatta
+ExecStart=/usr/local/bin/regatta serve --config /etc/regatta/regatta.yaml --repo /var/lib/regatta/repo
+EnvironmentFile=/etc/regatta/env
+
+Restart=on-failure
+RestartSec=5
+
+MemoryHigh=2G
+MemoryMax=4G
+LimitNOFILE=65536
+TasksMax=512
+
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+NoNewPrivileges=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ProtectControlGroups=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectKernelLogs=true
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+ReadWritePaths=/var/lib/regatta /var/log/regatta
+
+[Install]
+WantedBy=multi-user.target
