@@ -504,16 +504,17 @@ T2 may merge before T1; T1 boots `Authorizer.Hydrate` against whatever policy_re
 
 Per `feedback_unaddressed_load_bearing` — file as gh issues, cite by number in PR body before merge.
 
-1. **Policy bundle signing** (cosign / sigstore on the `RegoFiles` payload).
+1. **Policy bundle signing** (cosign / sigstore on the `RegoFiles` payload). Phase-X-deferred; reopen-trigger: MVR-2-T2 (W8 multi-tenant `tenant_id` routing) dispatch — bundle-forgery trust boundary only matters once tenants partition the substrate write path.
 2. **Dynamic policy reload** via filesystem watcher OR admin endpoint (independent of substrate event path; for emergency operator override).
-3. **Per-policy UI editor + Rego-aware playground** (depends on W7.4 UI scope expansion).
-4. **OPA Wasm runtime** — replace interpreter with Wasm-compiled bundles for ~10× eval speedup.
+3. **Per-policy UI editor + Rego-aware playground** (depends on W7.4 UI scope expansion). Phase-X-deferred; reopen-trigger: MVR-2-T2 dispatch OR external operator ask for browser-edit flow (CLI-edit-then-`regatta authz policy-revision` covers single-tenant).
+4. **OPA Wasm runtime** — replace interpreter with Wasm-compiled bundles for ~10× eval speedup. Phase-X-deferred; reopen-trigger: measured p99 over the 200 µs budget on a non-bench workload in CI (current bench p99 = 76 µs median, 117 µs max — well under budget for single-tenant).
 5. **Policy-test-as-code harness** — `opa test` integration in `make check`; lints tenant bundles in CI.
 6. **CLI service-token + multi-tenant CLI** — closes R9; mirrors the approval cookie HMAC shape for CLI principals.
 7. **Emergency rollback CLI** — `regatta authz rollback --tenant <id> --revision <sha>` (R12 mitigation).
 8. **Reason-string lint** — enforce slug-shape reasons (R10).
 9. **W8.2 legacy-URL redirect removal** — drop `/approve/<approval_id>` 301-redirect after rollout window (clean-up).
 10. **Postgres backend** — when SQLite gives way; OPA store stays in-process, but policies fold reads against Postgres `substrate_events`.
+11. **BenchmarkAuthorizerCheck p99 GC tail latency** — 1-2/10 runs see p99 in 230-450 µs window (GC pause, not eval). Phase-X-deferred; reopen-trigger: bench moves into `make ci-check` (today operator-invoked via `make bench` only) OR Wasm runtime (item 4) lands and obviates the alloc surface.
 
 ---
 
