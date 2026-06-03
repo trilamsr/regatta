@@ -8,10 +8,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -43,9 +45,19 @@ type Handler struct {
 	// CacheTTL overrides the dedup-cache TTL. Zero = 60s default.
 	CacheTTL time.Duration
 
-	cache *dedupCache
+	initOnce sync.Once
+	cache    *dedupCache
 
 	alertCounter metric.Int64Counter
+
+	// perAlertname serialises concurrent route() calls sharing an
+	// alertname so the first request's create-or-find decision lands
+	// in the cache before sibling requests start their own lookup.
+	// Without it an alert-storm of N simultaneous firings would race
+	// past the empty cache, see zero open issues, and create N
+	// duplicate issues — the very dedup property the receiver exists
+	// to enforce.
+	perAlertname sync.Map // alertname (string) -> *sync.Mutex
 }
 
 // ResolveMeter returns the configured meter, falling back lazily to the
@@ -75,20 +87,36 @@ func (h *Handler) resolveLogger() *slog.Logger {
 
 // init wires meter-derived instruments lazily so a caller mutation of
 // h.Meter between construction and first request still binds.
+// Guarded by sync.Once so concurrent first-requests cannot race past
+// each other and double-install the cache or counter.
 func (h *Handler) init() {
-	if h.cache == nil {
+	h.initOnce.Do(func() {
 		h.cache = newDedupCache(h.Now, h.CacheTTL)
-	}
-	if h.alertCounter == nil {
 		m := h.resolveMeter()
 		c, err := m.Int64Counter("regatta.alarm_webhook.alerts.total")
 		if err != nil {
-			// Fall back to a no-op counter via a fresh meter so the
-			// handler never panics on instrument creation failures.
 			c, _ = otel.Meter("alarmwebhook-fallback").Int64Counter("regatta.alarm_webhook.alerts.total")
 		}
 		h.alertCounter = c
+	})
+}
+
+// lockAlertname returns the mutex unique to this alertname, allocating
+// on first use. Holders serialise the find-or-create decision so an
+// alert-storm collapses to one CreateIssue even when N requests arrive
+// in the same tick before any cache write has landed.
+func (h *Handler) lockAlertname(name string) *sync.Mutex {
+	if v, ok := h.perAlertname.Load(name); ok {
+		if mu, ok := v.(*sync.Mutex); ok {
+			return mu
+		}
 	}
+	fresh := &sync.Mutex{}
+	actual, _ := h.perAlertname.LoadOrStore(name, fresh)
+	if mu, ok := actual.(*sync.Mutex); ok {
+		return mu
+	}
+	return fresh
 }
 
 // ServeHTTP is the AlertManager webhook entrypoint. Only POST is
@@ -136,6 +164,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if routeErr != nil {
+		span.RecordError(routeErr)
+		span.SetStatus(codes.Error, "route failed")
 		h.resolveLogger().ErrorContext(ctx, "alarmwebhook.route_failed", "err", routeErr)
 		http.Error(w, "route: "+routeErr.Error(), http.StatusBadGateway)
 		return
@@ -146,6 +176,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // route resolves one alert to either CreateIssue or CommentOnIssue per
 // the dedup rule. Errors propagate via errors.Join in ServeHTTP so the
 // failure of one alert does not silently swallow neighbors.
+//
+// The per-alertname mutex serialises sibling firings so concurrent
+// requests that share an alertname always observe the same find-or-
+// create outcome — without it two simultaneous firings would both
+// see an empty search result and create duplicate issues.
 func (h *Handler) route(ctx context.Context, p Payload, a Alert) error {
 	name := a.Alertname()
 	severity := a.Severity()
@@ -153,6 +188,10 @@ func (h *Handler) route(ctx context.Context, p Payload, a Alert) error {
 		h.bump(ctx, name, severity, "error")
 		return errors.New("alert missing labels.alertname")
 	}
+
+	mu := h.lockAlertname(name)
+	mu.Lock()
+	defer mu.Unlock()
 
 	issueNumber, exists, err := findExistingIssue(ctx, h.Client, h.cache, name)
 	if err != nil {

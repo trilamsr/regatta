@@ -270,6 +270,34 @@ func TestAlarmWebhook_LabelsAreLowercaseAndDistinct(t *testing.T) {
 	}
 }
 
+// TestAlarmWebhook_ConcurrentStormProducesOneIssue asserts a burst of 20 simultaneous firings of one alertname yields exactly one CreateIssue + 19 comments.
+func TestAlarmWebhook_ConcurrentStormProducesOneIssue(t *testing.T) {
+	fake := &fakeGitHub{}
+	h := &Handler{Client: fake}
+	body := loadSample(t)
+
+	const n = 20
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			rr := post(t, h, body)
+			if rr.Code != http.StatusAccepted {
+				t.Errorf("status %d", rr.Code)
+			}
+		}()
+	}
+	wg.Wait()
+
+	if len(fake.Created) != 1 {
+		t.Fatalf("creates: got %d want 1; storm must collapse to one issue", len(fake.Created))
+	}
+	if len(fake.Comments) != n-1 {
+		t.Fatalf("comments: got %d want %d", len(fake.Comments), n-1)
+	}
+}
+
 // TestAlarmWebhook_DedupCacheShortCircuits asserts back-to-back firings of the same alertname only hit the GH search API once thanks to the 60s cache.
 func TestAlarmWebhook_DedupCacheShortCircuits(t *testing.T) {
 	fake := &fakeGitHub{
