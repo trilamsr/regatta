@@ -14,6 +14,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -153,7 +154,10 @@ func runServe(args []string) int {
 	// side gates_pass hook ships (c3+), flipping this to true closes the
 	// autonomous-loop merge gap.
 	autoMerge := fs.Bool("auto-merge", false, "Enable autonomous gh-pr-merge worker (PHASE AUTONOMY §11 W2 c2)")
+	publicURL := fs.String("public-url", "", "Public URL operators reach the listener via (e.g. https://regatta.example.com). Reverse-proxy deployments MUST set this so OriginCheck matches the external hostname instead of the inner pod r.Host (#304).")
 	_ = fs.Parse(args)
+
+	publicHost, publicURLErr := parsePublicURL(*publicURL)
 
 	// Resolution priority for the adapter items-root (spec
 	// docs/engineer/specs/2026-06-02-s1-t1-self-host-regatta-yaml.md §5):
@@ -180,6 +184,10 @@ func runServe(args []string) int {
 	}
 
 	logger := log.New(os.Stderr, "regatta: ", log.LstdFlags|log.Lmicroseconds)
+	if publicURLErr != nil {
+		logger.Printf("--public-url: %v", publicURLErr)
+		return 2
+	}
 	// logFormat was validated at Parse-time; the err branch fires only
 	// if logFormatFlag.Set and newLogHandler ever drift.
 	handler, err := newLogHandler(string(logFormat), os.Stderr)
@@ -441,6 +449,7 @@ func runServe(args []string) int {
 		Keyring:    approvaltoken.MapKeyring(loadBriefKeyring()),
 		Clock:      clock,
 		Authorizer: authzr,
+		PublicHost: publicHost,
 	})
 	if err != nil {
 		logger.Printf("listener boot: %v", err)
@@ -794,6 +803,10 @@ type listenerConfig struct {
 	// the web handler does not yet consume it; the field is plumbed so
 	// W8 T3 can pick it up without touching listener wiring.
 	Authorizer *authz.OPAAuthorizer
+	// PublicHost is the externally reachable host (no scheme) parsed from
+	// --public-url. Reverse-proxy deployments set it so OriginCheck pins
+	// the public hostname instead of the inner pod's r.Host (#304).
+	PublicHost string
 }
 
 // preflightUIBoot fires BEFORE state.Open so the operator sees the HMAC misconfig at the loud-at-boot moment (spec §1.3 open-q 9.8) rather than as a render-time lie.
@@ -870,6 +883,7 @@ func newWebHandler(cfg listenerConfig) (http.Handler, error) {
 		Keyring:        cfg.Keyring,
 		Templates:      tmpls,
 		Clock:          cfg.Clock,
+		Config:         web.Config{PublicHost: cfg.PublicHost},
 		RouteRegistrar: nil,
 	}), nil
 }
@@ -1017,6 +1031,28 @@ func buildReviewApprover(logger *slog.Logger) (*review.Approver, error) {
 		Logger:         logger,
 		Keyring:        loadBriefKeyring(),
 	})
+}
+
+// parsePublicURL extracts the Host (incl. port) from --public-url so OriginCheck
+// can pin the externally reachable hostname behind a reverse proxy (#304). Empty
+// input returns ("", nil) so the flag stays optional; non-empty input MUST carry
+// an http/https scheme — bare hostnames are rejected to keep mis-configurations
+// loud at boot rather than silently falling back to r.Host.
+func parsePublicURL(raw string) (string, error) {
+	if raw == "" {
+		return "", nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", fmt.Errorf("parse %q: %w", raw, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return "", fmt.Errorf("parse %q: want http:// or https:// scheme", raw)
+	}
+	if u.Host == "" {
+		return "", fmt.Errorf("parse %q: missing host", raw)
+	}
+	return u.Host, nil
 }
 
 // approvalKeyring reuses the brief HMAC key for approval-token signing.
