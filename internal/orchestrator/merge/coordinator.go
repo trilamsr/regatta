@@ -24,9 +24,10 @@ import (
 // serializes writers via SetMaxOpenConns(1); no internal locking
 // needed.
 type Coordinator struct {
-	db     *state.DB
-	prober PRProber
-	log    *slog.Logger
+	db       *state.DB
+	prober   PRProber
+	log      *slog.Logger
+	executor Executor
 }
 
 // Config wires the Coordinator's deps. DB + Prober are required; Log

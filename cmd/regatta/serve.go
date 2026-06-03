@@ -34,6 +34,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
+	"github.com/trilamsr/regatta/internal/orchestrator/merge"
 	"github.com/trilamsr/regatta/internal/orchestrator/prwatch"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
@@ -147,6 +148,11 @@ func runServe(args []string) int {
 	addr := fs.String("addr", defaultListenerAddr, "HTTP listener bind address when --ui=true")
 	ui := fs.Bool("ui", true, "Boot the operator HTTP listener; --ui=false skips bind entirely")
 	noPRWatch := fs.Bool("no-pr-watch", false, "[smoke-test only] disable the PR watcher; running agents stay in 'running' forever (issue #526)")
+	// PHASE AUTONOMY §11 W2 c2: default OFF so the c2 wiring lands
+	// without changing operator-observable behavior; once the scheduler-
+	// side gates_pass hook ships (c3+), flipping this to true closes the
+	// autonomous-loop merge gap.
+	autoMerge := fs.Bool("auto-merge", false, "Enable autonomous gh-pr-merge worker (PHASE AUTONOMY §11 W2 c2)")
 	_ = fs.Parse(args)
 
 	// Resolution priority for the adapter items-root (spec
@@ -343,6 +349,32 @@ func runServe(args []string) int {
 		o.SetPRWatcher(watcher)
 	} else {
 		slogger.Info("orchestrator.starting", "pr_watch_enabled", false)
+	}
+
+	// PHASE AUTONOMY §11 W2 c2: wire the merge coordinator + auto-merge
+	// worker. Coordinator is always installed (drives the recovery
+	// sweep); the worker only runs when --auto-merge=true so the c2
+	// landing is operator-observable-equivalent to the pre-c2 daemon by
+	// default.
+	mergeCoord, mergeWorker, err := buildMergeWiring(db, *autoMerge, slogger)
+	if err != nil {
+		logger.Printf("merge wiring: %v", err)
+		return 2
+	}
+	if mergeCoord != nil {
+		o.SetMergeCoordinator(mergeCoord)
+	}
+	var mergeWorkerDone chan struct{}
+	if mergeWorker != nil {
+		mergeWorkerDone = make(chan struct{})
+		go func() {
+			defer close(mergeWorkerDone)
+			mergeWorker.Run(ctx)
+		}()
+		defer func() {
+			mergeWorker.Stop()
+			<-mergeWorkerDone
+		}()
 	}
 
 	if err := o.Recover(ctx); err != nil {
@@ -607,6 +639,42 @@ func parseBriefKeyring(raw string) (map[string][]byte, []string, error) {
 		return nil, nil, fmt.Errorf("keyring is empty")
 	}
 	return keys, order, nil
+}
+
+// buildMergeWiring constructs the merge.Coordinator (always when this
+// daemon runs so the c0 recovery sweep is live) and — when
+// autoMergeEnabled is true — the merge.Worker that drives the c2
+// autonomous gh-pr-merge flow. The worker is nil when the gate is
+// off so the deferred Stop() shutdown is a no-op.
+//
+// The probe seam stays nil-stubbed for now: the production gh-CLI
+// prober ships alongside the W7 L4-as-review wiring; until then the
+// Coordinator's Reconcile path is exercised by tests + the executor
+// is the load-bearing seam for c2.
+func buildMergeWiring(db *state.DB, autoMergeEnabled bool, logger *slog.Logger) (*merge.Coordinator, *merge.Worker, error) {
+	coord, err := merge.New(merge.Config{
+		DB:     db,
+		Prober: noopMergeProber{},
+		Logger: logger,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("merge: new coordinator: %w", err)
+	}
+	if !autoMergeEnabled {
+		return coord, nil, nil
+	}
+	coord.SetExecutor(merge.GhExecutor{})
+	w := merge.NewWorker(coord, 32, logger)
+	return coord, w, nil
+}
+
+// noopMergeProber is the temporary prober for c2 wiring — Reconcile
+// only probes when an agent reaches AwaitingMerge via PrepareMerge,
+// which c2's worker drives. The real gh-CLI prober lands with W7.
+type noopMergeProber struct{}
+
+func (noopMergeProber) Probe(_ context.Context, _ int, _ string) (merge.ProbeResult, error) {
+	return merge.ProbeResult{Status: merge.PRStatusUnknown}, nil
 }
 
 // buildRejectionRouter wires the RejectionRouter the orchestrator
