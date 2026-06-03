@@ -1,6 +1,6 @@
 ---
 title: "MVR-3-T2 Stripe Metering — billing adapter (skeleton-tier pre-fetch)"
-status: active
+status: skeleton-prefetch
 summary: Pre-fetch skeleton for MVR-3-T2 Stripe-metered-usage wedge gated behind the P3.8 billing adapter; full spec re-spawns when MVR-3 trigger fires (5 paying customers OR billing-specific customer ask). Locks scope, prior-art, risks, test plan, dep-order so trigger-time dispatch is fill-in rather than green-field.
 ---
 

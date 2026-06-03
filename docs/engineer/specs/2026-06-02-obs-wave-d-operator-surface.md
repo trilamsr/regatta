@@ -1,6 +1,13 @@
+---
+title: "Phase OBS-D — Operator Surface Spec (D-T1 + D-T2 + D-T3)"
+status: superseded
+supersedes_by: 2026-06-02-operator-console-design.md
+summary: "OBS-D operator surface: adversarial dashboard, terminal status, 30-day-green clock. TUI portion superseded by operator-console design."
+---
+
 # Phase OBS-D — Operator Surface Spec (D-T1 + D-T2 + D-T3)
 
-Status: ready for review
+Status: superseded (TUI portion folded into `2026-06-02-operator-console-design.md`)
 Date: 2026-06-02
 Author: design subagent (OBS-D operator-surface — 3 items folded)
 Issue umbrella: #432 (observability roadmap)

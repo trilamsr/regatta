@@ -1,8 +1,14 @@
+---
+title: "Fix #195 — Persist per-JTI `token_minted` rows so reaper revocation is reachable"
+status: shipped
+summary: "Persist per-JTI `token_minted` rows so reaper revocation reaches the event log. Landed via #332."
+---
+
 # Fix #195 — Persist per-JTI `token_minted` rows so reaper revocation is reachable
 
 Date: 2026-06-02
 Issue: [#195](https://github.com/trilamsr/regatta/issues/195)
-Status: design-cleared (adversarial review noted below)
+Status: shipped (#332)
 
 ## Problem
 

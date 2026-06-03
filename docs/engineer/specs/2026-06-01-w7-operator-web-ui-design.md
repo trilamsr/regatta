@@ -1,6 +1,7 @@
 ---
 title: "MVP-3 W7 operator web UI v2"
-status: active
+status: archived
+supersedes_by: 2026-06-02-operator-console-design.md
 summary: "W7 operator web UI v2: server-rendered approval flow + read-only DAG + cost panel; Go embed.FS + htmx + Tailwind CDN. 14 tasks across 4 waves (W7.0 listener prereq + 3 build waves). Authorizer interface seam designed pre-W8."
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: "MVR-3-T3 Blackboard — sqlite-CAS blobs + fact subscriptions (skeleton-tier pre-fetch)"
-status: active
+status: skeleton-prefetch
 summary: Pre-fetch skeleton for MVR-3-T3 typed-facts + reducers + sqlite-CAS-blobs wedge; full spec re-spawns when MVR-3 trigger fires (5 paying customers OR a customer demanding multi-agent fact-sharing). Locks scope, prior-art, risks, test plan, dep-order — substrate's `blob_digest` column already forward-fit per Wave 1.
 ---
 

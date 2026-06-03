@@ -1,6 +1,6 @@
 ---
 title: "MVR-2 T2 — W8 multi-tenant tenant_id routing"
-status: active
+status: skeleton-prefetch
 summary: "Pre-fetch skeleton for MVR-2 T2. Carries the W8-OPA design's `Principal.Tenant` field into every storage read path: substrate events, cost spend, orchestrator state, prwatch, rejectionrouter. One read-side audit + one migration to add `tenant_id` columns. Default tenant = `default` (backwards-compatible single-tenant operators). 2-3 wk effort band. SKELETON."
 ---
 
