@@ -1,0 +1,64 @@
+---
+# Hand-authored per-PR cost roll-up — closes #634 (OBS-C wedge §13 #1).
+#
+# Joins the unlabeled aggregate counter `regatta_pr_cost_usd_micro_total`
+# (cost emitted per agent-call; pr_number rides as a span attribute,
+# NOT a metric label, per dispatch span cardinality fence) with the
+# log-warehouse `regatta_pr_cost_usd_micro_log_event_total` projection
+# (which DOES carry pr_number as a label because it is a log-derived
+# series, not a Prom-native counter — log-warehouse cardinality budget
+# is governed separately).
+#
+# Three rolling windows: 5m for live dashboard cells, 1h for the
+# per-PR scatter panel, 24h for digest rollups.
+
+groups:
+  - name: regatta-per-pr-cost
+    interval: 30s
+    rules:
+      - record: pr:cost_usd_micro:sum_rate5m
+        expr: |
+          sum by (pr_number, repo) (
+            rate(regatta_pr_cost_usd_micro_log_event_total[5m])
+          )
+        labels:
+          owner: regatta
+          tier: "3"
+          wave: c
+          source: log-warehouse
+
+      - record: pr:cost_usd_micro:sum_rate1h
+        expr: |
+          sum by (pr_number, repo) (
+            rate(regatta_pr_cost_usd_micro_log_event_total[1h])
+          )
+        labels:
+          owner: regatta
+          tier: "3"
+          wave: c
+          source: log-warehouse
+
+      - record: pr:cost_usd_micro:sum_increase24h
+        expr: |
+          sum by (pr_number, repo) (
+            increase(regatta_pr_cost_usd_micro_log_event_total[24h])
+          )
+        labels:
+          owner: regatta
+          tier: "3"
+          wave: c
+          source: log-warehouse
+
+      # Per-PR failure indicator joined on pr_number — fan-in for the
+      # cost-vs-failure scatter panel (#635). Failure is the closed-enum
+      # taxonomy counter from OBS-C T4; the join key is pr_number on
+      # both sides.
+      - record: pr:failure_total:sum24h
+        expr: |
+          sum by (pr_number, repo, taxonomy) (
+            increase(regatta_pr_failure_total[24h])
+          )
+        labels:
+          owner: regatta
+          tier: "3"
+          wave: c

@@ -51,7 +51,7 @@ meter.Int64Counter("regatta.adversarial.findings").Add(ctx, 1,
     attribute.String("pattern", pattern))   // bounded enum, see §3.2
 ```
 
-**Tag bounds.** `severity` is 3 enums. `scope` is 4 enums. `pattern` is a CLOSED enum of the top-15 recurring finding patterns observed in the 2026-05 review-loop dataset (e.g. `missing_error_wrap`, `nil_meter_fallback_missing`, `godoc_one_line_violation`, `banned_phrase`, `unbounded_tag`, `comment_what_not_why`, `release_notes_missing`, `ai_signature`, `test_godoc_overflow`, `pr_body_heredoc`, …). The 15th slot is `other` — open-set patterns the reviewer flags but that haven't earned a canonical bucket yet. Cardinality is 3 × 4 × 15 = 180 cells max; well inside the 1000-cell-per-meter budget from §2.2 of the roadmap spec.
+**Tag bounds.** `severity` is 5 enums (`critical | major | minor | info | nit` — extended from the original 3 once implementation pinned the reviewer-output severity ladder against `feedback_grade_rubric` tiers). `scope` is 4 enums (`file | package | repo | session`). `pattern` is a CLOSED enum of 16 canonical buckets (15 recurring finding patterns observed in the 2026-05 review-loop dataset — e.g. `missing_error_wrap`, `nil_meter_fallback_missing`, `godoc_one_line_violation`, `banned_phrase`, `unbounded_tag`, `comment_what_not_why`, `release_notes_missing`, `ai_signature`, `test_godoc_overflow`, `pr_body_heredoc`, … — plus 1 `other` slot for open-set patterns the reviewer flags that have not earned a canonical bucket yet). Cardinality is 5 × 4 × 16 = 320 cells max; well inside the 1000-cell-per-meter budget from §2.2 of the roadmap spec. (Spec amended 2026-06-03 to reconcile with shipped implementation; was 3 × 4 × 15 = 180 before — see #660 for amendment rationale.)
 
 `pattern` enum lives at `internal/orchestrator/followup/patterns.go` (string→canonical bucket). The reviewer-subagent output is normalized into a bucket via prefix-match + a registry table; misses fall back to `other`. Per `feedback_research_design_principles` §"unbounded tag explosion": no free-form finding text in the tag set. Free-form details live in the substrate event payload (already shipped by OBS-C T1).
 
@@ -80,11 +80,15 @@ Dismissal-rate alarm (carried forward from item-level item OBS-WAVE-D-T1 — see
 
 ## §4 T2 — `regatta status` TUI
 
-### 4.1 Library — bubbletea (already scored in roadmap §1.9)
+### 4.1 Library — stdlib ANSI (amended 2026-06-03 from bubbletea; see #661)
 
-Library: `github.com/charmbracelet/bubbletea` (Apache-2). Roadmap §1.9 scored bubbletea 19/20 vs tview 13/20 vs tcell 13/20; bubbletea wins on regatta-fit (Elm-architecture component model maps cleanly onto the 5-panel single-screen budget) + testability (Update/View split is unit-test friendly). The transitive `charmbracelet/colorprofile`/`ultraviolet`/`x/ansi`/`x/term`/`x/termios` deps already live in `go.mod` from other usage; T2 adds the direct `bubbletea` dep.
+**Shipped choice: stdlib renderer.** `cmd/regatta/status.go` ships a pure-stdlib ANSI renderer — `Render(Snapshot) string` joined into a single frame, `\x1b[2J\x1b[H` clear-screen prefix on TTY paint, `min(w, 80)` width budget — no Elm-architecture runtime, no third-party TUI dep.
 
-Per `feedback_research_design_principles`: bubbletea is the proven OSS choice — do NOT roll a custom TUI. If the 5-panel layout fights the bubbletea model, re-spawn the design subagent before building a custom widget.
+**Why the deviation from the original bubbletea pick.** The 5-panel single-screen budget is intrinsically simpler than what the Elm-architecture model is designed to absorb: there is no nested-widget tree, no per-component focus routing, no keystroke routing beyond `q`/Ctrl-C/ESC, and the per-tick refresh is a fresh `Snapshot → string` pass with no diff. Against that workload, bubbletea adds ~30 transitive deps (`charmbracelet/colorprofile`/`ultraviolet`/`x/ansi`/`x/term`/`x/termios` chain, plus bubbletea's own `tea`/`lipgloss`/`bubbles` modules) and a runtime that the 5-panel shape does not exercise. The stdlib renderer matches the spec's testability win (the `Render(Snapshot) string` seam is *more* unit-test friendly than the Update/View split — tests can golden-diff the frame body directly without driving a `tea.Program` event loop).
+
+**Per `feedback_spec_pattern_authority`.** The original implementer deviation (stdlib vs spec-mandated bubbletea) was not re-ratified by a design subagent at the time. This amendment ratifies the stdlib choice retroactively: the deviation was correct for the workload, and the spec is the document that should change — not the implementation. The `Renderer` seam stays a struct method so a future bubbletea swap remains a one-file change if the panel count grows past the single-screen budget (re-open trigger: TUI grows beyond 5 panes OR adds keystroke-driven navigation beyond exit).
+
+**Trade documented in `feedback_research_design_principles`.** Proven OSS > build-from-scratch is the default — but only when the OSS workload-fit beats the dep-cost. For a 5-panel single-screen renderer with no nested focus model, stdlib *is* the proven-and-simpler path. The same rule that picks bubbletea over a hand-rolled TUI for a 30-pane IDE picks stdlib here.
 
 ### 4.2 Panes (5)
 

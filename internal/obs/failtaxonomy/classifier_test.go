@@ -158,6 +158,30 @@ func BenchmarkClassifier_RegexClassify(b *testing.B) {
 	}
 }
 
+// BenchmarkClassifier_8KBTailBoundary stresses the 8KB tail-window truncation path with a 16KB log (#663).
+func BenchmarkClassifier_8KBTailBoundary(b *testing.B) {
+	// 16KB log — twice the 8KB tailBytes constant — exercises the
+	// truncation slice (logTail = logTail[len-tailBytes:]) on every
+	// iteration. Signature sits in the tail half so the regex sweep
+	// also fires; budget claim is P95 < 5ms even when truncation
+	// activates.
+	header := strings.Repeat("2026-06-02T12:00:00Z INFO build step ok with a moderately verbose line to push bytes\n", 200)
+	tail := strings.Repeat("noise line\n", 50) +
+		"panic: runtime error: invalid memory address or nil pointer dereference\n"
+	body := header + tail
+	if len(body) < 16*1024 {
+		body += strings.Repeat("pad\n", (16*1024-len(body))/4+1)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		got := failtaxonomy.Classify(body)
+		if got != failtaxonomy.TaxCrash {
+			b.Fatalf("classify on 16KB log = %v, want crash", got)
+		}
+	}
+}
+
 // TestRecord_EmitsCounterWithoutPanic verifies Record returns the classified bucket and does not panic on nil meter.
 func TestRecord_EmitsCounterWithoutPanic(t *testing.T) {
 	got := failtaxonomy.Record(context.Background(), failtaxonomy.Config{},

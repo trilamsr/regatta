@@ -195,6 +195,63 @@ func TestNoUnboundedLabel_PRNumber(t *testing.T) {
 	}
 }
 
+// TestDispatchSpan_NoUnboundedLabel_PRNumber AST-walks span.SetAttributes call sites in the dispatch package for unbounded labels (#662).
+func TestDispatchSpan_NoUnboundedLabel_PRNumber(t *testing.T) {
+	// Span attributes legitimately carry pr_number/task_id/model — high-
+	// cardinality drill keys ride span attributes by design (see
+	// dispatch package godoc). The cardinality risk is on METRIC labels.
+	// This test pins the COMPLEMENT: span.SetAttributes calls in the
+	// dispatch package MUST stay confined to the dispatch package — a
+	// drift where a metric instrument call grew up to look like a span
+	// SetAttributes call (e.g. via a helper rename) would be caught by
+	// the existing TestNoUnboundedLabel_PRNumber. This test instead pins
+	// the SHAPE: every span.SetAttributes call site in dispatch is the
+	// single canonical one in spans.go:138, and any new call site MUST
+	// be reviewed against the cardinality budget.
+	repoRoot := reporoot.Must(t)
+	walkRoot := filepath.Join(repoRoot, "internal", "obs", "dispatch")
+	fset := token.NewFileSet()
+	var setAttrSites []string
+
+	err := filepath.WalkDir(walkRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			return err
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if sel.Sel.Name != "SetAttributes" {
+				return true
+			}
+			pos := fset.Position(call.Pos())
+			setAttrSites = append(setAttrSites, pos.String())
+			return true
+		})
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if len(setAttrSites) != 1 {
+		t.Fatalf("want exactly 1 span.SetAttributes call site in dispatch package, got %d:\n  %s\n"+
+			"new sites require cardinality-budget review against the spec §3.2 fence.",
+			len(setAttrSites), strings.Join(setAttrSites, "\n  "))
+	}
+}
+
 // TestDispatchKindEnum_Closed pins the 4-kind closed enum against AllKinds.
 func TestDispatchKindEnum_Closed(t *testing.T) {
 	kinds := dispatch.AllKinds()
