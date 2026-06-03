@@ -367,8 +367,7 @@ func TestParse_DuplicateID_Errors(t *testing.T) {
 	}
 }
 
-// TestParse_NoEntries_Succeeds — a source with zero PRIORITY entries is valid
-// steady state post-Phase-S; convert is a no-op (no files written, no error).
+// TestParse_NoEntries_Succeeds — a source with zero PRIORITY entries is valid steady state post-Phase-S; convert is a no-op (no files written,
 func TestParse_NoEntries_Succeeds(t *testing.T) {
 	dir := t.TempDir()
 	src := writeFixture(t, dir, "boot.md", "# Just a doc with no priority block\n")
@@ -398,10 +397,7 @@ func TestParse_DryRun(t *testing.T) {
 	}
 }
 
-// TestParse_RealBootPrompt — the actual checked-in boot prompt MUST parse without error.
-// Post-Phase-S the PRIORITY block carries phase-headers only (no numbered S1-T*/S2-T*/S3-T*
-// dispatch entries), so zero emitted files is the steady state. Any emitted file MUST still
-// round-trip through the adapter.
+// TestParse_RealBootPrompt — the actual checked-in boot prompt MUST parse without error. Post-Phase-S the PRIORITY block carries phase-headers
 func TestParse_RealBootPrompt(t *testing.T) {
 	// repo root is two levels up from cmd/boot-prompt-to-items/
 	wd, err := os.Getwd()
