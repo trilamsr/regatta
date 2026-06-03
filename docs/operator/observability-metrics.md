@@ -99,9 +99,10 @@ Upload JSON. Pick a Prometheus datasource when prompted. The OTLP-side
 equivalent is to point the OTel Collector's Prometheus exporter at the
 same Grafana datasource and use the same JSONs unchanged.
 
-Automated import path: `make provision-dashboards` (future target — see #523) posts each JSON
-under `docs/operator/dashboards/` to the Grafana HTTP API
-(`POST /api/dashboards/db`). Two env vars:
+Automated import path: `make provision-dashboards` (`[OBS-followup]`
+tracking issue #523 — target not yet wired; use the manual path above
+until it lands) will post each JSON under `docs/operator/dashboards/`
+to the Grafana HTTP API (`POST /api/dashboards/db`). Two env vars:
 
 | Env var | Purpose |
 |---|---|
@@ -119,7 +120,7 @@ metrics).
 Verify by running:
 
 ```sh
-GRAFANA_URL=http://localhost:3000 GRAFANA_API_TOKEN=... make provision-dashboards  # NOT YET WIRED — manual import for now; see #523
+GRAFANA_URL=http://localhost:3000 GRAFANA_API_TOKEN=... make provision-dashboards  # [OBS-followup] #523 — not yet wired; use manual import path above
 ```
 
 ## 4. SLOs and alert runbooks
