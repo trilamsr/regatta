@@ -41,6 +41,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 	"github.com/trilamsr/regatta/internal/program"
+	"github.com/trilamsr/regatta/internal/secrets"
 	"github.com/trilamsr/regatta/internal/web"
 )
 
@@ -179,6 +180,22 @@ func runServe(args []string) int {
 		return 2
 	}
 	slogger := slog.New(handler)
+
+	// Resolve operator credentials from OS keychain / pass / env once
+	// at boot per PHASE-AUTONOMY W6. Resolved values are exported into
+	// the process env so existing readers (loadBriefKeyring, audit
+	// signer, LLM dispatcher, GitHub client) consume them unchanged.
+	// SIGHUP triggers Cache.Run to re-resolve + republish atomically.
+	bootSecretsCtx, bootSecretsCancel := context.WithCancel(context.Background())
+	defer bootSecretsCancel()
+	secretCache := secrets.NewCache()
+	secretFetcher := secrets.Default(bootSecretsCtx)
+	secretCache.Load(bootSecretsCtx, secretFetcher, slogger)
+	exportSecretsToEnv(bootSecretsCtx, secretCache, slogger)
+	go secretCache.Run(bootSecretsCtx, secretFetcher, slogger)
+	// Re-export on every rotation so SIGHUP-driven token rotation
+	// surfaces to existing env-var readers without a full re-exec.
+	go watchSecretsExport(bootSecretsCtx, secretCache, slogger)
 
 	// clock is the single composition-root wall-clock source. Threading
 	// one source through every subsystem Config (scheduler, orchestrator,

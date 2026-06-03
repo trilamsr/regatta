@@ -60,6 +60,7 @@ var subcommands = []subcommand{
 	{subcmdKeys, runKeys},
 	{subcmdDigest, runDigest},
 	{subcmdAudit, runAudit},
+	{subcmdSecret, runSecret},
 }
 
 func main() {
@@ -103,6 +104,7 @@ func usage(w io.Writer) {
   regatta keys re-sign-briefs -old-key-id ...         Re-sign program briefs after HMAC key rotation
   regatta digest --date YYYY-MM-DD                    Generate docs/digests/<date>.md from Prom metrics
   regatta audit verify --run-id <id> [--db <path>]    Walk recorded gate verdicts; print tool/version/det/hmac-status per gate
+  regatta secret set|get|status                       Manage operator credentials in OS keychain (macOS) / pass (Linux) with env fallback
   regatta version                                     Print build info
   regatta help                                        This message
 
