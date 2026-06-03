@@ -1,10 +1,7 @@
-// Package spawner defines the contract between the orchestrator and
-// the agent-launch mechanism.
-//
-// The skeleton ships a Stub implementation that records every Spawn
-// call without touching the filesystem or starting a process. The
-// production Spawner (`claude --resume` inside an isolated worktree)
-// lands in a follow-up commit.
+// Package spawner defines the orchestrator↔agent-launch contract.
+// Ships a Stub implementation that records every Spawn call without
+// touching FS or starting a process; the production Spawner
+// (`claude --resume` inside an isolated worktree) lands in a follow-up.
 package spawner
 
 import (
@@ -26,16 +23,11 @@ import (
 )
 
 // Request carries the inputs a Spawner needs to launch an agent.
-// Additional fields (prompt template, worktree path, credentials)
-// land as the real Spawner takes shape.
-//
-// OperatorID/DAGID/RunID are the cost-governor identifier triple stamped
-// onto every token_spend row by SpawnerCallback (#295). The orchestrator
-// populates them from agent + work_item context; the substrate row carries
-// three distinct columns so the T4 reconciler and per-DAG/per-operator
-// USD rollups can group correctly. Empty values are accepted — callers
-// that have not yet been threaded fall back to the WorkItemID-derived
-// shortcut at the writer seam, preserving the wave-2 byte-equal contract.
+// OperatorID/DAGID/RunID is the cost-governor identifier triple stamped
+// onto every token_spend row by SpawnerCallback (#295) so the T4
+// reconciler can group per-DAG/per-operator USD. Empty values fall
+// back to the WorkItemID-derived shortcut at the writer seam,
+// preserving the wave-2 byte-equal contract.
 type Request struct {
 	AgentID    int64
 	WorkItemID string
@@ -45,65 +37,53 @@ type Request struct {
 	RunID      string
 }
 
-// Result reports the spawned process identifiers the orchestrator
-// records in state.agents so a restart can adopt or reap the child.
+// Result reports spawned process identifiers the orchestrator records
+// in state.agents so a restart can adopt or reap the child.
 type Result struct {
 	PID       int
 	SessionID string
 }
 
-// Spawner is the abstraction over agent launch. Implementations MUST
-// be safe for concurrent calls; the orchestrator may spawn multiple
-// agents in the same tick (one per lane).
+// Spawner is the agent-launch abstraction. Implementations MUST be
+// safe for concurrent calls (orchestrator may spawn multiple agents
+// in the same tick).
 type Spawner interface {
 	Spawn(ctx context.Context, req Request) (Result, error)
 }
 
-// Config holds tunables and dependencies for a Stub spawner.
-// Mirrors the Config.Logger DI pattern used by orchestrator, scheduler,
-// and reaper so all components share one injection shape.
+// Config holds Stub spawner tunables + deps; mirrors the Config.Logger
+// DI pattern shared with orchestrator/scheduler/reaper.
 type Config struct {
-	// DB enables Complete: when non-nil, terminal callback writes the
-	// outputs journal entry and flips the work_item to merged. The
-	// order is load-bearing — scheduler tick step-0 reads
-	// ListPendingEdgesFromMerged then GetLatestOutput, so the journal
-	// row must exist before the work_item is observed at status=merged
-	// (spec §3.9). Optional; nil makes Complete a no-op error.
+	// DB enables Complete; when non-nil the terminal callback writes
+	// the outputs journal then flips work_item to merged. Order is
+	// load-bearing — scheduler tick step-0 reads ListPendingEdges
+	// FromMerged → GetLatestOutput, so the journal row must exist
+	// before status=merged is observed (spec §3.9). Nil makes
+	// Complete a no-op error.
 	DB *state.DB
 
-	// Logger is the structured-event sink for spawn.started /
-	// spawn.completed / spawn.failed emissions (spec §5.3). Nil falls
-	// back to slog.Default() so embedded callers still get output
-	// without panicking (spec §4.1).
+	// Logger sinks spawn.started/completed/failed emissions
+	// (spec §5.3). Nil falls back to slog.Default().
 	Logger *slog.Logger
 
-	// Clock is the time source Complete consumes for journal stamps and
-	// duration accounting. Mirrors the func()-clock injection used by
-	// state.OpenWithClock and gates/approval — the seam tests need to
-	// pin deterministic timestamps (#100). Nil falls back to time.Now so
-	// production callers stay zero-config.
+	// Clock is the time source Complete uses for journal stamps and
+	// duration accounting. Nil falls back to time.Now; tests pin
+	// deterministic timestamps via this seam (#100).
 	Clock func() time.Time
 
-	// Tracer is the OTel tracer this component uses to open spans.
-	// Nil falls back to otel.Tracer("spawner") which resolves to the
-	// global provider — noop until obs/otel.Setup runs. Per W6 spec
-	// §3.3 + feedback_spec_pattern_authority.
+	// Tracer falls back to otel.Tracer("spawner") — noop until
+	// obs/otel.Setup runs (W6 spec §3.3).
 	Tracer trace.Tracer
 
-	// Meter is the OTel instrument factory for spawner telemetry.
-	// Nil resolves to otel.Meter("spawner") at the first
-	// ResolveMeter() call so the global MeterProvider Setup wires (or
-	// a noop when Setup was skipped) wins by default. Mirrors the W6
-	// Config.Tracer pattern so callers stay on one DI seam across
-	// trace + metric. C-T1 + C-T4 wire spawn / classification
-	// instruments here.
+	// Meter resolves lazily at ResolveMeter() so a global
+	// MeterProvider swap takes effect on the next call.
+	// C-T1 + C-T4 wire spawn / classification instruments here.
 	Meter metric.Meter
 }
 
-// ResolveMeter returns the configured meter or falls back to the
-// global provider's scoped meter. The fallback is lazy so a global
-// provider swap (e.g. test injection of a noop provider) takes effect
-// on the next call. Matches the W6 Config.Tracer nil-fallback shape.
+// ResolveMeter returns the configured meter or falls back lazily —
+// a global provider swap (e.g. test noop injection) takes effect on
+// the next call.
 func (c Config) ResolveMeter() metric.Meter {
 	if c.Meter != nil {
 		return c.Meter
@@ -111,9 +91,9 @@ func (c Config) ResolveMeter() metric.Meter {
 	return otel.Meter("spawner")
 }
 
-// Stub records every Spawn call and returns a synthetic
-// (pid, session-id) pair. Used by tests and by `regatta serve` until
-// the real spawner ships.
+// Stub records every Spawn call and returns a synthetic (pid,
+// session-id) pair — used by tests and by `regatta serve` until the
+// real spawner ships.
 type Stub struct {
 	mu     sync.Mutex
 	seq    atomic.Int64
@@ -124,8 +104,8 @@ type Stub struct {
 	tracer trace.Tracer
 }
 
-// New constructs a Stub from a Config. Mirrors orchestrator/scheduler/
-// reaper construction so callers see one injection shape.
+// New constructs a Stub. Mirrors orchestrator/scheduler/reaper
+// construction so callers see one injection shape.
 func New(cfg Config) *Stub {
 	log := cfg.Logger
 	if log == nil {
@@ -143,8 +123,8 @@ func New(cfg Config) *Stub {
 }
 
 // Spawn returns a deterministic synthetic Result. PID is a negative
-// counter (so it cannot collide with any real OS pid) and SessionID
-// embeds the work-item ID for easier debugging.
+// counter so it cannot collide with any real OS pid; SessionID embeds
+// the work-item ID for debugging.
 func (s *Stub) Spawn(ctx context.Context, req Request) (Result, error) {
 	// W6 spec §3.5: one `operator_invocation` span per spawn, parent
 	// of the T4 `llm_call` child opened by the stream-json parser.
@@ -179,21 +159,16 @@ func (s *Stub) Calls() []Request {
 	return out
 }
 
-// Complete is the spawner's terminal callback for one attempt: write
-// the outputs journal entry, then mark the work_item merged. Per
-// spec §3.9 the journal write must precede the merge transition so
-// scheduler tick step-0 (ListPendingEdgesFromMerged → GetLatestOutput)
-// never sees a merged work_item whose journal is empty.
-//
-// AppendOutput canonicalises payload + computes sha256; an invalid
-// JSON payload returns an error from canonicalisation and the merge
-// transition does NOT run. The two writes share the single sqlite
-// connection (state.Open caps the pool at 1) so a concurrent reader
-// cannot observe the intermediate (journal-written, status-still-
-// running) state. Crash-safety: if the process dies between the
-// AppendOutput commit and the UpsertWorkItem commit, the next tick
-// observes status!=merged and the orchestrator's reconciliation
-// path retries.
+// Complete is the spawner's terminal callback: write outputs journal,
+// then mark the work_item merged. Order is load-bearing per spec
+// §3.9 — scheduler tick step-0 (ListPendingEdgesFromMerged →
+// GetLatestOutput) never sees a merged work_item whose journal is
+// empty. AppendOutput canonicalises + sha256s the payload; invalid
+// JSON aborts before the merge transition. The two writes share the
+// single sqlite connection (pool cap=1) so a concurrent reader cannot
+// observe the intermediate (journal-written, status-still-running)
+// state. Crash between commits → next tick observes status!=merged
+// and reconciliation retries.
 func (s *Stub) Complete(ctx context.Context, workItemID string, payload json.RawMessage) error {
 	start := s.clock()
 	emitFailed := func(err error) error {

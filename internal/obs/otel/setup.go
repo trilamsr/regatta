@@ -1,8 +1,8 @@
-// Package otel wires the OpenTelemetry Go SDK for regatta. Spec
-// docs/superpowers/specs/2026-05-31-mvp-3-w6-otel-backbone.md §3.1
-// pins this file as the single SDK init seam — every other component
-// imports only the stable `trace.Tracer` API surface so a future SDK
-// major-version migration stays a one-file rewrite (spec §9 R4).
+// Package otel wires the OpenTelemetry Go SDK. Spec
+// 2026-05-31-mvp-3-w6-otel-backbone.md §3.1 pins this file as the
+// single SDK init seam — every other component imports only the
+// stable trace.Tracer API so a future SDK major-version migration
+// stays a one-file rewrite (spec §9 R4).
 package otel
 
 import (
@@ -29,81 +29,67 @@ import (
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 )
 
-// Sentinel errors. Boundary callers use errors.Is to branch on these
-// without leaking impl wrapping (memory rule: typed sentinels only).
+// Sentinel errors — boundary callers errors.Is to branch without
+// leaking upstream SDK error types.
 var (
-	// ErrOTelExporterConflict surfaces when --otel-dev-stdout AND
-	// OTEL_EXPORTER_OTLP_ENDPOINT are both set. Spec §3.6 makes the
-	// pair mutually exclusive so operators do not accidentally double-
-	// emit spans to two backends with divergent shapes.
+	// ErrOTelExporterConflict — --otel-dev-stdout AND
+	// OTEL_EXPORTER_OTLP_ENDPOINT both set. Spec §3.6 makes the pair
+	// mutex so operators do not accidentally double-emit.
 	ErrOTelExporterConflict = errors.New("obs/otel: --otel-dev-stdout cannot combine with OTEL_EXPORTER_OTLP_ENDPOINT")
 
-	// ErrTraceExporter wraps span-exporter construction failures from
-	// the OTel SDK so callers branch on the boundary without coupling
-	// to upstream error types.
+	// ErrTraceExporter wraps SDK span-exporter init failures.
 	ErrTraceExporter = errors.New("obs/otel: trace exporter init failed")
 
-	// ErrLogExporter wraps log-exporter construction failures from the
-	// OTel SDK; symmetric with ErrTraceExporter.
+	// ErrLogExporter wraps SDK log-exporter init failures.
 	ErrLogExporter = errors.New("obs/otel: log exporter init failed")
 
-	// ErrResource wraps resource composition failures from the OTel SDK.
+	// ErrResource wraps SDK resource-composition failures.
 	ErrResource = errors.New("obs/otel: resource composition failed")
 )
 
-// Config carries the regatta-specific knobs Setup needs. Everything
-// else (endpoint, headers, sampler, attribute limits) flows through
-// the OTel SDK's documented env-var contract — spec §3.6 deliberately
-// avoids inventing a parallel YAML schema.
+// Config carries regatta-specific knobs Setup needs. Everything else
+// (endpoint, headers, sampler, attribute limits) flows through the
+// SDK's documented env-var contract — spec §3.6 avoids a parallel
+// YAML schema.
 type Config struct {
-	// ServiceName is emitted as the OTel resource attribute
-	// `service.name`. Defaults to "regatta" when empty.
+	// ServiceName → resource attribute `service.name`; defaults
+	// "regatta".
 	ServiceName string
 
-	// ServiceVersion is emitted as `service.version` when non-empty.
-	// The SDK does not default this attribute, so leaving it blank
-	// simply omits the key from the resource set.
+	// ServiceVersion → `service.version` when non-empty; SDK omits
+	// the key when blank.
 	ServiceVersion string
 
-	// TenantID is emitted as `regatta.tenant_id`. Defaults to
-	// "default" when empty; W8 (RBAC) swaps the constant for a per-
-	// context lookup.
+	// TenantID → `regatta.tenant_id`; defaults "default". W8 (RBAC)
+	// swaps the constant for a per-context lookup.
 	TenantID string
 
-	// DevStdout routes spans + logs to the SDK's stdout exporters for
-	// dev visibility when no OTLP backend is configured. Mutex w/
-	// OTEL_EXPORTER_OTLP_ENDPOINT — both set returns ErrOTelExporterConflict.
+	// DevStdout routes spans + logs to the SDK's stdout exporters.
+	// Mutex with OTEL_EXPORTER_OTLP_ENDPOINT — both set →
+	// ErrOTelExporterConflict.
 	DevStdout bool
 
-	// StdoutDest overrides the io.Writer the stdout exporters write
-	// to. Nil falls back to os.Stdout. Tests inject *bytes.Buffer here
-	// so they can assert on the serialised span payload without
-	// stomping the test runner's stdout.
+	// StdoutDest overrides the stdout exporters' writer (nil →
+	// os.Stdout). Tests inject *bytes.Buffer to assert on serialised
+	// span payload without stomping test stdout.
 	StdoutDest io.Writer
 }
 
-// ShutdownFunc flushes every provider Setup wired up. Returned closure
-// is idempotent: the first call drains and joins exporter errors, all
-// subsequent calls return nil.
+// ShutdownFunc flushes every provider Setup wired up. Idempotent —
+// first call drains and joins exporter errors, subsequent return nil.
 type ShutdownFunc func(context.Context) error
 
-// Setup wires the global OTel TracerProvider and LoggerProvider per
-// spec §3.1. Exporter selection:
-//
-//   - DevStdout + OTEL_EXPORTER_OTLP_ENDPOINT both set → ErrOTelExporterConflict.
-//   - DevStdout → stdouttrace + stdoutlog (dev visibility, no backend needed).
+// Setup wires the global TracerProvider and LoggerProvider (spec
+// §3.1). Exporter selection:
+//   - DevStdout + OTLP endpoint both set → ErrOTelExporterConflict.
+//   - DevStdout → stdouttrace + stdoutlog.
 //   - OTEL_EXPORTER_OTLP_ENDPOINT set → otlptracegrpc + otlploggrpc.
-//   - Neither → noop; the SDK's default noop providers win and Setup
-//     allocates no exporter goroutines (spec §B2 byte-identical-to-MVP-2
-//     verification path).
+//   - Neither → noop providers; Setup allocates no exporter
+//     goroutines (spec §B2 byte-identical-to-MVP-2 path).
 //
-// Returns a ShutdownFunc the caller stores for clean process exit; the
-// closure is safe to call from a signal handler.
-//
-// Setup is intended to be called exactly once per process (cmd/regatta
-// boot). Repeated calls without shutting the previous provider down
-// first leak the prior batcher goroutines; the brief §3.1 mandates one
-// init seam to make this contract obvious.
+// Caller stores the returned ShutdownFunc for clean process exit (safe
+// from a signal handler). Setup is once-per-process — repeated calls
+// without shutting the prior provider leak batcher goroutines.
 func Setup(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 	cfg = withDefaults(cfg)
 

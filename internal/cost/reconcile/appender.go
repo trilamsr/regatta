@@ -11,69 +11,54 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// SubstrateAppender is the production Appender impl: every Tick lands a
-// kind=budget_reconciled row in substrate_events inside one tx. Spec
-// §3.5 — row is HMAC-signed under the configured key; the tx wraps the
-// single INSERT so a sqlite-level error rolls back cleanly without
-// polluting the audit log.
+// SubstrateAppender is the production Appender: every Tick lands a
+// kind=budget_reconciled row in substrate_events inside one tx
+// (spec §3.5). HMAC-signed under the configured key; the tx wraps the
+// single INSERT so a sqlite error rolls back without polluting audit.
 type SubstrateAppender struct {
 	db    *sql.DB
 	key   []byte
 	keyID string
 
-	// nonceSeq is the per-tick monotonic counter folded into the row
-	// nonce. Reconciliation MAY emit at most one row per tick, but ad-hoc
-	// Tick callers (operator-triggered cron) can collide on identical
-	// timestamp; the counter guarantees UNIQUE(run_id, written_by, nonce)
-	// holds even at 1-tick-per-millisecond rates.
-	//
-	// Process-local — multi-host reconcilers are out of scope until W9.
+	// nonceSeq is the per-process monotonic counter folded into nonce
+	// so UNIQUE(run_id, written_by, nonce) holds even at 1-tick-per-ms.
+	// Multi-host reconcilers are out of scope until W9.
 	nonceSeq uint64
 }
 
-// SubstrateAppenderConfig is the seam between cmd/regatta and the
-// production Appender. The DB handle is shared with the rest of the
-// orchestrator; the HMAC key is the brief keyring's active entry — the
-// reconciler does not own a separate key surface.
+// SubstrateAppenderConfig is the cmd/regatta ↔ Appender seam. DB is
+// shared with the orchestrator; the HMAC key is the brief keyring's
+// active entry — reconciler owns no separate key surface.
 type SubstrateAppenderConfig struct {
 	DB    *sql.DB
 	Key   []byte
 	KeyID string
 }
 
-// NewSubstrateAppender wires the production Appender. Returns a nil-safe
-// value — callers receive a *SubstrateAppender they invoke Append() on.
-// Bad config (missing DB or HMAC key) surfaces at Append time, not
-// constructor time, so a misconfigured operator sees the failure in
-// the structured log rather than at startup parse.
+// NewSubstrateAppender wires the production Appender. Bad config
+// (missing DB or HMAC key) surfaces at Append time so the operator
+// sees the failure in the structured log rather than at startup parse.
 func NewSubstrateAppender(cfg SubstrateAppenderConfig) *SubstrateAppender {
-	return &SubstrateAppender{
-		db:    cfg.DB,
-		key:   cfg.Key,
-		keyID: cfg.KeyID,
-	}
+	return &SubstrateAppender{db: cfg.DB, key: cfg.Key, keyID: cfg.KeyID}
 }
 
-// runIDReconciler is the substrate run_id every reconciler-emitted row
-// carries. Run_id pins the audit-graph component the row lives in;
-// reconciliation is its own component (decoupled from any user run).
+// runIDReconciler pins the audit-graph component every reconciler-
+// emitted row lives in (decoupled from any user run).
 const runIDReconciler = "cost-reconciler"
 
-// writtenByReconciler is the substrate written_by tag every reconciler-
-// emitted row carries. Operators grep substrate_events by this column
-// when triaging "did the reconciler run?".
+// writtenByReconciler tags every reconciler-emitted row so operators
+// can grep substrate_events for "did the reconciler run?".
 const writtenByReconciler = "cost-reconciler"
 
-// Append implements the Tick Appender seam. Opens a tx, builds an
-// Event with the spec §3.5 shape, hands it to substrate.AppendEvent,
-// commits on success.
+// Append opens a tx, builds an Event with the spec §3.5 shape, hands
+// it to substrate.AppendEvent, commits on success.
 //
 // Nonce = `rec-<unix_nano>-<seq>` rather than a payload-derived hash:
 // payload-hash nonces tie replay-protection to canonicalised JSON
-// bytes, which means a hostile writer who flips one whitespace-
-// insensitive byte ships a "different" row past the UNIQUE constraint.
-// The per-process seq counter guarantees uniqueness even when two
-// ad-hoc Ticks share the same wall-clock millisecond.
+// bytes, so a hostile writer flipping one whitespace-insensitive byte
+// could ship a "different" row past UNIQUE. The per-process seq
+// guarantees uniqueness even when two ad-hoc Ticks share the same
+// wall-clock millisecond.
 func (a *SubstrateAppender) Append(ctx context.Context, tenantID, kind string, payload json.RawMessage, writtenAt time.Time) error {
 	if a.db == nil {
 		return errors.New("reconcile.SubstrateAppender: DB nil — wiring missing")
@@ -85,9 +70,7 @@ func (a *SubstrateAppender) Append(ctx context.Context, tenantID, kind string, p
 	if err != nil {
 		return fmt.Errorf("reconcile.SubstrateAppender: begin tx: %w", err)
 	}
-	// On any error past this point the deferred rollback runs; on
-	// success the explicit Commit below short-circuits it. sqlite
-	// returns ErrTxDone on a post-commit rollback — benign.
+	// sqlite returns ErrTxDone on a post-commit rollback — benign.
 	defer func() { _ = tx.Rollback() }()
 
 	at := writtenAt.UTC()

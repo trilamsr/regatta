@@ -1,13 +1,12 @@
 // Package estimate prices a pending LLM call before it spawns.
-//
-// Strategy: upper-bound (deterministic, conservative, cold-start-friendly).
-// Predicted-mean undercounts in the worst case → spawning continues past the
-// actual cap → the Waxell-$47K-trap. Upper-bound never undercounts; worst case
-// is "soft-cap fires pessimistically" — acceptable user-facing failure mode.
+// Strategy: upper-bound (deterministic, conservative). Predicted-mean
+// undercounts → spawning continues past the cap → the Waxell-$47K-trap.
+// Upper-bound never undercounts; worst case is "soft-cap fires
+// pessimistically" — acceptable failure mode.
 //
 // Determinism is load-bearing for W9 replay: pure function of
-// (input_tokens, max_tokens, price_in, price_out). No map iteration over
-// non-keyed data, no time.Now, no mutable global state.
+// (input_tokens, max_tokens, price_in, price_out) — no map iteration
+// over non-keyed data, no time.Now, no mutable global state.
 package estimate
 
 import (
@@ -16,27 +15,24 @@ import (
 	"github.com/trilamsr/regatta/internal/cost/pricing"
 )
 
-// Estimator is the seam Gate uses to price a pending call. Kept as an
-// interface so T1 can mock without pulling the real pricing table; the
-// production type is the concrete UpperBound.
+// Estimator is the seam Gate uses to price a pending call. Interface
+// shape so T1 can mock without pulling the real pricing table.
 type Estimator interface {
 	Estimate(ctx context.Context, model string, inputTokens, maxTokens int64, hint Hint) (float64, error)
 }
 
-// Hint lets the planner override the (input, max) values the spawner would
-// otherwise probe. A non-zero field overrides; the zero value means "use the
-// caller-supplied parameter as-is".
+// Hint lets the planner override (input, max). A non-zero field
+// overrides; zero value means "use the caller-supplied parameter".
 type Hint struct {
 	InputTokens int64
 	MaxTokens   int64
 }
 
-// UpperBound is the deterministic, conservative concrete Estimator.
-// Formula: est_usd = (input × price_in + max × price_out) / 1e6.
+// UpperBound: est_usd = (input·price_in + max·price_out) / 1e6.
 type UpperBound struct{}
 
-// Estimate prices the upper bound of one call. Returns ErrPricingMissing for
-// unknown SKUs (Portkey-trap defense at the estimator seam).
+// Estimate returns ErrPricingMissing for unknown SKUs (Portkey-trap
+// defense at the estimator seam).
 func (UpperBound) Estimate(_ context.Context, model string, inputTokens, maxTokens int64, hint Hint) (float64, error) {
 	row, err := pricing.Lookup(model)
 	if err != nil {
@@ -48,8 +44,7 @@ func (UpperBound) Estimate(_ context.Context, model string, inputTokens, maxToke
 	if hint.MaxTokens > 0 {
 		maxTokens = hint.MaxTokens
 	}
-	// Division by 1e6 last would not change the math but keeps every term
-	// in tokens-times-rate space, where the magnitudes are small enough
-	// (rate < 100, tokens < 10^7) that float64 mantissa precision holds.
+	// Division by 1e6 last keeps every term in tokens-times-rate space,
+	// where magnitudes (rate < 100, tokens < 10^7) fit float64 mantissa.
 	return (float64(inputTokens)*row.InputUSDPerMTok + float64(maxTokens)*row.OutputUSDPerMTok) / 1e6, nil
 }

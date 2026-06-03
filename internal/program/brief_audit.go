@@ -1,13 +1,9 @@
-// Brief rejection audit sink (issue #80). Best-effort substrate write
-// runs alongside the existing slog.Warn at every rejection site so the
-// rejection record survives orchestrator restart, log rollover, and the
-// log-shipping gap the issue body calls out. Reuses the substrate
-// HMAC-chained events table per feedback_research_design_principles —
-// avoids the parallel audit_log table the issue first proposed.
-//
-// Failure mode: substrate write failures are logged + dropped. A broken
-// audit sink must NOT block brief sync; the existing slog warn already
-// captures the rejection for an operator with journalctl access.
+// Brief rejection audit sink (#80). Best-effort substrate write runs
+// alongside slog.Warn at every rejection site so the record survives
+// restart, log rollover, and the log-shipping gap. Reuses substrate's
+// HMAC-chained events table (feedback_research_design_principles —
+// avoids a parallel audit_log table). Write failures log + drop;
+// audit must NOT block brief sync.
 
 package program
 
@@ -19,21 +15,16 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// reasonMaxLen caps the rejection reason in the substrate payload. The
-// substrate CHECK pins payload_json at 1024 bytes; reserving ~512 for
-// the reason leaves room for the path field + JSON framing under any
-// realistic file path length.
+// reasonMaxLen caps reason in the substrate payload. substrate CHECK
+// pins payload_json at 1024 bytes; reserving ~512 leaves room for the
+// path field + JSON framing under any realistic path length.
 const reasonMaxLen = 512
 
-// BriefAuditConfig carries the substrate-sink deps the loader uses when
-// emitting a durable rejection record. An unset (zero-value) Audit
-// disables the substrate sink so deployments without REGATTA_HMAC_KEY
-// keep working — the legacy slog.Warn stays the only retention surface
-// until the operator configures a key.
-//
-// Spec rationale: issue #80 lists "HMAC chain signature so audit-log
-// tampering is detectable" as a requirement. Reusing substrate's
-// existing chain (via substrate.AppendEvent) lands that for free.
+// BriefAuditConfig carries the substrate-sink deps for durable
+// rejection records. Zero value disables — deployments without
+// REGATTA_HMAC_KEY keep slog.Warn as the only retention surface.
+// HMAC tamper-detection (#80 requirement) comes for free via
+// substrate.AppendEvent's existing chain.
 type BriefAuditConfig struct {
 	Key      []byte
 	KeyID    string
@@ -41,18 +32,16 @@ type BriefAuditConfig struct {
 	RunID    string
 }
 
-// enabled reports whether the audit sink should fire. Both Key and RunID
-// must be set; TenantID falls back to substrate.DefaultTenantID at the
-// callsite so a partially-configured BriefAuditConfig logs the
-// misconfiguration to the operator rather than silently dropping rows.
+// enabled reports whether the audit sink should fire. Key + KeyID +
+// RunID must all be set; TenantID falls back at the callsite so a
+// partial config logs rather than silently drops.
 func (c BriefAuditConfig) enabled() bool {
 	return len(c.Key) > 0 && c.KeyID != "" && c.RunID != ""
 }
 
-// recordBriefRejection writes one substrate brief_rejected row for
-// (path, reason). Best-effort: a write failure logs and returns so the
-// loop continues to the next brief — the legacy slog.Warn at the
-// callsite already captured the rejection.
+// recordBriefRejection writes one brief_rejected row. Best-effort:
+// write failures log + return so the loop continues — slog.Warn at
+// the callsite already captured the rejection.
 func (b *BriefLoader) recordBriefRejection(ctx context.Context, path, reason string) {
 	if !b.audit.enabled() {
 		return
@@ -69,9 +58,9 @@ func (b *BriefLoader) recordBriefRejection(ctx context.Context, path, reason str
 		Reason string `json:"reason"`
 	}{Path: path, Reason: reason})
 	if err != nil {
-		// Marshal failure is structurally impossible (both fields are
-		// strings) but logging-with-cause beats panicking on a path the
-		// audit chain depends on.
+		// Marshal failure is structurally impossible (string fields
+		// only); log rather than panic on a path the audit chain
+		// depends on.
 		b.log.Warn("brief.audit_marshal_failed", "path", path, "err", err.Error())
 		return
 	}
@@ -85,10 +74,9 @@ func (b *BriefLoader) recordBriefRejection(ctx context.Context, path, reason str
 		WrittenBy:     "brief_loader",
 		WrittenAt:     at.UnixMilli(),
 		SchemaVersion: 1,
-		// Nonce is a fresh ULID per Sync attempt — same monotonic source
-		// as ID. Intent: every Sync that re-reads a tampered brief logs
-		// a NEW audit row (frequency matters for the operator dashboard);
-		// dedup-by-path would silence the "tampering ongoing" signal.
+		// Fresh nonce per Sync attempt — every re-read of a tampered
+		// brief logs a NEW row; dedup-by-path would silence the
+		// "tampering ongoing" signal the dashboard depends on.
 		Nonce: substrate.Mint(at),
 	}
 	tx, err := b.db.SQL().BeginTx(ctx, nil)
