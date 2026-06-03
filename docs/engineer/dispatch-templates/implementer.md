@@ -61,6 +61,12 @@ MEMORY CITES
 
 1. **Test/Fuzz/Benchmark godocs 1 line max** per `feedback_test_godoc_one_line`. `scripts/doc-check.sh` test-godoc gate rejects multi-line. Multi-paragraph context belongs in the spec doc, not test files.
 
+   **REPEAT OFFENDER 2026-06-02** — W5/W9/W2 all failed CI on this rule. Before push, run:
+   ```bash
+   git diff --name-only origin/main...HEAD | grep -E '_test\.go$' | xargs -I{} awk '/^\/\/ Test|^\/\/ Fuzz|^\/\/ Benchmark/{c=1; n=NR} c && /^\/\//{if(NR>n) print FILENAME":"n": multi-line godoc"; if(NR==n)c=2} c==2 && !/^\/\//{c=0}' {}
+   ```
+   Must return empty. CONCRETE FIX: collapse `// TestX pins behavior A: when input I, expect output O; ensures bug #N doesn't recur` (3 lines wrapped) → `// TestX asserts O on I (#N).` (1 line, hard wrap-free). Drop sub-clauses, the test name + body carry intent.
+
 2. **`gh pr create` / `gh pr edit` MUST use `--body-file <path>`** per `feedback_pr_body_file_only`. HEREDOC bodies (`--body "$(cat <<EOF ... EOF)"`) escape backticks and silently break the release-notes fence detector. Write body to `/tmp/pr-<branch>.md` first.
 
 3. **Comment-noise gate trip-traps** per #333 followup. Regex was tightened in #371; if it still over-matches your prose, hyphenate the matching token (`reviewer-Request` / `reviewer-JSON`) or lowercase the following capital. Banner regex rejects `# --- Section ---` — use plain `# Section.` instead.
