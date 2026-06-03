@@ -177,10 +177,15 @@ func (r *Router) Tick(ctx context.Context) error {
 
 // sweepUnlabeled retries the labeler for every escalated agent that
 // has no `labeled` audit row yet. The SQL-level NOT EXISTS filter (via
-// ListEscalatedUnlabeled) keeps per-tick work O(unlabeled-tail), not
-// O(total-escalated) — escalated is terminal, so the naive scan grew
-// forever; see issue #478. BatchLimit then caps the unlabeled tail
-// itself so even a flood of new escalations cannot stretch one Tick.
+// ListEscalatedUnlabeled) collapses the prior N+1 round-trip pattern
+// (list-all + per-row lookup) into a single index-driven scan and caps
+// emitted rows at BatchLimit — so the number of *labeler calls* per
+// Tick is bounded by BatchLimit regardless of how many escalated rows
+// accumulate. See issue #478. The outer index probe still scales with
+// the terminal escalated set (one idx_events_agent lookup per row
+// until LIMIT is reached), but each probe is O(log E) and runs
+// in-process via SQLite, not over the network like the labeler calls
+// that #478 was actually about.
 func (r *Router) sweepUnlabeled(ctx context.Context) error {
 	escalated, err := r.cfg.DB.ListEscalatedUnlabeled(ctx, r.cfg.BatchLimit)
 	if err != nil {

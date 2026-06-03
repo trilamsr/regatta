@@ -202,11 +202,19 @@ func (d *DB) ListAgentsByState(ctx context.Context, states ...AgentState) ([]Age
 
 // ListEscalatedUnlabeled returns escalated agents that have no
 // `labeled` event row yet, capped at limit. The absence-of-event
-// filter runs in SQL so the per-call cost scales with the
-// unlabeled-tail size, not the (terminal, unbounded) escalated set —
-// see issue #478 for the failure mode. A non-positive limit defaults
-// to 100; pass a larger value when the caller (e.g.
-// rejectionrouter.sweepUnlabeled) wants its own bound.
+// filter runs in SQL (NOT EXISTS over idx_events_agent) so the caller
+// avoids the N+1 round trips the prior list-all + per-row lookup
+// paid — see issue #478. The plan is one index probe per escalated
+// row until LIMIT is reached; the row count returned is bounded by
+// limit, but the scan still touches the terminal escalated set so
+// callers should pass a tight limit. A non-positive limit defaults
+// to 100.
+//
+// The "labeled" kind string is duplicated from
+// rejectionrouter.EventKindLabeled (importing rejectionrouter here
+// would cycle); the rejectionrouter test suite pins the two strings
+// together via TestEventKindLabeled_MatchesStateSQLFilter so a rename
+// trips a test rather than silently re-opening #478.
 func (d *DB) ListEscalatedUnlabeled(ctx context.Context, limit int) ([]Agent, error) {
 	if limit <= 0 {
 		limit = 100

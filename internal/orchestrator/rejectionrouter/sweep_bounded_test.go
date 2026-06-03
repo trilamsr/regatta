@@ -10,6 +10,23 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
+// TestEventKindLabeled_MatchesStateSQLFilter pins the contract that state.ListEscalatedUnlabeled's hardcoded "labeled" string equals rejectionrouter.EventKindLabeled — a rename without updating the SQL silently re-introduces #478.
+func TestEventKindLabeled_MatchesStateSQLFilter(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	id := newAgentInEscalated(t, db, "wi-pin")
+	if err := db.RecordEvent(ctx, id, rejectionrouter.EventKindLabeled, "{}"); err != nil {
+		t.Fatalf("record: %v", err)
+	}
+	got, err := db.ListEscalatedUnlabeled(ctx, 100)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("filter did not see the labeled event recorded with EventKindLabeled=%q; got %d rows — likely the SQL literal drifted from the constant", rejectionrouter.EventKindLabeled, len(got))
+	}
+}
+
 // TestSweep_AlreadyLabeledBacklogDoesNotInvokeLabeler pins issue #478: per-tick work must not scale with the size of the terminal escalated+labeled set.
 func TestSweep_AlreadyLabeledBacklogDoesNotInvokeLabeler(t *testing.T) {
 	ctx := context.Background()
