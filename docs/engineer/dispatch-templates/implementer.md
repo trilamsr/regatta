@@ -12,8 +12,13 @@ Code-writing subagent. Substitute `<VARS>` then paste into Task dispatch.
 
 ## Preamble blocks (paste verbatim)
 
-WORKTREE
-- `git worktree add ../regatta-<TASK-ID> -b <BRANCH-NAME> origin/main && cd ../regatta-<TASK-ID>`. All edits here. Never push from primary.
+WORKTREE (harness-managed — do NOT create your own)
+- You are ALREADY inside the harness-provided worktree at `.claude/worktrees/agent-<id>/`. First action: `pwd` + `git branch --show-current` + `git remote -v` to confirm.
+- If `pwd` does NOT show `.claude/worktrees/agent-<id>/`, STOP and report. Do not improvise a working directory.
+- NEVER run `git clone` or `git worktree add` from a subagent. The harness pre-creates the worktree; your job is to `cd` into the printed path, nothing more. (#188)
+- NEVER write code under `/tmp/`. `/tmp/` is for ephemeral logs ONLY (`/tmp/cicheck.log`, `/tmp/pr-<branch>.md`). Code, tests, specs, edits → harness worktree only.
+- Negative example (DO NOT DO THIS): `git clone git@github.com:trilamsr/regatta.git /tmp/regatta-<slug>/ && cd /tmp/regatta-<slug>/` — leaves main worktree with stray edits, no remote, no pushable branch (#188).
+- Never push from the primary checkout.
 
 TDD
 - Failing test FIRST. Capture failing output in PR body. Then impl. Then green. Order matters per `feedback_tdd_discipline`.

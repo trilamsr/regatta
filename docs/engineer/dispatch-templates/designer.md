@@ -12,8 +12,12 @@ Design-doc subagent. Output: spec under `docs/engineer/specs/YYYY-MM-DD-<slug>.m
 
 ## Preamble blocks (paste verbatim)
 
-WORKTREE
-- `git worktree add ../regatta-spec-<SPEC-SLUG> -b spec/<SPEC-SLUG> origin/main && cd ../regatta-spec-<SPEC-SLUG>`. Spec lives at `docs/engineer/specs/<SPEC-SLUG>.md`.
+WORKTREE (harness-managed — do NOT create your own)
+- You are ALREADY inside the harness-provided worktree at `.claude/worktrees/agent-<id>/`. First action: `pwd` + `git branch --show-current` + `git remote -v` to confirm.
+- If `pwd` does NOT show `.claude/worktrees/agent-<id>/`, STOP and report. Do not improvise a working directory.
+- NEVER run `git clone` or `git worktree add` from a subagent. The harness pre-creates the worktree; your job is to `cd` into the printed path, nothing more. (#188)
+- NEVER write spec or code under `/tmp/`. `/tmp/` is for ephemeral logs ONLY. Spec output → `docs/engineer/specs/<SPEC-SLUG>.md` inside the harness worktree.
+- Negative example (DO NOT DO THIS): `git clone git@github.com:trilamsr/regatta.git /tmp/regatta-spec-<slug>/ && cd /tmp/regatta-spec-<slug>/` — leaves stray edits in main worktree, no remote, no pushable branch (#188).
 
 RESEARCH + DESIGN
 - Prefer adopting proven OSS over reimplementation. Study `<REFERENCES>` first; cite version + commit-sha + license. Priority: UX > quality bar matching reference systems > ecosystem conventions > long-term repo+user benefit. Per `feedback_research_design_principles`.
