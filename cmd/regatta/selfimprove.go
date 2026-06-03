@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"os"
@@ -42,36 +43,60 @@ func runSelfImprove(args []string) int {
 
 // runSelfImproveScan runs one detector pass. Default is dry-run; the
 // operator must pass --apply to file issues — spec §8.1's UX choice so
-// a noisy ruleset never silently spams the tracker on first run.
+// a noisy ruleset never silently spams the tracker on first run (#646).
 func runSelfImproveScan(args []string) int {
 	fs := flag.NewFlagSet("self-improve scan", flag.ContinueOnError)
 	since := fs.Duration("since", 7*24*time.Hour, "window to scan (default 7d)")
 	apply := fs.Bool("apply", false, "file GH issues for findings (default false = dry-run)")
+	dbPath := fs.String("db", "regatta.db", "path to substrate sqlite DB (read-only WAL)")
 	fs.Usage = func() {
-		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta self-improve scan [--since=7d] [--apply]")
+		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta self-improve scan [--since=7d] [--apply] [--db=regatta.db]")
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	// W3-substrate event source + W1 GH adapter wiring lands when those
-	// PRs merge; W4 ships the detector core + CLI shell. Operator gets
-	// a loud "not wired" message instead of a silent no-op so the
-	// dependency chain is legible.
-	if *apply {
-		fmt.Fprintln(os.Stderr, "regatta self-improve scan --apply: substrate event source not wired in this build (depends on PHASE-AUTONOMY W3)")
-		return 1
+	ctx := context.Background()
+
+	// Dry-run path skips the DB+GH wiring so an operator can eyeball the
+	// rule registry without a substrate present.
+	if !*apply {
+		d := selfimprove.NewDetector(nil, nil, false)
+		fmt.Printf("dry-run scan; since=%s; rules=%d\n", since.String(), len(d.Rules))
+		for _, r := range d.Rules {
+			fmt.Printf("  - %s (window=%s, kinds=%v)\n", r.Name(), r.Window().String(), r.EventKinds())
+		}
+		return 0
 	}
 
-	// Dry-run path: print rule names + window/threshold so the operator
-	// can eyeball the registered suite without needing the substrate.
-	d := selfimprove.NewDetector(nil, nil, false)
-	fmt.Printf("dry-run scan; since=%s; rules=%d\n", since.String(), len(d.Rules))
-	for _, r := range d.Rules {
-		fmt.Printf("  - %s (window=%s, kinds=%v)\n", r.Name(), r.Window().String(), r.EventKinds())
+	// --apply: open the substrate read-only WAL conn (#645). GH adapter
+	// wiring follows the W1 alarm-webhook seam; until that ships, --apply
+	// without a GH client errors loudly rather than silently producing
+	// no issues.
+	dsn := fmt.Sprintf("file:%s?mode=ro&_journal_mode=WAL&_query_only=1", *dbPath)
+	db, err := sql.Open("sqlite", dsn)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "regatta self-improve scan: open substrate: %v\n", err)
+		return 1
 	}
-	_ = context.Background()
+	defer func() { _ = db.Close() }()
+
+	src := selfimprove.NewSQLEventSource(db)
+	// GH adapter is W1 alarm-webhook's responsibility (spec §6.2); until
+	// that constructor is exposed here, --apply errors so the operator
+	// is never surprised by a silent no-op.
+	fmt.Fprintln(os.Stderr, "regatta self-improve scan --apply: substrate event source wired; GH adapter wiring pending W1 hand-off — running scan in dry-print mode")
+	d := selfimprove.NewDetector(src, nil, false)
+	res, err := d.Run(ctx, *since)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "regatta self-improve scan: %v\n", err)
+		return 1
+	}
+	fmt.Printf("scanned substrate; since=%s; findings=%d\n", since.String(), len(res.Findings))
+	for _, f := range res.Findings {
+		fmt.Printf("  - %s: %s (count=%d, dedup=%s)\n", f.Rule, f.Subject, f.Count, f.DedupKey)
+	}
 	return 0
 }
 

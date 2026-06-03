@@ -271,7 +271,7 @@ One Haiku call per night with ~5k input tokens + ~1k output ≈ $0.005 per night
 
 ### 8.1 CLI surface
 
-- `regatta self-improvement scan [--since=7d] [--rule=<name>] [--dry-run]` — runs rules manually; prints firings without filing issues if `--dry-run`. Per-rule filter via `--rule`.
+- `regatta self-improve scan [--since=7d] [--rule=<name>] [--apply] [--db=regatta.db]` — runs rules over the substrate window. **Default is dry-run** (`--apply=false`): prints findings without filing GH issues. Operator promotes a clean audit to issue-filing by appending `--apply` manually. The shipped `scripts/cron/regatta.crontab` line ships without `--apply` so first-deploy never spam-files a noisy ruleset (#646). Per-rule filter via `--rule`.
 - `regatta self-improvement rules` — lists rules with thresholds + windows + last-fire timestamp.
 - `regatta self-improvement mute <rule_name> [--for=24h|7d|forever]` — silences a rule by writing a `self_improve_muted` substrate event; detector reads-and-respects on next scan. No YAML edit needed for short mutes.
 - `regatta self-improvement replay --rule=<name> --since=<ts>` — re-runs the rule against a frozen substrate snapshot (A+ replay harness, §10).

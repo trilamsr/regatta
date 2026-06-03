@@ -40,17 +40,19 @@ func (g *fakeGH) CommentOnIssue(_ context.Context, number int, body string) erro
 	return nil
 }
 
-func buildL4Events() []Event {
+// buildGateFailEvents builds three same-fingerprint gate_fail rows so
+// R1 (same-gate-fail-repeats) fires deterministically.
+func buildGateFailEvents() []Event {
 	return []Event{
-		mkEvent("1", "l4_reject", 1*time.Hour, func(e *Event) { e.Author = "alice"; e.Reason = "noop" }),
-		mkEvent("2", "l4_reject", 2*time.Hour, func(e *Event) { e.Author = "alice"; e.Reason = "noop" }),
-		mkEvent("3", "l4_reject", 3*time.Hour, func(e *Event) { e.Author = "alice"; e.Reason = "noop" }),
+		mkEvent("1", "gate_fail", 1*time.Hour, func(e *Event) { e.GateKind = "pr-lint"; e.GateReason = "banned-phrase" }),
+		mkEvent("2", "gate_fail", 2*time.Hour, func(e *Event) { e.GateKind = "pr-lint"; e.GateReason = "banned-phrase" }),
+		mkEvent("3", "gate_fail", 3*time.Hour, func(e *Event) { e.GateKind = "pr-lint"; e.GateReason = "banned-phrase" }),
 	}
 }
 
 // TestDetector_DedupSha256_SkipsDuplicate asserts a second scan with an existing dedup-key body comments not creates.
 func TestDetector_DedupSha256_SkipsDuplicate(t *testing.T) {
-	src := &fakeSource{events: buildL4Events()}
+	src := &fakeSource{events: buildGateFailEvents()}
 	gh := newFakeGH(nil)
 	d := &Detector{Rules: DefaultRules(), Source: src, GH: gh, Label: LabelSelfImprovement, Apply: true, Clock: func() time.Time { return fixedNow }}
 
@@ -74,12 +76,24 @@ func TestDetector_DedupSha256_SkipsDuplicate(t *testing.T) {
 	}
 }
 
-// TestDetector_PauseAllEventFilteredOut asserts pause-tagged events do not count toward a fire.
+// TestDetector_PauseAllEventFilteredOut asserts pause-tagged events do not count toward a fire (spec §11 risk #4).
 func TestDetector_PauseAllEventFilteredOut(t *testing.T) {
 	events := []Event{
-		mkEvent("1", "l4_reject", 1*time.Hour, func(e *Event) { e.Author = "alice"; e.Reason = "noop"; e.Tags = []string{PauseAllTag} }),
-		mkEvent("2", "l4_reject", 2*time.Hour, func(e *Event) { e.Author = "alice"; e.Reason = "noop"; e.Tags = []string{PauseAllTag} }),
-		mkEvent("3", "l4_reject", 3*time.Hour, func(e *Event) { e.Author = "alice"; e.Reason = "noop"; e.Tags = []string{PauseAllTag} }),
+		mkEvent("1", "gate_fail", 1*time.Hour, func(e *Event) {
+			e.GateKind = "pr-lint"
+			e.GateReason = "banned-phrase"
+			e.Tags = []string{PauseAllTag}
+		}),
+		mkEvent("2", "gate_fail", 2*time.Hour, func(e *Event) {
+			e.GateKind = "pr-lint"
+			e.GateReason = "banned-phrase"
+			e.Tags = []string{PauseAllTag}
+		}),
+		mkEvent("3", "gate_fail", 3*time.Hour, func(e *Event) {
+			e.GateKind = "pr-lint"
+			e.GateReason = "banned-phrase"
+			e.Tags = []string{PauseAllTag}
+		}),
 	}
 	got := DefaultRules()[0].Match(events, fixedNow)
 	if len(got) != 0 {
@@ -89,7 +103,7 @@ func TestDetector_PauseAllEventFilteredOut(t *testing.T) {
 
 // TestDetector_DryRun_FilesNothing asserts apply=false skips all GH writes.
 func TestDetector_DryRun_FilesNothing(t *testing.T) {
-	src := &fakeSource{events: buildL4Events()}
+	src := &fakeSource{events: buildGateFailEvents()}
 	gh := newFakeGH(nil)
 	d := &Detector{Rules: DefaultRules(), Source: src, GH: gh, Label: LabelSelfImprovement, Apply: false, Clock: func() time.Time { return fixedNow }}
 
@@ -107,7 +121,7 @@ func TestDetector_DryRun_FilesNothing(t *testing.T) {
 
 // TestDetector_ApplyMode_FilesIssues asserts apply=true writes issues with dedup-key in body.
 func TestDetector_ApplyMode_FilesIssues(t *testing.T) {
-	src := &fakeSource{events: buildL4Events()}
+	src := &fakeSource{events: buildGateFailEvents()}
 	gh := newFakeGH(nil)
 	d := &Detector{Rules: DefaultRules(), Source: src, GH: gh, Label: LabelSelfImprovement, Apply: true, Clock: func() time.Time { return fixedNow }}
 

@@ -37,21 +37,27 @@ const (
 )
 
 // Event is the read-only view the detector takes over a substrate row.
-// Fields mirror `substrate_events` columns the spec §4.1 query
-// projects. Tags carry the per-rule `filter_out` axis (spec §11
-// risk #4) — `regatta_pause_all` lets W5 cost-pause windows suppress
-// rule fires that would otherwise blame agents for pause-induced halts.
+// Fields mirror the payload-extracted columns spec §4.1 + §5.2 project
+// from `substrate_events.payload_json`. Tags carry the per-rule
+// `filter_out` axis (spec §11 risk #4) — `regatta_pause_all` lets W5
+// cost-pause windows suppress rule fires that would otherwise blame
+// agents for pause-induced halts.
 type Event struct {
 	ID         string
 	OccurredAt time.Time
 	Kind       string
-	Author     string
-	Reason     string
-	CheckName  string
-	AgentID    string
-	Severity   string
-	Scope      string
-	Tags       []string
+
+	// Spec §5.2 group_by fields. Per-rule subset documented at each rule's
+	// groupBy closure.
+	GateKind        string // R1
+	GateReason      string // R1
+	BannedToken     string // R2
+	ClaimText       string // R3
+	FailureKind     string // R3
+	LeftoverPattern string // R4
+	AgentID         string // R5
+
+	Tags []string
 }
 
 // HasTag reports whether the event carries the named tag — used by
