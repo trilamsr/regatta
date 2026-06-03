@@ -50,12 +50,15 @@ type Appender interface {
 	Append(ctx context.Context, tenantID, kind string, payload json.RawMessage, writtenAt time.Time) error
 }
 
-// RecordedReader returns the locally-recorded spend USD for the
-// reconcile window. The default production wiring is a thin wrapper
-// around spend.Reader; an interface keeps T4 from importing the
-// Reader type directly and lets tests inject deterministic values.
+// RecordedReader returns the locally-recorded spend (micro-USD) for
+// the reconcile window. The default production wiring is a thin
+// wrapper around spend.Reader; an interface keeps T4 from importing
+// the Reader type directly and lets tests inject deterministic
+// values. Return type tracks #554's int64 ledger; the reconciler
+// converts to float at the diff-math boundary because drift_pct is
+// inherently a float ratio.
 type RecordedReader interface {
-	RecordedUSDForWindow(ctx context.Context, tenantID string, start, end time.Time) (float64, error)
+	RecordedUSDForWindow(ctx context.Context, tenantID string, start, end time.Time) (spend.USDMicro, error)
 }
 
 // Config holds the Reconciler's wiring. Mirrors spec §3.4 + plan §3
@@ -252,17 +255,22 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		for _, row := range costResp.Data {
 			actualUSD += row.CostUSD
 			modelBreakdown = append(modelBreakdown, spend.ModelBreakdownRow{
-				Model: row.Model,
-				USD:   row.CostUSD,
+				Model:    row.Model,
+				USDMicro: spend.FromUSD(row.CostUSD),
+				USD:      row.CostUSD,
 			})
 		}
 	}
 
-	// Locally-recorded spend over the same window.
-	recordedUSD, rerr := r.cfg.RecordedReader.RecordedUSDForWindow(spanCtx, r.cfg.TenantID, start, end)
+	// Locally-recorded spend over the same window. Returned in
+	// micro-USD (#554); convert at the diff-math boundary here — the
+	// reconciler's drift_pct is a float ratio and the substrate row
+	// dual-emits both.
+	recordedMicro, rerr := r.cfg.RecordedReader.RecordedUSDForWindow(spanCtx, r.cfg.TenantID, start, end)
 	if rerr != nil {
 		return fmt.Errorf("recorded reader: %w", rerr)
 	}
+	recordedUSD := recordedMicro.USD()
 
 	deltaUSD := actualUSD - recordedUSD
 	driftPct := 0.0
@@ -290,14 +298,17 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	}
 
 	payload := spend.BudgetReconciledPayload{
-		PeriodStart:    start.UnixMilli(),
-		PeriodEnd:      end.UnixMilli(),
-		ActualUSD:      actualUSD,
-		RecordedUSD:    recordedUSD,
-		DeltaUSD:       deltaUSD,
-		DriftPct:       driftPct,
-		ModelBreakdown: modelBreakdown,
-		APIResponseSig: sig,
+		PeriodStart:      start.UnixMilli(),
+		PeriodEnd:        end.UnixMilli(),
+		ActualUSDMicro:   spend.FromUSD(actualUSD),
+		RecordedUSDMicro: recordedMicro,
+		DeltaUSDMicro:    spend.FromUSD(actualUSD) - recordedMicro,
+		ActualUSD:        actualUSD,
+		RecordedUSD:      recordedUSD,
+		DeltaUSD:         deltaUSD,
+		DriftPct:         driftPct,
+		ModelBreakdown:   modelBreakdown,
+		APIResponseSig:   sig,
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -438,6 +449,7 @@ func (r *Reconciler) usageToActualUSD(ctx context.Context, resp UsageResponse) (
 			OutputTokens:        b.OutputTokens,
 			CacheReadTokens:     b.CacheReadInputTokens,
 			CacheCreationTokens: b.CacheCreationInputTokens,
+			USDMicro:            spend.FromUSD(usd),
 			USD:                 usd,
 		})
 	}

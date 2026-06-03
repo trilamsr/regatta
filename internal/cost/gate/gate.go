@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -115,22 +116,29 @@ func (g *Gate) Evaluate(ctx context.Context, w WorkItemScope) (Verdict, error) {
 	period := g.cfg.Safety.period()
 	softPct := g.cfg.Safety.SoftPct
 
-	// Most-restrictive-wins: first cap to fire wins the reason.
+	// Most-restrictive-wins: first cap to fire wins the reason. Cap
+	// path runs in integer micro-USD (#554): float SUM in SQLite
+	// accumulates ULP drift across N rows and lets cap-boundary
+	// spawns slip past — integer SUM is exact. Estimator + cap input
+	// arrive in float USD and convert once here; downstream
+	// projected/cap compare is pure int64.
+	estMicro := spend.FromUSD(est)
 	type capCheck struct {
-		usd      float64
+		usdMicro spend.USDMicro
+		usd      float64 // mirrored onto the span; operator display only
 		kind     spend.ScopeKind
 		scopeID  string
 		label    string // e.g. "dag", "operator"
 	}
 	checks := []capCheck{}
 	if g.cfg.Safety.PerDAGUSD > 0 {
-		checks = append(checks, capCheck{g.cfg.Safety.PerDAGUSD, spend.ScopeDAG, w.DAGID, "dag"})
+		checks = append(checks, capCheck{spend.FromUSD(g.cfg.Safety.PerDAGUSD), g.cfg.Safety.PerDAGUSD, spend.ScopeDAG, w.DAGID, "dag"})
 	}
 	if g.cfg.Safety.PerOperatorUSD > 0 {
-		checks = append(checks, capCheck{g.cfg.Safety.PerOperatorUSD, spend.ScopeOperator, w.OperatorID, "operator"})
+		checks = append(checks, capCheck{spend.FromUSD(g.cfg.Safety.PerOperatorUSD), g.cfg.Safety.PerOperatorUSD, spend.ScopeOperator, w.OperatorID, "operator"})
 	}
 	if g.cfg.Safety.PerWorkItemUSD > 0 {
-		checks = append(checks, capCheck{g.cfg.Safety.PerWorkItemUSD, spend.ScopeWorkItem, w.WorkItemID, "work_item"})
+		checks = append(checks, capCheck{spend.FromUSD(g.cfg.Safety.PerWorkItemUSD), g.cfg.Safety.PerWorkItemUSD, spend.ScopeWorkItem, w.WorkItemID, "work_item"})
 	}
 
 	tenantID := w.TenantID
@@ -148,18 +156,24 @@ func (g *Gate) Evaluate(ctx context.Context, w WorkItemScope) (Verdict, error) {
 		case spend.ScopeWorkItem:
 			key.WorkItemID = c.scopeID
 		}
-		recorded, err := g.spend.BudgetState(ctx, key, period)
+		recordedMicro, err := g.spend.BudgetState(ctx, key, period)
 		if err != nil {
 			return Verdict{}, fmt.Errorf("cost.gate: read %s spend: %w", c.label, err)
 		}
-		projected := recorded + est
-		if projected > c.usd {
+		projectedMicro := recordedMicro + estMicro
+		if projectedMicro > c.usdMicro {
 			v.Allow = false
 			v.Reason = fmt.Sprintf("cap_exceeded:%s:%s", c.label, c.scopeID)
 			break
 		}
-		if softPct > 0 && projected >= c.usd*float64(softPct)/100.0 {
-			v.SoftCapBreached = true
+		// Soft-cap threshold: cap_micro * softPct / 100, computed in
+		// int64 with explicit rounding so the ratio is exact at the
+		// percent boundary (no float * int floor surprise).
+		if softPct > 0 {
+			softThreshold := spend.USDMicro(int64(math.Round(float64(c.usdMicro) * float64(softPct) / 100.0)))
+			if projectedMicro >= softThreshold {
+				v.SoftCapBreached = true
+			}
 		}
 	}
 

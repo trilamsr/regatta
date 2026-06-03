@@ -21,12 +21,15 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/cost/gate"
+	"github.com/trilamsr/regatta/internal/cost/spend"
 )
 
 // CohortReader is the seam the History estimator consumes. *spend.Reader
-// satisfies it; tests can stub without touching the substrate.
+// satisfies it; tests can stub without touching the substrate. Per-row
+// micro-USD shape tracks the spend.Reader contract (#554 — ledger is
+// integer-canonical, float boundary at the percentile read).
 type CohortReader interface {
-	CohortSpends(ctx context.Context, tenantID, operatorID, model string, period time.Duration) ([]float64, error)
+	CohortSpends(ctx context.Context, tenantID, operatorID, model string, period time.Duration) ([]spend.USDMicro, error)
 }
 
 // HistoryConfig wires a History estimator. Reader is the cohort-spend
@@ -83,19 +86,21 @@ func (h *History) Estimate(ctx context.Context, hint gate.EstHint, model string)
 	if len(samples) < h.cfg.MinSamples {
 		return h.cfg.Fallback.Estimate(ctx, hint, model)
 	}
-	return p95(samples), nil
+	return p95(samples).USD(), nil
 }
 
 // p95 returns the nearest-rank 95th percentile on a local copy so
 // the caller's slice is not mutated. rank = ceil(0.95 × N); for N=20
-// → rank=19 → index 18. Deterministic — W9 replay-safe.
-func p95(in []float64) float64 {
+// → rank=19 → index 18. Deterministic — W9 replay-safe. Sort + index
+// is order-preserving on int64; integer comparisons keep the
+// percentile selection exact at the rank boundary.
+func p95(in []spend.USDMicro) spend.USDMicro {
 	if len(in) == 0 {
 		return 0
 	}
-	xs := make([]float64, len(in))
+	xs := make([]spend.USDMicro, len(in))
 	copy(xs, in)
-	sort.Float64s(xs)
+	sort.Slice(xs, func(i, j int) bool { return xs[i] < xs[j] })
 	rank := int(math.Ceil(0.95 * float64(len(xs))))
 	if rank < 1 {
 		rank = 1

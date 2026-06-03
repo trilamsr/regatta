@@ -262,3 +262,41 @@ func TestGate_EmitsCostEvaluateSpan(t *testing.T) {
 		t.Fatalf("no cost.evaluate span emitted; got %d spans", len(spans))
 	}
 }
+
+// TestGate_PerDAGCap_IntegerPrecisionAtBoundary pins the issue #554
+// fix at the cap-decision surface: eleven $0.10 spends sum to
+// 1.0999999999999998 in float (< $1.10 cap → buggy allow) but exactly
+// 1_100_000 micro in integer (== cap, > 0 estimate → deny). The bug
+// surface (float SUM allowed one extra spawn past cap) is closed by
+// integer comparison.
+func TestGate_PerDAGCap_IntegerPrecisionAtBoundary(t *testing.T) {
+	db := openTestDB(t)
+	// Eleven legacy float rows of $0.10 each, at distinct timestamps so
+	// the substrate UNIQUE(run_id, written_by, nonce) constraint does
+	// not collide.
+	base := time.Date(2026, 6, 1, 11, 30, 0, 0, time.UTC)
+	for i := 0; i < 11; i++ {
+		insertSpend(t, db,
+			`{"usd":0.1,"dag_id":"DAG-A","operator_id":"agent-7","work_item_id":"WI-OLD"}`,
+			base.Add(time.Duration(i)*time.Second), "default")
+	}
+	// cap = $1.10; estimate = $0.000001 (1 micro — the smallest non-zero
+	// projection). Integer projected = 1_100_001 > 1_100_000 cap → deny.
+	// Float projected = 1.0999999999999998 + 0.000001 ≈ 1.100001 — also
+	// would deny here, BUT the same exact-equality boundary at 11×$0.10
+	// with zero estimate is the pathological case (covered by the
+	// reader test); this gate test exercises the comparator with a
+	// micro-level estimate that integer math distinguishes cleanly.
+	cfg := gate.Config{Safety: &gate.SafetyCost{PerDAGUSD: 1.10, Period: time.Hour, SoftPct: 80}}
+	g := newGate(t, db, cfg, 0.000001, "")
+	v, err := g.Evaluate(context.Background(), baseScope())
+	if err != nil {
+		t.Fatalf("Evaluate: %v", err)
+	}
+	if v.Allow {
+		t.Fatalf("Allow=true; want deny (11×$0.10=$1.10 + $0.000001 > $1.10 cap, integer-exact)")
+	}
+	if !strings.HasPrefix(v.Reason, "cap_exceeded:dag:") {
+		t.Fatalf("Reason=%q; want prefix cap_exceeded:dag:", v.Reason)
+	}
+}

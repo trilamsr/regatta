@@ -56,6 +56,10 @@ func insert(t *testing.T, db *sql.DB, kind, payload string, writtenAt time.Time,
 	}
 }
 
+// TestReader_BudgetState_SumOverWindow also covers the #554
+// shadow-window fallback: legacy rows carrying only $.usd (float) get
+// per-row CAST(ROUND($.usd*1e6)) before SUM, so the integer-canonical
+// total survives the float→micro conversion exactly at $1+$2.5+$3.5.
 func TestReader_BudgetState_SumOverWindow(t *testing.T) {
 	db := openReaderDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -72,8 +76,8 @@ func TestReader_BudgetState_SumOverWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BudgetState: %v", err)
 	}
-	if got != 7.0 {
-		t.Fatalf("BudgetState=%f; want 7.0", got)
+	if got != spend.FromUSD(7.0) {
+		t.Fatalf("BudgetState=%d; want %d (7 USD in micro)", got, spend.FromUSD(7.0))
 	}
 }
 
@@ -97,8 +101,8 @@ func TestReader_BudgetState_PeriodWindow_ExcludesStale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BudgetState: %v", err)
 	}
-	if got != 10.0 {
-		t.Fatalf("BudgetState=%f; want 10.0 (stale row excluded)", got)
+	if got != spend.FromUSD(10.0) {
+		t.Fatalf("BudgetState=%d; want %d (10 USD in micro, stale row excluded)", got, spend.FromUSD(10.0))
 	}
 }
 
@@ -144,8 +148,8 @@ func TestReader_FiltersOnTenantID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("BudgetState: %v", err)
 	}
-	if got != 10.0 {
-		t.Fatalf("BudgetState=%f; want 10.0 (cross-tenant row excluded)", got)
+	if got != spend.FromUSD(10.0) {
+		t.Fatalf("BudgetState=%d; want %d (10 USD in micro, cross-tenant row excluded)", got, spend.FromUSD(10.0))
 	}
 }
 
@@ -174,9 +178,9 @@ func TestReader_RecordedUSDForWindow_SumsTokenSpendInWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecordedUSDForWindow: %v", err)
 	}
-	want := 4.0
+	want := spend.FromUSD(4.0)
 	if got != want {
-		t.Fatalf("RecordedUSDForWindow=%v; want %v", got, want)
+		t.Fatalf("RecordedUSDForWindow=%d; want %d ($4 in micro)", got, want)
 	}
 }
 
@@ -196,4 +200,93 @@ func indexOf(s, sub string) int {
 		}
 	}
 	return -1
+}
+
+// TestReader_BudgetState_LegacyFloatRowsConvertExactly pins the
+// #554 shadow-window contract: pre-migration rows carry only $.usd
+// (float64) and the reader's COALESCE → CAST(ROUND($.usd*1e6))
+// converts each row to micro before SUM. Per-row drift is bounded at
+// ±0.5 micro; aggregate drift over N rows is bounded by N/2 micro
+// (irrelevant for cap enforcement at any plausible volume).
+func TestReader_BudgetState_LegacyFloatRowsConvertExactly(t *testing.T) {
+	db := openReaderDB(t)
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	// Three legacy rows: $1.00, $0.50, $0.25. JSON-float repr is exact for these.
+	for i, usd := range []float64{1.0, 0.5, 0.25} {
+		payload := fmt.Sprintf(`{"usd":%g,"dag_id":"DAG-A","operator_id":"o","work_item_id":"w"}`, usd)
+		insert(t, db, "token_spend", payload, now.Add(-time.Duration(i+1)*time.Minute), "default", "")
+	}
+	// One new row carrying $.usd_micro (canonical) — proves COALESCE prefers it.
+	insert(t, db, "token_spend",
+		`{"usd_micro":250000,"usd":0.25,"dag_id":"DAG-A","operator_id":"o","work_item_id":"w"}`,
+		now.Add(-10*time.Second), "default", "")
+
+	r := spend.NewReader(db, func() time.Time { return now })
+	got, err := r.BudgetState(context.Background(), spend.ScopeKey{
+		Kind: spend.ScopeDAG, DAGID: "DAG-A", TenantID: "default",
+	}, time.Hour)
+	if err != nil {
+		t.Fatalf("BudgetState: %v", err)
+	}
+	// $1 + $0.50 + $0.25 + $0.25 = $2.00 → 2_000_000 micro exactly.
+	want := spend.FromUSD(2.0)
+	if got != want {
+		t.Fatalf("BudgetState=%d; want %d (legacy+micro mix sums exactly)", got, want)
+	}
+}
+
+// TestBudget_FloatRoundingExceedsCap_IntegerDoesNot pins issue #554's
+// load-bearing claim: a sequence of float-encoded spend values whose
+// IEEE-754 SUM lands below the cap (allowing one more spawn) sums
+// EXACTLY to the cap in integer-micro space (closing the gap). The
+// previous reader path ran SUM(json_extract($.usd)) → float; the
+// fixed path runs SUM(CAST(ROUND($.usd*1e6) AS INTEGER)) → int64.
+//
+// Why the values: 11 × $0.10 = 1.0999999999999998 in float64
+// (deterministic across Go runtimes per IEEE-754 §6.1). Integer micro
+// equivalent: 11 × 100_000 = 1_100_000 = exactly $1.10.
+func TestBudget_FloatRoundingExceedsCap_IntegerDoesNot(t *testing.T) {
+	db := openReaderDB(t)
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
+	// Witness: float accumulation undershoots the operator-typed cap
+	// by one ULP. If a future runtime collapses the drift, the test
+	// fixture is no longer demonstrating the bug — fail loud.
+	var witness float64
+	for i := 0; i < 11; i++ {
+		witness += 0.10
+	}
+	const capUSD = 1.10
+	if witness >= capUSD {
+		t.Fatalf("witness fixture broken: 11 × 0.10 = %.20f ≥ cap %.20f", witness, capUSD)
+	}
+
+	// Write 11 legacy float-only rows of $0.10 each.
+	for i := 0; i < 11; i++ {
+		insert(t, db, "token_spend",
+			`{"usd":0.1,"dag_id":"DAG-A","operator_id":"o","work_item_id":"w"}`,
+			now.Add(-time.Duration(i+1)*time.Second), "default", "")
+	}
+
+	r := spend.NewReader(db, func() time.Time { return now })
+	got, err := r.BudgetState(context.Background(), spend.ScopeKey{
+		Kind: spend.ScopeDAG, DAGID: "DAG-A", TenantID: "default",
+	}, time.Hour)
+	if err != nil {
+		t.Fatalf("BudgetState: %v", err)
+	}
+	// Integer micro sum = 11 × 100_000 = 1_100_000 micro = exactly the cap.
+	wantMicro := spend.USDMicro(1_100_000)
+	if got != wantMicro {
+		t.Fatalf("integer-micro SUM=%d; want %d (exactly cap_micro, no ULP slop)", got, wantMicro)
+	}
+	// And the cap-comparison surface: a strict-> check denies only at
+	// strictly-over; the integer math at exact-equal preserves the
+	// "≤ cap is allowed" semantics. The bug surface (float allowed
+	// because it undershot) is replaced by an integer-exact equality
+	// the operator can reason about.
+	capMicro := spend.FromUSD(capUSD)
+	if got != capMicro {
+		t.Fatalf("integer SUM=%d != capMicro=%d; rounding contract broken", got, capMicro)
+	}
 }
