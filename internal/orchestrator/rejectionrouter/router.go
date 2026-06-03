@@ -41,6 +41,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -82,6 +84,18 @@ type Config struct {
 	// Logger is the structured-event sink. Nil falls back to
 	// slog.Default().
 	Logger *slog.Logger
+
+	// Meter is the OTel instrument factory for label-failure telemetry.
+	// Nil resolves to otel.Meter(scopeName) at Router.New so a global
+	// MeterProvider Setup (or a noop when Setup was skipped) wins by
+	// default. Mirrors the W6 Config.Tracer + Config.Meter pattern used
+	// across cost/spend + gates/l4 so callers stay on one DI seam.
+	//
+	// Router.New consumes this by wrapping the configured Labeler with
+	// a metric-emitting decorator — every PRLabeler implementation gets
+	// LabelFailureMetricName emission without having to thread a meter
+	// into its own constructor (issue #499 — orphan field).
+	Meter metric.Meter
 }
 
 const (
@@ -133,6 +147,15 @@ func New(cfg Config) *Router {
 	}
 	if cfg.Labeler == nil {
 		cfg.Labeler = noopLabeler{}
+	}
+	// Wrap the configured labeler so every AddLabel error increments
+	// LabelFailureMetricName on the resolved meter. Wrapping at the
+	// Router boundary (rather than inside each PRLabeler impl) makes
+	// Config.Meter authoritative for telemetry routing — fakes,
+	// GHLabeler, and noopLabeler all surface the same counter shape.
+	cfg.Labeler = &metricLabeler{
+		inner:       cfg.Labeler,
+		instruments: newInstruments(cfg.resolveMeter()),
 	}
 	log := cfg.Logger
 	if log == nil {

@@ -81,6 +81,42 @@ func defaultBranchFor(agentID int64) string {
 	return fmt.Sprintf("regatta/agent-%d", agentID)
 }
 
+// GHListArgs returns the argv for `gh pr list` such that the branch
+// literal cannot be reparsed as a flag. The branch is bound to
+// `--head` via the `=` syntax (`--head=<branch>`) so a hostile branch
+// string starting with `--` (issue #500) cannot escape its flag-value
+// position into the flag namespace. Exported so a drift-guard test
+// can pin the binding shape; production callers go through
+// (GHLabeler).resolvePRViaGH.
+func GHListArgs(repo, branch string) []string {
+	args := []string{"pr", "list",
+		"--state", "open",
+		"--json", "number",
+		"--limit", "1",
+		"--head=" + branch,
+	}
+	if repo != "" {
+		args = append(args, "--repo", repo)
+	}
+	return args
+}
+
+// GHEditArgs returns the argv for `gh pr edit` with the positional
+// PR-number fenced behind `--` so a future shape change cannot let it
+// reparse as a flag. Today prNum is an int (cannot start with `--`)
+// so the separator is defense-in-depth — pinning the contract at the
+// construction site makes the audit cheap.
+func GHEditArgs(repo string, prNum int, label string) []string {
+	args := []string{"pr", "edit",
+		"--add-label", label,
+	}
+	if repo != "" {
+		args = append(args, "--repo", repo)
+	}
+	args = append(args, "--", strconv.Itoa(prNum))
+	return args
+}
+
 // ghPRListEntry is the projection of `gh pr list --json number` rows.
 type ghPRListEntry struct {
 	Number int `json:"number"`
@@ -91,10 +127,7 @@ type ghPRListEntry struct {
 // callers (router.sweepUnlabeled) keep the agent in `escalated` without
 // a `labeled` audit row so the next Tick retries.
 func (g GHLabeler) resolvePRViaGH(ctx context.Context, branch string) (int, error) {
-	args := []string{"pr", "list", "--head", branch, "--state", "open", "--json", "number", "--limit", "1"}
-	if g.Repo != "" {
-		args = append(args, "--repo", g.Repo)
-	}
+	args := GHListArgs(g.Repo, branch)
 	cmd := exec.CommandContext(ctx, "gh", args...) //nolint:gosec // G204: literal binary; branch is derived from BranchFn(agentID)
 	out, err := cmd.Output()
 	if err != nil {
@@ -115,12 +148,9 @@ func (g GHLabeler) resolvePRViaGH(ctx context.Context, branch string) (int, erro
 	return entries[0].Number, nil
 }
 
-// editPRViaGH runs `gh pr edit <prNum> --add-label <label>`.
+// editPRViaGH runs `gh pr edit -- <prNum> --add-label <label>`.
 func (g GHLabeler) editPRViaGH(ctx context.Context, prNum int, label string) error {
-	args := []string{"pr", "edit", strconv.Itoa(prNum), "--add-label", label}
-	if g.Repo != "" {
-		args = append(args, "--repo", g.Repo)
-	}
+	args := GHEditArgs(g.Repo, prNum, label)
 	cmd := exec.CommandContext(ctx, "gh", args...) //nolint:gosec // G204: literal binary; prNum is an int, label comes from typed config
 	out, err := cmd.CombinedOutput()
 	if err != nil {
