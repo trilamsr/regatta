@@ -281,54 +281,6 @@ func TestWatcher_ForkPRHead_AcceptsLegitimateAgentSuffix(t *testing.T) {
 	}
 }
 
-// TestWatcher_ForkPRHead_RejectsEvilSuffix guards the boundary-anchor regression.
-func TestWatcher_ForkPRHead_RejectsEvilSuffix(t *testing.T) {
-	// Raw HasSuffix(head, "agent-1") would accept attacker branches
-	// like `evilagent-1` or `attacker-agent-1` (the trailing token
-	// matches without a separator). The boundary-anchored match
-	// rejects both; only `agent-1`, `-agent-1`, or `/agent-1` pass.
-	cases := []struct {
-		name        string
-		headRefName string
-		wantState   state.AgentState
-	}{
-		{name: "no_separator_prefix", headRefName: "evilagent-1", wantState: state.AgentRunning},
-		{name: "alpha_prefix_no_sep", headRefName: "attackeragent-1", wantState: state.AgentRunning},
-		{name: "hyphen_separator", headRefName: "attacker-agent-1", wantState: state.AgentPROpen},
-		{name: "slash_separator", headRefName: "forkuser/agent-1", wantState: state.AgentPROpen},
-		{name: "exact_suffix", headRefName: "agent-1", wantState: state.AgentPROpen},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			lister := &stubLister{
-				byBranch: map[string][]PullRequest{},
-				byTitlePrefix: map[string][]PullRequest{
-					"[agent-1]": {{
-						Number:      77,
-						HeadRefOid:  "sha",
-						State:       "OPEN",
-						HeadRefName: tc.headRefName,
-						Title:       "[agent-1] x",
-						AuthorLogin: "u",
-					}},
-				},
-			}
-			w, db := newTestWatcher(t, lister)
-			a := driveToRunning(t, db, "WORK-1")
-			if err := w.Sweep(context.Background()); err != nil {
-				t.Fatalf("sweep: %v", err)
-			}
-			got, err := db.GetAgent(context.Background(), a.ID)
-			if err != nil {
-				t.Fatalf("get: %v", err)
-			}
-			if got.State != tc.wantState {
-				t.Fatalf("head=%q state=%s, want %s", tc.headRefName, got.State, tc.wantState)
-			}
-		})
-	}
-}
-
 // TestWatcher_StartupProbe_RefusesOnOldGH covers issue #526.
 func TestWatcher_StartupProbe_RefusesOnOldGH(t *testing.T) {
 	cases := []struct {

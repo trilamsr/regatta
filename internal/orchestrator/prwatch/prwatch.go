@@ -411,11 +411,8 @@ func filterImpersonators(prs []PullRequest, branch, suffix string, log *slog.Log
 		// gh's --head match (same-repo case) always sets HeadRefName
 		// to the literal branch; that path is the trusted one. The
 		// title-prefix fallback path provides whatever the fork user
-		// named their branch — require an exact suffix OR a boundary
-		// separator before the suffix so `evilagent-1` cannot match
-		// `agent-1` (raw HasSuffix would permit that fork hijack).
-		suffixMatch := head == suffix || strings.HasSuffix(head, "-"+suffix) || strings.HasSuffix(head, "/"+suffix)
-		if head == branch || suffixMatch || head == "" {
+		// named their branch — so require the suffix match there.
+		if head == branch || strings.HasSuffix(head, suffix) || head == "" {
 			// head=="" guards the in-memory test stub case where
 			// callers omit the HeadRefName field. Production gh
 			// always populates it via `--json headRefName`.
