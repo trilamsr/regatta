@@ -57,7 +57,7 @@ type Config struct {
 	Tracer trace.Tracer
 
 	// Meter is the OTel instrument factory for reaper telemetry.
-	// Nil resolves to otel.Meter("reaper") at the first ResolveMeter()
+	// Nil resolves to obs.MeterScopeReaper at the first ResolveMeter()
 	// call so the global MeterProvider Setup wires (or a noop when
 	// Setup was skipped) wins by default. Mirrors the W6 Config.Tracer
 	// pattern so callers stay on one DI seam across trace + metric.
@@ -75,10 +75,7 @@ type Config struct {
 // provider swap (e.g. test injection of a noop provider) takes effect
 // on the next call. Matches the W6 Config.Tracer nil-fallback shape.
 func (c Config) ResolveMeter() metric.Meter {
-	if c.Meter != nil {
-		return c.Meter
-	}
-	return otel.Meter("reaper")
+	return obs.ResolveMeter(c.Meter, obs.MeterScopeReaper)
 }
 
 // Reaper owns the post-terminal cleanup path.

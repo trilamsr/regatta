@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -46,7 +47,7 @@ type Config struct {
 	Tracer trace.Tracer
 
 	// Meter is the OTel instrument factory for adaptersync telemetry.
-	// Nil resolves to otel.Meter("adaptersync") at the first
+	// Nil resolves to obs.MeterScopeAdaptersync at the first
 	// ResolveMeter() call so the global MeterProvider Setup wires (or
 	// a noop when Setup was skipped) wins by default. Mirrors the W6
 	// Config.Tracer pattern so callers stay on one DI seam across
@@ -59,10 +60,7 @@ type Config struct {
 // provider swap (e.g. test injection of a noop provider) takes effect
 // on the next call. Matches the W6 Config.Tracer nil-fallback shape.
 func (c Config) ResolveMeter() metric.Meter {
-	if c.Meter != nil {
-		return c.Meter
-	}
-	return otel.Meter("adaptersync")
+	return obs.ResolveMeter(c.Meter, obs.MeterScopeAdaptersync)
 }
 
 // Syncer pairs an adapter with the state DB. Timestamps are passed

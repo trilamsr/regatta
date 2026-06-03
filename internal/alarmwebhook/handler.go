@@ -17,6 +17,8 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/trilamsr/regatta/internal/obs"
 )
 
 // MaxBodyBytes caps an incoming webhook body. 4 MiB covers any realistic
@@ -89,10 +91,7 @@ type Handler struct {
 // internal/orchestrator/scheduler/scheduler.go::ResolveMeter so a
 // post-construct SetupMeter still wires through.
 func (h *Handler) resolveMeter() metric.Meter {
-	if h.Meter != nil {
-		return h.Meter
-	}
-	return otel.Meter("alarmwebhook")
+	return obs.ResolveMeter(h.Meter, obs.MeterScopeAlarmwebhook)
 }
 
 func (h *Handler) resolveTracer() trace.Tracer {
@@ -119,7 +118,7 @@ func (h *Handler) init() {
 		m := h.resolveMeter()
 		c, err := m.Int64Counter("regatta.alarm_webhook.alerts.total")
 		if err != nil {
-			c, _ = otel.Meter("alarmwebhook-fallback").Int64Counter("regatta.alarm_webhook.alerts.total")
+			c, _ = obs.Meter(obs.MeterScopeAlarmwebhookFallback).Int64Counter("regatta.alarm_webhook.alerts.total")
 		}
 		h.alertCounter = c
 	})

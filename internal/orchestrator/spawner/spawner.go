@@ -85,10 +85,7 @@ type Config struct {
 // a global provider swap (e.g. test noop injection) takes effect on
 // the next call.
 func (c Config) ResolveMeter() metric.Meter {
-	if c.Meter != nil {
-		return c.Meter
-	}
-	return otel.Meter("spawner")
+	return obs.ResolveMeter(c.Meter, obs.MeterScopeSpawner)
 }
 
 // Stub records every Spawn call and returns a synthetic (pid,

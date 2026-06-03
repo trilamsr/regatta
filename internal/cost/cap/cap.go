@@ -17,11 +17,11 @@ import (
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/trilamsr/regatta/internal/cost/spend"
+	"github.com/trilamsr/regatta/internal/obs"
 )
 
 // SchedulerState is the binary state machine the scheduler observes.
@@ -141,10 +141,7 @@ func New(cfg Config) (*Enforcer, error) {
 	if tz == nil {
 		tz = time.UTC
 	}
-	meter := cfg.Meter
-	if meter == nil {
-		meter = otel.Meter("internal/cost/cap")
-	}
+	meter := obs.ResolveMeter(cfg.Meter, obs.MeterScopeCostCap)
 	// Pre-create instruments so Allow() stays alloc-free on the hot
 	// path. Construction failures degrade to noop counters so a broken
 	// SDK never blocks scheduling.
