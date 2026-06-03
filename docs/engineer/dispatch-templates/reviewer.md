@@ -30,6 +30,17 @@ LENSES (apply in order)
 8. Load-bearing leftovers — every unaddressed load-bearing item → tracking issue filed + cited in PR body per `feedback_unaddressed_load_bearing`. PHASE-S-RELAX: Risk-tier+ only during self-host window.
 9. **Comment sweep** — inspect every added/modified comment per `feedback_reviewer_comment_trim`. Flag each: version-ref (`// added in v2.3`, `// PR #N`), what-not-why (`// loops over items`), banner (`// --- Section ---`), untagged deferred-debt marker without bug-link (per `scripts/stale-todo.sh`), commented-out code, AI signatures (`Co-Authored-By`, `Generated with`). Output `## Comment sweep` section listing offenders by `path:line`; if zero, state `## Comment sweep: clean` explicitly (silence = failure).
 
+RUN LOCAL LINTS (do not infer from PR description)
+- Fetch branch + run `bash scripts/doc-check.sh` (banned phrases, broken links, comment-noise, test-godoc).
+- Run `make pre-push-check` (verify, stale-todo, check-tdd, full test suite).
+- Compare actual exit codes against author's claim. ~10% lie rate per `feedback_subagent_verification`. (`feedback_reviewer_run_local_lints`, `feedback_subagent_verification`)
+
+AUTOMERGE GATE (every Risk-tier+ must be addressed)
+- Automerge fires ONLY when: (1) reviewer ran on PR's current head (not stale rev), (2) every Risk-tier+ finding has disposition (inline-fix OR tracking issue #). (`feedback_review_before_automerge`)
+
+LOAD-BEARING LEFTOVERS → TRACKING ISSUES
+- Every load-bearing leftover → file tracking issue BEFORE merge. PR bodies are not durable. (`feedback_unaddressed_load_bearing`)
+
 OUTPUT FORMAT
 - Inline GH PR review comments OR markdown report. Each finding: `[Tier] file:line — observation — proposed fix`.
 - Final block: independent scorecard re-score (B/A/A+ per criterion) — must match or contradict author's claim explicitly.

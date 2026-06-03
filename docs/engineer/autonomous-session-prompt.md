@@ -105,30 +105,37 @@ WORKFLOW per item — use templates at `docs/engineer/dispatch-templates/`. Subs
 
 Templates encode load-bearing preamble: worktree-first, TDD failing-first, adversarial reviewer, A+ scorecard, doc-check banned phrases, release-notes fence, no-signatures, memory cites, PHASE-S-RELAX conditions. Cite memory rules in dispatch prompts via the templates' `<MEMORY-RULES>` variable.
 
-RULES (memory-bound; do not re-derive)
+RULES (canonical — repo-tracked at CLAUDE.md; this section adds autonomous-loop-only rules)
+
+The bulk of agent rules now live in repo-root `CLAUDE.md` (auto-loaded by every agent in this tree). Read it once at session start. The block below ONLY captures rules specific to the indefinite-autonomous-loop mode that wouldn't make sense in a one-off dev session.
+
 - Subagents do everything: design, plan, impl, review, doc, PR-body drafting, issue filing, debugging. Main thread = dispatcher + integrator.
-- Decisions: NEVER ask user. Spawn review subagent + decide based on memory/feedback_decision_priority (UX > ease > best-practices > speed > velocity).
 - **W9 substrate-choice locked = option C hybrid, self-host scope = substrate-default impl ONLY** (memory/wedge_roadmap_assessment §"Substrate + W9 substrate-choice locked 2026-06-01" + self-host-first brief §3 S2-T1): ship W9 against `DurableHistory` Go interface, default impl on substrate `events`. Temporal-backed impl is Phase X — gated behind refined P2.5 trigger (sqlite contention >5% OR ≥30 concurrent OR replay-recovery >60s — any one, two consecutive 24h windows) AND external customer ask. W9 promoted ahead of W7/W8 for self-host loop closure. Never re-litigate during implementer dispatch.
-- **Self-host-first filter** (per docs/engineer/briefs/2026-06-01-self-host-first.md §1): every wedge filtered by "does the sole internal operator need this to dispatch regatta-the-binary at this repo unattended?". Keep → in scope. Defer → Phase X. Single-tenant, single-operator, single-repo, CLI-only, deterministic CI, human-merge via GH branch protection. No RBAC for tenancy. No billing. No htmx UI. No Sigstore. No blackboard. Reopen Phase X on external customer ask OR 30-day-green trigger.
-- root-cause only, no workarounds (memory/feedback_root_cause)
-- max parallel fan-out (memory/feedback_parallel_dispatch)
-- Cap parallel implementer subagents at 3-4 per feedback_session_limit_dispatch; shared API quota dies at 5+. Heavy-context sessions reduce cap to 2-3.
-- make pre-push-check before every push
-- Pre-fetch next-horizon brief when current wave drains (≤2 unblocked items remaining) per feedback_roadmap_pre_fetch
-- Audit dep-graph before parallel dispatch; sequence chained-output work; parallelize file-disjoint only per feedback_sequence_dependent_work
-- Default to deletion over addition; every PR answers "what got smaller?"; adversarial reviewer enforces ≥1 deletion proposal per feedback_deletion_default
-- PHASE-S-RELAX active on reviewer + scorecard + load-bearing gates — template files encode current conditions; restore at 30-day-green OR external-customer trigger per memory/feedback_gate_relaxation_phase_s.
-- **Test/Fuzz/Benchmark godocs 1 line max** per `feedback_test_godoc_one_line`. `scripts/doc-check.sh` test-godoc gate rejects multi-line. Recurring agent-failure 2026-06-02.
-- **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `feedback_pr_body_file_only`. HEREDOC bodies escape backticks and silently break the release-notes fence. Recurring agent-failure 2026-06-02.
+- PHASE-S-RELAX (`feedback_gate_relaxation_phase_s`) ARCHIVED 2026-06-02 — window closed; templates restored to full-gate posture. Reopen-trigger: next gate-relaxation window (pre-launch hardening freeze OR customer-pilot mode).
 - **Comment-noise gate trip-traps** per #333 followup — reviewer-tag regex over-matches reviewer-Request / reviewer-JSON prose; banner-comment regex rejects `# --- Section ---`. Dodge: hyphenate or lowercase, replace banners with plain `# Section.`.
 
-TOKEN ECONOMY (subagents do NOT inherit memory dir — these rules MUST be enforced via dispatch prompts)
-- **Dispatch brief only** per `feedback_dispatch_brief_only`. Implementer subagents receive per-task brief (spec §12 style), NOT full spec doc. Main thread keeps full spec for cross-cutting Qs.
-- **gh minimal fields** per `feedback_gh_minimal_fields`. Every `gh pr list/view` MUST pass explicit `--json` allowlist (default `number,state,mergeStateStatus,statusCheckRollup,isDraft,headRefName`) + `-L 20`. No bare `--json`.
-- **No memory re-read** per `feedback_no_memory_reread`. Never `cat`/`Read` files under `memory/` — auto-loaded via MEMORY.md. Reference by `[[slug]]`. Exception: editing the memory file itself.
-- **PR body cache per phase** per `feedback_pr_body_cache_per_phase`. ONE `gh pr view N --json number,title,body,comments,reviews` per review phase; pass as text to phase subagents. Re-fetch only on phase boundary OR explicit user ask.
-- **Subagent ci-check compress** per `feedback_subagent_cicheck_compress`. Implementer reports `make ci-check 2>&1 | tee /tmp/cicheck.log | grep -E "^(FAIL|ok|---|Error|error:|PASS)" | tail -40` + exit code. 85-90% reduction. Main thread still re-runs full (~10% lie rate per `feedback_subagent_verification`).
-- **ctx capture dedupe** per `feedback_ctx_capture_dedupe`. Before `ctx_batch_execute` on research/spec content: `ctx_search` first. Skip batch if recent (<24h) hit covers same content. Batch labels: content-distinct, not session-distinct.
+AUTONOMOUS-LOOP CADENCE
+- **Dispatch discipline** (`feedback_dispatch_discipline`): 3 loops — (1) parallelize by default, sequence on dep-graph; (2) status-report cadence after every wave-dispatch + ~3 subagent completions + when wave drains to ≤2 lanes; (3) GH-API throttle — batch `gh pr list --json` polls, ls-remote over fetch.
+- **Status report cadence** (`feedback_status_report_cadence`): surface report after wave-dispatch, every ~3 completions, when wave drains ≤2, on blocker dropping active count below floor.
+- **No idle wait** (`feedback_no_idle_wait`) [soft, 2026-06-02]: avoid redundant wakeups while agents in flight. Minimum-N-agent floors optional — apply only when operator restates per-session.
+- **Anticipate starvation** (`feedback_anticipate_starvation`): keep ≥N active by pre-fetching next-horizon work. Priority for idle slots: adversarial reviews → spec drafts → followup triage → next-wave dispatch.
+- **Roadmap pre-fetch** (`feedback_roadmap_pre_fetch`): when current wave ≥80% shipped OR <2 unblocked items, spawn design-subagent for next-horizon brief at `docs/engineer/briefs/YYYY-MM-DD-<topic>.md`.
+- **Indefinite autonomy** (`feedback_indefinite_autonomy`): do NOT stop at PHASE GREEN-CLOCK or any milestone. After autonomy closes, continue designing + building. Pull from `[followup]` issues when waves drain. Halt only on externally-irreversible action.
+- **TaskCreate usage** (`feedback_task_create_usage`): use for ≥4 discrete dispatches, multi-wave roadmap, crash-prone work. Skip for single-pass audits, 1-2 step atomic edits, Q&A.
+- **Boot-prompt per-wave refresh** (`feedback_boot_prompt_per_wave_refresh`): after wave merges, edit PRIORITY + "Already shipped" sections; open `docs(engineer):` PR with automerge. Drop entries >2 waves old.
+- **Self-improvement** (`feedback_self_improvement`): when session friction observed (slow ops, repeated lookups, ambiguous dispatch prompts), self-diagnose root cause + ship fix in same session. Authority granted 2026-06-02.
+
+AUTOMERGE GATING
+- **Review before automerge** (`feedback_review_before_automerge`): automerge fires ONLY when (1) independent reviewer ran on current head (not stale rev) AND (2) every Risk-tier+ finding addressed (inline-fix OR tracking issue #).
+- **Review every step** (`feedback_review_every_step`): pipeline gate at design draft, roadmap, plan, impl. Each iterates edit-in-place + re-review → ADOPT.
+- **Post-automerge CI monitor** (`feedback_post_automerge_ci_monitor`): after `gh pr merge --auto`, CI may fail post-rebase OR DIRTY merge-state may surface silently. Re-check `gh pr view --json mergeStateStatus,statusCheckRollup` until merged-or-failed.
+- **Agent load-bearing → issues** (`feedback_agent_load_bearing_to_issues`): subagent findings NOT addressed in own PR → main thread files tracking issue, never leaves as PR comment.
+
+WORKTREE / GIT HYGIENE (long-session)
+- **Agent tree spillage** (`feedback_agent_tree_spillage`): harness sometimes drops agents into primary tree instead of worktree. Stash primary before reset; verify `.claude/worktrees/agent-<id>/` matches before edits.
+- **Git ops speed** (`feedback_git_ops_speed`): periodic `git gc`; bulk-delete stale branches; batch `gh pr list --json`; ls-remote over fetch; classifier-overhead tax is real (1-3s/Bash invisible-but-real).
+
+NOTE: All other agent rules (token economy, identity, comments, CI gates, TDD, reviewer, worktree basics, dispatch caps, decision priority, root cause, deletion default, drop ceremony, self-host filter, branch protection) live in `CLAUDE.md` at repo root.
 
 WHEN BLOCKED
 - File [followup] issue + pick next priority. Never pause for user input.
