@@ -30,8 +30,23 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/trilamsr/regatta/internal/dbutil"
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
+
+// celDeciderTool names CELDecider in the gate_verdict.tool field.
+// "cel" pins this producer to its deterministic CEL-predicate
+// substrate; an LLM-gate producer would use "anthropic-api" / similar
+// so issue #550's audit-verify CLI can group by tool.
+const celDeciderTool = "cel"
+
+// CELDeciderVersion is the pinned tool_version string CELDecider
+// records into every gate_verdict it emits. Per issue #550, this
+// field MUST be non-empty so an auditor can name the exact producer
+// that wrote a recorded verdict. Bumped via the standard release flow
+// — keep it in sync with git-SHA pins when the predicate-evaluation
+// code path is touched in a non-functional-equivalent way.
+var CELDeciderVersion = "cel-decider/v1"
 
 // Beginner is the BeginTx surface CELDecider depends on. Re-exported as
 // an alias of dbutil.Beginner so the test-side counting wrapper that
@@ -195,12 +210,23 @@ func (c *CELDecider) Decide(ctx context.Context, snap Snapshot) (GateResult, err
 		if !pass {
 			reason = "predicate=false"
 		}
-		payload, err := json.Marshal(substrate.GateVerdictPayload{
-			GateName:   c.gateName,
-			Pass:       pass,
-			Reason:     reason,
-			WorkItemID: snap.WorkItemID,
-		})
+		// Issue #550: CELDecider is the deterministic-gate producer — a
+		// CEL predicate over a fixed snapshot is bit-for-bit reproducible.
+		// Mark Deterministic=true so the audit-verify CLI advertises
+		// "reproduce" posture for these verdicts. Tool/ModelOrVersion
+		// pin the producer identity; DBSchemaVersion lets a later audit
+		// flag schema-skew if replay happens under a newer migration.
+		verdict, err := substrate.NewGateVerdictPayload(
+			c.gateName, snap.WorkItemID,
+			celDeciderTool, CELDeciderVersion,
+			state.CurrentSchemaVersion,
+			true, // deterministic — CEL predicate over a fixed snapshot
+			pass, reason,
+		)
+		if err != nil {
+			return fmt.Errorf("cel_decider: construct verdict: %w", err)
+		}
+		payload, err := json.Marshal(verdict)
 		if err != nil {
 			return fmt.Errorf("cel_decider: marshal payload: %w", err)
 		}
