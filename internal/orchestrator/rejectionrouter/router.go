@@ -176,21 +176,22 @@ func (r *Router) Tick(ctx context.Context) error {
 }
 
 // sweepUnlabeled retries the labeler for every escalated agent that
-// has no `labeled` audit row yet. Bounded by the same BatchLimit so a
-// pathological backlog cannot stretch a single Tick unboundedly.
+// has no `labeled` audit row yet. The SQL-level NOT EXISTS filter (via
+// ListEscalatedUnlabeled) collapses the prior N+1 round-trip pattern
+// (list-all + per-row lookup) into a single index-driven scan and caps
+// emitted rows at BatchLimit — so the number of *labeler calls* per
+// Tick is bounded by BatchLimit regardless of how many escalated rows
+// accumulate. See issue #478. The outer index probe still scales with
+// the terminal escalated set (one idx_events_agent lookup per row
+// until LIMIT is reached), but each probe is O(log E) and runs
+// in-process via SQLite, not over the network like the labeler calls
+// that #478 was actually about.
 func (r *Router) sweepUnlabeled(ctx context.Context) error {
-	escalated, err := r.cfg.DB.ListAgentsByState(ctx, state.AgentEscalated)
+	escalated, err := r.cfg.DB.ListEscalatedUnlabeled(ctx, r.cfg.BatchLimit)
 	if err != nil {
-		return fmt.Errorf("rejectionrouter: list escalated: %w", err)
+		return fmt.Errorf("rejectionrouter: list escalated unlabeled: %w", err)
 	}
 	for _, a := range escalated {
-		labeled, err := r.cfg.DB.ListAgentEventsByKind(ctx, a.ID, EventKindLabeled)
-		if err != nil {
-			return fmt.Errorf("rejectionrouter: list labeled events: %w", err)
-		}
-		if len(labeled) > 0 {
-			continue
-		}
 		if err := r.cfg.Labeler.AddLabel(ctx, a.ID, r.cfg.EscalationLabel); err != nil {
 			return fmt.Errorf("rejectionrouter: retry label for agent %d (work_item %q): %w", a.ID, a.WorkItemID, err)
 		}

@@ -70,33 +70,6 @@ func (d *DB) ListEventsByKindSince(ctx context.Context, kind string, sinceID int
 	return out, rows.Err()
 }
 
-// ListAgentEventsByKind returns every event of the given kind whose
-// agent_id matches. Used by event-driven tickers that need an
-// idempotency marker (e.g. rejectionrouter's `labeled` sweep).
-// Ordering is by id ascending.
-func (d *DB) ListAgentEventsByKind(ctx context.Context, agentID int64, kind string) ([]Event, error) {
-	rows, err := d.sql.QueryContext(ctx,
-		`SELECT id, agent_id, kind, payload_json, created_at
-		 FROM events
-		 WHERE agent_id = ? AND kind = ?
-		 ORDER BY id ASC`, agentID, kind)
-	if err != nil {
-		return nil, fmt.Errorf("state: list agent events by kind: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	var out []Event
-	for rows.Next() {
-		var e Event
-		var created int64
-		if err := rows.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
-			return nil, err
-		}
-		e.CreatedAt = time.Unix(created, 0).UTC()
-		out = append(out, e)
-	}
-	return out, rows.Err()
-}
-
 // ListEvents returns events ordered by id ascending. Used by tests and
 // the audit log writer.
 func (d *DB) ListEvents(ctx context.Context, limit int) ([]Event, error) {
