@@ -2,6 +2,7 @@ package costcap
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -99,23 +100,25 @@ func TestEnforcer_BelowCap_AllowsSpawn(t *testing.T) {
 	}
 }
 
-// TestEnforcer_AtCapBoundary_RejectsSpawn sum==cap → Throttled (>=).
-func TestEnforcer_AtCapBoundary_RejectsSpawn(t *testing.T) {
+// TestEnforcer_AtCapBoundary_Allows sum==cap → Active (#651: > not >=).
+func TestEnforcer_AtCapBoundary_Allows(t *testing.T) {
 	sp := &fakeSpend{value: spend.FromUSD(40)}
 	now := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
 	e := newTestEnforcer(t, spend.FromUSD(40), sp, &fakeRecorder{}, &fakeResume{}, func() time.Time { return now }, time.UTC, 0)
-	if e.Allow(context.Background()) {
-		t.Fatalf("Allow=true; want false at boundary")
+	if !e.Allow(context.Background()) {
+		t.Fatalf("Allow=false at boundary; want true (sum==cap allowed)")
 	}
 }
 
-// TestEnforcer_AboveCap_RejectsSpawn sum>cap → Throttled.
-func TestEnforcer_AboveCap_RejectsSpawn(t *testing.T) {
-	sp := &fakeSpend{value: spend.FromUSD(50)}
+// TestEnforcer_AboveCap_Throttles sum>cap → Throttled (#651 boundary).
+func TestEnforcer_AboveCap_Throttles(t *testing.T) {
+	// $40.000001 (one micro over $40 cap) — the smallest excursion above
+	// the boundary; throttle MUST fire.
+	sp := &fakeSpend{value: spend.USDMicro(40_000_001)}
 	now := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
-	e := newTestEnforcer(t, spend.FromUSD(40), sp, &fakeRecorder{}, &fakeResume{}, func() time.Time { return now }, time.UTC, 0)
+	e := newTestEnforcer(t, spend.USDMicro(40_000_000), sp, &fakeRecorder{}, &fakeResume{}, func() time.Time { return now }, time.UTC, 0)
 	if e.Allow(context.Background()) {
-		t.Fatalf("Allow=true; want false above cap")
+		t.Fatalf("Allow=true 1 micro over cap; want throttled")
 	}
 }
 
@@ -279,9 +282,10 @@ func TestEnforcer_EmitsEventOnce_PerTransition(t *testing.T) {
 	}
 }
 
-// TestEnforcer_MoneyDiscipline_ExactBoundary micro-USD comparison is exact.
+// TestEnforcer_MoneyDiscipline_ExactBoundary micro-USD comparison is exact at the > boundary (#651).
 func TestEnforcer_MoneyDiscipline_ExactBoundary(t *testing.T) {
-	// $39.999999 → 39_999_999 micro; $40 → 40_000_000 micro.
+	// $39.999999 → 39_999_999 micro; $40 → 40_000_000 micro;
+	// $40.000001 → 40_000_001 micro.
 	dailyCap := spend.USDMicro(40_000_000)
 	now := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
 	// Just under: Active.
@@ -290,11 +294,17 @@ func TestEnforcer_MoneyDiscipline_ExactBoundary(t *testing.T) {
 	if !e1.Allow(context.Background()) {
 		t.Fatalf("$39.999999 should be Active under $40 cap")
 	}
-	// Exactly at cap: Throttled.
+	// Exactly at cap: Active (#651 boundary: > not >=).
 	sp2 := &fakeSpend{value: spend.USDMicro(40_000_000)}
 	e2 := newTestEnforcer(t, dailyCap, sp2, &fakeRecorder{}, &fakeResume{}, func() time.Time { return now }, time.UTC, 0)
-	if e2.Allow(context.Background()) {
-		t.Fatalf("$40 should be Throttled (>= boundary)")
+	if !e2.Allow(context.Background()) {
+		t.Fatalf("$40 should be Active at boundary (> not >=)")
+	}
+	// One micro over: Throttled.
+	sp3 := &fakeSpend{value: spend.USDMicro(40_000_001)}
+	e3 := newTestEnforcer(t, dailyCap, sp3, &fakeRecorder{}, &fakeResume{}, func() time.Time { return now }, time.UTC, 0)
+	if e3.Allow(context.Background()) {
+		t.Fatalf("$40.000001 should be Throttled (1 micro above cap)")
 	}
 }
 
@@ -332,6 +342,26 @@ func TestEnforcer_New_RequiresSpend(t *testing.T) {
 func TestEnforcer_New_RequiresTenant(t *testing.T) {
 	if _, err := New(Config{Spend: &fakeSpend{}}); err == nil {
 		t.Fatalf("New(no tenant) expected error; got nil")
+	}
+}
+
+// TestEnforcer_SpendReadError_FailsClosed substrate read error throttles (#650).
+func TestEnforcer_SpendReadError_FailsClosed(t *testing.T) {
+	sp := &fakeSpend{err: errors.New("simulated substrate hiccup")}
+	now := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
+	e := newTestEnforcer(t, spend.FromUSD(40), sp, &fakeRecorder{}, &fakeResume{}, func() time.Time { return now }, time.UTC, 0)
+	if e.Allow(context.Background()) {
+		t.Fatalf("Allow=true on spend read error; want false (fail-CLOSED)")
+	}
+	st, reason, err := e.State(context.Background())
+	if err != nil {
+		t.Fatalf("State: %v", err)
+	}
+	if st != Throttled {
+		t.Fatalf("state=%v; want Throttled on read error", st)
+	}
+	if !strings.Contains(reason, "failing closed") {
+		t.Fatalf("reason missing fail-closed signal: %q", reason)
 	}
 }
 

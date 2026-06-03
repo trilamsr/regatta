@@ -116,6 +116,12 @@ func (s *Scheduler) globalCapBlock(ctx) bool {
 
 **Cache invalidation on resume.** `regatta resume` writes a substrate event AND signals an in-process channel that drops the memoized verdict. The next Tick recomputes against fresh substrate data, sees `latest_resume >= day_anchor`, and returns false.
 
+**Fail-CLOSED on spend-read error (#650).** When `BudgetState` returns an error, `evaluate` returns `Throttled` with reason `spend read error: failing closed (throttled)` and logs at `ERROR`. Rationale: silently lifting the cap during a substrate outage risks unbounded spend; the per-scope gate still applies in parallel. Operator paging fires immediately; throttle clears the moment the reader recovers.
+
+**Boundary policy (#651).** `spend > cap` ⇒ Throttled. `spend == cap` ⇒ Active. The cap is the budgetary line the operator drew; the line itself is permitted. Pinned by `TestEnforcer_AtCapBoundary_Allows` + `TestEnforcer_AboveCap_Throttles`.
+
+**Two-scheduler dedupe (#652).** Migration `0017_cost_cap_event_unique_and_substrate_kinds.sql` adds a partial UNIQUE index `idx_cost_cap_throttled_event_unique` on `events(kind, created_at/86400) WHERE kind='cost_cap_throttled'`. Concurrent Active→Throttled transitions in the same UTC day collapse to one durable row; the loser logs `cost_cap.duplicate_throttled_event_suppressed`.
+
 ## 6. Operator UX
 
 ### 6.1 `regatta cost status`

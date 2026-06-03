@@ -51,6 +51,15 @@ const (
 	// rebase, branch-protection override). Append; same streak-break
 	// semantics as KindManualMerge (#659).
 	KindOperatorIntervention EventKind = "operator_intervention"
+	// KindCostCapThrottled — W5 cost-cap autonomic-enforcement transition
+	// to Throttled (#622 substrate schema parity for forward-port).
+	// Append; one row per Active→Throttled transition (the partial
+	// UNIQUE index on the legacy `events` table de-dupes the
+	// two-scheduler race per #652).
+	KindCostCapThrottled EventKind = "cost_cap_throttled"
+	// KindCostCapResumed — W5 cost-cap operator-override audit (#622).
+	// Append; one row per `regatta resume` invocation.
+	KindCostCapResumed EventKind = "cost_cap_resumed"
 )
 
 // AllKinds returns the canonical kind list in declaration order —
@@ -61,6 +70,7 @@ func AllKinds() []EventKind {
 		KindBudgetReconciled, KindGateVerdict, KindHeartbeat,
 		KindBriefRejected, KindPRStageTransition,
 		KindManualMerge, KindOperatorIntervention,
+		KindCostCapThrottled, KindCostCapResumed,
 	}
 }
 

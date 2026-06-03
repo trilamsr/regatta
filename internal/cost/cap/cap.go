@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,14 +37,19 @@ const (
 )
 
 // EventKindThrottled / EventKindResumed are the audit kinds the
-// Enforcer writes through Recorder. Stored on the `events` table —
-// substrate_events is a planned forward-port (F3) once the kind
-// whitelist widens; using `events` avoids a migration for W5 while
-// preserving the audit trail.
+// Enforcer writes through Recorder. Stored on the `events` table.
+// Substrate kinds (KindCostCapThrottled / KindCostCapResumed) carry the
+// schema-parity surface for the forward-port (issue #622); producer
+// rewiring is deferred behind the cross-link.
 const (
 	EventKindThrottled = "cost_cap_throttled"
 	EventKindResumed   = "cost_cap_resumed"
 )
+
+// ReasonSpendReadError is the State() reason returned when the spend
+// reader fails. Fail-CLOSED: a substrate hiccup must NOT silently lift
+// the cap. Operator sees Throttled until the reader recovers (#650).
+const ReasonSpendReadError = "spend read error: failing closed (throttled)"
 
 // SpendReader is the spend.Reader-side seam — the only call cap makes
 // is the global 24h sum.
@@ -213,16 +219,21 @@ func (e *Enforcer) evaluate(ctx context.Context) (SchedulerState, string) {
 		TenantID: e.tenant,
 	}, e.period)
 	if err != nil {
-		// Fail-OPEN on read errors: a DB hiccup must not stall every
-		// spawn. The per-scope gate still enforces local caps, so the
-		// blast radius is bounded. Log so the operator sees the
-		// degradation.
-		e.log.Warn("cost_cap.spend_read_error",
+		// Fail-CLOSED on read errors (#650): silently lifting the cap
+		// when substrate is unavailable risks unbounded spend during the
+		// degradation window. Throttle until the reader recovers; the
+		// per-scope gate continues to enforce local caps in parallel.
+		// Logged at ERROR so operator paging fires immediately.
+		e.log.Error("cost_cap.spend_read_error",
 			"err", err.Error(),
 		)
-		return Active, "spend read error"
+		return Throttled, ReasonSpendReadError
 	}
-	overCap := spendMicro >= e.cfg.CapMicro
+	// Boundary policy (#651): allow spend strictly EQUAL to cap; throttle
+	// only when spend exceeds. Operators set a cap as the budgetary line;
+	// the line itself is permitted. Tests:
+	// TestEnforcer_AtCapBoundary_Allows + TestEnforcer_AboveCap_Throttles.
+	overCap := spendMicro > e.cfg.CapMicro
 	overridden := false
 	if overCap && e.cfg.Resume != nil {
 		latestResume, rerr := e.cfg.Resume.LatestResumeAt(ctx)
@@ -289,7 +300,21 @@ func (e *Enforcer) onTransition(ctx context.Context, next SchedulerState, spendM
 				`{"spend_micro":%d,"cap_micro":%d,"auto_resume_at":%q,"tz":%q}`,
 				spendMicro, e.cfg.CapMicro, resumeAt.Format(time.RFC3339), e.tz.String(),
 			)
-			_ = e.cfg.Recorder.RecordEvent(ctx, 0, EventKindThrottled, payload)
+			// UNIQUE-constraint violation when two schedulers race the
+			// same Active→Throttled transition (#652). Treat as benign —
+			// the partial UNIQUE index on (agent_id, kind, day-bucket)
+			// pins one canonical row per day; the loser logs + moves on.
+			if err := e.cfg.Recorder.RecordEvent(ctx, 0, EventKindThrottled, payload); err != nil {
+				if isUniqueViolation(err) {
+					e.log.Info("cost_cap.duplicate_throttled_event_suppressed",
+						"err", err.Error(),
+					)
+				} else {
+					e.log.Warn("cost_cap.record_throttled_failed",
+						"err", err.Error(),
+					)
+				}
+			}
 		}
 	case Active:
 		e.log.Info("scheduler.resumed",
@@ -349,7 +374,7 @@ func (e *Enforcer) Snapshot(ctx context.Context) (spend.USDMicro, spend.USDMicro
 		return 0, e.cfg.CapMicro, Active, time.Time{}, err
 	}
 	state := Active
-	if e.cfg.CapMicro > 0 && spendMicro >= e.cfg.CapMicro {
+	if e.cfg.CapMicro > 0 && spendMicro > e.cfg.CapMicro {
 		state = Throttled
 		if e.cfg.Resume != nil {
 			latest, _ := e.cfg.Resume.LatestResumeAt(ctx)
@@ -365,3 +390,16 @@ func (e *Enforcer) Snapshot(ctx context.Context) (spend.USDMicro, spend.USDMicro
 // TZ returns the configured timezone — status CLI uses it for the
 // `tz=` output field.
 func (e *Enforcer) TZ() *time.Location { return e.tz }
+
+// isUniqueViolation matches the modernc.org/sqlite UNIQUE-constraint
+// error shape against the cost-cap throttled audit-row guard (#652).
+// Substring match couples to the driver's stable error text — same
+// pattern substrate.isUniqueNonceViolation uses.
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "UNIQUE constraint failed") ||
+		strings.Contains(msg, "idx_cost_cap_throttled_event_unique")
+}

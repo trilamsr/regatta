@@ -341,6 +341,56 @@ func validateGreenClockReset(kind EventKind) PayloadValidator {
 	}
 }
 
+// costCapThrottledPayload mirrors cap.go's legacy `events`-table audit
+// row so substrate forward-port (#622) is byte-equivalent. SpendMicro +
+// CapMicro are the int-micro canonical fields; AutoResumeAt is RFC3339;
+// TZ is the IANA name the Enforcer was configured with.
+type costCapThrottledPayload struct {
+	SpendMicro   int64  `json:"spend_micro"`
+	CapMicro     int64  `json:"cap_micro"`
+	AutoResumeAt string `json:"auto_resume_at"`
+	TZ           string `json:"tz"`
+}
+
+func validateCostCapThrottled(raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return fmt.Errorf("%w: cost_cap_throttled payload empty", ErrInvalidPayload)
+	}
+	var p costCapThrottledPayload
+	if err := strictUnmarshal(raw, &p); err != nil {
+		return fmt.Errorf("%w: cost_cap_throttled: %w", ErrInvalidPayload, err)
+	}
+	if p.CapMicro <= 0 || p.AutoResumeAt == "" || p.TZ == "" {
+		return fmt.Errorf("%w: cost_cap_throttled missing cap_micro|auto_resume_at|tz",
+			ErrInvalidPayload)
+	}
+	return nil
+}
+
+// costCapResumedPayload mirrors cap.go's Resume audit row. Actor is the
+// operator identity; Reason is the freeform classification; Until is
+// the RFC3339 timestamp of the next auto-rollover anchor.
+type costCapResumedPayload struct {
+	Actor  string `json:"actor"`
+	Reason string `json:"reason"`
+	Until  string `json:"until"`
+}
+
+func validateCostCapResumed(raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return fmt.Errorf("%w: cost_cap_resumed payload empty", ErrInvalidPayload)
+	}
+	var p costCapResumedPayload
+	if err := strictUnmarshal(raw, &p); err != nil {
+		return fmt.Errorf("%w: cost_cap_resumed: %w", ErrInvalidPayload, err)
+	}
+	if p.Actor == "" || p.Reason == "" || p.Until == "" {
+		return fmt.Errorf("%w: cost_cap_resumed missing actor|reason|until",
+			ErrInvalidPayload)
+	}
+	return nil
+}
+
 // strictUnmarshal forbids unknown fields. Pins payload shape per
 // spec §S4 (typed Go structs, no JSON Schema files). A producer
 // emitting extra fields silently is a forward-version-compat trap.
@@ -367,5 +417,7 @@ func init() {
 	RegisterPayloadValidator(KindPRStageTransition, validatePRStageTransition)
 	RegisterPayloadValidator(KindManualMerge, validateGreenClockReset(KindManualMerge))
 	RegisterPayloadValidator(KindOperatorIntervention, validateGreenClockReset(KindOperatorIntervention))
+	RegisterPayloadValidator(KindCostCapThrottled, validateCostCapThrottled)
+	RegisterPayloadValidator(KindCostCapResumed, validateCostCapResumed)
 	// KindGateVerdict: registered by T-S2 in gate_verdict_payload.go init().
 }
