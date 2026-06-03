@@ -122,6 +122,14 @@ RULES (memory-bound; do not re-derive)
 - **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `feedback_pr_body_file_only`. HEREDOC bodies escape backticks and silently break the release-notes fence. Recurring agent-failure 2026-06-02.
 - **Comment-noise gate trip-traps** per #333 followup — reviewer-tag regex over-matches reviewer-Request / reviewer-JSON prose; banner-comment regex rejects `# --- Section ---`. Dodge: hyphenate or lowercase, replace banners with plain `# Section.`.
 
+TOKEN ECONOMY (subagents do NOT inherit memory dir — these rules MUST be enforced via dispatch prompts)
+- **Dispatch brief only** per `feedback_dispatch_brief_only`. Implementer subagents receive per-task brief (spec §12 style), NOT full spec doc. Main thread keeps full spec for cross-cutting Qs.
+- **gh minimal fields** per `feedback_gh_minimal_fields`. Every `gh pr list/view` MUST pass explicit `--json` allowlist (default `number,state,mergeStateStatus,statusCheckRollup,isDraft,headRefName`) + `-L 20`. No bare `--json`.
+- **No memory re-read** per `feedback_no_memory_reread`. Never `cat`/`Read` files under `memory/` — auto-loaded via MEMORY.md. Reference by `[[slug]]`. Exception: editing the memory file itself.
+- **PR body cache per phase** per `feedback_pr_body_cache_per_phase`. ONE `gh pr view N --json number,title,body,comments,reviews` per review phase; pass as text to phase subagents. Re-fetch only on phase boundary OR explicit user ask.
+- **Subagent ci-check compress** per `feedback_subagent_cicheck_compress`. Implementer reports `make ci-check 2>&1 | tee /tmp/cicheck.log | grep -E "^(FAIL|ok|---|Error|error:|PASS)" | tail -40` + exit code. 85-90% reduction. Main thread still re-runs full (~10% lie rate per `feedback_subagent_verification`).
+- **ctx capture dedupe** per `feedback_ctx_capture_dedupe`. Before `ctx_batch_execute` on research/spec content: `ctx_search` first. Skip batch if recent (<24h) hit covers same content. Batch labels: content-distinct, not session-distinct.
+
 WHEN BLOCKED
 - File [followup] issue + pick next priority. Never pause for user input.
 
