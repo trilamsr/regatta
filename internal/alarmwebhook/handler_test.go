@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeGitHub records every call and serves canned ListOpenIssuesByLabel
@@ -321,5 +323,126 @@ func TestAlarmWebhook_DedupCacheShortCircuits(t *testing.T) {
 	if len(fake.Created) != 0 {
 		t.Fatalf("creates: got %d want 0", len(fake.Created))
 	}
+}
+
+// TestHandler_MutexGC_EvictsStaleAlertnames asserts entries idle past the TTL are dropped by reapStale.
+func TestHandler_MutexGC_EvictsStaleAlertnames(t *testing.T) {
+	clock := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	h := &Handler{Client: &fakeGitHub{}, Now: clock.Now}
+	const n = 1000
+	for i := 0; i < n; i++ {
+		h.lockAlertname(alertNameFor(i))
+	}
+	if got := countPerAlertname(h); got != n {
+		t.Fatalf("setup: perAlertname count got %d want %d", got, n)
+	}
+	clock.advance(25 * time.Hour)
+	h.reapStale(clock.Now())
+	if got := countPerAlertname(h); got != 0 {
+		t.Fatalf("after reap: perAlertname count got %d want 0", got)
+	}
+}
+
+// TestHandler_MutexGC_PreservesActiveAlertnames asserts a freshly-touched alertname survives a reap pass.
+func TestHandler_MutexGC_PreservesActiveAlertnames(t *testing.T) {
+	clock := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	h := &Handler{Client: &fakeGitHub{}, Now: clock.Now}
+	for i := 0; i < 10; i++ {
+		h.lockAlertname(alertNameFor(i))
+	}
+	clock.advance(25 * time.Hour)
+	// Touch one alertname so its lastSeenAt advances to "now".
+	h.lockAlertname(alertNameFor(3))
+	h.reapStale(clock.Now())
+	if got := countPerAlertname(h); got != 1 {
+		t.Fatalf("after reap: perAlertname count got %d want 1", got)
+	}
+	if _, ok := h.perAlertname.Load(alertNameFor(3)); !ok {
+		t.Fatalf("active alertname %q must survive reap", alertNameFor(3))
+	}
+}
+
+// TestHandler_MutexGC_SkipsHeldEntries asserts a mutex currently locked is not evicted even if its timestamp is stale.
+func TestHandler_MutexGC_SkipsHeldEntries(t *testing.T) {
+	clock := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	h := &Handler{Client: &fakeGitHub{}, Now: clock.Now}
+	lock := h.lockAlertname("Held")
+	lock.mu.Lock()
+	defer lock.mu.Unlock()
+	clock.advance(25 * time.Hour)
+	h.reapStale(clock.Now())
+	if _, ok := h.perAlertname.Load("Held"); !ok {
+		t.Fatalf("held alertname must not be evicted while in use")
+	}
+}
+
+// TestHandler_MutexGC_RaceWithConcurrentReceive asserts reaper running while POST handlers fire on the same alertname is race-free.
+func TestHandler_MutexGC_RaceWithConcurrentReceive(t *testing.T) {
+	clock := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	fake := &fakeGitHub{}
+	h := &Handler{Client: fake, Now: clock.Now}
+	body := loadSample(t)
+
+	stop := make(chan struct{})
+	var reaperWG sync.WaitGroup
+	reaperWG.Add(1)
+	go func() {
+		defer reaperWG.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				h.reapStale(clock.Now())
+			}
+		}
+	}()
+
+	const n = 50
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			rr := post(t, h, body)
+			if rr.Code != http.StatusAccepted {
+				t.Errorf("status %d", rr.Code)
+			}
+		}()
+	}
+	wg.Wait()
+	close(stop)
+	reaperWG.Wait()
+
+	// Dedup contract must still hold: storm collapses to one CreateIssue.
+	if len(fake.Created) != 1 {
+		t.Fatalf("creates: got %d want 1", len(fake.Created))
+	}
+}
+
+// TestHandler_MutexGC_BackgroundReaperStops asserts startReaper's returned stop func halts the goroutine cleanly.
+func TestHandler_MutexGC_BackgroundReaperStops(t *testing.T) {
+	clock := &fakeClock{t: time.Unix(1_700_000_000, 0)}
+	h := &Handler{Client: &fakeGitHub{}, Now: clock.Now}
+	stop := h.startReaper(1 * time.Millisecond)
+	if stop == nil {
+		t.Fatal("startReaper must return non-nil stop func")
+	}
+	// Drive a few ticks then stop; a leaked goroutine would show up under -race or via go.uber.org/goleak in CI.
+	time.Sleep(10 * time.Millisecond)
+	stop()
+}
+
+func alertNameFor(i int) string {
+	return "alert-" + strconv.Itoa(i)
+}
+
+func countPerAlertname(h *Handler) int {
+	n := 0
+	h.perAlertname.Range(func(_, _ any) bool {
+		n++
+		return true
+	})
+	return n
 }
 
