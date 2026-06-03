@@ -13,6 +13,7 @@ package state
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -106,18 +107,12 @@ func (d *DB) shadowMirrorApprovalEvent(ctx context.Context, ev ApprovalEvent, cf
 		SchemaVersion: 1,
 		Nonce:         nonce,
 	}
-	tx, err := d.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("shadow begin: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := substrate.AppendEvent(ctx, tx, e, cfg.Key, cfg.KeyID); err != nil {
-		return fmt.Errorf("shadow append: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("shadow commit: %w", err)
-	}
-	return nil
+	return d.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := substrate.AppendEvent(ctx, tx, e, cfg.Key, cfg.KeyID); err != nil {
+			return fmt.Errorf("shadow append: %w", err)
+		}
+		return nil
+	})
 }
 
 // buildApprovalShadowPayload maps a legacy ApprovalEvent into the

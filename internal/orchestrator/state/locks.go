@@ -90,45 +90,40 @@ func acquireOne(ctx context.Context, tx *sql.Tx, name string, agentID int64, ttl
 // acquisition attempts cannot both win.
 func (d *DB) TryAcquireLock(ctx context.Context, name string, agentID int64, ttl time.Duration) error {
 	now := d.now().UTC()
-	tx, err := d.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("state: begin acquire tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	var holder int64
-	var heartbeat int64
-	row := tx.QueryRowContext(ctx,
-		`SELECT agent_id, heartbeat_at FROM locks WHERE name = ?`, name)
-	switch err := row.Scan(&holder, &heartbeat); {
-	case err == nil:
-		if holder == agentID {
-			// Re-acquire by same agent: refresh heartbeat.
-			if _, err := tx.ExecContext(ctx,
-				`UPDATE locks SET heartbeat_at = ? WHERE name = ?`, now.Unix(), name); err != nil {
-				return fmt.Errorf("state: refresh heartbeat: %w", err)
+	return d.WithTx(ctx, func(tx *sql.Tx) error {
+		var holder, heartbeat int64
+		row := tx.QueryRowContext(ctx,
+			`SELECT agent_id, heartbeat_at FROM locks WHERE name = ?`, name)
+		switch err := row.Scan(&holder, &heartbeat); {
+		case err == nil:
+			if holder == agentID {
+				// Re-acquire by same agent: refresh heartbeat.
+				if _, err := tx.ExecContext(ctx,
+					`UPDATE locks SET heartbeat_at = ? WHERE name = ?`, now.Unix(), name); err != nil {
+					return fmt.Errorf("state: refresh heartbeat: %w", err)
+				}
+				return nil
 			}
-			return tx.Commit()
+			expiry := time.Unix(heartbeat, 0).Add(ttl)
+			if now.Before(expiry) {
+				return ErrLockHeld
+			}
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE locks SET agent_id = ?, acquired_at = ?, heartbeat_at = ? WHERE name = ?`,
+				agentID, now.Unix(), now.Unix(), name); err != nil {
+				return fmt.Errorf("state: steal lock: %w", err)
+			}
+		case errors.Is(err, sql.ErrNoRows):
+			if _, err := tx.ExecContext(ctx,
+				`INSERT INTO locks (name, agent_id, acquired_at, heartbeat_at) VALUES (?, ?, ?, ?)`,
+				name, agentID, now.Unix(), now.Unix()); err != nil {
+				return fmt.Errorf("state: insert lock: %w", err)
+			}
+		default:
+			return fmt.Errorf("state: select lock: %w", err)
 		}
-		expiry := time.Unix(heartbeat, 0).Add(ttl)
-		if now.Before(expiry) {
-			return ErrLockHeld
-		}
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE locks SET agent_id = ?, acquired_at = ?, heartbeat_at = ? WHERE name = ?`,
-			agentID, now.Unix(), now.Unix(), name); err != nil {
-			return fmt.Errorf("state: steal lock: %w", err)
-		}
-	case errors.Is(err, sql.ErrNoRows):
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO locks (name, agent_id, acquired_at, heartbeat_at) VALUES (?, ?, ?, ?)`,
-			name, agentID, now.Unix(), now.Unix()); err != nil {
-			return fmt.Errorf("state: insert lock: %w", err)
-		}
-	default:
-		return fmt.Errorf("state: select lock: %w", err)
-	}
-	return tx.Commit()
+		return nil
+	})
 }
 
 // HeartbeatLock refreshes the heartbeat_at column for every lock

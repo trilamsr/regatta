@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/dbutil"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
@@ -66,13 +67,6 @@ func (a *SubstrateAppender) Append(ctx context.Context, tenantID, kind string, p
 	if len(a.key) == 0 {
 		return errors.New("reconcile.SubstrateAppender: HMAC key empty — REGATTA_HMAC_KEY unset?")
 	}
-	tx, err := a.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("reconcile.SubstrateAppender: begin tx: %w", err)
-	}
-	// sqlite returns ErrTxDone on a post-commit rollback — benign.
-	defer func() { _ = tx.Rollback() }()
-
 	at := writtenAt.UTC()
 	a.nonceSeq++
 	ev := substrate.Event{
@@ -86,11 +80,10 @@ func (a *SubstrateAppender) Append(ctx context.Context, tenantID, kind string, p
 		SchemaVersion: 1,
 		Nonce:         fmt.Sprintf("rec-%d-%d", at.UnixNano(), a.nonceSeq),
 	}
-	if err := substrate.AppendEvent(ctx, tx, ev, a.key, a.keyID); err != nil {
-		return fmt.Errorf("reconcile.SubstrateAppender: append: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("reconcile.SubstrateAppender: commit: %w", err)
-	}
-	return nil
+	return dbutil.WithTx(ctx, a.db, func(tx *sql.Tx) error {
+		if err := substrate.AppendEvent(ctx, tx, ev, a.key, a.keyID); err != nil {
+			return fmt.Errorf("reconcile.SubstrateAppender: append: %w", err)
+		}
+		return nil
+	})
 }

@@ -54,46 +54,42 @@ func (d *DB) UpsertEdgesAt(ctx context.Context, programID string, edges []EdgeRo
 		return nil
 	}
 	now := at.UTC().Unix()
-	tx, err := d.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("state: begin upsert edges tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	for _, e := range edges {
-		var existingID int64
-		err := tx.QueryRowContext(ctx,
-			`SELECT id FROM work_item_edges
-			 WHERE program_id = ? AND from_id = ? AND to_id = ?`,
-			programID, e.FromID, e.ToID).Scan(&existingID)
-		switch {
-		case err == nil:
-			if _, err := tx.ExecContext(ctx, `
-				UPDATE work_item_edges SET
-					predicate_cel = ?, is_default = ?, on_skip = ?,
-					updated_at = ?
-				WHERE id = ?`,
-				e.PredicateCEL, boolToInt(e.IsDefault), e.OnSkip,
-				now, existingID,
-			); err != nil {
-				return fmt.Errorf("state: update edge: %w", err)
+	return d.WithTx(ctx, func(tx *sql.Tx) error {
+		for _, e := range edges {
+			var existingID int64
+			err := tx.QueryRowContext(ctx,
+				`SELECT id FROM work_item_edges
+				 WHERE program_id = ? AND from_id = ? AND to_id = ?`,
+				programID, e.FromID, e.ToID).Scan(&existingID)
+			switch {
+			case err == nil:
+				if _, err := tx.ExecContext(ctx, `
+					UPDATE work_item_edges SET
+						predicate_cel = ?, is_default = ?, on_skip = ?,
+						updated_at = ?
+					WHERE id = ?`,
+					e.PredicateCEL, boolToInt(e.IsDefault), e.OnSkip,
+					now, existingID,
+				); err != nil {
+					return fmt.Errorf("state: update edge: %w", err)
+				}
+			case errors.Is(err, sql.ErrNoRows):
+				if _, err := tx.ExecContext(ctx, `
+					INSERT INTO work_item_edges (
+						program_id, from_id, to_id, predicate_cel, is_default,
+						on_skip, fired, fired_against, created_at, updated_at
+					) VALUES (?, ?, ?, ?, ?, ?, 'pending', '', ?, ?)`,
+					programID, e.FromID, e.ToID, e.PredicateCEL,
+					boolToInt(e.IsDefault), e.OnSkip, now, now,
+				); err != nil {
+					return fmt.Errorf("state: insert edge: %w", err)
+				}
+			default:
+				return fmt.Errorf("state: probe edge: %w", err)
 			}
-		case errors.Is(err, sql.ErrNoRows):
-			if _, err := tx.ExecContext(ctx, `
-				INSERT INTO work_item_edges (
-					program_id, from_id, to_id, predicate_cel, is_default,
-					on_skip, fired, fired_against, created_at, updated_at
-				) VALUES (?, ?, ?, ?, ?, ?, 'pending', '', ?, ?)`,
-				programID, e.FromID, e.ToID, e.PredicateCEL,
-				boolToInt(e.IsDefault), e.OnSkip, now, now,
-			); err != nil {
-				return fmt.Errorf("state: insert edge: %w", err)
-			}
-		default:
-			return fmt.Errorf("state: probe edge: %w", err)
 		}
-	}
-	return tx.Commit()
+		return nil
+	})
 }
 
 // MarkEdgeFired is the legacy shim that pulls the stamp through d.now().

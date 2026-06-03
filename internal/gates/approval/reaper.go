@@ -129,253 +129,205 @@ func (r *Reaper) sweepOne(ctx context.Context, a state.Approval, now time.Time) 
 		// already appended in the winning sweep's tx.
 		return nil
 	}
-	tx, err := r.db.SQL().BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("approval/reaper: begin tx %q: %w", a.ID, err)
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
-
-	// Re-check terminal status INSIDE the tx so a parallel Sweep that
-	// won the race is observed. sqlite's max-1-conn pool serialises
-	// transactions, so the second BeginTx blocks until the first
-	// commits — by then the won row carries a terminal marker and we
-	// exit clean (no second timed_out event).
-	priorInTx, err := listApprovalEventsTx(ctx, tx, a.ID)
-	if err != nil {
-		return fmt.Errorf("approval/reaper: re-list events %q: %w", a.ID, err)
-	}
-	if isTerminal(priorInTx) {
-		return nil
-	}
-
 	policy := a.OnTimeout
 	if policy == "" {
 		policy = policyFail
 	}
-	// Issue #193: only write timed_out for policies whose denotation matches
-	// "no decision in window" — fail and escalate (chain-exhausted). The
-	// auto_approve policy resolves to approved; writing timed_out first
-	// would make Fold (id-ASC, first-terminal-wins) return StatusTimedOut
-	// and the gate verdict would contradict the denorm status column.
-	//
-	// recordEvent routes through the per-row tx so the slog payload + the
-	// approval_events.payload_json bytes are identical (spec §5.7 byte-
-	// equality; #146). For the policyEscalate branch the slog is suppressed
-	// here and re-emitted after the escalated event with the chain-index
-	// attrs that operators need to triage the escalation.
-	if policy != policyAutoApprove {
-		// fail emits its umbrella slog here; escalate emits an explicit
-		// trailing slog after the escalated event so the chain-index attrs
-		// land on the same record — avoid a duplicate pre-escalation
-		// timed_out slog by suppressing the logger on that branch.
-		logger := r.log
-		if policy == policyEscalate {
-			logger = nil
+	// chainExhausted + escalateOK steer the post-commit slog parity emit
+	// below (was inline pre-WithTx). Tests TestReaper_AutoApprovePolicy
+	// and TestReaper_EscalatePolicy still pass through the same record.
+	var (
+		chainExhausted bool
+		escalateOK     bool
+	)
+	if err := r.db.WithTx(ctx, func(tx *sql.Tx) error {
+		// Re-check terminal status INSIDE the tx so a parallel Sweep that
+		// won the race is observed. sqlite's max-1-conn pool serialises
+		// transactions, so the second BeginTx blocks until the first
+		// commits — by then the won row carries a terminal marker and we
+		// exit clean (no second timed_out event).
+		priorInTx, err := listApprovalEventsTx(ctx, tx, a.ID)
+		if err != nil {
+			return fmt.Errorf("approval/reaper: re-list events %q: %w", a.ID, err)
 		}
-		if err := recordEvent(ctx, recordEventOpts{
-			Tx:         tx,
-			Logger:     logger,
-			ApprovalID: a.ID,
-			Event:      obs.EventApprovalTimedOut,
-			Kind:       EventKindTimedOut,
-			Actor:      systemActor,
-			Now:        now,
-			Attrs:      map[string]any{string(obs.KeyPolicy): policy},
-		}); err != nil {
-			return fmt.Errorf("approval/reaper: append timed_out: %w", err)
+		if isTerminal(priorInTx) {
+			return errSweepSkip
 		}
+		// Issue #193: only write timed_out for policies whose denotation
+		// matches "no decision in window" — fail and escalate (chain-
+		// exhausted). auto_approve resolves to approved; writing timed_out
+		// first would make Fold (id-ASC, first-terminal-wins) return
+		// StatusTimedOut and the gate verdict would contradict the denorm
+		// status column.
+		if policy != policyAutoApprove {
+			// fail emits its umbrella slog here; escalate suppresses it
+			// because the trailing escalated slog below carries the chain-
+			// index attrs operators need.
+			logger := r.log
+			if policy == policyEscalate {
+				logger = nil
+			}
+			if err := recordEvent(ctx, recordEventOpts{
+				Tx: tx, Logger: logger, ApprovalID: a.ID,
+				Event: obs.EventApprovalTimedOut, Kind: EventKindTimedOut,
+				Actor: systemActor, Now: now,
+				Attrs: map[string]any{string(obs.KeyPolicy): policy},
+			}); err != nil {
+				return fmt.Errorf("approval/reaper: append timed_out: %w", err)
+			}
+		}
+		if r.txHook != nil {
+			if err := r.txHook(tx); err != nil {
+				return fmt.Errorf("approval/reaper: txHook abort: %w", err)
+			}
+		}
+		switch policy {
+		case policyFail:
+			if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusTimedOut, []string{}, now); err != nil {
+				return fmt.Errorf("approval/reaper: mark timed_out: %w", err)
+			}
+			return nil
+		case policyAutoApprove:
+			// Row payload kept identical to the pre-WithTx shape so any
+			// downstream consumer parsing approval_events.payload_json
+			// sees no behavior change.
+			if err := recordEvent(ctx, recordEventOpts{
+				Tx: tx, Logger: r.log, ApprovalID: a.ID,
+				Event: obs.EventApprovalAutoApproved, Kind: EventKindApproved,
+				Actor: "system:timeout-default", Now: now,
+				Attrs: map[string]any{"reason": "timeout_default"},
+			}); err != nil {
+				return fmt.Errorf("approval/reaper: append approved: %w", err)
+			}
+			if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusApproved, []string{"system:timeout-default"}, now); err != nil {
+				return fmt.Errorf("approval/reaper: mark approved: %w", err)
+			}
+			return nil
+		case policyEscalate:
+			priorIdx, newIdx, nextTier, ok := nextChainTier(a, prior)
+			if !ok {
+				// Chain exhausted — degrade to fail semantics so the row
+				// still terminates and the audit trail records why.
+				if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusTimedOut, []string{}, now); err != nil {
+					return fmt.Errorf("approval/reaper: mark exhausted: %w", err)
+				}
+				chainExhausted = true
+				return nil
+			}
+			replayed := replayVotes(priorInTx, nextTier.Reviewers)
+			revoked := outstandingJTIs(priorInTx)
+			// Token revocation: one token_consumed row per outstanding JTI,
+			// payload.reason='escalated'. UNIQUE(approval_id, kind, token_jti)
+			// turns a later genuine use into ErrTokenReplay.
+			for _, jti := range revoked {
+				if err := recordEvent(ctx, recordEventOpts{
+					Tx: tx, Logger: nil, ApprovalID: a.ID,
+					Event: obs.EventApprovalEscalated, Kind: EventKindTokenConsumed,
+					Actor: systemActor, Now: now,
+					Attrs:    map[string]any{string(obs.KeyReason): reasonEscalated},
+					TokenJTI: jti,
+				}); err != nil {
+					return fmt.Errorf("approval/reaper: revoke token %q: %w", jti, err)
+				}
+			}
+			newSnap := state.ReviewerSet{
+				Reviewers:         nextTier.Reviewers,
+				Quorum:            nextTier.Quorum,
+				PreventSelfReview: nextTier.PreventSelfReview,
+			}
+			if err := advanceTier(ctx, tx, a.ID, newSnap, nextTier.Quorum, now.Add(nextTier.Timeout), now); err != nil {
+				return fmt.Errorf("approval/reaper: advance tier: %w", err)
+			}
+			if err := recordEvent(ctx, recordEventOpts{
+				Tx: tx, Logger: r.log, ApprovalID: a.ID,
+				Event: obs.EventApprovalEscalated, Kind: EventKindEscalated,
+				Actor: systemActor, Now: now,
+				Attrs: map[string]any{
+					"prior_chain_index": priorIdx,
+					"new_chain_index":   newIdx,
+					"prior_quorum":      a.Quorum,
+					"new_quorum":        nextTier.Quorum,
+					"replayed_votes":    replayed,
+					"revoked_jtis":      revoked,
+				},
+			}); err != nil {
+				return fmt.Errorf("approval/reaper: append escalated: %w", err)
+			}
+			// Tier-n+1 quorum already satisfied by replays alone: emit the
+			// terminal in the SAME tx so the scheduler picks up resolution
+			// next tick — no second sweep.
+			allow, deny, deciders := tallyReplay(replayed)
+			switch {
+			case allow >= nextTier.Quorum:
+				if err := recordEvent(ctx, recordEventOpts{
+					Tx: tx, Logger: nil, ApprovalID: a.ID,
+					Event: obs.EventApprovalAutoApproved, Kind: EventKindApproved,
+					Actor: "system:escalation-replay", Now: now,
+				}); err != nil {
+					return fmt.Errorf("approval/reaper: append replay-approved: %w", err)
+				}
+				if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusApproved, deciders, now); err != nil {
+					return fmt.Errorf("approval/reaper: mark replay-approved: %w", err)
+				}
+			case deny >= nextTier.Quorum:
+				if err := recordEvent(ctx, recordEventOpts{
+					Tx: tx, Logger: nil, ApprovalID: a.ID,
+					Event: obs.EventApprovalEscalated, Kind: EventKindRejected,
+					Actor: "system:escalation-replay", Now: now,
+				}); err != nil {
+					return fmt.Errorf("approval/reaper: append replay-rejected: %w", err)
+				}
+				if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusRejected, deciders, now); err != nil {
+					return fmt.Errorf("approval/reaper: mark replay-rejected: %w", err)
+				}
+			}
+			escalateOK = true
+			return nil
+		default:
+			return fmt.Errorf("%w: %q for approval %q", ErrUnknownTimeoutPolicy, policy, a.ID)
+		}
+	}); err != nil {
+		if errors.Is(err, errSweepSkip) {
+			return nil
+		}
+		return err
 	}
-	if r.txHook != nil {
-		if err := r.txHook(tx); err != nil {
-			return fmt.Errorf("approval/reaper: txHook abort: %w", err)
-		}
-	}
-
-	switch policy {
-	case policyFail:
-		if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusTimedOut, []string{}, now); err != nil {
-			return fmt.Errorf("approval/reaper: mark timed_out: %w", err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("approval/reaper: commit: %w", err)
-		}
-		committed = true
-		return nil
-
-	case policyAutoApprove:
-		// Row payload kept identical to the pre-refactor shape ({"reason":
-		// "timeout_default"}) so any downstream consumer parsing
-		// approval_events.payload_json sees no behavior change. The slog
-		// fan-out adds operator-facing attrs (policy/work_item_id/gate_id)
-		// without polluting the persisted row.
-		if err := recordEvent(ctx, recordEventOpts{
-			Tx:         tx,
-			Logger:     r.log,
-			ApprovalID: a.ID,
-			Event:      obs.EventApprovalAutoApproved,
-			Kind:       EventKindApproved,
-			Actor:      "system:timeout-default",
-			Now:        now,
-			Attrs:      map[string]any{"reason": "timeout_default"},
-		}); err != nil {
-			return fmt.Errorf("approval/reaper: append approved: %w", err)
-		}
-		if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusApproved, []string{"system:timeout-default"}, now); err != nil {
-			return fmt.Errorf("approval/reaper: mark approved: %w", err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("approval/reaper: commit: %w", err)
-		}
-		committed = true
+	// Post-commit slog parity (was inline pre-WithTx). Slogs after commit
+	// so a tx-write failure does not lie about a non-existent terminal.
+	switch {
+	case policy == policyAutoApprove:
 		// Slog parity with the prior reaper: emit the umbrella timed_out
-		// event too so the existing TestReaper_AutoApprovePolicy assertion
-		// (and any operator dashboard scanning for timed_out) still fires.
-		// No event row — issue #193 forbids a timed_out row on this branch.
+		// event too so TestReaper_AutoApprovePolicy still fires. No event
+		// row — issue #193 forbids a timed_out row on this branch.
 		r.log.Info(string(obs.EventApprovalTimedOut),
 			string(obs.KeyApprovalID), a.ID,
 			string(obs.KeyWorkItemID), a.WorkItemID,
 			string(obs.KeyGateID), a.GateName,
 			string(obs.KeyPolicy), policyAutoApprove,
 		)
-		return nil
-
-	case policyEscalate:
-		priorIdx, newIdx, nextTier, ok := nextChainTier(a, prior)
-		if !ok {
-			// Chain exhausted — degrade to fail semantics so the row
-			// still terminates and the audit trail records why.
-			if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusTimedOut, []string{}, now); err != nil {
-				return fmt.Errorf("approval/reaper: mark exhausted: %w", err)
-			}
-			if err := tx.Commit(); err != nil {
-				return fmt.Errorf("approval/reaper: commit: %w", err)
-			}
-			committed = true
-			r.log.Warn(string(obs.EventApprovalTimedOut),
-				string(obs.KeyApprovalID), a.ID,
-				string(obs.KeyPolicy), policyEscalate,
-				string(obs.KeyReason), ErrEscalationChainExhausted.Error(),
-			)
-			return nil
-		}
-		replayed := replayVotes(priorInTx, nextTier.Reviewers)
-		revoked := outstandingJTIs(priorInTx)
-
-		// Token revocation: one token_consumed row per outstanding JTI,
-		// payload.reason='escalated'. Single-use UNIQUE on
-		// (approval_id, kind, token_jti) means a later genuine use
-		// fails with ErrTokenReplay. Per-JTI recordEvent keeps the
-		// slog/row byte-equality invariant uniform across the loop.
-		for _, jti := range revoked {
-			if err := recordEvent(ctx, recordEventOpts{
-				Tx:         tx,
-				Logger:     nil, // suppress per-JTI slog — escalated event below carries the full revoked list
-				ApprovalID: a.ID,
-				Event:      obs.EventApprovalEscalated,
-				Kind:       EventKindTokenConsumed,
-				Actor:      systemActor,
-				Now:        now,
-				Attrs:      map[string]any{string(obs.KeyReason): reasonEscalated},
-				TokenJTI:   jti,
-			}); err != nil {
-				return fmt.Errorf("approval/reaper: revoke token %q: %w", jti, err)
-			}
-		}
-
-		// Advance the snapshot + quorum + timeout to the new tier.
-		newSnap := state.ReviewerSet{
-			Reviewers:         nextTier.Reviewers,
-			Quorum:            nextTier.Quorum,
-			PreventSelfReview: nextTier.PreventSelfReview,
-		}
-		newTimeoutAt := now.Add(nextTier.Timeout)
-		if err := advanceTier(ctx, tx, a.ID, newSnap, nextTier.Quorum, newTimeoutAt, now); err != nil {
-			return fmt.Errorf("approval/reaper: advance tier: %w", err)
-		}
-
-		escAttrs := map[string]any{
-			"prior_chain_index": priorIdx,
-			"new_chain_index":   newIdx,
-			"prior_quorum":      a.Quorum,
-			"new_quorum":        nextTier.Quorum,
-			"replayed_votes":    replayed,
-			"revoked_jtis":      revoked,
-		}
-		if err := recordEvent(ctx, recordEventOpts{
-			Tx:         tx,
-			Logger:     r.log,
-			ApprovalID: a.ID,
-			Event:      obs.EventApprovalEscalated,
-			Kind:       EventKindEscalated,
-			Actor:      systemActor,
-			Now:        now,
-			Attrs:      escAttrs,
-		}); err != nil {
-			return fmt.Errorf("approval/reaper: append escalated: %w", err)
-		}
-
-		// Tally replayed (non-discarded) votes against the new quorum.
-		// If a tier-n+1 quorum is already satisfied by replays alone,
-		// emit the terminal event + mark decided in the SAME tx so the
-		// scheduler picks up the resolution next tick — no second sweep.
-		allow, deny, deciders := tallyReplay(replayed)
-		switch {
-		case allow >= nextTier.Quorum:
-			if err := recordEvent(ctx, recordEventOpts{
-				Tx:         tx,
-				Logger:     nil, // umbrella escalated event already emitted; replay-approved is an internal terminal
-				ApprovalID: a.ID,
-				Event:      obs.EventApprovalAutoApproved,
-				Kind:       EventKindApproved,
-				Actor:      "system:escalation-replay",
-				Now:        now,
-				Attrs:      nil,
-			}); err != nil {
-				return fmt.Errorf("approval/reaper: append replay-approved: %w", err)
-			}
-			if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusApproved, deciders, now); err != nil {
-				return fmt.Errorf("approval/reaper: mark replay-approved: %w", err)
-			}
-		case deny >= nextTier.Quorum:
-			if err := recordEvent(ctx, recordEventOpts{
-				Tx:         tx,
-				Logger:     nil,
-				ApprovalID: a.ID,
-				Event:      obs.EventApprovalEscalated,
-				Kind:       EventKindRejected,
-				Actor:      "system:escalation-replay",
-				Now:        now,
-				Attrs:      nil,
-			}); err != nil {
-				return fmt.Errorf("approval/reaper: append replay-rejected: %w", err)
-			}
-			if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusRejected, deciders, now); err != nil {
-				return fmt.Errorf("approval/reaper: mark replay-rejected: %w", err)
-			}
-		}
-
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("approval/reaper: commit: %w", err)
-		}
-		committed = true
+	case chainExhausted:
+		r.log.Warn(string(obs.EventApprovalTimedOut),
+			string(obs.KeyApprovalID), a.ID,
+			string(obs.KeyPolicy), policyEscalate,
+			string(obs.KeyReason), ErrEscalationChainExhausted.Error(),
+		)
+	case escalateOK:
 		// Slog parity: emit timed_out (umbrella) so the existing
 		// TestReaper_EscalatePolicy slog assertion still fires; escalated
-		// was already emitted via recordEvent above (slog+row byte-equal).
+		// was already emitted via recordEvent inside the tx.
 		r.log.Info(string(obs.EventApprovalTimedOut),
 			string(obs.KeyApprovalID), a.ID,
 			string(obs.KeyPolicy), policyEscalate,
 		)
-		return nil
-
-	default:
-		return fmt.Errorf("%w: %q for approval %q", ErrUnknownTimeoutPolicy, policy, a.ID)
 	}
+	return nil
 }
+
+// errSweepSkip is the sentinel sweepOne uses to short-circuit the WithTx
+// callback when a parallel Sweep already terminated this row. Returning
+// a non-nil error from the closure rolls the empty tx back (no-op); the
+// outer Sweep errors.Is-matches and treats the row as cleanly handled.
+var errSweepSkip = errors.New("approval/reaper: parallel sweep won")
 
 // listApprovalEventsTx mirrors state.DB.ListApprovalEvents but reads
 // through the supplied tx so the in-tx re-check sees writes from a

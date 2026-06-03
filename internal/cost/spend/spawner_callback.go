@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/trilamsr/regatta/internal/dbutil"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
@@ -44,30 +45,23 @@ func SpawnerCallback(db *sql.DB, opt WriteOptions, scope CallScope) func(spawner
 			runID = req.WorkItemID
 		}
 		return func(ctx context.Context, ev spawner.StreamResultEvent) error {
-			tx, err := db.BeginTx(ctx, nil)
-			if err != nil {
-				return err
-			}
-			defer func() { _ = tx.Rollback() }()
-			err = RecordCall(ctx, tx, CallRecord{
-				CallID:              ev.MessageID,
-				RetrySeq:            0,
-				Model:               ev.Model,
-				InputTokens:         ev.InputTokens,
-				OutputTokens:        ev.OutputTokens,
-				CacheReadTokens:     ev.CacheReadInputTokens,
-				CacheCreationTokens: ev.CacheCreationInputTokens,
-				OperatorID:          operatorID,
-				DAGID:               dagID,
-				WorkItemID:          req.WorkItemID,
-				TenantID:            tenant,
-				WrittenBy:           scope.WrittenBy,
-				RunID:               runID,
-			}, opt)
-			if err != nil {
-				return err
-			}
-			return tx.Commit()
+			return dbutil.WithTx(ctx, db, func(tx *sql.Tx) error {
+				return RecordCall(ctx, tx, CallRecord{
+					CallID:              ev.MessageID,
+					RetrySeq:            0,
+					Model:               ev.Model,
+					InputTokens:         ev.InputTokens,
+					OutputTokens:        ev.OutputTokens,
+					CacheReadTokens:     ev.CacheReadInputTokens,
+					CacheCreationTokens: ev.CacheCreationInputTokens,
+					OperatorID:          operatorID,
+					DAGID:               dagID,
+					WorkItemID:          req.WorkItemID,
+					TenantID:            tenant,
+					WrittenBy:           scope.WrittenBy,
+					RunID:               runID,
+				}, opt)
+			})
 		}
 	}
 }

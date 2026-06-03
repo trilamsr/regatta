@@ -9,6 +9,7 @@ package program
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"log/slog"
 
@@ -79,19 +80,11 @@ func (b *BriefLoader) recordBriefRejection(ctx context.Context, path, reason str
 		// "tampering ongoing" signal the dashboard depends on.
 		Nonce: substrate.Mint(at),
 	}
-	tx, err := b.db.SQL().BeginTx(ctx, nil)
-	if err != nil {
-		b.log.Warn("brief.audit_tx_failed", "path", path, "err", err.Error())
-		return
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := substrate.AppendEvent(ctx, tx, ev, b.audit.Key, b.audit.KeyID); err != nil {
-		b.log.Warn("brief.audit_append_failed",
+	if err := b.db.WithTx(ctx, func(tx *sql.Tx) error {
+		return substrate.AppendEvent(ctx, tx, ev, b.audit.Key, b.audit.KeyID)
+	}); err != nil {
+		b.log.Warn("brief.audit_write_failed",
 			slog.String("path", path),
 			slog.String("err", err.Error()))
-		return
-	}
-	if err := tx.Commit(); err != nil {
-		b.log.Warn("brief.audit_commit_failed", "path", path, "err", err.Error())
 	}
 }

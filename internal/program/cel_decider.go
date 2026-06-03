@@ -29,21 +29,16 @@ import (
 
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/trilamsr/regatta/internal/dbutil"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// Beginner is the BeginTx surface CELDecider depends on. *sql.DB
-// satisfies it; tests inject a counting wrapper to assert the
-// one-tx invariant (spec §10 #17 / TestCELDecider_OneTxForFoldEval
-// Emit) without sniffing internal decider state.
-//
-// Narrowing to BeginTx keeps the decider unaware of pool sizing,
-// migration state, or the wider *state.DB surface — the only
-// substrate-side operation CELDecider performs is a single
-// BeginTx → AppendEvent → Commit.
-type Beginner interface {
-	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
-}
+// Beginner is the BeginTx surface CELDecider depends on. Re-exported as
+// an alias of dbutil.Beginner so the test-side counting wrapper that
+// asserts the one-tx invariant (spec §10 #17 / TestCELDecider_OneTx
+// ForFoldEvalEmit) can keep the package-local name while sharing the
+// minimal-interface definition with every other dbutil.WithTx callsite.
+type Beginner = dbutil.Beginner
 
 // Snapshot is the read-side state CELDecider evaluates a predicate
 // against. Inputs and Outputs are CEL-visible maps; values are raw
@@ -178,67 +173,63 @@ func (c *CELDecider) Decide(ctx context.Context, snap Snapshot) (GateResult, err
 		snap.SpanID = sc.SpanID().String()
 	}
 
-	tx, err := c.db.BeginTx(ctx, nil)
-	if err != nil {
-		return GateResult{}, fmt.Errorf("cel_decider: begin tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	celIn := map[string]any{
-		"inputs":  rawMapToAny(snap.Inputs),
-		"outputs": rawMapToAny(snap.Outputs),
-	}
-	val, _, err := c.program.ContextEval(ctx, celIn)
-	if err != nil {
-		return GateResult{}, fmt.Errorf("cel_decider: eval: %w", err)
-	}
-	b, ok := val.(types.Bool)
-	if !ok {
-		return GateResult{}, fmt.Errorf("cel_decider: predicate returned %s, want bool",
-			typeNameOf(val))
-	}
-	pass := bool(b)
-	reason := ""
-	if !pass {
-		reason = "predicate=false"
-	}
-
-	payload, err := json.Marshal(substrate.GateVerdictPayload{
-		GateName:   c.gateName,
-		Pass:       pass,
-		Reason:     reason,
-		WorkItemID: snap.WorkItemID,
-	})
-	if err != nil {
-		return GateResult{}, fmt.Errorf("cel_decider: marshal payload: %w", err)
-	}
-
-	now := c.now()
-	nonce, err := mintNonce()
-	if err != nil {
-		return GateResult{}, fmt.Errorf("cel_decider: nonce: %w", err)
-	}
-	event := substrate.Event{
-		ID:            substrate.Mint(now),
-		RunID:         snap.RunID,
-		WorkItemID:    snap.WorkItemID,
-		TenantID:      snap.TenantID,
-		TraceID:       snap.TraceID,
-		SpanID:        snap.SpanID,
-		Kind:          substrate.KindGateVerdict,
-		Key:           c.gateName,
-		PayloadJSON:   payload,
-		WrittenBy:     c.writtenBy,
-		WrittenAt:     now.UnixMilli(),
-		SchemaVersion: 1,
-		Nonce:         nonce,
-	}
-
-	if err := substrate.AppendEvent(ctx, tx, event, c.key, c.keyID); err != nil {
-		return GateResult{}, fmt.Errorf("cel_decider: append: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return GateResult{}, fmt.Errorf("cel_decider: commit: %w", err)
+	var (
+		pass   bool
+		reason string
+	)
+	if err := dbutil.WithTx(ctx, c.db, func(tx *sql.Tx) error {
+		celIn := map[string]any{
+			"inputs":  rawMapToAny(snap.Inputs),
+			"outputs": rawMapToAny(snap.Outputs),
+		}
+		val, _, err := c.program.ContextEval(ctx, celIn)
+		if err != nil {
+			return fmt.Errorf("cel_decider: eval: %w", err)
+		}
+		b, ok := val.(types.Bool)
+		if !ok {
+			return fmt.Errorf("cel_decider: predicate returned %s, want bool",
+				typeNameOf(val))
+		}
+		pass = bool(b)
+		if !pass {
+			reason = "predicate=false"
+		}
+		payload, err := json.Marshal(substrate.GateVerdictPayload{
+			GateName:   c.gateName,
+			Pass:       pass,
+			Reason:     reason,
+			WorkItemID: snap.WorkItemID,
+		})
+		if err != nil {
+			return fmt.Errorf("cel_decider: marshal payload: %w", err)
+		}
+		now := c.now()
+		nonce, err := mintNonce()
+		if err != nil {
+			return fmt.Errorf("cel_decider: nonce: %w", err)
+		}
+		event := substrate.Event{
+			ID:            substrate.Mint(now),
+			RunID:         snap.RunID,
+			WorkItemID:    snap.WorkItemID,
+			TenantID:      snap.TenantID,
+			TraceID:       snap.TraceID,
+			SpanID:        snap.SpanID,
+			Kind:          substrate.KindGateVerdict,
+			Key:           c.gateName,
+			PayloadJSON:   payload,
+			WrittenBy:     c.writtenBy,
+			WrittenAt:     now.UnixMilli(),
+			SchemaVersion: 1,
+			Nonce:         nonce,
+		}
+		if err := substrate.AppendEvent(ctx, tx, event, c.key, c.keyID); err != nil {
+			return fmt.Errorf("cel_decider: append: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return GateResult{}, err
 	}
 	return GateResult{Pass: pass, Reason: reason}, nil
 }
