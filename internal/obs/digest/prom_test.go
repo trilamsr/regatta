@@ -196,11 +196,7 @@ func TestPromSource_FetchPartialOutageCostWeek(t *testing.T) {
 	}
 }
 
-// TestPromSource_FetchSanitizesNegInf locks the symmetric guard against -Inf
-// (G1 finding). int(-math.Inf) saturates to
-// MinInt64; %.2f formats to "-Inf" which is invalid YAML in strict parsers.
-// Future narrowing of the IsInf check to (f, 1) would let -Inf slip through —
-// this test fails before that regression ships.
+// TestPromSource_FetchSanitizesNegInf asserts -Inf scalar is sanitized to YAML-safe value (#513).
 func TestPromSource_FetchSanitizesNegInf(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1717286400,"-Inf"]}]}}`))
