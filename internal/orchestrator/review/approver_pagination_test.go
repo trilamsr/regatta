@@ -12,8 +12,7 @@ import (
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-// TestLookupApprovingReview_Above30Reviews_FindsApproval pins #627 —
-// approval lives on page 2; single-page logic would miss it.
+// TestLookupApprovingReview_Above30Reviews_FindsApproval asserts paginated walk catches page-2 approval (#627).
 func TestLookupApprovingReview_Above30Reviews_FindsApproval(t *testing.T) {
 	mux := http.NewServeMux()
 	var page2URL string
@@ -55,8 +54,7 @@ func TestLookupApprovingReview_Above30Reviews_FindsApproval(t *testing.T) {
 	}
 }
 
-// TestLookupApprovingReview_NoNextLink_TerminatesCleanly pins the loop
-// terminator — single-page responses MUST NOT loop forever.
+// TestLookupApprovingReview_NoNextLink_TerminatesCleanly asserts single-page response terminates loop (#627).
 func TestLookupApprovingReview_NoNextLink_TerminatesCleanly(t *testing.T) {
 	var calls atomic.Int32
 	mux := http.NewServeMux()

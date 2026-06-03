@@ -108,8 +108,7 @@ func TestReviewStatus_EmptyDB_PrintsNoVerdicts(t *testing.T) {
 	}
 }
 
-// TestReviewStatus_PrintsGateVerdictRow pins #625 — a recent verdict
-// appears in the printed table.
+// TestReviewStatus_PrintsGateVerdictRow asserts recent gate_verdict prints in table (#625).
 func TestReviewStatus_PrintsGateVerdictRow(t *testing.T) {
 	tmp := t.TempDir()
 	dbPath := filepath.Join(tmp, "state.db")
