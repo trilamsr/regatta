@@ -41,9 +41,7 @@ func insertEvent(t *testing.T, db *sql.DB, id, kind string, writtenAt time.Time,
 	}
 }
 
-// TestDetector_RealSubstrateEventSource_ReadsAndFires asserts the SQL
-// reader projects payload fields into Event so the rule registry fires
-// against real substrate rows (#645).
+// TestDetector_RealSubstrateEventSource_ReadsAndFires asserts SQL reader fires rule against real substrate rows (#645).
 func TestDetector_RealSubstrateEventSource_ReadsAndFires(t *testing.T) {
 	db := newTestDB(t)
 	now := fixedNow
