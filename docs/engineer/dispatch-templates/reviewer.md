@@ -43,7 +43,7 @@ LOAD-BEARING LEFTOVERS → TRACKING ISSUES
 
 OUTPUT FORMAT
 - Inline GH PR review comments OR markdown report. Each finding: `[Tier] file:line — observation — proposed fix`.
-- Final block: independent scorecard re-score (B/A/A+ per criterion) — must match or contradict author's claim explicitly.
+- Final block: independent scorecard re-score (B/A/A+ per criterion) — must match or contradict author's claim explicitly. Each `[x]` you assert MUST cite a `Test*`-name OR `file:line` OR `#issue` OR `N/A — <rationale>` on the same line. `scripts/check-scorecard.sh` gates the author's body in CI; your re-score follows the same rule.
 - Verdict: `clear-to-merge` | `block-on-findings` | `re-spawn-design`.
 
 NO SIGNATURES
