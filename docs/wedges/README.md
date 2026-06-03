@@ -165,6 +165,11 @@ follow.
 A dossier graduates into `docs/design.md` Phase 2 / Phase 3 only
 when **every** box is checked:
 
+- [ ] **Anti-wedge filter (first gate):** confirmed this does
+      not fold into an existing dossier or substrate followup
+      (F1–F10). If it does, edit the existing dossier; do not
+      create a new file. The rest of this checklist only
+      applies once this gate is cleared.
 - [ ] Maps to at least one Trap Catalog pattern (P1–P13)
 - [ ] Does not require upstream model-vendor roadmap changes
 - [ ] Hooks into existing extension points without breaking
@@ -193,6 +198,14 @@ Listed so we do not re-litigate them:
   acceptable as one read mode of the blackboard.
 - Agentic UI builder / chat-agent product -- Sierra, Decagon,
   Lovable own this.
+- **ACP as the primary server surface** -- hands positioning to
+  a competitor-controlled protocol. MCP keeps primacy
+  (Anthropic-published, vendor-neutral, matches the cross-vendor
+  stance). **Accepted exception:** ACP-as-client-adapter
+  (regatta-as-ACP-target shim so external IDE / fleet surfaces
+  can launch a regatta DAG) is a thin shim gated on first
+  operator IDE-integration ask. Not a wedge — a fold-into-MCP
+  followup once MCP server lands.
 
 ## Watch item
 
@@ -200,5 +213,38 @@ A single-session agent tool shipping durable cross-session work
 queues with DAG dependencies and native budget governance absorbs
 the bottom of our stack. The 2026-05-28 Claude Code Dynamic
 Workflows release pushed on the in-session axis; the cross-session
-axis is still open. Skim the Claude Code changelog quarterly and
-flag overlap on this index.
+axis is still open.
+
+**Quarterly scan discipline** (replaces speculative competitive-scan
+wedge proposals):
+
+- Sources: vendor engineering blogs (URLs maintained in
+  [`docs/design/multi-agent-orchestration-positioning.md`](../design/multi-agent-orchestration-positioning.md#references-urls-only)
+  §References); arxiv author searches for major agent-lab staff;
+  TechCrunch + The Information agent coverage.
+- Cadence: skim quarterly OR on any of these event triggers —
+  $1B+ funding event in agent orchestration, major model release
+  (frontier-class), OSS agent-framework drop, public doctrine
+  pivot on multi-agent architectures.
+- Output discipline: each scan resolves to one of {existing
+  dossier edit, dossier promotion-to-Phase-2, positioning-doc
+  edit, "no action — watch item logged here"}. **Never** creates
+  a `competitive-scan.md` wedge dossier; that violates
+  PRINCIPLES #4 (adopt-when-needed needs operator-pain signal,
+  not vendor-announcement signal).
+- Cross-reference: [`docs/design/multi-agent-orchestration-positioning.md`](../design/multi-agent-orchestration-positioning.md)
+  is the canonical positioning doc for the multi-agent-vs-fleet
+  scope question and is the place to add new comparison entries
+  as competitors evolve.
+
+Logged scans (most recent first):
+
+- **2026-06-02 — competitor IDE/fleet product launch + ACP + Series D.**
+  Action: positioning doc landed; ACP added as client-adapter
+  anti-wedge entry above; no new wedge files created.
+  Unstructured shared-context "spaces" buckets tracked as
+  potential blackboard convergence target — revisit on next
+  typed-schema announcement.
+- **2026-05-28 — Claude Code Dynamic Workflows.** Action:
+  Defensibility section added to every dossier; session-boundary
+  framing locked into Strategic frame above.

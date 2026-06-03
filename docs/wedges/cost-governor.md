@@ -43,6 +43,7 @@ crack this wedge widens.
 | [Mavvrik + Ingram Micro AI Cost Governance](https://www.mavvrik.ai/press-releases/ingram-micro-ai-cost-governance/) | Channel-partner FinOps allocation with bill-tenant-back. Names the multi-tenant axis the wedge needs: every spend event carries a `tenant_id` so agencies can attribute fleet runs to end customers. |
 | [zop.dev — LLM FinOps per-feature token budget](https://zop.dev/resources/blogs/llm-finops-per-feature-token-budget/) | Redis-tracked `feature_id` budget at the gateway, 429 on overrun. Cleaner pre-call topology than scheduler-level deny; useful when regatta sits behind an existing AI gateway rather than in front of it. |
 | [AgentOps -- agentic monitoring](https://research.aimultiple.com/agentic-monitoring/) | Recursive-loop detection feeds the brake signal. The dossier's P8 mapping wants this as the upstream detector that closes the loop on infinite-token-burn. |
+| [Retrieval-distiller subagent precedent](https://cognition.ai/blog/swe-grep) | RL-trained retrieval subagent (~2,800 tok/s); demonstrates model-pinning by call-shape is a real budget lever. Land as `policies WHERE kind='budget'` row with `spec_json: {shape:'retrieval', model_pin:'claude-haiku-*'}`. Query shape in §Sub-trigger. |
 
 ## Proposed minimal data model
 
@@ -138,6 +139,30 @@ out of join order, or you reproduce the LiteLLM team-vs-user bug.
 - OR first incident where the spend-cap warning fired but a DAG
   continued past the cap.
 - OR procurement ask citing FinOps controls.
+
+### Sub-trigger — model-pinning policy (retrieval-shape lane)
+
+The retrieval-distiller precedent row above proposes a model-pinning policy
+keyed on call shape. Its trigger and prerequisite are distinct
+from the headline trigger:
+
+- **Trigger:** spend reconciliation shows ≥30% of total token
+  spend attributed to retrieval-shape calls (grep / file-read /
+  symbol-lookup), measured over two consecutive 24h windows.
+- **Prerequisite (named, not hand-waved):** a `call_shape`
+  classifier column on `events WHERE kind='token_spend'`. Without
+  this column the trigger is unmeasurable. Land the classifier
+  as a one-line tool-name → shape lookup table before the
+  trigger metric is meaningful. Shapes: `retrieval` (Grep / Read
+  / Glob / file-locator subagents), `reasoning` (everything else).
+- **Policy form:** the substrate `policies` table has columns
+  `(scope_kind, scope_id, kind, spec_json, precedence_rank, …)`
+  with `kind` flat and shape-discriminators living inside
+  `spec_json`. The query is therefore
+  `policies WHERE kind='budget' AND json_extract(spec_json,'$.shape')='retrieval'`,
+  with `spec_json` carrying
+  `{shape: 'retrieval', model_pin: 'claude-haiku-*'}`. Unified
+  substrate row, no parallel primitive, no new wedge file.
 
 ## Grade rubric
 

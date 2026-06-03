@@ -72,9 +72,18 @@ INDEX events_kind ON events(run_id, kind, key, written_at DESC)
 | `lock_held` | scheduler hotspot acquisition | scheduler | existing locks table (de-normalised) |
 | `heartbeat` | running agent | reaper | existing |
 
+#### Reducer contract
+
 State for any wedge is `fold(events WHERE kind=X)`. Never a row
 mutation. Audit, replay, and provenance fall out of the table
-shape.
+shape. Every consumer (`CELDecider`, `HumanDecider`,
+`VerifierDecider`, budget materialized view, blackboard `fact`
+reader) goes through the same fold — meaning every decision in
+the system sees every prior decision in its scope by
+construction. This is the structural answer to multi-agent
+fragility arguments: actions cannot carry implicit conflicting
+decisions when every action's input is the same total-ordered
+event fold.
 
 ### `policies` -- one scoped policy table
 
