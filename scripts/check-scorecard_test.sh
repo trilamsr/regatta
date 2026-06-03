@@ -126,7 +126,7 @@ To mark a criterion done, use `[x]` in the row.
 '
 run_case "inline-code-xspan-not-counted-chore" 0 "exempt" "$body_inline_code_xspan"
 
-# Fixture: bracketed format inside fenced block (W5 PR #596 style:
+# Fixture: bracketed format inside fenced block (W5 style:
 # "[x] (a) [x] (b) [x] (c)" on one row) → multiple marks on one line
 # all need citation on that line. Without cites → fail.
 body_fenced_multi_uncited='```release-notes
