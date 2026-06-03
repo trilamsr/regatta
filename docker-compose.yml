@@ -39,9 +39,8 @@ services:
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
       OTEL_SERVICE_NAME: "regatta"
       OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=self-host"
-    # --ui=false avoids the REGATTA_HMAC_KEY requirement for the default
-    # local stack; flip to true + supply the key when wiring the UI.
-    command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=false"]
+      REGATTA_HMAC_KEY: ${REGATTA_HMAC_KEY:?REGATTA_HMAC_KEY must be set in .env or shell env to enable the UI}
+    command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=true"]
     volumes:
       - ${REPO_PATH:-.}:/repo
       - regatta-data:/data

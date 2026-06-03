@@ -40,15 +40,20 @@ image from the in-tree `Dockerfile`, and starts all four services.
 Initial start takes ~30 s on a warm Docker daemon (Prometheus health
 check gate-keeps `regatta` and `grafana`).
 
-The compose runs `regatta serve --ui=false` by default. Flip to `--ui=true`
-and provide `REGATTA_HMAC_KEY` once the operator UI is needed; the
-runbook seam lives under [`rbac-onboarding.md`](rbac-onboarding.md).
+The compose runs `regatta serve --ui=true`. Set `REGATTA_HMAC_KEY` in `.env`
+at the project root before `docker compose up` — compose will refuse to start
+otherwise (the env-var interpolation uses the `:?` fail-fast form). The
+operator UI lands on `http://localhost:8080`; RBAC seam lives under
+[`rbac-onboarding.md`](rbac-onboarding.md).
 
 ## Verify
 
 ```sh
 # Service health
 docker compose ps
+
+# Regatta operator UI — login with REGATTA_HMAC_KEY-derived session.
+open http://localhost:8080
 
 # Prometheus UI — confirms scrape + OTLP ingest paths.
 open http://localhost:9090

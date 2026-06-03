@@ -80,17 +80,31 @@ OPEN FOLLOWUPS (sweep when between phase items, ≤5 trivial PRs/session cap)
 
 Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -200`. Per feedback_boot_prompt_per_wave_refresh, entries >2 waves old are pruned; older shipped wedges live in git history only.
 
-- **2026-06-03 Wave SHIPPED** (~50+ PRs across PHASE-AUTONOMY + OBS final drains + MVR specs + memory/scorecard infra):
-  - PHASE-AUTONOMY W1-W7: all 7 wedges IMPL landed or in merge queue. W7 L4-as-review identity #589 (service-account approves regatta-bot PRs).
-  - OBS Wave A/B/C/D: all 4 waves IMPL shipped or queued.
-  - MVR-1 specs: T1 htmx UI #601 · T2 init bundle #590 · T3 SCM adapter #603 · T5 CUE gate #602 · T6 goja runtime #604.
+- **2026-06-03 Wave SHIPPED** (~60+ PRs across PHASE-AUTONOMY + OBS final drains + MVR specs + memory/scorecard infra + post-merge reliability+UX polish):
+  - PHASE-AUTONOMY W1-W7: all 7 wedges IMPL landed. W7 L4-as-review identity #589. W3 supervisor #597 (`regatta install-service` + healthz + sd_notify).
+  - OBS Wave A/B/C/D: all 4 waves IMPL shipped.
+  - MVR-1 specs: T1 htmx UI #601 · T2 init bundle #590 · T3 SCM adapter #603 · T5 CUE gate #602 · T6 goja runtime #604 · T7 strategy iface refactor pending dispatch.
   - MVR-2 skeleton specs: 7 (T1-T7) via #670.
-  - MVR-3 skeleton specs: 4 (T1-T4) in flight as separate PR.
+  - MVR-3 skeleton specs: 4 (T1-T4) landed.
   - Memory consolidation #594 (CLAUDE.md + boot prompt RULES expanded).
   - Scorecard CI gate #669 (machine-checkable rubric — per-criterion citation enforced in pr-lint).
   - Critical-path cascade fixes: scheduler/orchestrator/Makefile splits + auto-gen specs README #583 · cost+resume CLI db.Close defer #668 (closes #649) · substrate manual_merge + operator_intervention event kinds #665 (#659).
-  - ~80 followup tracking issues filed (#573-#588, #606-#667).
-  - Self-host loop structurally complete pending CI drain.
+  - **Operator-UX polish wave (post-autonomy-loop closure):**
+    - #690 install-service healthz port respect operator config (closes #667)
+    - #689 `--public-url` flag for reverse-proxy Origin check (closes #304)
+    - #691 reloader F-HR8 + uncovered watch-root re-Add bug (closes #365)
+    - #692 `regatta cost backfill <run_id>` recovery CLI (closes #272)
+    - #693 substrate AST-concat lint for built SQL strings (closes #234)
+    - #694 substrate fast-path 47× perf, 213× fewer allocs (closes #216)
+    - #696 flaky `TestClaudeSpawn_StreamJsonOpens...` deadline bump 2s→10s
+    - #697 scheduler gate re-check at reservation loop (closes #167)
+    - #698 scheduler filter.Apply consolidation refactor (closes #251)
+    - #699 Tracer+Meter pair grep-invariant CI gate (closes #509)
+  - **Dispatch-template hardening:** #688 worktree /tmp/clone trap (closes #188) · #695 scorecard-backtick + release-notes-fence traps.
+  - **Issue triage:** ~80 followup tracking issues filed (#573-#588, #606-#667, #700-#706). 33+ closed via PRs or moved to reopen-trigger state.
+  - **Adversarial-review backfill:** 6 retroactive reviews on load-bearing PRs from this wave → 22 Risk+ findings → 6 followup issues #700 #702 #703 #704 #705 #706.
+  - **New feedback memories** (3 this session): `feedback_ci_timeout_orphan_test_goroutine` · `feedback_release_notes_fence_missing` · `feedback_scorecard_citation_token_outside_backticks` (reinforced).
+  - Self-host loop structurally complete. Phase DEPLOY READY (Docker stage 2 compose covers full obs stack). Operator action: set `REGATTA_HMAC_KEY` + `docker compose up -d` OR `regatta install-service` on bare host.
 - **2026-06-02 Strategic-design CONVERGENCE**: #432 MERGED observability-roadmap converged spec (consolidates #400 #405 #410 #413 #420). #433 MERGED next-horizon roadmap unified brief — 4 MVR-1 impl-ready items + 16 wave-4 items + 4 RISK followups (#423 #424 #426 #427). 29 prior strategic-design PRs CLOSED as superseded per `feedback_design_iteration_local`.
 
 WORKFLOW per item — use templates at `docs/engineer/dispatch-templates/`. Substitute variables; do NOT inline-repeat preamble.
