@@ -166,7 +166,9 @@ func (m *markdownCatalog) Get(ctx context.Context, id schemas.WorkItemID) (schem
 // UpdateStatus rewrites the frontmatter status (and citation) for id.
 // Idempotent: a no-op call leaves the file mtime untouched.
 func (m *markdownCatalog) UpdateStatus(ctx context.Context, id schemas.WorkItemID, status schemas.Status, citation string) error {
-	if status != schemas.StatusPlanned && status != schemas.StatusInProgress && status != schemas.StatusDone {
+	// Mirror the parse-time enum; widening here keeps the write path
+	// from rejecting what List() already round-trips (issue #493).
+	if !validStatus(status) {
 		return fmt.Errorf("%w: %s", schemas.ErrInvalidStatus, status)
 	}
 	m.mu.Lock()
@@ -202,6 +204,7 @@ func (m *markdownCatalog) Capabilities() schemas.Capabilities {
 			schemas.StatusPlanned,
 			schemas.StatusInProgress,
 			schemas.StatusDone,
+			schemas.StatusClosedResolved,
 		},
 	}
 }

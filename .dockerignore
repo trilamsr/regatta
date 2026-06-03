@@ -1,0 +1,46 @@
+# Keep the build context minimal so `docker build` ships only what the
+# builder actually compiles. Excludes follow the Go + Node defaults plus
+# regatta-specific scratch dirs.
+
+# VCS
+.git/
+.gitignore
+.github/
+
+# Go test + build artefacts
+*.test
+*.out
+*.prof
+coverage.txt
+dist/
+bin/
+regatta
+/regatta
+
+# Node (claude-code is installed inside the image, never from host)
+node_modules/
+
+# Editor / OS junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local agent state — must never leak into the image
+.regatta/worktrees/
+.regatta/locks/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Dotenv files (secrets stay on the host)
+.env
+.env.local
+.env.*.local
+
+# Local CI / mutation caches
+.cache/
+scripts/mutation/cache/
