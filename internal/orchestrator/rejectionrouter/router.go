@@ -35,6 +35,7 @@ package rejectionrouter
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -109,6 +110,12 @@ type Router struct {
 	cfg    Config
 	cursor int64
 	log    *slog.Logger
+
+	// txHook fires inside the escalation tx between the gates_failed
+	// write and the escalated/release-locks/event-record writes. Tests
+	// pin the atomic-rollback contract via export_test.SetTxHook (see
+	// issue #477); production paths leave it nil.
+	txHook func(*sql.Tx) error
 }
 
 // New constructs a Router. The cursor starts at 0; first Tick scans
@@ -251,16 +258,58 @@ func (r *Router) handle(ctx context.Context, ev state.Event) error {
 		return nil
 	}
 
-	updated, err := r.cfg.DB.TransitionAgent(ctx, agentID, state.AgentGatesFailed,
-		state.AgentMutation{IncrementRejection: true})
-	if err != nil {
-		if errors.Is(err, state.ErrInvalidTransition) {
+	// One tx covers the increment-and-transition AND, when the
+	// counter crosses K, the escalated transition + lock release +
+	// audit append. Issue #477: pre-fix the second transition ran in
+	// its own tx, so a sqlite-busy on the second write left the agent
+	// stranded at gates_failed with rejection_count=K — the cursor
+	// then advanced past the event because the next Tick's state
+	// check dropped the now-non-gates_running row. Atomic commit
+	// means a mid-tx fault rolls back the counter too, and the next
+	// Tick retries the same event from scratch.
+	var (
+		updated   *state.Agent
+		escalated *state.Agent
+	)
+	txErr := r.cfg.DB.WithTx(ctx, func(tx *sql.Tx) error {
+		a, err := r.cfg.DB.TransitionAgentTx(ctx, tx, agentID, state.AgentGatesFailed,
+			state.AgentMutation{IncrementRejection: true})
+		if err != nil {
+			return err
+		}
+		updated = a
+		if a.RejectionCount < r.cfg.K {
+			return nil
+		}
+		// Test seam — surfaces sqlite-busy / mid-tx errors that would
+		// otherwise be impossible to reproduce deterministically.
+		if r.txHook != nil {
+			if err := r.txHook(tx); err != nil {
+				return err
+			}
+		}
+		esc, err := r.cfg.DB.TransitionAgentTx(ctx, tx, agentID, state.AgentEscalated, state.AgentMutation{})
+		if err != nil {
+			return err
+		}
+		escalated = esc
+		if _, err := r.cfg.DB.ReleaseAgentLocksTx(ctx, tx, agentID); err != nil {
+			return err
+		}
+		// Audit row appended inside the same tx so it is observable
+		// iff the escalation committed. The labeler call lives
+		// outside the tx — sweepUnlabeled retries it on failure.
+		return r.cfg.DB.RecordEventTx(ctx, tx, agentID, EventKindEscalated,
+			fmt.Sprintf(`{"rejection_count":%d,"k":%d}`, esc.RejectionCount, r.cfg.K))
+	})
+	if txErr != nil {
+		if errors.Is(txErr, state.ErrInvalidTransition) {
 			// Race: agent moved out of gates_running between our read
 			// and the transition. Drop the event — the new state owns
 			// the verdict.
 			return nil
 		}
-		return fmt.Errorf("rejectionrouter: transition gates_failed: %w", err)
+		return fmt.Errorf("rejectionrouter: escalation tx: %w", txErr)
 	}
 
 	r.log.Info("rejectionrouter.gates_failed",
@@ -269,23 +318,9 @@ func (r *Router) handle(ctx context.Context, ev state.Event) error {
 		"rejection_count", updated.RejectionCount,
 		"k", r.cfg.K,
 	)
-
-	if updated.RejectionCount < r.cfg.K {
+	if escalated == nil {
 		return nil
 	}
-
-	escalated, err := r.cfg.DB.TransitionAgent(ctx, agentID, state.AgentEscalated, state.AgentMutation{})
-	if err != nil {
-		return fmt.Errorf("rejectionrouter: transition escalated: %w", err)
-	}
-	if _, err := r.cfg.DB.ReleaseAgentLocks(ctx, agentID); err != nil {
-		return fmt.Errorf("rejectionrouter: release locks: %w", err)
-	}
-	// Append the durable escalation audit row BEFORE invoking the
-	// labeler so the record exists even if the gh-cli round-trip
-	// fails. sweepUnlabeled below owns the labeler call + retry path.
-	_ = r.cfg.DB.RecordEvent(ctx, agentID, EventKindEscalated,
-		fmt.Sprintf(`{"rejection_count":%d,"k":%d}`, escalated.RejectionCount, r.cfg.K))
 	r.log.Info("rejectionrouter.escalated",
 		"agent_id", agentID,
 		"work_item_id", escalated.WorkItemID,

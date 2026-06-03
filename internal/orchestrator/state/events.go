@@ -19,6 +19,11 @@ type Event struct {
 // RecordEvent appends an event row. payloadJSON should be a valid JSON
 // document; the caller owns marshaling. An empty string is normalized
 // to "{}" so downstream readers can always parse.
+//
+// RecordEvent owns its own tx. Callers composing the event append
+// with sibling writes (e.g. the rejection-router escalation tx —
+// issue #477) use RecordEventTx via DB.WithTx so the audit row commits
+// atomically with the state change it audits.
 func (d *DB) RecordEvent(ctx context.Context, agentID int64, kind, payloadJSON string) error {
 	if payloadJSON == "" {
 		payloadJSON = "{}"
@@ -30,6 +35,28 @@ func (d *DB) RecordEvent(ctx context.Context, agentID int64, kind, payloadJSON s
 		agent = agentID
 	}
 	_, err := d.sql.ExecContext(ctx,
+		`INSERT INTO events (agent_id, kind, payload_json, created_at) VALUES (?, ?, ?, ?)`,
+		agent, kind, payloadJSON, d.now().UTC().Unix())
+	if err != nil {
+		return fmt.Errorf("state: record event: %w", err)
+	}
+	return nil
+}
+
+// RecordEventTx is the tx-aware variant of RecordEvent. The caller
+// owns the tx lifecycle so the audit row commits atomically with the
+// state mutation it audits.
+func (d *DB) RecordEventTx(ctx context.Context, tx *sql.Tx, agentID int64, kind, payloadJSON string) error {
+	if payloadJSON == "" {
+		payloadJSON = "{}"
+	}
+	var agent any
+	if agentID == 0 {
+		agent = nil
+	} else {
+		agent = agentID
+	}
+	_, err := tx.ExecContext(ctx,
 		`INSERT INTO events (agent_id, kind, payload_json, created_at) VALUES (?, ?, ?, ?)`,
 		agent, kind, payloadJSON, d.now().UTC().Unix())
 	if err != nil {
