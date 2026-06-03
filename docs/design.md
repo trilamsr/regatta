@@ -1321,7 +1321,7 @@ Rejected adoptions:
 | **Tamper-evident audit log out-of-band** | yes | no | no | no | no | no | no | no |
 | **Canary-PR injection** | yes (8 archetypes ship) | no | partial (BugBot self-test) | no | no | no | no | no |
 | **SWE-bench-style benchmark** | not yet | yes | yes | yes | yes | yes | no | no |
-| **Cryptographically reproducible PR verdicts** (`regatta verify-pr <url>` offline, six months later) | **yes** (HMAC over canonical JSON; signed audit) | no | no | no | no | no | no | no |
+| **Tamper-evident journaled PR verdicts** (`regatta audit verify --run-id <id>` offline, six months later; each verdict pins tool + version + deterministic flag — see [auditor/reproducibility.md](auditor/reproducibility.md) §verdict-audit-posture) | **yes** (HMAC over canonical JSON; signed audit; per-verdict `deterministic` flag distinguishes replayable from verify-only) | no | no | no | no | no | no | no |
 | **Fixture-corpus-as-contract** (customer-authored counterexample is binding spec) | **yes** (`testdata/gates/l0/`, `testdata/program/handoffs/`) | no | no | no | no | no | no | no |
 | **Worker re-run mismatch** (orchestrator-independent CI re-run defeats incident-#1 by construction) | **yes** (`Handoff.ReRunMismatch`) | no | no | no | no | no | no | no |
 | **Deterministic Go progression** (no LLM router, structurally no prompt-injection on the routing path) | **yes** (`RouteVerdicts` is a Go switch) | LLM router | LLM router | LLM router | LLM router | LLM router | n/a | n/a |
@@ -1330,8 +1330,10 @@ Rejected adoptions:
 
 The nine defensible differentiators, in publishability order: **(1)
 deterministic L0**, **(2) out-of-band audit**, **(3) published canary
-archetype corpus**, **(4) cryptographically reproducible PR
-verdicts**, **(5) fixture-corpus-as-contract**, **(6) worker re-run
+archetype corpus**, **(4) tamper-evident journaled PR
+verdicts** (HMAC-chained; per-verdict deterministic flag —
+non-replayable by construction for LLM / scanner-DB gates),
+**(5) fixture-corpus-as-contract**, **(6) worker re-run
 mismatch**, **(7) deterministic Go progression**, **(8) per-axis
 depth caps as integers**, **(9) heartbeat-anchored silent-bypass**.
 (1), (3), (4), and (5) are publishable as standalone OSS primitives
@@ -1349,7 +1351,7 @@ the wedge ships, not just exists in prose.
 | 1 | Deterministic spec-immutability gate (L0) | `internal/l0/gate.go::Check`; corpus `testdata/gates/l0/{pass,fail,edge}/` |
 | 2 | Tamper-evident audit log out-of-band | `contracts/schemas/sign.go::Sign` / `Verify`; HMAC chokepoint test `contracts/schemas/sign_test.go::TestVerifyDetectsTamper` |
 | 3 | Published canary archetype corpus | `testdata/gates/canary/program_archetypes.ndjson` (3 archetypes); base corpus catalog in `testdata/gates/canary/` |
-| 4 | Cryptographically reproducible PR verdicts | `contracts/schemas/gate_result.go::SignatureBlock`; round-trip lockstep `contracts/schemas/gate_result_test.go::TestGateResultSchemaLockstep`; HMAC verify `contracts/schemas/sign.go::Verify` |
+| 4 | Tamper-evident journaled PR verdicts | `contracts/schemas/gate_result.go::SignatureBlock`; round-trip lockstep `contracts/schemas/gate_result_test.go::TestGateResultSchemaLockstep`; HMAC verify `contracts/schemas/sign.go::Verify`; per-verdict metadata `internal/orchestrator/state/substrate/gate_verdict_payload.go::GateVerdictPayload` (tool, model/version, db_schema_version, deterministic); CLI `cmd/regatta/audit.go::runAuditVerify`. Reframe in [auditor/reproducibility.md](auditor/reproducibility.md): the chain proves "what was recorded was not mutated", NOT "what would be recorded again" — issue #550. |
 | 5 | Fixture-corpus-as-contract | `internal/l0/fixture_test.go::TestL0Fixtures`; program-handoff corpus `internal/program/corpus_test.go::TestHandoffCorpus` |
 | 6 | Worker re-run mismatch (defeats incident #1) | `internal/program/handoff.go::Handoff.ReRunMismatch`; covered by `internal/program/handoff_test.go::TestReRunMismatch_*` (match, exit-code mismatch, length mismatch) |
 | 7 | Deterministic Go progression | `internal/program/route.go::RouteVerdicts` (no LLM call site in the package); 13 routing tests in `internal/program/route_test.go::TestRouteVerdicts` |

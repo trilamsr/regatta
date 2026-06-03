@@ -37,6 +37,8 @@ const (
 	subcmdDigest           = "digest"
 )
 
+// subcmdAudit is declared in audit.go (its run function lives there).
+
 // subcommand binds a CLI verb to its run function. The table is the
 // single source of truth for dispatch and is asserted by
 // TestMain_DispatchTableCoversAllCommands to stay complete.
@@ -57,6 +59,7 @@ var subcommands = []subcommand{
 	{subcmdApproval, runApproval},
 	{subcmdKeys, runKeys},
 	{subcmdDigest, runDigest},
+	{subcmdAudit, runAudit},
 }
 
 func main() {
@@ -99,6 +102,7 @@ func usage(w io.Writer) {
   regatta init                                        Scaffold regatta.yaml + run L0 demo
   regatta keys re-sign-briefs -old-key-id ...         Re-sign program briefs after HMAC key rotation
   regatta digest --date YYYY-MM-DD                    Generate docs/digests/<date>.md from Prom metrics
+  regatta audit verify --run-id <id> [--db <path>]    Walk recorded gate verdicts; print tool/version/det/hmac-status per gate
   regatta version                                     Print build info
   regatta help                                        This message
 
