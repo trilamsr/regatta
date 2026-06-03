@@ -71,6 +71,43 @@ fire from operator pull, not from defensive posture.
    Dagster). Both refuse "talk by side effect." Regatta's
    `acceptance_criteria[].citation` is the existing
    inter-WorkItem channel; make it the *only* legal one.
+9. **File-set conflict compile-check** (regatta-native; mitigates
+   the public Principle 1 / Principle 2 attack on multi-agent
+   architectures laid out in
+   [the 2025 "Don't Build Multi-Agents" post](https://cognition.ai/blog/dont-build-multi-agents)).
+   Every parallel-merge-collision incident logged in
+   `feedback_parallel_merge_collision.md` and
+   `feedback_shared_primitive_owner.md` traces back to two
+   implementer agents touching overlapping files without
+   declared ownership. Convert the lesson to a structural check.
+
+   **Surface (disclosed, not 50-line CUE).** The change is **not**
+   a `regatta.v1.cue`-only tweak (that file is the `regatta.yaml`
+   config schema, not the WorkItem schema). The real touch-set:
+
+   1. `contracts/schemas/work_item.schema.json` adds
+      `files_touched: { type: array, items: { type: string } }`.
+      Schema currently sets `additionalProperties: false`, so this
+      is a real (additive) schema change, not a property pun.
+   2. `contracts/schemas/work_item.schema.json` tightens `lane`
+      from free-form `string` to an enum (or adds a sibling
+      `lane_kind` discriminator) so `parallel` is a typed value
+      the validator can branch on.
+   3. New file under `contracts/schemas/` (e.g.
+      `plan_conflict.cue` or a Go validator in
+      `internal/program/plan_validate.go`) enforces the overlap
+      rule: across all WorkItems with `lane_kind: parallel`, the
+      `files_touched` globs must not intersect unless the items
+      share an `owner_workitem_id` annotation.
+
+   Cost is in the schema-add + planner-emitter wiring, not the
+   constraint itself; the planner must now emit `files_touched`
+   on every item. **No new Phase 2 row** — but it is a wedge
+   edit with a real schema surface, not a free lint rule.
+
+   **Scope:** catches file-level overlap only; semantic
+   conflicts (the polemic's Mario-vs-bird illustration) stay in
+   `acceptance_criteria` + reviewer-subagent judgment.
 
 ## Runtime planner vs. declarative YAML
 
