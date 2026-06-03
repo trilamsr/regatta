@@ -1,0 +1,39 @@
+# Lint + doc-quality gates. Owned by repo-consistency wedge.
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify
+
+doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
+	bash scripts/doc-check.sh
+
+doc-check-test:  ## Assert banned-phrase gate strips fenced + inline backtick spans (#329 regression guard).
+	bash scripts/doc-check_test.sh
+
+prose-dup:  ## Fail if a previously-deduped prose phrase reappears in 2+ markdown files.
+	bash scripts/check-prose-dup.sh
+
+stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
+	bash scripts/stale-todo.sh
+
+verify-vendored-assets:  ## Assert on-disk SHA-256 of internal/web/static/htmx.min.js matches the pin in VENDORED.md. Mismatch = supply-chain tamper or accidental edit; fails CI.
+	@bash -c 'set -euo pipefail; \
+		ON_DISK=$$(shasum -a 256 internal/web/static/htmx.min.js | awk "{print \$$1}"); \
+		PINNED=$$(grep -oE "[a-f0-9]{64}" internal/web/static/VENDORED.md | head -1); \
+		if [ "$$ON_DISK" != "$$PINNED" ]; then \
+			echo "verify-vendored-assets: htmx.min.js sha256 drift"; \
+			echo "  on-disk: $$ON_DISK"; \
+			echo "  pinned : $$PINNED"; \
+			exit 1; \
+		fi; \
+		echo "verify-vendored-assets: htmx.min.js sha256 ok ($$ON_DISK)"'
+
+vet:  ## Run go vet.
+	go vet ./...
+
+lint:  ## Run golangci-lint via the module's tool directive.
+	go tool golangci-lint run ./...
+
+tidy-check:  ## Verify go.mod / go.sum are tidy without mutating; fails with a diff if not.
+	@diff=$$(go mod tidy -diff); \
+	if [ -n "$$diff" ]; then echo "go.mod / go.sum need tidying:"; echo "$$diff"; exit 1; fi
+
+mod-verify:  ## Verify go.mod / go.sum hashes match upstream.
+	go mod verify
