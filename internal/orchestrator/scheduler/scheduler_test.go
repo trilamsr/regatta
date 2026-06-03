@@ -14,6 +14,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
+	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/obstest"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -854,5 +855,86 @@ func TestScheduler_Tick_EmitsEdgeFiredEvent(t *testing.T) {
 		if !recordHasAttr(r, key) {
 			t.Errorf("edge.fired record missing %q attr", key)
 		}
+	}
+}
+
+// TestScheduler_GateRecheckAtReservation_PendingAgentBlocked pins that an orphan pending agent re-checks the gate before reservation (#167).
+func TestScheduler_GateRecheckAtReservation_PendingAgentBlocked(t *testing.T) {
+	db := statetest.OpenDB(t)
+	ctx := context.Background()
+	seedPlanned(t, db, "wi-1", "prod")
+
+	t1 := New(db, Config{LaneCaps: map[string]int{"prod": 0}})
+	if _, err := t1.Tick(ctx); err != nil {
+		t.Fatalf("T1 Tick: %v", err)
+	}
+	pending, err := db.ListAgentsByState(ctx, state.AgentPending)
+	if err != nil {
+		t.Fatalf("ListAgentsByState pending: %v", err)
+	}
+	if len(pending) != 1 || pending[0].WorkItemID != "wi-1" {
+		t.Fatalf("after T1 pending=%+v; want one pending agent for wi-1", pending)
+	}
+
+	gate := &fakeGate{verdicts: map[string]approval.Result{"wi-1": approval.ResultPause}}
+	t2 := New(db, Config{
+		Gate:         gate,
+		GateResolver: gateResolverByID(map[string]approval.Config{"wi-1": gateCfgFor("prod-gate")}),
+	})
+	ids, err := t2.Tick(ctx)
+	if err != nil {
+		t.Fatalf("T2 Tick: %v", err)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("T2 reserved=%v; want 0 (gate paused the orphan)", ids)
+	}
+	if len(gate.calls) == 0 {
+		t.Fatalf("gate.calls=%+v; want >=1 — reservation loop must re-check the gate", gate.calls)
+	}
+	spawning, _ := db.ListAgentsByState(ctx, state.AgentSpawning)
+	if len(spawning) != 0 {
+		t.Fatalf("spawning=%+v; want 0 (paused wi must not transition out of pending)", spawning)
+	}
+	stillPending, _ := db.ListAgentsByState(ctx, state.AgentPending)
+	if len(stillPending) != 1 || stillPending[0].WorkItemID != "wi-1" {
+		t.Fatalf("after T2 pending=%+v; want wi-1 still pending", stillPending)
+	}
+}
+
+// TestScheduler_GateRecheckAtReservation_RaceSafe pins approve-then-tick: a paused orphan spawns once the next tick's gate flips to proceed (#167).
+func TestScheduler_GateRecheckAtReservation_RaceSafe(t *testing.T) {
+	db := statetest.OpenDB(t)
+	ctx := context.Background()
+	seedPlanned(t, db, "wi-race", "prod")
+
+	t1 := New(db, Config{LaneCaps: map[string]int{"prod": 0}})
+	if _, err := t1.Tick(ctx); err != nil {
+		t.Fatalf("T1 Tick: %v", err)
+	}
+
+	gate := &fakeGate{verdicts: map[string]approval.Result{"wi-race": approval.ResultPause}}
+	cfg := Config{
+		Gate:         gate,
+		GateResolver: gateResolverByID(map[string]approval.Config{"wi-race": gateCfgFor("prod-gate")}),
+	}
+	sch := New(db, cfg)
+
+	if ids, err := sch.Tick(ctx); err != nil {
+		t.Fatalf("T2 Tick: %v", err)
+	} else if len(ids) != 0 {
+		t.Fatalf("T2 reserved=%v; want 0 (still paused)", ids)
+	}
+
+	gate.verdicts["wi-race"] = approval.ResultProceed
+	ids, err := sch.Tick(ctx)
+	if err != nil {
+		t.Fatalf("T3 Tick: %v", err)
+	}
+	if len(ids) != 1 {
+		t.Fatalf("T3 reserved=%v; want 1 (approval granted)", ids)
+	}
+	spawning, _ := db.ListAgentsByState(ctx, state.AgentSpawning)
+	if len(spawning) != 1 || spawning[0].WorkItemID != "wi-race" {
+		t.Fatalf("spawning=%+v; want one spawning agent for wi-race", spawning)
 	}
 }
