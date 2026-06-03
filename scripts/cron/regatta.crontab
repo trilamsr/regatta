@@ -1,0 +1,15 @@
+# regatta crontab — operator copies the relevant lines into the host
+# crontab via `crontab -e`. Each entry is opt-in; comment a line to
+# disable that cadence.
+#
+# Format: m h dom mon dow  command
+# All times UTC; flip TZ in /etc/crontab if local-time is preferred.
+
+# Daily digest (PHASE-OBS): renders yesterday's UTC-day metrics file.
+0 9 * * * /usr/local/bin/regatta-cron-daily-digest
+
+# Self-improvement detector scan (PHASE-AUTONOMY W4): nightly rule
+# sweep over the substrate; --apply files GH issues for findings that
+# crossed threshold within their per-rule window. Dry-run via
+# --apply=false during ruleset tuning.
+0 3 * * * /usr/local/bin/regatta self-improve scan --apply

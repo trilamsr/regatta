@@ -64,6 +64,7 @@ var subcommands = []subcommand{
 	{subcmdStatus, runStatus},
 	{subcmdCost, runCost},
 	{subcmdResume, runResume},
+	{subcmdSelfImprove, runSelfImprove},
 }
 
 func main() {
@@ -111,6 +112,8 @@ func usage(w io.Writer) {
   regatta status [--refresh DUR] [--once]             Terminal live-status TUI (5 panels: subagents, PRs, merges, cost, green-clock)
   regatta cost status [--db <path>] [--config <path>] Print W5 global daily-cap state (24h spend, cap, scheduler state, resume horizon)
   regatta resume [--actor <id>] [--db <path>]         Lift the W5 cost-cap throttle until the next day rollover (operator override audit event)
+  regatta self-improve scan [--since=7d] [--apply]    Run rule scan over substrate; --apply files GH issues (default dry-run)
+  regatta self-improve rules                          List registered self-improvement rules
   regatta version                                     Print build info
   regatta help                                        This message
 
