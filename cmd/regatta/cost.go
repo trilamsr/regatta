@@ -26,13 +26,16 @@ const (
 )
 
 // costDeps injects every side-effect the cost path touches so tests
-// substitute a fixed clock + temp-DB DSN + config bytes.
+// substitute a fixed clock + temp-DB DSN + config bytes. Opener is the
+// state.DB factory — left nil in production (defaults to state.Open);
+// tests inject a counting wrapper to assert the corresponding Close.
 type costDeps struct {
 	Stdout     io.Writer
 	Stderr     io.Writer
 	Clock      func() time.Time
 	DSN        string
 	ConfigPath string
+	Opener     func(context.Context, string) (*state.DB, error)
 }
 
 func runCost(args []string) int {
@@ -72,11 +75,12 @@ func runCostStatusWith(deps costDeps, args []string) int {
 		return 2
 	}
 	ctx := context.Background()
-	enf, err := buildEnforcer(ctx, deps)
+	enf, closeDB, err := buildEnforcer(ctx, deps)
 	if err != nil {
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta cost status: %v\n", err)
 		return 1
 	}
+	defer closeDB()
 	if err := costcap.PrintStatus(ctx, deps.Stdout, enf); err != nil {
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta cost status: %v\n", err)
 		return 1
@@ -85,28 +89,36 @@ func runCostStatusWith(deps costDeps, args []string) int {
 }
 
 // buildEnforcer wires a read-only Enforcer from regatta.yaml + the
-// state DB. Used by `cost status` (no writes) and `resume` (with
-// Recorder=DB). Returns an Enforcer with CapMicro=0 when the config
-// has no cost.cap block — PrintStatus then renders the unset path.
-func buildEnforcer(ctx context.Context, deps costDeps) (*costcap.Enforcer, error) {
+// state DB. Returns a closeDB func the caller MUST defer — the
+// Enforcer retains the *state.DB via Recorder/Spend/Resume, so the
+// connection cannot be released earlier without invalidating the
+// Enforcer. Returns CapMicro=0 when the config has no cost.cap block —
+// PrintStatus then renders the unset path.
+func buildEnforcer(ctx context.Context, deps costDeps) (*costcap.Enforcer, func(), error) {
 	clock := deps.Clock
 	if clock == nil {
 		clock = time.Now
 	}
 	settings, _ := validate.LoadCostCapSettings(readConfigBytes(deps.ConfigPath))
-	db, err := state.Open(ctx, deps.DSN)
-	if err != nil {
-		return nil, fmt.Errorf("open state db: %w", err)
+	opener := deps.Opener
+	if opener == nil {
+		opener = state.Open
 	}
+	db, err := opener(ctx, deps.DSN)
+	if err != nil {
+		return nil, func() {}, fmt.Errorf("open state db: %w", err)
+	}
+	closeDB := func() { _ = db.Close() }
 	tz := time.UTC
 	if settings.TZ != "" {
 		loc, err := time.LoadLocation(settings.TZ)
 		if err != nil {
-			return nil, fmt.Errorf("invalid cost.cap.timezone %q: %w", settings.TZ, err)
+			closeDB()
+			return nil, func() {}, fmt.Errorf("invalid cost.cap.timezone %q: %w", settings.TZ, err)
 		}
 		tz = loc
 	}
-	return costcap.New(costcap.Config{
+	enf, err := costcap.New(costcap.Config{
 		CapMicro:   settings.CapMicro,
 		TenantID:   substrate.DefaultTenantID,
 		TZ:         tz,
@@ -116,6 +128,11 @@ func buildEnforcer(ctx context.Context, deps costDeps) (*costcap.Enforcer, error
 		Resume:     resumeReader{db: db},
 		Clock:      clock,
 	})
+	if err != nil {
+		closeDB()
+		return nil, func() {}, err
+	}
+	return enf, closeDB, nil
 }
 
 // resumeReader adapts state.DB.LatestEventByKind to costcap.ResumeReader.
