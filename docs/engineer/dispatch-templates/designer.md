@@ -73,3 +73,5 @@ DESIGN ITERATION LOCAL (no per-revision PR)
 
 1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `feedback_pr_body_file_only`. HEREDOC bodies escape backticks.
 2. **GH base-sha drift workaround** per #343 (fix #347 merged): tag release-notes with `[DOCS]` for spec-only PRs to skip check-tdd.
+3. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Spec PR body MUST include a triple-fence ` ```release-notes ` block with `[DOCS] one-line summary (#issue)` inside. Without the fence, `check-scorecard.sh` falls through to the error branch even on `[DOCS]` PRs — the category-exempt branch only fires when the fence is present.
+4. **Scorecard rubric in spec MUST use bare citation tokens** per `feedback_scorecard_citation_token_outside_backticks`. The A+ rubric you ship in the spec will be copy-pasted into the implementer PR body. Wrapping `TestX` or `file.go:42` in backticks in the spec rubric template propagates invisible-token failures to the implementer. Write tokens bare in the spec rubric scorecard template.

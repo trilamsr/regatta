@@ -68,3 +68,5 @@ NO SIGNATURES
 
 1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `feedback_pr_body_file_only` when posting review summary.
 2. **Comment-noise trip-traps** per #333 (regex tightened in #371): flag legitimate "Reviewer-Capital" prose in author diffs only if the regex still over-matches.
+3. **Scorecard citation tokens MUST be OUTSIDE backticks** per `feedback_scorecard_citation_token_outside_backticks`. When auditing an author scorecard: if a row visually contains `TestX` or `path/file.go:42` wrapped in backticks, the validator reports "uncited". Either fix the row (unwrap) or call out this is the recurring failure mode + cite the fix: bare-token form.
+4. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Confirm every PR body has a triple-fence ` ```release-notes ` block. Missing fence → `check-scorecard.sh` falls through to error branch even on `[DOCS]` PRs.
