@@ -35,6 +35,8 @@ const (
 	subcmdApproval         = "approval"
 	subcmdKeys             = "keys"
 	subcmdDigest           = "digest"
+	subcmdInstallService   = "install-service"
+	subcmdUninstallService = "uninstall-service"
 )
 
 // subcmdAudit is declared in audit.go (its run function lives there).
@@ -69,6 +71,8 @@ var subcommands = []subcommand{
 	{subcmdSelfImprove, runSelfImprove},
 	{subcmdMerge, runMerge},
 	{subcmdReview, runReview},
+	{subcmdInstallService, runInstallService},
+	{subcmdUninstallService, runUninstallService},
 }
 
 func main() {
@@ -122,6 +126,8 @@ func usage(w io.Writer) {
   regatta self-improve rules                          List registered self-improvement rules
   regatta review status [--since=7d] [--limit=50]     List recent L4 verdicts from substrate (audit view)
   regatta review setup-codeowners [--repo-root D]     Idempotent CODEOWNERS catch-all wiring reviewer-bot on every PR
+  regatta install-service [--user|--system]           Install OS-native supervisor (launchd or systemd)
+  regatta uninstall-service [--user|--system]         Reverse install-service (idempotent)
   regatta version                                     Print build info
   regatta help                                        This message
 

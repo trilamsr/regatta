@@ -10,7 +10,9 @@ docs/superpowers/
 
 # Go build artifacts
 bin/
-dist/
+dist/*
+!dist/services/
+!dist/cron/
 *.test
 *.out
 coverage.out

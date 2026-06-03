@@ -30,8 +30,8 @@ PHASE AUTONOMY — 7 wedges closing the autonomous-loop gaps [COMPLETE 2026-06-0
 PHASE DEPLOY — Production deploy of regatta-the-binary [READY — operator install pending]
   Container Stage 1+2+3 SHIPPED. Operator action required (ONE of):
     Option A: docker compose up -d (Stage 2 — full obs stack)
-    Option B: ./deploy/install-systemd.sh (Linux native)
-    Option C: ./deploy/install-launchd.sh (macOS native)
+    Option B: regatta install-service --system (Linux native)
+    Option C: regatta install-service (macOS native)
   Env vars: ANTHROPIC_API_KEY · GH_TOKEN · REGATTA_BRIEF_HMAC_KEYS (optional, markdown-only).
   Acceptance: regatta serve running 24/7 against this repo. **This is the next operator-side gate — every downstream phase blocks on it.**
 

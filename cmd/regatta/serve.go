@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"flag"
@@ -31,6 +32,7 @@ import (
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
 	"github.com/trilamsr/regatta/internal/cost/spend"
 	"github.com/trilamsr/regatta/internal/gates/approval"
+	"github.com/trilamsr/regatta/internal/health"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
@@ -60,9 +62,6 @@ const listenerShutdownBudget = 5 * time.Second
 // is a generous upper bound — a stuck Tick() is the only path that
 // would burn through this budget.
 const reconcilerShutdownBudget = 5 * time.Second
-
-// healthzBody is the spec §3.3 row 6 literal: `200 OK` with body `ok` and zero DB queries.
-const healthzBody = "ok\n"
 
 // defaultLogFormat is the value used when --log-format is omitted —
 // the `text (default)` contract from #117.
@@ -820,7 +819,18 @@ func bootListener(cfg listenerConfig) (*http.Server, error) {
 		return nil, err
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", healthzHandler)
+	// W3: content-negotiated /healthz — JSON readiness for the supervisor,
+	// legacy `ok\n` literal preserved for the W7.0 contract.
+	var healthDB *sql.DB
+	if cfg.DB != nil {
+		healthDB = cfg.DB.SQL()
+	}
+	mux.HandleFunc("/healthz", health.Handler(health.Dependencies{
+		DB:        healthDB,
+		Heartbeat: health.NewHeartbeatCell(cfg.Clock),
+		Brief:     health.NewBriefCell(),
+		Version:   version,
+	}))
 	cbPath, cbHandler := approval.NewHTTPCallback(approval.Dependencies{
 		DB:      cfg.DB,
 		Keyring: cfg.Keyring,
@@ -862,14 +872,6 @@ func newWebHandler(cfg listenerConfig) (http.Handler, error) {
 		Clock:          cfg.Clock,
 		RouteRegistrar: nil,
 	}), nil
-}
-
-// healthzHandler returns the spec §3.3 row 6 liveness probe — zero DB queries, literal `ok\n`, Cache-Control: no-store.
-func healthzHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(healthzBody))
 }
 
 // loadMarkdownCatalogRoot reads regatta.yaml at repoRoot and returns
