@@ -41,6 +41,8 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 	}
 	client := NewHTTPGitHubClient(opts.GHToken, opts.GHRepoOwner, opts.GHRepoName, opts.GHBaseURL)
 	h := &Handler{Client: client, Logger: logger}
+	stopReaper := h.startReaper(0)
+	defer stopReaper()
 
 	mux := http.NewServeMux()
 	mux.Handle("/webhook", h)

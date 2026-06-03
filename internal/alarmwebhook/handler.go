@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -23,6 +24,24 @@ import (
 // payloads under 100 KiB even with verbose annotations) and well below
 // anything an attacker could use to OOM the receiver.
 const MaxBodyBytes = 1 << 20
+
+// mutexReapInterval and mutexReapTTL bound how aggressively idle alertname
+// mutexes are evicted. The TTL is comfortably longer than any realistic
+// AlertManager group_interval so a still-firing alert keeps its mutex
+// pinned; the interval keeps each pass cheap even on a receiver tracking
+// thousands of alertnames.
+const (
+	mutexReapInterval = 1 * time.Hour
+	mutexReapTTL      = 24 * time.Hour
+)
+
+// alertnameLock wraps the per-alertname mutex with a lastSeenAt stamp the
+// reaper consults to evict idle entries. UnixNano in atomic.Int64 keeps
+// reads lock-free so the storm-collapse hot path pays no extra cost.
+type alertnameLock struct {
+	mu         sync.Mutex
+	lastSeenAt atomic.Int64
+}
 
 // Handler is the HTTP handler that owns one AlertManager receiver
 // endpoint. Wire one Handler per (repo, label-set); the dedup cache
@@ -57,7 +76,10 @@ type Handler struct {
 	// past the empty cache, see zero open issues, and create N
 	// duplicate issues — the very dedup property the receiver exists
 	// to enforce.
-	perAlertname sync.Map // alertname (string) -> *sync.Mutex
+	// Idle entries are reaped after mutexReapTTL by the goroutine
+	// startReaper launches from Serve — without that the map would
+	// grow unbounded as production accumulates distinct alertnames.
+	perAlertname sync.Map // alertname (string) -> *alertnameLock
 }
 
 // ResolveMeter returns the configured meter, falling back lazily to the
@@ -101,22 +123,114 @@ func (h *Handler) init() {
 	})
 }
 
-// lockAlertname returns the mutex unique to this alertname, allocating
-// on first use. Holders serialise the find-or-create decision so an
-// alert-storm collapses to one CreateIssue even when N requests arrive
-// in the same tick before any cache write has landed.
-func (h *Handler) lockAlertname(name string) *sync.Mutex {
+// lockAlertname returns the lock unique to this alertname, allocating on
+// first use and stamping lastSeenAt so the reaper can evict idle entries
+// after mutexReapTTL.
+func (h *Handler) lockAlertname(name string) *alertnameLock {
+	now := h.nowUnixNano()
 	if v, ok := h.perAlertname.Load(name); ok {
-		if mu, ok := v.(*sync.Mutex); ok {
-			return mu
+		if lk, ok := v.(*alertnameLock); ok {
+			lk.lastSeenAt.Store(now)
+			return lk
 		}
 	}
-	fresh := &sync.Mutex{}
+	fresh := &alertnameLock{}
+	fresh.lastSeenAt.Store(now)
 	actual, _ := h.perAlertname.LoadOrStore(name, fresh)
-	if mu, ok := actual.(*sync.Mutex); ok {
-		return mu
+	lk, ok := actual.(*alertnameLock)
+	if !ok {
+		return fresh
 	}
-	return fresh
+	lk.lastSeenAt.Store(now)
+	return lk
+}
+
+// acquireAlertnameLock returns a locked alertnameLock that is still the
+// canonical map entry for name. Looping closes the reaper-evict race:
+// if the reaper deleted our lock between lockAlertname and mu.Lock, the
+// post-lock map check fails and we retry with a fresh allocation.
+func (h *Handler) acquireAlertnameLock(name string) *alertnameLock {
+	for {
+		lk := h.lockAlertname(name)
+		lk.mu.Lock()
+		if cur, ok := h.perAlertname.Load(name); ok && cur == lk {
+			return lk
+		}
+		lk.mu.Unlock()
+	}
+}
+
+// nowUnixNano resolves the injected clock once per call so tests with a
+// fakeClock advance reaper time deterministically.
+func (h *Handler) nowUnixNano() int64 {
+	if h.Now != nil {
+		return h.Now().UnixNano()
+	}
+	return time.Now().UnixNano()
+}
+
+// reapStale evicts perAlertname entries idle past mutexReapTTL. Entries
+// whose mutex is currently held are skipped — TryLock fails for live
+// route() calls, so a concurrent storm never races the reaper into
+// dropping a lock another goroutine has just decided to use.
+func (h *Handler) reapStale(now time.Time) {
+	cutoff := now.Add(-mutexReapTTL).UnixNano()
+	h.perAlertname.Range(func(key, value any) bool {
+		lk, ok := value.(*alertnameLock)
+		if !ok {
+			return true
+		}
+		if lk.lastSeenAt.Load() >= cutoff {
+			return true
+		}
+		if !lk.mu.TryLock() {
+			return true
+		}
+		// Re-check under the lock: a parallel lockAlertname may have just
+		// refreshed lastSeenAt between our Load and TryLock.
+		if lk.lastSeenAt.Load() >= cutoff {
+			lk.mu.Unlock()
+			return true
+		}
+		h.perAlertname.CompareAndDelete(key, value)
+		lk.mu.Unlock()
+		return true
+	})
+}
+
+// startReaper launches the background eviction loop and returns a stop
+// func the caller invokes on shutdown to drain the goroutine.
+func (h *Handler) startReaper(interval time.Duration) func() {
+	if interval <= 0 {
+		interval = mutexReapInterval
+	}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		t := time.NewTicker(interval)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				h.reapStale(h.resolveNow()())
+			}
+		}
+	}()
+	return func() {
+		close(stop)
+		<-done
+	}
+}
+
+// resolveNow returns the clock seam, defaulting to time.Now when unset.
+func (h *Handler) resolveNow() func() time.Time {
+	if h.Now != nil {
+		return h.Now
+	}
+	return time.Now
 }
 
 // ServeHTTP is the AlertManager webhook entrypoint. Only POST is
@@ -189,9 +303,8 @@ func (h *Handler) route(ctx context.Context, p Payload, a Alert) error {
 		return errors.New("alert missing labels.alertname")
 	}
 
-	mu := h.lockAlertname(name)
-	mu.Lock()
-	defer mu.Unlock()
+	lk := h.acquireAlertnameLock(name)
+	defer lk.mu.Unlock()
 
 	issueNumber, exists, err := findExistingIssue(ctx, h.Client, h.cache, name)
 	if err != nil {
