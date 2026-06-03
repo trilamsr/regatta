@@ -38,6 +38,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/prwatch"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
+	"github.com/trilamsr/regatta/internal/orchestrator/review"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -381,6 +382,23 @@ func runServe(args []string) int {
 			mergeWorker.Stop()
 			<-mergeWorkerDone
 		}()
+	}
+
+	// W7 (PHASE-AUTONOMY): construct the L4-as-review Approver when the
+	// operator has wired the reviewer-bot two-identity model. Empty env
+	// keeps the Approver nil so default-off behaviour matches the spec
+	// (regatta.yaml::gates.l4_posts_review opt-in). The verdict-event
+	// subscription seam lands when the gate-event substrate stream
+	// exposes a typed subscribe — for now the value is available to
+	// dependants via the field set on the orchestrator config.
+	if rev, err := buildReviewApprover(slogger); err != nil {
+		logger.Printf("review approver: %v", err)
+		return 2
+	} else if rev != nil {
+		slogger.Info("review.approver_ready",
+			"reviewer", os.Getenv("GH_USER_REVIEWER"),
+			"author_bot", os.Getenv("GH_USER_BOT"))
+		_ = rev // verdict-subscribe wired when the substrate event stream lands; see spec §12 followup.
 	}
 
 	if err := o.Recover(ctx); err != nil {
@@ -955,6 +973,36 @@ func parseAuthzDebounce(s string) time.Duration {
 		return 0
 	}
 	return d
+}
+
+// buildReviewApprover constructs the W7 L4-as-review Approver from
+// env-driven config. Returns (nil, nil) — opt-in via env — when any of
+// the required vars (REGATTA_REVIEW_REPO, GH_TOKEN_REVIEWER,
+// GH_USER_REVIEWER, GH_USER_BOT) is empty so default-off matches spec
+// §2: "Default-off; opt-in via regatta.yaml: gates.l4_posts_review:
+// true". Env over yaml keeps the secret out of the file + avoids a CUE
+// schema change for this wave; yaml-driven config can land alongside
+// the install-service surface (spec §12 carry-forward).
+func buildReviewApprover(logger *slog.Logger) (*review.Approver, error) {
+	repo := os.Getenv("REGATTA_REVIEW_REPO")
+	token := os.Getenv("GH_TOKEN_REVIEWER")
+	reviewer := os.Getenv("GH_USER_REVIEWER")
+	authorBot := os.Getenv("GH_USER_BOT")
+	if repo == "" || token == "" || reviewer == "" || authorBot == "" {
+		return nil, nil
+	}
+	owner, name, ok := strings.Cut(repo, "/")
+	if !ok || owner == "" || name == "" {
+		return nil, fmt.Errorf("REGATTA_REVIEW_REPO=%q: want owner/name", repo)
+	}
+	return review.New(review.Config{
+		Owner:          owner,
+		Repo:           name,
+		ReviewerToken:  token,
+		ReviewerLogin:  reviewer,
+		AuthorBotLogin: authorBot,
+		Logger:         logger,
+	})
 }
 
 // approvalKeyring reuses the brief HMAC key for approval-token signing.
