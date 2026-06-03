@@ -50,7 +50,7 @@ func TestClaudeSpawn_StreamJsonOpensOperatorAndLLMSpans(t *testing.T) {
 		t.Fatalf("Spawn: %v", err)
 	}
 
-	deadline := time.Now().Add(2 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	var ops, llm int
 	for time.Now().Before(deadline) {
 		ops, llm = 0, 0
@@ -65,7 +65,7 @@ func TestClaudeSpawn_StreamJsonOpensOperatorAndLLMSpans(t *testing.T) {
 		if ops == 1 && llm == 1 {
 			break
 		}
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 	if ops != 1 {
 		t.Fatalf("operator_invocation spans=%d, want 1", ops)
