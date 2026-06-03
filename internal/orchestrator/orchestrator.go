@@ -110,6 +110,15 @@ type Config struct {
 	// Mirrors the W6 Config.Tracer pattern so callers stay on one DI
 	// seam across trace + metric.
 	Meter metric.Meter
+
+	// Clock is the wall-clock source for PollOnce + ScheduleOnce
+	// telemetry. Nil falls back to time.Now (production wiring). The
+	// crash-recovery paths (Recover, Heartbeat) intentionally do NOT
+	// route through Clock — they reflect real-world lock liveness and
+	// must keep using wall time so a deterministic test clock cannot
+	// mask a stuck heartbeat. Same shape as state.OpenWithClock,
+	// spawner.Config.Clock so tests share one injection seam.
+	Clock func() time.Time
 }
 
 // ResolveMeter returns the configured meter or falls back to the
@@ -157,6 +166,9 @@ func New(cfg Config) *Orchestrator {
 	}
 	if cfg.LockTTL <= 0 {
 		cfg.LockTTL = 15 * time.Minute
+	}
+	if cfg.Clock == nil {
+		cfg.Clock = time.Now
 	}
 	log := cfg.Logger
 	if log == nil {
@@ -299,7 +311,7 @@ func (o *Orchestrator) PollOnce(ctx context.Context) error {
 	}
 	defer func() { _ = lock.Release() }()
 
-	pollStartedAt := time.Now().UTC()
+	pollStartedAt := o.cfg.Clock().UTC()
 
 	if err := o.adapterSync.Sync(ctx, pollStartedAt); err != nil {
 		return fmt.Errorf("orchestrator: adapter sync: %w", err)
@@ -330,14 +342,14 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 
 	// Spec §3.3: tick.started + tick.completed are unconditional on
 	// every tick exit; no early return may skip the completion event.
-	startedAt := time.Now()
+	startedAt := o.cfg.Clock()
 	o.log.Info(string(obs.EventTickStarted))
 
 	ids, tickErr := o.sched.Tick(ctx)
 	evaluated := len(ids)
 	defer func() {
 		o.log.Info(string(obs.EventTickCompleted),
-			string(obs.KeyDurationMs), time.Since(startedAt).Milliseconds(),
+			string(obs.KeyDurationMs), o.cfg.Clock().Sub(startedAt).Milliseconds(),
 			string(obs.KeyWorkItemsEvaluated), int64(evaluated),
 		)
 	}()

@@ -81,6 +81,12 @@ type Reloader struct {
 	// OnReload fires after every doReload call, including no-op skips.
 	// Test hook for assertions (production wiring leaves nil).
 	OnReload func(Result)
+
+	// Clock is the wall-clock source for the per-reload Duration
+	// stamp. Nil falls back to time.Now. Same shape as the rest of
+	// the regatta clock seam so tests share one fake clock across
+	// reloader + downstream consumers.
+	Clock func() time.Time
 }
 
 // Result is the per-reload report emitted to OnReload + Logger.
@@ -315,11 +321,15 @@ func shouldHandleEvent(ev fsnotify.Event) bool {
 func (r *Reloader) doReload(ctx context.Context, trigger string) {
 	ctx, span := r.Tracer.Start(ctx, "authz.reload")
 	defer span.End()
-	start := time.Now()
+	clock := r.Clock
+	if clock == nil {
+		clock = time.Now
+	}
+	start := clock()
 
 	revBefore := r.Authorizer.CurrentRevision(r.Tenant)
 	sha, _, err := r.Loader.ActiveBundle(ctx, r.Tenant)
-	res := Result{Trigger: trigger, RevisionBefore: revBefore, Duration: time.Since(start)}
+	res := Result{Trigger: trigger, RevisionBefore: revBefore, Duration: clock().Sub(start)}
 	span.SetAttributes(
 		attribute.String("regatta.authz.reload.trigger", trigger),
 		attribute.String("regatta.authz.reload.revision_before", revBefore),
@@ -338,7 +348,7 @@ func (r *Reloader) doReload(ctx context.Context, trigger string) {
 	if revPrefix(sha) == revBefore {
 		res.Skipped = true
 		res.RevisionAfter = revBefore
-		res.Duration = time.Since(start)
+		res.Duration = clock().Sub(start)
 		span.SetAttributes(
 			attribute.String("regatta.authz.reload.revision_after", revBefore),
 			attribute.Bool("regatta.authz.reload.skipped", true),
@@ -361,7 +371,7 @@ func (r *Reloader) doReload(ctx context.Context, trigger string) {
 
 	revAfter := r.Authorizer.CurrentRevision(r.Tenant)
 	res.RevisionAfter = revAfter
-	res.Duration = time.Since(start)
+	res.Duration = clock().Sub(start)
 	span.SetAttributes(
 		attribute.String("regatta.authz.reload.revision_after", revAfter),
 		attribute.Int64("regatta.authz.reload.duration_micros", res.Duration.Microseconds()),

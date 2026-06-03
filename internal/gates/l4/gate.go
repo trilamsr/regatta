@@ -56,7 +56,11 @@ type InvokeResponse struct {
 // Nil Invoker returns an error rather than silently passing — gate
 // wiring is load-bearing and a missing adapter is a config bug.
 func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) {
-	started := time.Now()
+	clock := cfg.Clock
+	if clock == nil {
+		clock = time.Now
+	}
+	started := clock()
 	resolvedModel := cfg.Model
 	if resolvedModel == "" {
 		resolvedModel = ResolveModel("")
@@ -94,7 +98,7 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 			Severity: schemas.FindingHigh,
 			Claim:    err.Error(),
 		})
-		finalize(&gr, started)
+		finalize(&gr, started, clock)
 		emitVerdict(gr)
 		// Skip label per brief: nil-Invoker is a config-bug short-circuit;
 		// dashboards should distinguish it from a model-decided deny.
@@ -132,7 +136,7 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 				Claim:    fmt.Sprintf("model invocation errored (model=%s): %v", bucketModel, err),
 			})
 			gr.Verdict = schemas.VerdictAdvisory
-			finalize(&gr, started)
+			finalize(&gr, started, clock)
 			emitVerdict(gr)
 			emitInvocations(ctx, inst, verdictLabelNeedsReview, AllCategories)
 			inst.recordLatency(ctx, float64(gr.Telemetry.DurationMs))
@@ -196,7 +200,7 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 		}
 	}
 
-	finalize(&gr, started)
+	finalize(&gr, started, clock)
 	emitVerdict(gr)
 	emitInvocations(ctx, inst, metricVerdict(gr.Verdict, soFlipped), AllCategories)
 	inst.recordLatency(ctx, float64(gr.Telemetry.DurationMs))
@@ -223,9 +227,10 @@ func metricVerdict(v schemas.Verdict, soFlipped bool) string {
 	}
 }
 
-func finalize(gr *schemas.GateResult, started time.Time) {
-	gr.Telemetry.DurationMs = time.Since(started).Milliseconds()
-	gr.Heartbeat.FinishedAt = time.Now()
+func finalize(gr *schemas.GateResult, started time.Time, clock func() time.Time) {
+	now := clock()
+	gr.Telemetry.DurationMs = now.Sub(started).Milliseconds()
+	gr.Heartbeat.FinishedAt = now
 }
 
 // emitVerdict logs one structured gate.verdict event per Run so the

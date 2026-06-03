@@ -62,6 +62,12 @@ type Reloader struct {
 
 	// OnReload fires after every doReload, including no-op skips. Test hook.
 	OnReload func(Result)
+
+	// Clock is the wall-clock source for the per-reload Duration
+	// stamp. Nil falls back to time.Now. Same shape as the rest of
+	// the regatta clock seam so tests share one fake clock across
+	// the reload pipeline + downstream consumers.
+	Clock func() time.Time
 }
 
 // Result is the per-reload report.
@@ -248,7 +254,11 @@ func shouldHandleEvent(ev fsnotify.Event, base string) bool {
 func (r *Reloader) doReload(ctx context.Context, trigger string) {
 	_, span := r.Tracer.Start(ctx, "l4.prompt.reload")
 	defer span.End()
-	start := time.Now()
+	clock := r.Clock
+	if clock == nil {
+		clock = time.Now
+	}
+	start := clock()
 
 	prev := active.Load()
 	res := Result{Trigger: trigger, RevisionBefore: prev.sha}
@@ -261,7 +271,7 @@ func (r *Reloader) doReload(ctx context.Context, trigger string) {
 	if err != nil {
 		res.Err = err
 		res.RevisionAfter = prev.sha
-		res.Duration = time.Since(start)
+		res.Duration = clock().Sub(start)
 		span.RecordError(err)
 		span.AddEvent("regatta.gates.l4.reload.failed")
 		r.Logger.Error("l4 reload: read failed (retain-last-good)", "trigger", trigger, "err", err)
@@ -273,7 +283,7 @@ func (r *Reloader) doReload(ctx context.Context, trigger string) {
 	if err != nil {
 		res.Err = err
 		res.RevisionAfter = prev.sha
-		res.Duration = time.Since(start)
+		res.Duration = clock().Sub(start)
 		span.RecordError(err)
 		span.AddEvent("regatta.gates.l4.reload.failed")
 		r.Logger.Error("l4 reload: parse failed (retain-last-good)", "trigger", trigger, "err", err)
@@ -285,7 +295,7 @@ func (r *Reloader) doReload(ctx context.Context, trigger string) {
 	if next.sha == prev.sha {
 		res.Skipped = true
 		res.RevisionAfter = prev.sha
-		res.Duration = time.Since(start)
+		res.Duration = clock().Sub(start)
 		span.SetAttributes(
 			attribute.String("regatta.gates.l4.reload.revision_after", prev.sha),
 			attribute.Bool("regatta.gates.l4.reload.skipped", true),
@@ -298,7 +308,7 @@ func (r *Reloader) doReload(ctx context.Context, trigger string) {
 
 	active.Store(next)
 	res.RevisionAfter = next.sha
-	res.Duration = time.Since(start)
+	res.Duration = clock().Sub(start)
 	span.SetAttributes(
 		attribute.String("regatta.gates.l4.reload.revision_after", next.sha),
 		attribute.Int64("regatta.gates.l4.reload.duration_micros", res.Duration.Microseconds()),

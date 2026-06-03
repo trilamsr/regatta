@@ -130,7 +130,19 @@ const HeartbeatStale = 2 * 30 * time.Minute // 30 min cap × 2
 // The function is intentionally branchy and verbose; the design
 // thesis is that this code path is auditable by a human reading the
 // switch statement, not by reading a prompt.
+//
+// Wall clock is sourced from time.Now; callers that need to pin
+// the "now" axis (heartbeat staleness, deterministic replay) use
+// RouteVerdictsAt instead.
 func RouteVerdicts(child Child, verify VerifyFunc, capCfg DepthCap) Decision {
+	return RouteVerdictsAt(child, verify, capCfg, time.Now())
+}
+
+// RouteVerdictsAt is RouteVerdicts with an explicit "now" — the
+// heartbeat-staleness pivot. Lets tests + replay assertions fix the
+// clock without coupling RouteVerdicts to a Clock injection seam its
+// callers don't otherwise carry.
+func RouteVerdictsAt(child Child, verify VerifyFunc, capCfg DepthCap, now time.Time) Decision {
 	if verify == nil {
 		return Decision{Action: HaltHuman, Reason: "no verifier configured"}
 	}
@@ -138,7 +150,6 @@ func RouteVerdicts(child Child, verify VerifyFunc, capCfg DepthCap) Decision {
 		return Decision{Action: HaltHuman, Reason: "no verdicts to route"}
 	}
 
-	now := time.Now()
 	for _, v := range child.Verdicts {
 		if err := verify(v); err != nil {
 			return Decision{
