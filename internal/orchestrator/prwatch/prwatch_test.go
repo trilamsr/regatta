@@ -420,6 +420,131 @@ func TestVersionAtLeast(t *testing.T) {
 	}
 }
 
+// TestWatcher_ForkPRHead_RejectsAttackerSuffixWithoutAllowlist rejects `attacker-agent-1` under strict mode + empty allowlist (#587).
+func TestWatcher_ForkPRHead_RejectsAttackerSuffixWithoutAllowlist(t *testing.T) {
+	lister := &stubLister{
+		byBranch: map[string][]PullRequest{},
+		byTitlePrefix: map[string][]PullRequest{
+			"[agent-1]": {{
+				Number:      77,
+				HeadRefOid:  "attacksha",
+				State:       "OPEN",
+				HeadRefName: "attacker-agent-1",
+				Title:       "[agent-1] hijack",
+				AuthorLogin: "attacker",
+			}},
+		},
+	}
+	db := statetest.OpenDB(t)
+	// Empty allowlist + StrictForkAuthor=true ⇒ only literal branch match passes.
+	w, err := New(Config{
+		DB: db, BranchFn: branchFor, Lister: lister,
+		StrictForkAuthor: true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	a := driveToRunning(t, db, "WORK-1")
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	got, err := db.GetAgent(context.Background(), a.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.State != state.AgentRunning {
+		t.Fatalf("state=%s, want running (attacker suffix rejected under strict mode)", got.State)
+	}
+}
+
+// TestWatcher_ForkPRHead_AcceptsAllowlistedAuthor accepts fork PRs from an allowlisted author under strict mode (#587).
+func TestWatcher_ForkPRHead_AcceptsAllowlistedAuthor(t *testing.T) {
+	lister := &stubLister{
+		byBranch: map[string][]PullRequest{},
+		byTitlePrefix: map[string][]PullRequest{
+			"[agent-1]": {{
+				Number:      88,
+				HeadRefOid:  "trustedsha",
+				State:       "OPEN",
+				HeadRefName: "weirdname",
+				Title:       "[agent-1] trusted",
+				AuthorLogin: "operator",
+			}},
+		},
+	}
+	db := statetest.OpenDB(t)
+	w, err := New(Config{
+		DB: db, BranchFn: branchFor, Lister: lister,
+		StrictForkAuthor:   true,
+		AllowedForkAuthors: []string{"operator"},
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	a := driveToRunning(t, db, "WORK-1")
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	got, err := db.GetAgent(context.Background(), a.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.State != state.AgentPROpen {
+		t.Fatalf("state=%s, want pr_open (allowlisted author)", got.State)
+	}
+	if got.PRSHA != "trustedsha" {
+		t.Fatalf("pr_sha=%s, want trustedsha", got.PRSHA)
+	}
+}
+
+// TestWatcher_BranchRenameThreshold_Configurable fires `agent_branch_renamed` at a per-watcher override (#631).
+func TestWatcher_BranchRenameThreshold_Configurable(t *testing.T) {
+	lister := &stubLister{byBranch: map[string][]PullRequest{
+		"regatta/agent-1": {{Number: 7, HeadRefOid: "abc123", State: "OPEN"}},
+	}}
+	db := statetest.OpenDB(t)
+	w, err := New(Config{
+		DB: db, BranchFn: branchFor, Lister: lister,
+		BranchRenameThreshold: 3, // override the default 12
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	a := driveToRunning(t, db, "WORK-1")
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("initial sweep: %v", err)
+	}
+	// Branch renamed: 2 sub-threshold misses, then one threshold-crossing.
+	lister.mu.Lock()
+	lister.byBranch = map[string][]PullRequest{}
+	lister.mu.Unlock()
+	for i := 0; i < 2; i++ {
+		if err := w.Sweep(context.Background()); err != nil {
+			t.Fatalf("sub-threshold sweep %d: %v", i, err)
+		}
+	}
+	pre, err := db.ListEventsByKindSince(context.Background(), "agent_branch_renamed", 0, 100)
+	if err != nil {
+		t.Fatalf("list events pre: %v", err)
+	}
+	if len(pre) != 0 {
+		t.Fatalf("pre-threshold agent_branch_renamed=%d, want 0", len(pre))
+	}
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("threshold sweep: %v", err)
+	}
+	got, err := db.ListEventsByKindSince(context.Background(), "agent_branch_renamed", 0, 100)
+	if err != nil {
+		t.Fatalf("list events post: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("agent_branch_renamed=%d, want 1 at threshold=3", len(got))
+	}
+	if !got[0].AgentID.Valid || got[0].AgentID.Int64 != a.ID {
+		t.Fatalf("event agent_id=%v, want %d", got[0].AgentID, a.ID)
+	}
+}
+
 // TestNew_MissingDeps surfaces wiring bugs at boot.
 func TestNew_MissingDeps(t *testing.T) {
 	db := statetest.OpenDB(t)

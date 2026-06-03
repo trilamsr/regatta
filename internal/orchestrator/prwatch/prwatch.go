@@ -50,13 +50,20 @@ import (
 // instead of a runtime failure inside the inner sweep loop.
 const MinGHVersion = "2.40.0"
 
-// BranchRenameThreshold is the consecutive-empty-sweep count after
+// DefaultBranchRenameThreshold is the consecutive-empty-sweep count after
 // which Sweep emits `agent_branch_renamed` for an agent in pr_open
 // (issue #520). 12 ticks × 5s default cadence ≈ 1 minute — long
 // enough to ride out an in-flight `gh pr list` blip; short enough that
 // the operator sees the substrate signal within one minute of
-// renaming a branch out from under an agent.
-const BranchRenameThreshold = 12
+// renaming a branch out from under an agent. Repos with different
+// commit cadences override via Config.BranchRenameThreshold (issue #631).
+const DefaultBranchRenameThreshold = 12
+
+// BranchRenameThreshold preserves the public name historically used by
+// the const so external callers + telemetry payload remain stable.
+//
+// Deprecated: read Watcher.branchRenameThreshold via the Config knob.
+const BranchRenameThreshold = DefaultBranchRenameThreshold
 
 // PullRequest is the GH PR view the watcher consumes. Mirrors gh's
 // JSON shape so the production lister can decode `gh pr list --json
@@ -97,6 +104,30 @@ type Config struct {
 	VersionProbe GHVersionProbe
 	Logger       *slog.Logger
 	Tracer       trace.Tracer
+
+	// BranchRenameThreshold overrides DefaultBranchRenameThreshold for
+	// repos whose commit cadence differs from the spec default. Zero
+	// (the zero value) picks DefaultBranchRenameThreshold so existing
+	// callers keep the spec'd 12-tick window. Issue #631.
+	BranchRenameThreshold int
+
+	// AllowedForkAuthors is the username allowlist that gates the
+	// title-prefix fallback (issue #587). When non-empty AND
+	// StrictForkAuthor is true, a fork-pushed PR matches the agent
+	// only when its AuthorLogin is in this list — the head-suffix
+	// guard alone accepts `attacker-agent-1`, which is insufficient
+	// against a hostile fork user who controls both branch name AND
+	// title. Same-repo branches (HeadRefName == BranchFn(agentID))
+	// bypass this gate because the upstream `--head` filter already
+	// proves repo-control.
+	AllowedForkAuthors []string
+
+	// StrictForkAuthor enables the AllowedForkAuthors gate (issue #587).
+	// Default false preserves the historical suffix-only behaviour;
+	// operators flip this on when their threat model elevates to
+	// hostile-fork-user (multi-tenant repo, public bug-bounty surface,
+	// etc.). The reopen-trigger noted on #587.
+	StrictForkAuthor bool
 }
 
 // Watcher owns the running↔pr_open reconciliation. One per
@@ -109,6 +140,18 @@ type Watcher struct {
 	versionProbe GHVersionProbe
 	log          *slog.Logger
 	tracer       trace.Tracer
+
+	// branchRenameThreshold is the per-watcher consecutive-empty-sweep
+	// fire count for agent_branch_renamed (issue #631). Resolved at
+	// New() from Config.BranchRenameThreshold or DefaultBranchRenameThreshold.
+	branchRenameThreshold int
+
+	// allowedForkAuthors is the precomputed set form of Config.AllowedForkAuthors
+	// so per-sweep lookups stay O(1). Empty when StrictForkAuthor is false.
+	allowedForkAuthors map[string]struct{}
+
+	// strictForkAuthor mirrors Config.StrictForkAuthor (#587).
+	strictForkAuthor bool
 
 	// missCount tracks consecutive empty-PR sweeps per agent in
 	// pr_open. Indexed by agent ID. Bounded by the size of the
@@ -142,15 +185,29 @@ func New(cfg Config) (*Watcher, error) {
 	if titlePrefix == nil {
 		titlePrefix = DefaultTitlePrefix
 	}
+	threshold := cfg.BranchRenameThreshold
+	if threshold <= 0 {
+		threshold = DefaultBranchRenameThreshold
+	}
+	var allow map[string]struct{}
+	if len(cfg.AllowedForkAuthors) > 0 {
+		allow = make(map[string]struct{}, len(cfg.AllowedForkAuthors))
+		for _, a := range cfg.AllowedForkAuthors {
+			allow[a] = struct{}{}
+		}
+	}
 	return &Watcher{
-		db:           cfg.DB,
-		branchFn:     cfg.BranchFn,
-		titlePrefix:  titlePrefix,
-		lister:       cfg.Lister,
-		versionProbe: cfg.VersionProbe,
-		log:          log,
-		tracer:       tracer,
-		missCount:    make(map[int64]int),
+		db:                    cfg.DB,
+		branchFn:              cfg.BranchFn,
+		titlePrefix:           titlePrefix,
+		lister:                cfg.Lister,
+		versionProbe:          cfg.VersionProbe,
+		log:                   log,
+		tracer:                tracer,
+		branchRenameThreshold: threshold,
+		allowedForkAuthors:    allow,
+		strictForkAuthor:      cfg.StrictForkAuthor,
+		missCount:             make(map[int64]int),
 	}, nil
 }
 
@@ -232,7 +289,10 @@ func (w *Watcher) sweepOne(ctx context.Context, a state.Agent) {
 	// match the expected branch literally OR end with the
 	// `agent-N` suffix so an unrelated head ref (e.g. `topic/x`)
 	// cannot impersonate the agent via the title fence alone.
-	prs = filterImpersonators(prs, branch, agentSuffix(a.ID), w.log, a.ID)
+	// Issue #587 elevates the guard: when strictForkAuthor is set,
+	// the suffix-only path must also pass the AllowedForkAuthors
+	// gate so `attacker-agent-1` from an unknown author is rejected.
+	prs = w.filterImpersonators(prs, branch, agentSuffix(a.ID), a.ID)
 	pr := pickPR(prs, w.log, a.ID)
 
 	switch a.State {
@@ -358,20 +418,20 @@ func (w *Watcher) observeHeadChanged(ctx context.Context, a state.Agent, pr Pull
 }
 
 // observeBranchLost handles the issue #520 case: an agent in
-// pr_open whose branch has gone empty for BranchRenameThreshold
+// pr_open whose branch has gone empty for branchRenameThreshold
 // consecutive sweeps. Emits one `agent_branch_renamed` event so the
 // reaper / future re-router has an actionable substrate seam, then
 // resets the per-agent counter so a re-attached branch can re-fire
-// `agent_pr_opened` cleanly.
+// `agent_pr_opened` cleanly. Threshold is per-watcher tunable (#631).
 func (w *Watcher) observeBranchLost(ctx context.Context, a state.Agent) {
 	w.missCount[a.ID]++
-	if w.missCount[a.ID] < BranchRenameThreshold {
+	if w.missCount[a.ID] < w.branchRenameThreshold {
 		return
 	}
 	payload, _ := json.Marshal(struct {
 		PrevSHA   string `json:"prev_sha"`
 		Threshold int    `json:"miss_threshold"`
-	}{a.PRSHA, BranchRenameThreshold})
+	}{a.PRSHA, w.branchRenameThreshold})
 	if err := w.db.RecordEvent(ctx, a.ID, "agent_branch_renamed", string(payload)); err != nil {
 		w.log.Warn("prwatch.record_event_failed",
 			string(obs.KeyAgentID), a.ID,
@@ -383,7 +443,7 @@ func (w *Watcher) observeBranchLost(ctx context.Context, a state.Agent) {
 	w.log.Warn("pr_watcher.branch_lost",
 		string(obs.KeyAgentID), a.ID,
 		string(obs.KeyWorkItemID), a.WorkItemID,
-		"miss_threshold", BranchRenameThreshold,
+		"miss_threshold", w.branchRenameThreshold,
 	)
 	// Reset so the operator can re-attach a branch without the
 	// watcher re-firing on every subsequent sweep.
@@ -404,27 +464,57 @@ func agentSuffix(agentID int64) string {
 // issue #522: the title-prefix fallback alone would let a fork user
 // open `[agent-N] hijack` on an unrelated branch and steal the
 // correlation. Logged once per drop so the operator notices.
-func filterImpersonators(prs []PullRequest, branch, suffix string, log *slog.Logger, agentID int64) []PullRequest {
+//
+// Issue #587 hardens the suffix-only path: a `HasSuffix(head, "agent-1")`
+// check accepts `attacker-agent-1` from a hostile fork user. When
+// strictForkAuthor is on, suffix-match PRs additionally require an
+// allowlisted AuthorLogin; same-repo `head == branch` PRs bypass the
+// gate because the upstream --head filter already proves repo-control.
+func (w *Watcher) filterImpersonators(prs []PullRequest, branch, suffix string, agentID int64) []PullRequest {
 	out := prs[:0]
 	for _, pr := range prs {
 		head := pr.HeadRefName
-		// gh's --head match (same-repo case) always sets HeadRefName
-		// to the literal branch; that path is the trusted one. The
-		// title-prefix fallback path provides whatever the fork user
-		// named their branch — so require the suffix match there.
-		if head == branch || strings.HasSuffix(head, suffix) || head == "" {
-			// head=="" guards the in-memory test stub case where
-			// callers omit the HeadRefName field. Production gh
-			// always populates it via `--json headRefName`.
+		// Same-repo branch (or empty head from in-memory test stubs)
+		// — trusted, bypass the suffix + author gates.
+		if head == branch || head == "" {
 			out = append(out, pr)
 			continue
 		}
-		log.Warn("pr_watcher.title_prefix_impersonator_filtered",
-			string(obs.KeyAgentID), agentID,
-			"pr_number", pr.Number,
-			"head_ref_name", head,
-			"author", pr.AuthorLogin,
-		)
+		// Issue #587: allowlisted fork authors are trusted regardless
+		// of head ref name. The author identity carries the trust here
+		// (typed by the operator at boot), so a fork user the operator
+		// vetted can ship from any branch name they choose.
+		if w.strictForkAuthor {
+			if _, ok := w.allowedForkAuthors[pr.AuthorLogin]; ok {
+				out = append(out, pr)
+				continue
+			}
+			// Strict mode + author not allowlisted: drop. We do NOT
+			// fall through to the suffix check because suffix-only
+			// accepts `attacker-agent-1` (the #587 vector). Once strict
+			// mode is on, author allowlist is the sole fork-trust path.
+			w.log.Warn("pr_watcher.fork_author_not_allowed",
+				string(obs.KeyAgentID), agentID,
+				"pr_number", pr.Number,
+				"head_ref_name", head,
+				"author", pr.AuthorLogin,
+			)
+			continue
+		}
+		// Non-strict legacy path (#522): suffix match is sufficient.
+		// Preserved for repos whose threat model has not elevated;
+		// operators flip StrictForkAuthor on when needed.
+		if !strings.HasSuffix(head, suffix) {
+			w.log.Warn("pr_watcher.title_prefix_impersonator_filtered",
+				string(obs.KeyAgentID), agentID,
+				"pr_number", pr.Number,
+				"head_ref_name", head,
+				"author", pr.AuthorLogin,
+				"reason", "head_ref_suffix_mismatch",
+			)
+			continue
+		}
+		out = append(out, pr)
 	}
 	return out
 }
