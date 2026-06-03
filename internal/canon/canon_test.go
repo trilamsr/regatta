@@ -173,3 +173,49 @@ func TestCanon_Marshal_PreservesLargeIntPrecision(t *testing.T) {
 		t.Fatalf("large-int precision lost:\n got=%s\nwant=%s", out, want)
 	}
 }
+
+// TestCanon_MigrationFixture_OneMACAfterUnify pins a payload that produced different MACs across the four pre-#553 forks.
+func TestCanon_MigrationFixture_OneMACAfterUnify(t *testing.T) {
+	t.Parallel()
+	// Pre-#553 divergence sources:
+	//   - schemas.CanonicalJSON: int64 → float64 round-trip drops
+	//     precision past 2^53. (Caught here via large-int field.)
+	//   - tick.CanonicaliseJSON: identical to canon for clean input,
+	//     diverged ONLY on dup-keys (last-wins vs error).
+	//   - approval.canonicalisePayload: shallow only — nested map
+	//     keys were NOT sorted, so a nested map iterated in random
+	//     order produced different bytes per run. (Caught here via
+	//     nested-map field built with many keys.)
+	//   - canon.CanonicaliseJSON: the strict reference.
+	//
+	// Post-unify every signing/hashing path routes through
+	// canon.Marshal or canon.CanonicaliseJSON, so this fixture must
+	// produce one byte sequence — and therefore one MAC.
+	payload := map[string]any{
+		"large_int": int64(1<<60) + 1,
+		"nested": map[string]any{
+			"zulu":    1,
+			"alpha":   2,
+			"mike":    3,
+			"yankee":  4,
+			"bravo":   5,
+			"oscar":   6,
+			"delta":   7,
+			"foxtrot": 8,
+		},
+		"arr": []any{
+			map[string]any{"y": "y", "a": "a", "m": "m"},
+		},
+	}
+	const want = `{"arr":[{"a":"a","m":"m","y":"y"}],"large_int":1152921504606846977,"nested":{"alpha":2,"bravo":5,"delta":7,"foxtrot":8,"mike":3,"oscar":6,"yankee":4,"zulu":1}}`
+	// Stability: same input → same bytes across 64 runs.
+	for i := 0; i < 64; i++ {
+		got, err := Marshal(payload)
+		if err != nil {
+			t.Fatalf("Marshal: %v", err)
+		}
+		if string(got) != want {
+			t.Fatalf("migration-fixture drift at iter %d:\n got=%s\nwant=%s", i, got, want)
+		}
+	}
+}

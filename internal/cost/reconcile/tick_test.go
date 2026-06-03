@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/canon"
 	"github.com/trilamsr/regatta/internal/cost/spend"
 	"github.com/trilamsr/regatta/internal/obs"
 )
@@ -638,7 +639,7 @@ func TestReconciler_AnthropicResponseSig_IsSHA256OfCanonicalBody(t *testing.T) {
 
 func canonicalSHA256(t *testing.T, body []byte) string {
 	t.Helper()
-	canonical, err := CanonicaliseJSON(body)
+	canonical, err := canon.CanonicaliseJSON(body)
 	if err != nil {
 		t.Fatalf("canonicalise: %v", err)
 	}
