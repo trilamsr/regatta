@@ -3,18 +3,10 @@
 # Usage: bash scripts/cleanup-merged-branches.sh [--dry-run] [--allow-stale] [--include-closed]
 #
 # Three passes:
-#   1. PR-merged batch pass: branches whose name matches a merged PR's
-#      headRefName (`gh pr list --state merged --limit 200`).
-#   2. Per-branch PR-state probe: for any surviving local branch, query
-#      `gh pr list --search "head:$b" --state all` and delete if the PR
-#      is MERGED. Catches squash-merge cases where origin's branch ref
-#      was not pruned (so pass 3's [gone] marker never fires) and where
-#      `--limit 200` truncated the batch in pass 1. See feedback_root_cause.
-#   3. Gone-upstream pass: branches whose tracked upstream was deleted
-#      (git's [gone] marker). Catches the case where the local branch
-#      name differs from the pushed headRefName (e.g. `git push origin
-#      foo:bar`, or worktree-named tracking) so the PR-merged pass alone
-#      never recognizes the local branch. See issue #111.
+#   1. Batch: merged-PR headRefName match (`gh pr list --state merged --limit 200`).
+#   2. Per-branch PR-state probe: catches squash-merges (origin ref not pruned,
+#      so pass 3's [gone] marker never fires) and pass-1 `--limit 200` truncation.
+#   3. Gone-upstream: catches local-name-differs-from-headRefName (issue #111).
 #
 # Flags:
 #   --dry-run         Print intended actions; perform none.
@@ -58,10 +50,8 @@ if [ -z "$default_branch" ]; then
   default_branch=main
 fi
 
-# Shared deletion helper: drop any pinning worktree, then drop the branch.
-# `force_flag` selects `-D` (squash-merge / merged-PR cases — branch tip is
-# not git-ancestor of default, so `-d` would refuse) vs `-d` (gone-upstream
-# pass, where ancestry was already proven and `-d` is the safer guard).
+# `-D` for merged-PR passes (squash tip isn't ancestor of default, `-d` would
+# refuse); `-d` for gone-upstream where ancestry was already proven.
 delete_branch_and_worktree() {
   local b="$1" force_flag="$2" reason="$3"
   for wt in $(git worktree list --porcelain | awk -v B="refs/heads/$b" '
@@ -83,16 +73,8 @@ for b in $merged; do
   delete_branch_and_worktree "$b" -D ""
 done
 
-# Pass 2 — per-branch PR-state probe. For every surviving local branch,
-# ask gh whether a PR exists with that head. Catches squash-merge cases
-# where pass 1's batch missed the branch (`--limit 200` truncation, or
-# local branch name diverging from headRefName via an exact `head:` match
-# below). `--include-closed` opts into deleting CLOSED-state branches.
-#
-# We probe a bounded set: only local branches that still exist. Each
-# probe is one gh call — O(N_local_branches) net cost. Failures are
-# soft (echo skip + continue) so a transient gh outage doesn't block
-# pass 3.
+# Pass 2 — per-branch PR-state probe. One `gh` call per local branch; soft-fail
+# so transient gh outage doesn't block pass 3.
 for b in $(git for-each-ref --format='%(refname:short)' refs/heads/); do
   [ "$b" = "$default_branch" ] && continue
   [ "$b" = "$current" ] && continue
