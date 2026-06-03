@@ -1,7 +1,13 @@
+---
+title: "Scheduler filter-helper consolidation (closes #251)"
+status: shipped
+summary: "Consolidate `applyApprovalGates` / `applyCostGovernor` / `applyL4Gate` into shared `filter.Apply` helper. No runtime change. Landed via #698."
+---
+
 # Scheduler filter-helper consolidation (closes #251)
 
 Owner: scheduler  
-Status: spec  
+Status: shipped (#251 / #698)  
 Closes: #251 once implementer wave lands
 
 ```release-notes

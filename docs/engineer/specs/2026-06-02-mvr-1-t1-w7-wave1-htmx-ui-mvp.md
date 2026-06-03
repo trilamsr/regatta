@@ -1,6 +1,7 @@
 ---
 title: "MVR-1 T1 W7 Wave 1 — htmx operator dashboard MVP"
-status: active
+status: archived
+supersedes_by: 2026-06-02-operator-console-design.md
 summary: "First external-facing UI surface. Read-only 5-panel dashboard (active agents, in-flight PRs, recent merges, today's cost, green-clock progress) served by `regatta serve --ui-addr`. htmx 2.0.4 + Pico CSS 2.0.6 + Go html/template, all vendored under `internal/web/ui/`. 5s polling, no SSE, no write paths, no auth (localhost-bind default). One dedicated read-only sqlite WAL connection. Mutations stay CLI-only."
 ---
 

@@ -1,6 +1,6 @@
 ---
 title: "MVR-3-T1 Sigstore — cosign behind signer adapter (skeleton-tier pre-fetch)"
-status: active
+status: skeleton-prefetch
 summary: Pre-fetch skeleton for MVR-3-T1 cosign-keyless wedge gated behind the P3.8 signer adapter; full spec re-spawns when MVR-3 trigger fires (5 paying customers OR cosign-specific customer ask). Locks scope, prior-art, risks, test plan, dep-order so the trigger-time dispatch is a fill-in rather than a green-field design.
 ---
 

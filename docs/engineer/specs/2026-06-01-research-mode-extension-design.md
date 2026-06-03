@@ -1,3 +1,9 @@
+---
+title: "Research-Mode Extension — autonomous empirical AI/CS research on existing primitives"
+status: skeleton-prefetch
+summary: "Phase X wedge per `docs/engineer/briefs/2026-06-01-self-host-first.md`. Ships AFTER Phase S1 → S2 → S3 land. `WorkItem.kind=\"research\"` discriminator + four methodology gates (p-hack, statistical-power, leakage, statistical-test) + nightly reproducibility cron. Zero new schemas/adapters/tables."
+---
+
 # Spec: Research-Mode Extension — autonomous empirical AI/CS research on existing regatta primitives
 
 _Author: design subagent, 2026-06-01 (v1). Source-of-truth: `docs/wedges/research-mode.md` (thesis) + `docs/engineer/briefs/2026-06-01-regatta-research-vision.md` (vision) + adversarial review of original 6-component synthesis (70% cut by reviewer subagent)._

@@ -1,3 +1,10 @@
+---
+title: "MVP-3 W7 Wave 7.2 — Admin DAG list + run detail pages (T8 + T9)"
+status: archived
+supersedes_by: 2026-06-02-operator-console-design.md
+summary: "W7 Wave 7.2 — `GET /runs/` admin DAG list + `GET /runs/{run_id}` run detail. Server-rendered, htmx-progressive. Superseded by operator-console design."
+---
+
 # MVP-3 W7 Wave 7.2 — Admin DAG list + run detail pages (T8 + T9, design spec)
 
 _Author: design subagent, 2026-06-01. Wave-extension of `docs/engineer/specs/2026-06-01-w7-operator-web-ui-design.md` (W1). Source-of-truth: that W1 spec §1 scope, §3.2 package layout, §3.6 auth, §3.10 data sources. Umbrella issue: [#183](https://github.com/trilamsr/regatta/issues/183)._

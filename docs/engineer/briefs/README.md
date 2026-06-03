@@ -18,6 +18,6 @@ Strategic vision that survives sessions. One brief per inflection point. Briefs 
 
 - Locked design (goes in `../specs/`).
 - Accepted decisions for shipped milestones (goes in `../../rfcs/` with a monotonic number).
-- Per-iteration plans, dispatch prompts, working reviews (stay under `docs/superpowers/`, gitignored, one-shot).
+- Per-iteration plans, dispatch prompts, working reviews — kept locally under a gitignored scratch path (operator's choice), one-shot.
 
 Promotion criterion: a brief survives the work it triggered. If the work shipped and the brief's framing is no longer load-bearing, archive by replacement (write a successor brief that supersedes by name).

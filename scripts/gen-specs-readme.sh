@@ -13,8 +13,11 @@
 # minus README.md. Each spec may carry an optional YAML-ish frontmatter:
 #   ---
 #   title: One-line title to render in the index (overrides H1).
-#   status: active | shipped | archived  (default: active)
+#   status: active | shipped | archived | superseded | skeleton-prefetch
+#           (default: active)
 #   summary: One-line description shown next to the link.
+#   supersedes_by: filename of replacement spec (optional; used when
+#                  status=superseded or status=archived).
 #   ---
 # If no frontmatter, the first H1 line becomes the title and the summary
 # is empty. status defaults to active.
@@ -71,6 +74,7 @@ with open(path, "r", encoding="utf-8", errors="replace") as fh:
 title = ""
 status = "active"
 summary = ""
+supersedes_by = ""
 
 # YAML-ish frontmatter: opening '---' on line 1, closing '---' before any
 # content. Keys we recognize: title, status, summary. Unknown keys ignored.
@@ -96,6 +100,8 @@ if lines and lines[0].strip() == "---":
                 status = v.lower()
             elif k in ("summary", "description"):
                 summary = v
+            elif k in ("supersedes_by", "superseded_by", "supersededby"):
+                supersedes_by = v
         body = lines[end + 1:]
     else:
         body = lines
@@ -113,13 +119,20 @@ if not title:
     # Filename without extension as last resort.
     title = re.sub(r"\.md$", "", base)
 
-if status not in ("active", "shipped", "archived"):
+if status not in ("active", "shipped", "archived", "superseded", "skeleton-prefetch"):
     status = "active"
 
 # Single-line guarantees — TAB is the field separator.
 title = title.replace("\t", " ").replace("\n", " ").strip()
 summary = summary.replace("\t", " ").replace("\n", " ").strip()
 status = status.replace("\t", " ").strip()
+supersedes_by = supersedes_by.replace("\t", " ").replace("\n", " ").strip()
+
+# If the spec declares a replacement, append a parenthetical hint to the
+# summary so the rendered index surfaces it without a separate column.
+if supersedes_by:
+    hint = f"superseded by `{supersedes_by}`"
+    summary = f"{summary} ({hint})" if summary else hint
 
 print(f"{status}\t{base}\t{title}\t{summary}")
 PY
@@ -178,7 +191,9 @@ BANNER
   }
 
   emit_section "Active / next-wave specs" "active" ""
+  emit_section "Skeleton-prefetch (Phase X)" "skeleton-prefetch" "Pre-fetch skeletons gated behind a Phase X reopen-trigger (per \`docs/engineer/briefs/2026-06-01-self-host-first.md\` §1). Material elaboration deferred until trigger fires."
   emit_section "Shipped" "shipped" "Specs whose implementation has landed; retained for archaeology."
+  emit_section "Superseded" "superseded" "Designs replaced by a later spec. The successor is named in each row."
   emit_section "Archived" "archived" "Superseded or abandoned designs; retained so links from older PRs still resolve."
 
   cat <<'TRAILER'
@@ -210,9 +225,10 @@ BANNER
 
 - Strategic vision (goes in `../briefs/`).
 - Accepted decisions for shipped milestones (goes in `../../rfcs/`).
-- Per-iteration drafts, plans, dispatch prompts, working reviews, superseded specs (stay under `docs/superpowers/`, gitignored, one-shot).
+- Per-iteration drafts, plans, dispatch prompts, working reviews — kept locally under a gitignored scratch path (operator's choice; `.gitignore` ignores `docs/superpowers/` by historical convention), one-shot.
+- Superseded specs — mark `status: superseded` (with `supersedes_by:` pointing at the replacement) and keep the file so historical PR links resolve.
 
-Per-iteration scratch lives in `docs/superpowers/` and is gitignored on purpose; the final-state, tracked design lives here.
+Per-iteration scratch stays local and gitignored; the final-state, tracked design lives here.
 
 ## Related RFCs (shipped milestone decisions)
 
