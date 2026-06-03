@@ -145,8 +145,26 @@ func (d *DB) HeartbeatLock(ctx context.Context, agentID int64) (int64, error) {
 
 // ReleaseAgentLocks deletes every lock held by agentID. Called by the
 // reaper on terminal state transitions.
+//
+// ReleaseAgentLocks owns its own tx. The rejection-router escalation
+// path uses ReleaseAgentLocksTx via DB.WithTx so the lock delete
+// commits atomically with the gates_failed -> escalated transition
+// (issue #477).
 func (d *DB) ReleaseAgentLocks(ctx context.Context, agentID int64) (int64, error) {
 	res, err := d.sql.ExecContext(ctx,
+		`DELETE FROM locks WHERE agent_id = ?`, agentID)
+	if err != nil {
+		return 0, fmt.Errorf("state: release agent locks: %w", err)
+	}
+	return res.RowsAffected()
+}
+
+// ReleaseAgentLocksTx is the tx-aware variant of ReleaseAgentLocks.
+// The caller owns the tx lifecycle so the delete can commit atomically
+// with sibling writes (e.g. the rejection-router escalation tx that
+// also flips state and appends the audit event).
+func (d *DB) ReleaseAgentLocksTx(ctx context.Context, tx *sql.Tx, agentID int64) (int64, error) {
+	res, err := tx.ExecContext(ctx,
 		`DELETE FROM locks WHERE agent_id = ?`, agentID)
 	if err != nil {
 		return 0, fmt.Errorf("state: release agent locks: %w", err)

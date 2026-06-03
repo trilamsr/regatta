@@ -2,6 +2,8 @@ package rejectionrouter_test
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -171,6 +173,67 @@ func TestTick_LabelerFailure_RetriedNextTick(t *testing.T) {
 	}
 }
 
+// TestTick_KthEscalation_AtomicRollbackOnPartialFailure pins issue #477: a mid-tx fault between the K-th gates_running->gates_failed and gates_failed->escalated transitions must roll back both writes so the next Tick re-applies the escalation rather than stranding the agent at gates_failed with rejection_count=K.
+func TestTick_KthEscalation_AtomicRollbackOnPartialFailure(t *testing.T) {
+	ctx := context.Background()
+	db := openDB(t)
+	id := newAgentInGatesRunning(t, db, "wi-atom", "sha1")
+	mustAcquireLock(t, db, id, "wi-atom")
+
+	// Pre-charge the counter so the next rejection is the K-th. Bypass
+	// the state machine via the same TransitionAgent path the router
+	// would use to keep the row internally consistent.
+	for i := 0; i < 2; i++ {
+		if _, err := db.TransitionAgent(ctx, id, state.AgentGatesFailed,
+			state.AgentMutation{IncrementRejection: true}); err != nil {
+			t.Fatalf("pre-charge transition %d: %v", i, err)
+		}
+		cycleBackToGatesRunning(t, db, id, "sha1")
+	}
+
+	labeler := &fakeLabeler{}
+	r := rejectionrouter.New(rejectionrouter.Config{DB: db, K: 3, Labeler: labeler})
+
+	// Inject a fault that fires after the gates_running -> gates_failed
+	// write inside the escalation tx but before commit. Pre-fix the
+	// router used two independent txs, so the first commit survived and
+	// the second never happened — stranding the agent at gates_failed
+	// with rejection_count=K. Post-fix both writes share one tx; the
+	// rollback must restore state and rejection_count.
+	wantErr := errors.New("injected fault for atomicity test")
+	rejectionrouter.SetTxHook(r, func(*sql.Tx) error { return wantErr })
+
+	mustRecordRejection(t, db, id, "sha1")
+	if err := r.Tick(ctx); err == nil {
+		t.Fatalf("Tick: want error from injected fault; got nil")
+	} else if !errors.Is(err, wantErr) {
+		t.Fatalf("Tick err=%v; want wraps %v", err, wantErr)
+	}
+
+	got := mustGetAgent(t, db, id)
+	if got.State != state.AgentGatesRunning {
+		t.Errorf("state=%q; want %q (full rollback on mid-tx fault)", got.State, state.AgentGatesRunning)
+	}
+	if got.RejectionCount != 2 {
+		t.Errorf("rejection_count=%d; want 2 (counter rolled back with the transition)", got.RejectionCount)
+	}
+
+	// Cursor unchanged: clear the hook, Tick again, the same event drives the agent to escalated.
+	rejectionrouter.SetTxHook(r, nil)
+	if err := r.Tick(ctx); err != nil {
+		t.Fatalf("Tick retry: %v", err)
+	}
+	got = mustGetAgent(t, db, id)
+	if got.State != state.AgentEscalated {
+		t.Errorf("state after retry=%q; want %q", got.State, state.AgentEscalated)
+	}
+	if got.RejectionCount != 3 {
+		t.Errorf("rejection_count after retry=%d; want 3", got.RejectionCount)
+	}
+	if n := countLocks(t, db, id); n != 0 {
+		t.Errorf("locks held after retry=%d; want 0", n)
+	}
+}
 
 func openDB(t *testing.T) *state.DB {
 	t.Helper()
