@@ -24,6 +24,7 @@ import (
 	"github.com/trilamsr/regatta/internal/cost/gate"
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/gates/l4"
+	"github.com/trilamsr/regatta/internal/orchestrator/merge"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -164,6 +165,13 @@ type Config struct {
 	// clock to the same instant for fully deterministic latency
 	// histograms.
 	Clock func() time.Time
+
+	// MergeCoordinator + MergeWorker wire the gates_pass → auto-merge
+	// path (#612). Both nil = auto-merge disabled (--auto-merge=false
+	// default) so OnGatesPass becomes a no-op and the daemon stays
+	// operator-observable-equivalent to pre-c2.
+	MergeCoordinator *merge.Coordinator
+	MergeWorker      *merge.Worker
 }
 
 // ResolveMeter returns the configured meter or falls back lazily so a
