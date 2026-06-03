@@ -6,11 +6,7 @@ import (
 	"testing"
 )
 
-// TestReplay_EngineVersionSkew_EmitsWarning closes the WARN-mode branch
-// (#549 default). Brief produced under "v1"; replay running "v2" must
-// surface a SkewResult tagged "engine-skew-replay-from=v1 to=v2" that
-// callers (digest, program show) render verbatim. The non-strict path
-// MUST NOT return an error — the audit-loop stays unblocked.
+// TestReplay_EngineVersionSkew_EmitsWarning asserts WARN-mode tags skew without erroring so audit-loop stays unblocked.
 func TestReplay_EngineVersionSkew_EmitsWarning(t *testing.T) {
 	brief := &ProgramBrief{
 		ProgramID:     "m-aaaaaaaaaaaa",
@@ -33,9 +29,7 @@ func TestReplay_EngineVersionSkew_EmitsWarning(t *testing.T) {
 	}
 }
 
-// TestReplay_StrictMode_EngineVersionSkew_Refuses closes the STRICT
-// branch (#549 audit). Same skew, strict=true must return ErrEngineSkew
-// so the audit caller fails loud rather than tagging+continuing.
+// TestReplay_StrictMode_EngineVersionSkew_Refuses asserts strict=true returns ErrEngineSkew so audit fails loud.
 func TestReplay_StrictMode_EngineVersionSkew_Refuses(t *testing.T) {
 	brief := &ProgramBrief{
 		ProgramID:     "m-aaaaaaaaaaaa",
@@ -51,8 +45,7 @@ func TestReplay_StrictMode_EngineVersionSkew_Refuses(t *testing.T) {
 	}
 }
 
-// TestReplay_EngineVersionMatch_NoWarning closes the happy path: same
-// SHA, both clean, no tag emitted.
+// TestReplay_EngineVersionMatch_NoWarning asserts same-SHA clean-both emits no tag (happy path).
 func TestReplay_EngineVersionMatch_NoWarning(t *testing.T) {
 	sha := "abc123def456abc123def456abc123def456abc1"
 	brief := &ProgramBrief{ProgramID: "m-aaaaaaaaaaaa", EngineVersion: sha}
@@ -69,10 +62,7 @@ func TestReplay_EngineVersionMatch_NoWarning(t *testing.T) {
 	}
 }
 
-// TestReplay_BriefDirty_AlwaysSkewedEvenOnMatch closes the dirty-flag
-// branch. A dirty record-time build is inherently non-reproducible: the
-// SHA alone does not pin the source tree. Match-by-SHA-but-dirty must
-// surface as skew so the auditor knows the SHA proves nothing.
+// TestReplay_BriefDirty_AlwaysSkewedEvenOnMatch asserts dirty record-time build skews despite SHA match (non-reproducible).
 func TestReplay_BriefDirty_AlwaysSkewedEvenOnMatch(t *testing.T) {
 	sha := "abc123def456abc123def456abc123def456abc1"
 	brief := &ProgramBrief{
@@ -93,9 +83,7 @@ func TestReplay_BriefDirty_AlwaysSkewedEvenOnMatch(t *testing.T) {
 	}
 }
 
-// TestReplay_CurrentDirty_FlaggedAsSkew mirrors the prior case from the
-// replay side. Even a SHA match cannot prove reproducibility when the
-// CURRENT binary is dirty.
+// TestReplay_CurrentDirty_FlaggedAsSkew asserts dirty current-binary skews despite SHA match (replay-side mirror).
 func TestReplay_CurrentDirty_FlaggedAsSkew(t *testing.T) {
 	sha := "abc123def456abc123def456abc123def456abc1"
 	brief := &ProgramBrief{ProgramID: "m-aaaaaaaaaaaa", EngineVersion: sha}
@@ -109,10 +97,7 @@ func TestReplay_CurrentDirty_FlaggedAsSkew(t *testing.T) {
 	}
 }
 
-// TestReplay_UnknownEngineVersion_SkewsEvenInWarn covers the audit
-// false-green: a brief produced by a buildvcs=false binary stamps
-// "unknown". The replay path must NEVER treat "unknown" as match —
-// that's exactly the silent-rot bug #549 closes.
+// TestReplay_UnknownEngineVersion_SkewsEvenInWarn asserts "unknown"=="unknown" never counts as match (silent-rot guard).
 func TestReplay_UnknownEngineVersion_SkewsEvenInWarn(t *testing.T) {
 	brief := &ProgramBrief{ProgramID: "m-aaaaaaaaaaaa", EngineVersion: "unknown"}
 	current := EngineRef{Version: "unknown"}
@@ -125,10 +110,7 @@ func TestReplay_UnknownEngineVersion_SkewsEvenInWarn(t *testing.T) {
 	}
 }
 
-// TestReplay_EmptyEngineVersion_SkewsEvenInWarn closes the migration
-// branch: a pre-#549 brief (no engine_version stamp) must surface as
-// skew, not silently treated as match. Otherwise the audit pipeline
-// would call it green.
+// TestReplay_EmptyEngineVersion_SkewsEvenInWarn asserts pre-#549 unstamped brief surfaces as skew, not silent-match.
 func TestReplay_EmptyEngineVersion_SkewsEvenInWarn(t *testing.T) {
 	brief := &ProgramBrief{ProgramID: "m-aaaaaaaaaaaa", EngineVersion: ""}
 	current := EngineRef{Version: "abc123def456abc123def456abc123def456abc1"}

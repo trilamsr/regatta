@@ -187,10 +187,7 @@ func TestRun_NoKey(t *testing.T) {
 	}
 }
 
-// TestProgram_RecordsEngineVersion asserts Run() stamps the current
-// binary's engine identity onto the brief. Without this the audit
-// pipeline (#549) cannot tell which engine produced a months-old
-// verdict.
+// TestProgram_RecordsEngineVersion asserts Run() stamps engine identity onto the brief for audit-pipeline replay.
 func TestProgram_RecordsEngineVersion(t *testing.T) {
 	plan, err := Run(context.Background(), PlannerOptions{
 		Client:    &stubClient{plan: goodModelPlan()},
@@ -211,9 +208,7 @@ func TestProgram_RecordsEngineVersion(t *testing.T) {
 	}
 }
 
-// TestProgram_EngineDirty_BoolPersisted asserts the dirty bool round-
-// trips through Sign() and the EngineRef helper. A clean SHA on a
-// dirty binary is the false-green the audit replay must refuse.
+// TestProgram_EngineDirty_BoolPersisted asserts dirty bool round-trips through Sign() so audit cannot false-green a dirty build.
 func TestProgram_EngineDirty_BoolPersisted(t *testing.T) {
 	plan, err := Run(context.Background(), PlannerOptions{
 		Client:    &stubClient{plan: goodModelPlan()},
@@ -240,10 +235,7 @@ func TestProgram_EngineDirty_BoolPersisted(t *testing.T) {
 	}
 }
 
-// TestProgram_EngineVersion_UnsignedTamperRejected closes the
-// adversarial branch: an operator who edits engine_version after
-// signing must fail signature verification. This proves the engine
-// fields are inside the signed payload, not appended afterward.
+// TestProgram_EngineVersion_UnsignedTamperRejected proves engine fields live inside the signed payload, not appended.
 func TestProgram_EngineVersion_UnsignedTamperRejected(t *testing.T) {
 	plan, err := Run(context.Background(), PlannerOptions{
 		Client:    &stubClient{plan: goodModelPlan()},
