@@ -7,10 +7,7 @@ import (
 	"testing"
 )
 
-// TestWithTx_BeginTxFails_ReturnsError pins the begin-failure path: a
-// closed *sql.DB makes BeginTx fail; WithTx surfaces the wrapped error
-// and never invokes fn (so a future caller cannot accidentally double-
-// rollback against a nil tx).
+// TestWithTx_BeginTxFails_ReturnsError pins begin-failure path: closed DB → wrapped error, fn never invoked.
 func TestWithTx_BeginTxFails_ReturnsError(t *testing.T) {
 	db := newTestDB(t)
 	if err := db.Close(); err != nil {
