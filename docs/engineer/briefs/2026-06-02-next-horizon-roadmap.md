@@ -36,7 +36,7 @@ trust-bar, and Phase-X surface fit (the matrix lives in PRs
 1. **Lowest time-to-value.** Multi-PR-per-day shape is native; single-tenant binary acceptable; public repo audit-trail already public — no new trust contract.
 2. **UX-first per the decision-priority spine.** Solo maintainer UX = self-operator UX. CLI flow shipping in Phase S3 IS the v1 product surface.
 3. **Marketing flywheel.** Persona-A wins are public. Every green PR on a popular repo carries organic discovery; persona-B/C/D wins are private.
-4. **Discriminator vs Claude Code Dynamic Workflows.** Persona A needs the multi-PR ledger (cost cap + signed audit + queue), not just "ran an agent in a session." CC owns one-shot; regatta owns the queue. MVR-3-T6 (§14) makes regatta a **superset**: hosts DW-style LLM-authored scripts inside the gate envelope, with substrate-replay and signed handoffs DW lacks.
+4. **Discriminator vs Claude Code Dynamic Workflows.** Persona A needs the multi-PR ledger (cost cap + signed audit + queue), not just "ran an agent in a session." CC owns one-shot; regatta owns the queue. The superset story (MVR-3-T6 — hosts DW-style LLM-authored scripts inside the gate envelope with substrate-replay and signed handoffs DW lacks) is a 16-20 week commitment, NOT MVR-1's pitch. MVR-1's persona-A pitch stays "multi-PR ledger" alone; T7 (strategy refactor) is internal-only with zero customer-visible surface.
 5. **Phase-X minimization.** Persona A unblocks with W7 Wave 1 htmx + CLI-only. W8/W10/W11/W12 stay deferred.
 
 **Revenue path note.** Persona A's WTP is $0 in OSS mode; this brief
@@ -153,13 +153,16 @@ T7 is added for the Dynamic-Workflows-superset wedge — see §14.
 
 **Honest week estimate: 7 calendar weeks** (range 6-8).
 Composition: T1 2-3 wks + T2/T3/T4 dispatched as one program 2 wks
-+ T5 1-2 wks + T7 1 wk (parallel with T1). Basis: per-task adopt-row
-in `.regatta/items/mvr-1-t1-w7-wave1-htmx-ui-mvp.md`, `mvr-1-t2-
-regatta-init-bundle.md`, `mvr-1-t3-p38-scm-adapter-gitea-first.md`,
-`mvr-1-t7-dw-superset-strategy-iface.md`. T7 fans out under T1's
-dispatch slot (refactor-only; no new surface). Subagent-week vs
-calendar-week diverges because T2/T3/T4 fan out under one
-dispatch.
++ T5 1-2 wks + T7 1 wk (parallel-IF T1 surface is stable on
+strategy boundaries; otherwise sequence T7 after T1 — adds ~1 wk to
+range). Basis: per-task adopt-row in `.regatta/items/mvr-1-t1-w7-
+wave1-htmx-ui-mvp.md`, `mvr-1-t2-regatta-init-bundle.md`, `mvr-1-
+t3-p38-scm-adapter-gitea-first.md`. T7 spec filename `mvr-1-t7-
+dw-superset-strategy-iface.md` to-be-filed at MVR-1-T1 dispatch
+slot open (per `feedback_plan_subagent_dup_files` — implementer
+must NOT pick the filename; the dispatch prompt pins it). T7
+refactor-only; no new surface. Subagent-week vs calendar-week
+diverges because T2/T3/T4 fan out under one dispatch.
 
 **Abandon-criterion:** if MVR-1-T1 takes >4 wks OR no persona-A
 install lands within 60 days of MVR-1 ship (measured as GitHub
@@ -266,8 +269,15 @@ scheduler tick on dev fixture, halt + reassess against alternatives
 
 Zero bespoke wedges across four phases per
 `feedback_research_design_principles` adoption-first. DW-superset
-adds goja (pure-Go JS runtime) as the only new MVR-3 dep; all
-other DW pieces are refactors over shipped substrate.
+adds goja (pure-Go JS runtime, MIT) as the only new MVR-3 dep; all
+other DW pieces are refactors over shipped substrate. **Bespoke-
+wedge count caveat:** the goja sandbox-bridge layer (MVR-3-T6
+`bridge.go` + `sandbox.go`, ~400 LOC) IS new custom code — it
+counts as wedge surface, NOT a bespoke wedge in the
+`feedback_research_design_principles` sense (which targets
+reinvented orchestration/storage primitives). Sandbox bridge =
+necessary glue around an adopted runtime; treated as integration
+cost, not a wedge.
 
 ---
 
@@ -933,12 +943,29 @@ the gate envelope.
 ### 14.4 Abandon-criterion
 
 If MVR-1-T7 strategy refactor balloons past 2 weeks (>2× estimate)
-OR no inbound persona-A ask for ad-hoc workflow execution within
-30 days of MVR-2-T7 ship, demote MVR-3-T6 (runtime) to track-only.
-Pieces 1, 5, 4, 6 ship regardless — they earn their keep on
-internal velocity alone (every wave dispatch becomes a strategy
-instance, every dispatch run becomes a substrate-queryable
-artifact).
+OR no inbound persona-A/B/D ask for ad-hoc workflow execution
+within **60 days** of MVR-2-T7 ship (extended from 30 — UI adoption
+signal lags runtime demand by 6-8 weeks per reviewer feedback) OR
+zero pilot-customer runs a script via the `/workflows` UI in that
+window, demote MVR-3-T6 (runtime) to track-only. Pieces 1, 5, 4, 6
+ship regardless — they earn their keep on internal velocity alone
+(every wave dispatch becomes a strategy instance, every dispatch
+run becomes a substrate-queryable artifact).
+
+### 14.45 Load-bearing leftovers (tracking issues to file)
+
+Per `feedback_unaddressed_load_bearing` — every load-bearing
+leftover gets a filed tracking issue before MVR-3 dispatch:
+
+| Leftover | Filed-as | When |
+|---|---|---|
+| Substrate cardinality under 1000-agent-script load (16k events/run worst case). Stress-test design pre-T6. | `[FOLLOWUP] DW-superset T6 substrate cardinality stress-test` | Before MVR-2-T6 dispatch |
+| Script-DAG CUE schema spec (forbid unbounded loops, raw `spawn` without budget, missing convergence checks) | `[FOLLOWUP] DW-superset T5 script-plan CUE schema design` | Before MVR-3-T5 dispatch |
+| goja security audit + sandbox-escape blast-radius spike + supply-chain attestation (goja is permissive but JS runtimes have a long CVE history) | `[FOLLOWUP] DW-superset T6 goja security review + sandbox-escape spike` | Before MVR-3-T6 dispatch |
+
+All three filed when MVR-2-T1 dispatches (so MVR-3 plans see them
+load-bearing). Filing format: GH issue with `[FOLLOWUP]` prefix +
+`dw-superset` label.
 
 ### 14.5 Cuts within the wedge
 

@@ -54,7 +54,7 @@ PHASE MVR-1 — First external-customer wedges [BLOCKED on GREEN-CLOCK OR extern
     MVR-1 T7: strategy interface + concurrency-policy unify (DW-superset Wave A; pieces 1+5 from roadmap §14) — refactor only, parallel with T1, internal-velocity compound
   GATED on: customer-0 interview (#423 — must interview ≥3 OSS-maintainers-of-large-repos before dispatch). Estimated 7 weeks once customer-0 confirmed.
 
-PHASE MVR-2 — First paying customer [DEFERRED until MVR-1 closes + persona-B/D ask]
+PHASE MVR-2 — First paying customer [DEFERRED until MVR-1 closes AND 1 signed pilot LOI from persona-B/D per roadmap §2 Gate 2 tier 2]
   Per #433 §4 + §14. Adds two DW-superset pieces alongside W7 Wave 2/3:
     MVR-2 T1: W7 Wave 2 htmx (DAG read view + reviewer-rich PR UI)
     MVR-2 T2: W8 multi-tenant tenant_id routing
@@ -65,7 +65,7 @@ PHASE MVR-2 — First paying customer [DEFERRED until MVR-1 closes + persona-B/D
     MVR-2 T7: /workflows progress UI (DW-superset Wave A piece 6) — reuses W7 htmx scaffold
   Estimated 14 weeks.
 
-PHASE MVR-3 — 5+ paying customers + DW-superset capstone [DEFERRED]
+PHASE MVR-3 — 5+ paying customers + DW-superset capstone [DEFERRED until 5 paying customers signed across persona B/C/D per roadmap §2 Gate 2 tier 3 OR week 24 of MVR-3 window closes]
   Per #433 §4 + §14. Two new DW pieces alongside Sigstore/Stripe/blackboard/research-mode:
     MVR-3 T1: W10 Sigstore (cosign behind signer adapter)
     MVR-3 T2: W12 Stripe Metering behind billing adapter
