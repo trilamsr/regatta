@@ -48,7 +48,7 @@ while IFS= read -r file; do
       continue
     fi
     # Untagged. Allow if added within the window.
-    blame=$(git blame -L "$line_no,$line_no" --porcelain -- "$file" 2>/dev/null | head -3 || true)
+    blame=$(git blame -L "$line_no,$line_no" --porcelain -- "$file" 2>/dev/null | head -n 20 || true)
     ts=$(printf '%s\n' "$blame" | awk '/^author-time / {print $2; exit}')
     if [ -z "$ts" ]; then
       echo "stale-todo: $file:$line_no: untagged marker (blame unavailable; treat as stale)" >&2
