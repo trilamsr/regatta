@@ -332,7 +332,7 @@ If a future operator hits the serialized-throughput ceiling (>10 merges/min sust
 
 ## §9 Risks (8+, with pre-addressed mitigations)
 
-1. **`gh` CLI missing on host.** Operator misconfig. Mitigation: at orchestrator boot, the merge worker runs `gh --version` once; on `exec.ErrNotFound`, the worker logs `merge: gh CLI not found — install gh ≥ 2.40 from https://cli.github.com; merge worker disabled` and refuses to start. The substrate continues running without auto-merge (operator can still click Merge manually). Per `feedback_root_cause`: error message names the install command, not "robust handling".
+1. **`gh` CLI missing on host.** Operator misconfig. Mitigation: at orchestrator boot, the merge worker runs `gh --version` once; on `exec.ErrNotFound`, the worker logs `merge: gh CLI not found — install gh ≥ 2.40 from https://cli.github.com; merge worker disabled` and refuses to start. The substrate continues running without auto-merge (operator can still click Merge manually). Per `feedback_root_cause`: the error message names the exact install command and version floor, and the worker returns `ErrMergeUnavailable` to the scheduler instead of silently swallowing the failure.
 
 2. **`GH_TOKEN` missing or expired.** Detected via `OutcomeAuthExpired` classification. Mitigation: same retry-with-backoff path as rate-limit; after 3 consecutive failures, fire an `obs-alert` issue with severity `critical` and stop retrying that agent. Operator rotates the token via existing W6 secret-credential autonomic fetch (PHASE AUTONOMY §11 W6); on the next sweep, `Reconcile` picks the agent back up.
 
