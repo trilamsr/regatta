@@ -19,6 +19,14 @@
 //
 // Exit codes: 0 = clean, 1 = findings. Findings print one per line to
 // stdout in `file:line: reason: snippet` form so editors can navigate them.
+//
+// Boundary: this pass is AST-only — string-constant identifiers in a
+// concat chain (e.g. `const tableName = "substrate_events"`) are NOT
+// resolved through `go/types` / `go/packages`. The union we classify is
+// the bag of *string-literal* operands present in the ADD-chain. If a
+// caller hides every load-bearing token behind a non-literal binding,
+// the lint will under-report. A future pass can fold in go/packages
+// when callers materialize.
 package main
 
 import (
@@ -125,6 +133,10 @@ func isSubstratePackage(rel string) bool {
 }
 
 // scanFile parses one Go file and returns every violating SQL literal.
+// Per-literal scanning misses `"FROM " + tableConst + " WHERE " + scope`
+// — the substrate_events token sits alone and trips kind=? in isolation
+// (#234). First pass classifies the union of literal operands in each
+// top-level ADD-chain; second pass catches standalone literals.
 func scanFile(path string) ([]finding, error) {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
@@ -132,18 +144,59 @@ func scanFile(path string) ([]finding, error) {
 		return nil, err
 	}
 	var out []finding
+	seen := map[*ast.BasicLit]bool{}
+	handledExpr := map[*ast.BinaryExpr]bool{}
+
+	ast.Inspect(f, func(n ast.Node) bool {
+		be, ok := n.(*ast.BinaryExpr)
+		if !ok || be.Op != token.ADD {
+			return true
+		}
+		if handledExpr[be] {
+			return true
+		}
+		if !containsStringLit(be) {
+			return true
+		}
+		lits := collectStringConcatLits(be)
+		if len(lits) == 0 {
+			return true
+		}
+		// Children of this root chain must be skipped — ast.Inspect
+		// descends into them next.
+		markADDs(be, handledExpr)
+		var b strings.Builder
+		for _, l := range lits {
+			seen[l] = true
+			b.WriteString(unquote(l.Value))
+			b.WriteByte(' ')
+		}
+		union := b.String()
+		if !mentionsSubstrateEvents(union) {
+			return true
+		}
+		if reason, bad := classify(union); bad {
+			pos := fset.Position(be.Pos())
+			out = append(out, finding{
+				File:    path,
+				Line:    pos.Line,
+				Snippet: collapseWhitespace(union),
+				Reason:  reason + " (concat)",
+			})
+		}
+		return true
+	})
+
 	ast.Inspect(f, func(n ast.Node) bool {
 		lit, ok := n.(*ast.BasicLit)
 		if !ok || lit.Kind != token.STRING {
 			return true
 		}
-		s := lit.Value
-		if len(s) < 2 {
+		if seen[lit] {
 			return true
 		}
-		// Strip surrounding quote / backtick.
-		s = s[1 : len(s)-1]
-		if !mentionsSubstrateEvents(s) {
+		s := unquote(lit.Value)
+		if s == "" || !mentionsSubstrateEvents(s) {
 			return true
 		}
 		if reason, bad := classify(s); bad {
@@ -158,6 +211,67 @@ func scanFile(path string) ([]finding, error) {
 		return true
 	})
 	return out, nil
+}
+
+// markADDs records every nested ADD BinaryExpr under expr so the
+// outer-pass walker skips them after the root chain is classified.
+func markADDs(expr ast.Expr, set map[*ast.BinaryExpr]bool) {
+	be, ok := expr.(*ast.BinaryExpr)
+	if !ok || be.Op != token.ADD {
+		return
+	}
+	set[be] = true
+	markADDs(be.X, set)
+	markADDs(be.Y, set)
+}
+
+// containsStringLit returns true when expr has at least one STRING
+// BasicLit somewhere inside an ADD-chain. Non-ADD nodes terminate
+// recursion.
+func containsStringLit(expr ast.Expr) bool {
+	switch e := expr.(type) {
+	case *ast.BasicLit:
+		return e.Kind == token.STRING
+	case *ast.BinaryExpr:
+		if e.Op != token.ADD {
+			return false
+		}
+		return containsStringLit(e.X) || containsStringLit(e.Y)
+	}
+	return false
+}
+
+// collectStringConcatLits walks an ADD-chain and returns every STRING
+// BasicLit operand. Non-literal operands (idents, calls, etc.) are
+// dropped — the union represents the bytes we can see at lint time.
+func collectStringConcatLits(expr ast.Expr) []*ast.BasicLit {
+	var out []*ast.BasicLit
+	var walk func(ast.Expr)
+	walk = func(e ast.Expr) {
+		switch v := e.(type) {
+		case *ast.BasicLit:
+			if v.Kind == token.STRING {
+				out = append(out, v)
+			}
+		case *ast.BinaryExpr:
+			if v.Op != token.ADD {
+				return
+			}
+			walk(v.X)
+			walk(v.Y)
+		}
+	}
+	walk(expr)
+	return out
+}
+
+// unquote strips surrounding quotes/backticks from a raw BasicLit.Value
+// and returns "" when the input is shorter than 2 bytes.
+func unquote(raw string) string {
+	if len(raw) < 2 {
+		return ""
+	}
+	return raw[1 : len(raw)-1]
 }
 
 // mentionsSubstrateEvents catches the table name in any case and inside
