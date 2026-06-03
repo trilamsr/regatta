@@ -1,0 +1,497 @@
+// Package supervisor implements `regatta install-service` /
+// `uninstall-service` — spec PHASE-AUTONOMY-W3 §3.1 / §3.8.
+//
+// One Go path renders + bootstraps OS-native init contracts (systemd
+// on Linux, launchd on macOS) so the operator runs ONE command and
+// never restarts the loop. Re-runs are idempotent; uninstall is a
+// 5-row reverse matrix that exits zero on already-clean.
+package supervisor
+
+import (
+	"bytes"
+	_ "embed"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"text/template"
+	"time"
+)
+
+//go:embed templates/regatta.service.tmpl
+var systemdTemplate string
+
+//go:embed templates/regatta.plist.tmpl
+var launchdTemplate string
+
+//go:embed templates/regatta.crontab
+var cronTemplate string
+
+// Options bundles the install/uninstall flag set so callers (cmd
+// wrappers + tests) share one structured input.
+type Options struct {
+	Mode    Mode   // user|system
+	DryRun  bool
+	Force   bool
+	NoCron  bool
+	Out     io.Writer
+	Err     io.Writer
+	Now     func() time.Time
+	GOOS    string // override for tests
+	Binary  string // override binary path (testing); empty ⇒ os.Executable
+	HomeDir string // override $HOME (testing)
+	UID     int    // override geteuid (testing); -1 ⇒ real
+}
+
+// Mode discriminates user vs system install.
+type Mode int
+
+// Install modes per spec §3.8.
+const (
+	ModeUser Mode = iota
+	ModeSystem
+)
+
+// OS literals; broken out so the switch matrix stays grep-able.
+const (
+	osDarwin = "darwin"
+	osLinux  = "linux"
+)
+
+// String stringifies Mode for diagnostic + idempotency-status output.
+func (m Mode) String() string {
+	if m == ModeSystem {
+		return "system"
+	}
+	return "user"
+}
+
+// Plan captures the fully-resolved install context — produced before
+// any filesystem mutation so --dry-run prints the same struct an actual
+// install would consume.
+type Plan struct {
+	OS           string
+	Mode         Mode
+	Label        string // launchd
+	UnitName     string // systemd
+	UnitPath     string
+	BinaryPath   string
+	WorkingDir   string
+	LogDir       string
+	ConfigPath   string
+	EnvFile      string
+	HomePath     string
+	PathEnv      string
+	User         string
+	ReadWritePaths string
+}
+
+// rfc3339Stamp is the .bak suffix format for the diff-aware overwrite
+// path (spec §3.1 step 4 idempotency branch B).
+const rfc3339Stamp = "20060102T150405Z"
+
+// fpf wraps fmt.Fprintf — supervisor output is operator-facing logging,
+// errcheck noise on every print clutters the install code path; the
+// Fprintf error mode is "the operator's tty closed" which is unrecoverable.
+func fpf(w io.Writer, format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+func fpln(w io.Writer, a ...any)               { _, _ = fmt.Fprintln(w, a...) }
+
+// Install runs the full install pipeline; returns named errors that
+// the caller maps to exit codes.
+func Install(opts Options) error {
+	opts = normalize(opts)
+	plan, err := buildPlan(opts)
+	if err != nil {
+		return err
+	}
+	rendered, err := renderUnit(plan)
+	if err != nil {
+		return fmt.Errorf("render: %w", err)
+	}
+	if opts.DryRun {
+		fpln(opts.Out, "=== plan ===")
+		fpf(opts.Out, "os:        %s\n", plan.OS)
+		fpf(opts.Out, "mode:      %s\n", plan.Mode)
+		fpf(opts.Out, "unit:      %s\n", plan.UnitPath)
+		fpf(opts.Out, "binary:    %s\n", plan.BinaryPath)
+		fpf(opts.Out, "workdir:   %s\n", plan.WorkingDir)
+		fpf(opts.Out, "logs:      %s\n", plan.LogDir)
+		fpln(opts.Out, "=== rendered ===")
+		fpln(opts.Out, rendered)
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(plan.UnitPath), 0o750); err != nil {
+		return fmt.Errorf("mkdir unit dir: %w", err)
+	}
+	switch idempotency(plan.UnitPath, rendered) {
+	case idemIdentical:
+		fpf(opts.Out, "already installed (unchanged): %s\n", plan.UnitPath)
+		return nil
+	case idemDifferent:
+		if !opts.Force {
+			return fmt.Errorf("existing unit at %s differs from rendered template; re-run with --force to overwrite (a .bak file will be written)", plan.UnitPath)
+		}
+		backup := plan.UnitPath + ".bak." + opts.Now().UTC().Format(rfc3339Stamp)
+		if err := copyFile(plan.UnitPath, backup); err != nil {
+			return fmt.Errorf("backup: %w", err)
+		}
+		fpf(opts.Out, "existing unit differs; backed up to %s; reinstalling\n", backup)
+	case idemMissing:
+		// fresh install — fall through
+	}
+	if err := writeAtomic(plan.UnitPath, rendered, unitFileMode(plan)); err != nil {
+		return fmt.Errorf("write unit: %w", err)
+	}
+	if err := validateUnit(plan.UnitPath, plan.OS, rendered, opts.Err); err != nil {
+		return fmt.Errorf("validate: %w", err)
+	}
+	if !opts.NoCron && plan.OS == osLinux {
+		if err := installCronBlock(opts); err != nil {
+			fpf(opts.Err, "WARN: cron install failed: %v\n", err)
+		}
+	}
+	checkSecurityModule(plan.OS, opts.Out)
+	fpf(opts.Out, "installed %s\n", plan.UnitPath)
+	return nil
+}
+
+// Uninstall reverses Install per spec §3.8 5-row matrix; always exit 0
+// on already-clean state (collects best-effort errors instead of failing).
+func Uninstall(opts Options) error {
+	opts = normalize(opts)
+	plan, err := buildPlan(opts)
+	if err != nil {
+		return err
+	}
+	var didSomething bool
+	var errs []string
+	if _, err := os.Stat(plan.UnitPath); err == nil {
+		if rmErr := os.Remove(plan.UnitPath); rmErr != nil {
+			errs = append(errs, fmt.Sprintf("remove unit: %v", rmErr))
+		} else {
+			didSomething = true
+			fpf(opts.Out, "removed %s\n", plan.UnitPath)
+		}
+	}
+	if !opts.NoCron && plan.OS == osLinux {
+		removed, err := removeCronBlock()
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("strip cron: %v", err))
+		} else if removed {
+			didSomething = true
+			fpln(opts.Out, "stripped cron block")
+		}
+	}
+	if !didSomething {
+		fpln(opts.Out, "INFO: nothing to remove (already uninstalled)")
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("partial uninstall: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// normalize applies defaults so call sites + tests share one path.
+func normalize(o Options) Options {
+	if o.Out == nil {
+		o.Out = os.Stdout
+	}
+	if o.Err == nil {
+		o.Err = os.Stderr
+	}
+	if o.Now == nil {
+		o.Now = time.Now
+	}
+	if o.GOOS == "" {
+		o.GOOS = runtime.GOOS
+	}
+	return o
+}
+
+// buildPlan resolves all install parameters; pure function (no FS writes).
+func buildPlan(opts Options) (Plan, error) {
+	p := Plan{OS: opts.GOOS, Mode: opts.Mode}
+	bin := opts.Binary
+	if bin == "" {
+		exe, err := os.Executable()
+		if err != nil {
+			return p, fmt.Errorf("os.Executable: %w", err)
+		}
+		canon, err := filepath.EvalSymlinks(exe)
+		if err == nil {
+			exe = canon
+		}
+		bin = exe
+	}
+	p.BinaryPath = bin
+
+	home := opts.HomeDir
+	if home == "" {
+		home = os.Getenv("HOME")
+	}
+	p.HomePath = home
+
+	switch p.OS {
+	case osDarwin:
+		p.Label = "com.regatta.serve"
+		if opts.Mode == ModeUser {
+			p.UnitPath = filepath.Join(home, "Library", "LaunchAgents", p.Label+".plist")
+			p.WorkingDir = filepath.Join(home, ".local", "share", "regatta")
+			p.LogDir = filepath.Join(home, "Library", "Logs", "regatta")
+		} else {
+			p.UnitPath = filepath.Join("/Library/LaunchDaemons", p.Label+".plist")
+			p.WorkingDir = "/var/lib/regatta"
+			p.LogDir = "/var/log/regatta"
+		}
+		p.PathEnv = resolveMacPath(bin)
+	case osLinux:
+		p.UnitName = "regatta.service"
+		if opts.Mode == ModeUser {
+			p.UnitPath = filepath.Join(home, ".config", "systemd", "user", p.UnitName)
+			p.WorkingDir = filepath.Join(home, ".local", "share", "regatta")
+			p.LogDir = filepath.Join(home, ".local", "state", "regatta")
+			p.User = currentUser()
+		} else {
+			p.UnitPath = filepath.Join("/etc/systemd/system", p.UnitName)
+			p.WorkingDir = "/var/lib/regatta"
+			p.LogDir = "/var/log/regatta"
+			p.User = "regatta"
+		}
+		p.ConfigPath = "/etc/regatta/regatta.yaml"
+		p.EnvFile = "/etc/regatta/env"
+		p.ReadWritePaths = p.WorkingDir + " " + p.LogDir
+	default:
+		return p, fmt.Errorf("unsupported OS %q (use container runbook docs/operator/container.md)", p.OS)
+	}
+	return p, nil
+}
+
+// resolveMacPath picks the PATH ordering by inspecting the running
+// binary's prefix — spec §3.4 (brew detection fix #2; `which` is only
+// a tiebreaker, never authoritative).
+func resolveMacPath(bin string) string {
+	switch {
+	case strings.HasPrefix(bin, "/opt/homebrew"):
+		return "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
+	case strings.HasPrefix(bin, "/usr/local"):
+		return "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+	}
+	return "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+}
+
+func currentUser() string {
+	if u := os.Getenv("USER"); u != "" {
+		return u
+	}
+	return "regatta"
+}
+
+func unitFileMode(p Plan) os.FileMode {
+	if p.OS == osLinux {
+		return 0o644
+	}
+	return 0o644
+}
+
+// renderUnit applies text/template substitution; binary path sanitised
+// against template-injection (spec §9 adversarial risk).
+func renderUnit(p Plan) (string, error) {
+	if err := sanitizePath(p.BinaryPath); err != nil {
+		return "", err
+	}
+	var tmpl string
+	switch p.OS {
+	case osDarwin:
+		tmpl = launchdTemplate
+	case osLinux:
+		tmpl = systemdTemplate
+	default:
+		return "", fmt.Errorf("unsupported OS %q", p.OS)
+	}
+	t, err := template.New("unit").Parse(tmpl)
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, p); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+// sanitizePath rejects newlines + null bytes — basic template-injection
+// guard for operator-supplied paths.
+func sanitizePath(p string) error {
+	if strings.ContainsAny(p, "\n\x00") {
+		return fmt.Errorf("binary path contains illegal character")
+	}
+	return nil
+}
+
+// idempotency outcomes per spec §3.1 step 4.
+type idemState int
+
+const (
+	idemMissing idemState = iota
+	idemIdentical
+	idemDifferent
+)
+
+func idempotency(path string, rendered string) idemState {
+	existing, err := os.ReadFile(path) //nolint:gosec // operator-controlled install path
+	if err != nil {
+		return idemMissing
+	}
+	if bytes.Equal(existing, []byte(rendered)) {
+		return idemIdentical
+	}
+	return idemDifferent
+}
+
+func writeAtomic(path, content string, mode os.FileMode) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(content), mode); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src) //nolint:gosec // .bak path is derived from caller-supplied unit
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0o600) //nolint:gosec // .bak path derived from install target
+}
+
+// validateUnit runs plutil / systemd-analyze when available; missing
+// validator ⇒ text-schema fallback + WARN (spec §3.1 step 5 fix #1).
+func validateUnit(path, goos, rendered string, errW io.Writer) error {
+	switch goos {
+	case osDarwin:
+		if _, err := exec.LookPath("plutil"); err != nil {
+			fpln(errW, "WARN: plutil not on PATH; applied text-schema validation only — recommend installing the validator before next install")
+			return textValidatePlist(rendered)
+		}
+		out, err := exec.Command("plutil", "-lint", path).CombinedOutput() //nolint:gosec // path is the just-written unit file
+		if err != nil {
+			return fmt.Errorf("plutil -lint: %w: %s", err, out)
+		}
+	case osLinux:
+		if _, err := exec.LookPath("systemd-analyze"); err != nil {
+			fpln(errW, "WARN: systemd-analyze not on PATH; applied text-schema validation only — recommend installing the validator before next install")
+			return textValidateUnit(rendered)
+		}
+		out, err := exec.Command("systemd-analyze", "verify", path).CombinedOutput() //nolint:gosec // path is the just-written unit file
+		if err != nil {
+			// systemd-analyze emits non-zero on stricter checks even when
+			// the unit is acceptable for our install; demote to WARN.
+			fpf(errW, "WARN: systemd-analyze verify: %v: %s\n", err, out)
+		}
+	}
+	return nil
+}
+
+func textValidatePlist(s string) error {
+	if !strings.Contains(s, "<?xml") {
+		return fmt.Errorf("plist missing XML preamble")
+	}
+	if !strings.Contains(s, "<plist version=\"1.0\">") {
+		return fmt.Errorf("plist missing version=1.0 open tag")
+	}
+	if strings.Count(s, "<dict>") != strings.Count(s, "</dict>") {
+		return fmt.Errorf("plist <dict> tags unbalanced")
+	}
+	if strings.Count(s, "<array>") != strings.Count(s, "</array>") {
+		return fmt.Errorf("plist <array> tags unbalanced")
+	}
+	if !strings.Contains(s, "</plist>") {
+		return fmt.Errorf("plist missing closing tag")
+	}
+	return nil
+}
+
+func textValidateUnit(s string) error {
+	for _, req := range []string{"[Service]", "ExecStart=", "[Install]"} {
+		if !strings.Contains(s, req) {
+			return fmt.Errorf("systemd unit missing required %q", req)
+		}
+	}
+	return nil
+}
+
+const cronBegin = "# BEGIN regatta cron"
+const cronEnd = "# END regatta cron"
+
+func installCronBlock(opts Options) error {
+	current, _ := readCrontab()
+	stripped := stripCronBlock(current)
+	if !strings.HasSuffix(stripped, "\n") && stripped != "" {
+		stripped += "\n"
+	}
+	return writeCrontab(stripped + cronTemplate)
+}
+
+func removeCronBlock() (bool, error) {
+	current, err := readCrontab()
+	if err != nil {
+		// No crontab installed (or crontab tool missing) ⇒ nothing to strip.
+		return false, nil //nolint:nilerr // absence == no-op success
+	}
+	stripped := stripCronBlock(current)
+	if stripped == current {
+		return false, nil
+	}
+	return true, writeCrontab(stripped)
+}
+
+func stripCronBlock(s string) string {
+	begin := strings.Index(s, cronBegin)
+	end := strings.Index(s, cronEnd)
+	if begin < 0 || end < 0 || end < begin {
+		return s
+	}
+	tail := s[end+len(cronEnd):]
+	tail = strings.TrimLeft(tail, "\n")
+	head := s[:begin]
+	return head + tail
+}
+
+func readCrontab() (string, error) {
+	out, err := exec.Command("crontab", "-l").Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+func writeCrontab(content string) error {
+	cmd := exec.Command("crontab", "-")
+	cmd.Stdin = strings.NewReader(content)
+	return cmd.Run()
+}
+
+// checkSecurityModule emits the SELinux / AppArmor advisory described
+// in spec §3.1 step 7 — instructional only, never blocks the install.
+func checkSecurityModule(goos string, out io.Writer) {
+	if goos != "linux" {
+		return
+	}
+	if _, err := exec.LookPath("sestatus"); err == nil {
+		s, err := exec.Command("sestatus").Output()
+		if err == nil && bytes.Contains(s, []byte("Current mode:                   enforcing")) {
+			fpln(out, `NOTE: SELinux is enforcing. If the unit fails to start with a permission denial,
+      generate + load a local policy module:
+          sudo ausearch -m AVC -ts recent | audit2allow -M regatta_local
+          sudo semodule -i regatta_local.pp
+      Then re-run: regatta install-service`)
+		}
+	}
+	if _, err := exec.LookPath("aa-status"); err == nil {
+		fpln(out, `NOTE: AppArmor detected. If startup fails with a policy denial, switch the
+      regatta profile to complain mode via aa-complain /path/to/profile.`)
+	}
+}

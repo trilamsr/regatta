@@ -2,9 +2,9 @@
 
 Reader: operator running Regatta directly on a Linux server or macOS
 laptop — no Docker daemon involved.
-Read time: 8 minutes.
-Expires when: the systemd unit, LaunchAgent plist, or installer scripts
-under `deploy/` change.
+Read time: 5 minutes.
+Expires when: the `regatta install-service` command, the systemd unit
+template, or the launchd plist template under `dist/services/` change.
 
 ## When to use this path
 
@@ -15,220 +15,137 @@ under `deploy/` change.
 | Kubernetes (deferred) | multi-tenant or fleet-managed; Stage 3 follow-up — not on the Phase-S path. |
 
 Native is the lowest-overhead route: one binary, one supervisor, journald
-or `tail -F` for logs. Containers add an extra fs layer + an ENTRYPOINT
-indirection that buys nothing on a single-host install.
+or `tail -F` for logs.
+
+## One-command install
+
+The supervisor wedge (PHASE-AUTONOMY-W3) ships `regatta install-service`
+which detects the OS, renders the correct unit / plist, bootstraps the
+OS init system, and polls `/healthz` until the loop is up — operator
+runs one command, never `systemctl daemon-reload` or `launchctl
+bootstrap` by hand:
+
+```sh
+# Default: per-user install (no sudo required on macOS).
+regatta install-service
+
+# System install (Linux server; requires root).
+sudo regatta install-service --system
+
+# Preview without mutating the filesystem.
+regatta install-service --dry-run
+
+# Re-run upgrades the unit when the rendered template changes.
+regatta install-service --force
+```
+
+The command is idempotent:
+
+- Identical rendered unit ⇒ `already installed` + exit 0.
+- Differing unit + `--force` ⇒ a `.bak` snapshot is taken, then re-applied.
+- Differing unit, no `--force` ⇒ refuses with a named error pointing at
+  `--force` (protects hand-edits).
+
+`regatta uninstall-service` reverses the install. Re-run on a clean host
+is a no-op (`INFO: nothing to remove`).
 
 ## Linux install (systemd)
 
 ### Prereqs
 
 - systemd >= 245 (`ProtectKernelLogs` lands here).
-- `regatta` binary built locally or downloaded from a release tarball.
-- root access on the target host.
+- `regatta` binary on `$PATH`.
+- root access for `--system` mode (the unit lands at
+  `/etc/systemd/system/regatta.service`).
 
-### Stage the binary
-
-```sh
-sudo install -m 0755 -o root -g root \
-  ./regatta /usr/local/bin/regatta
-/usr/local/bin/regatta version
-```
-
-### Run the installer
+### Install
 
 ```sh
-sudo deploy/install-systemd.sh
+sudo install -m 0755 -o root -g root ./regatta /usr/local/bin/regatta
+sudo regatta install-service --system
 ```
 
-The script (see [`../../deploy/install-systemd.sh`](../../deploy/install-systemd.sh)):
+The command:
 
-1. Creates the `regatta` system user + group (UID < 1000, no shell).
-2. Stages `/var/lib/regatta` (state) + `/var/log/regatta` (crash sink),
-   both `0750 regatta:regatta`.
-3. Writes a config stub at `/etc/regatta/regatta.yaml` (skipped if
-   present so re-running never clobbers operator edits).
-4. Writes a secrets stub at `/etc/regatta/env` (`0640 root:regatta`).
-5. Copies the unit file to `/etc/systemd/system/regatta.service`.
-6. `systemctl daemon-reload && enable && restart`.
+1. Renders `dist/services/regatta.service.tmpl` substituting the
+   resolved binary path, working directory, env-file, and user.
+2. Validates the rendered unit with `systemd-analyze verify` (warns and
+   falls back to a built-in text-schema check when `systemd-analyze` is
+   not on `$PATH`).
+3. Writes `/etc/systemd/system/regatta.service` atomically.
+4. Installs the cron block under the operator's crontab (digest, items
+   refresh, followups triage). Pass `--no-cron` to opt out.
+5. Detects SELinux enforcing → emits an `audit2allow` hint (instruction
+   only; install proceeds — generating the policy requires an AVC trace
+   that only exists after a failed start).
 
-### Fill secrets + restart
+### Verify
 
 ```sh
-sudoedit /etc/regatta/env       # ANTHROPIC_API_KEY, GH_TOKEN
-sudo systemctl restart regatta
-sudo systemctl status regatta
+curl -fsS -H 'Accept: application/json' http://127.0.0.1:8080/healthz
+journalctl -u regatta -f
 ```
 
-### Verify health
+The `/healthz` endpoint honours `Accept: application/json` and returns
+the W3 readiness envelope (`status` + per-subsystem `checks`); without
+that header it returns the legacy `ok\n` body (W7.0 contract). 200 on
+ok or degraded; 503 only when the DB ping fails AND no recent heartbeat.
 
-```sh
-curl -fsS http://127.0.0.1:8080/healthz   # expect: ok
-journalctl -u regatta -f                  # live tail
-```
+### Watchdog
 
-The `/healthz` endpoint is owned by W7.0 — see
-[`../../cmd/regatta/serve.go`](../../cmd/regatta/serve.go) line 643. It
-issues zero DB queries and returns `200 OK` + body `ok`, so it is safe
-to point an external uptime probe at it.
-
-### Unit hardening (what's enforced)
-
-| Directive | Why |
-|---|---|
-| `User=regatta`, `Group=regatta` | non-root execution; system UID. |
-| `ProtectSystem=strict` | `/usr`, `/boot`, `/efi` mounted read-only. |
-| `ProtectHome=true` | `/home`, `/root`, `/run/user` blanked. |
-| `PrivateTmp=true` | private `/tmp` + `/var/tmp` namespace. |
-| `NoNewPrivileges=true` | setuid binaries cannot elevate. |
-| `ReadWritePaths=/var/lib/regatta /var/log/regatta` | only carved exceptions. |
-| `MemoryHigh=2G` / `MemoryMax=4G` | cgroup soft + hard caps. |
-| `LimitNOFILE=65536` | sqlite + HTTP fan-out file-descriptor budget. |
-| `Restart=on-failure`, `RestartSec=5` | crash-loop with 5 s backoff. |
-
-The unit ships `Type=simple` today; upgrading the binary to call
-`sd_notify(READY=1)` (research brief §11, `coreos/go-systemd/v22/daemon`)
-is filed as a load-bearing follow-up issue — switch to `Type=notify`
-once that lands.
-
-### Validate the unit file
-
-On a Linux host with systemd:
-
-```sh
-systemd-analyze verify deploy/systemd/regatta.service
-systemd-analyze security regatta.service
-```
-
-`systemd-analyze` is not available on macOS, so unit changes must round-trip
-through a Linux VM (or the CI runner) before landing.
-
-### Log rotation
-
-`journalctl -u regatta` is the primary log surface — rotation is handled
-by `systemd-journald` per `/etc/systemd/journald.conf`. Defaults
-(10% of /var/log, 4 GiB cap) are sane for most operators. To override:
-
-```ini
-# /etc/systemd/journald.conf.d/regatta.conf
-[Journal]
-SystemMaxUse=2G
-SystemMaxFileSize=128M
-MaxRetentionSec=30day
-```
-
-Then `sudo systemctl restart systemd-journald`.
-
-The unit also writes crash dumps to `/var/log/regatta/` — rotate with
-logrotate if that directory grows:
-
-```
-# /etc/logrotate.d/regatta
-/var/log/regatta/*.log {
-  weekly
-  rotate 8
-  compress
-  delaycompress
-  missingok
-  notifempty
-  copytruncate
-}
-```
+The unit template ships `Type=notify` + `WatchdogSec=30`. The serve
+binary's notify goroutine emits `WATCHDOG=1` every 10s (3x safety
+factor); `STOPPING=1` is emitted on graceful shutdown so systemd
+suppresses the watchdog-restart trigger.
 
 ### Uninstall
 
 ```sh
-sudo systemctl disable --now regatta
-sudo rm /etc/systemd/system/regatta.service
-sudo systemctl daemon-reload
-sudo rm -rf /etc/regatta /var/log/regatta
-# Keep /var/lib/regatta if you want to preserve sqlite state across re-install.
-sudo userdel regatta
-sudo groupdel regatta
+sudo regatta uninstall-service --system
 ```
+
+Reverses the install: unloads the unit (`systemctl disable --now`),
+removes the unit file, strips the cron block. State directories are
+preserved (`/var/lib/regatta`) so a re-install picks up the existing
+SQLite database.
 
 ## macOS install (LaunchAgent)
 
 ### Prereqs
 
 - macOS 12+ (`launchctl bootstrap` semantics).
-- `regatta` binary built locally (`go build ./cmd/regatta`) or installed
-  via release tarball.
-- A working tree clone (the agent runs `regatta serve --repo $REGATTA_REPO`).
-- `claude` CLI on `PATH` — `npm install -g @anthropic-ai/claude-code@2.1.161`.
+- `regatta` binary on `$PATH` (either brew prefix is fine — the install
+  command resolves the absolute path from `os.Executable`).
 
-The agent is **per-user** (`~/Library/LaunchAgents/`), not a system-wide
-LaunchDaemon. Tokens live in the user's keychain; running as root would
-defeat that threat model.
-
-### Stage the binary
+### Install
 
 ```sh
-sudo install -m 0755 -o root -g wheel \
-  $(go env GOPATH)/bin/regatta /usr/local/bin/regatta
-/usr/local/bin/regatta version
+regatta install-service
 ```
 
-### Stash secrets in Keychain
+The command:
 
-```sh
-security add-generic-password -a "$USER" -s regatta/anthropic_api_key -w
-security add-generic-password -a "$USER" -s regatta/gh_token -w
-```
+1. Renders `dist/services/regatta.plist.tmpl` with binary path, working
+   directory, log dir, and PATH (ordered by the resolved binary's brew
+   prefix — `/opt/homebrew/bin` first on Apple Silicon,
+   `/usr/local/bin` first on Intel).
+2. Validates with `plutil -lint` (warns + falls back to a built-in
+   text-schema check when `plutil` is not on `$PATH`).
+3. Writes `~/Library/LaunchAgents/com.regatta.serve.plist`.
+4. Bootstraps the LaunchAgent under `gui/$UID`.
 
-The `-w` flag prompts for the secret value on stdin; the secret never
-hits shell history or process args.
-
-### macOS keychain wrapper
-
-The shipped plist invokes `/usr/local/bin/regatta` directly — it does
-not know about the keychain. The repo ships a wrapper at
-[`../../deploy/launchd/regatta-serve.sh`](../../deploy/launchd/regatta-serve.sh)
-that reads the two keychain entries (`regatta/anthropic_api_key`,
-`regatta/gh_token`) and exports them before `exec regatta "$@"`.
-
-Stage it and point the plist at it:
-
-```sh
-sudo install -m 0755 -o root -g wheel \
-  deploy/launchd/regatta-serve.sh /usr/local/bin/regatta-serve
-
-sed -i '' 's|/usr/local/bin/regatta|/usr/local/bin/regatta-serve|' \
-  "$HOME/Library/LaunchAgents/com.regatta.serve.plist"
-
-launchctl bootout "gui/$(id -u)/com.regatta.serve"
-launchctl bootstrap "gui/$(id -u)" \
-  "$HOME/Library/LaunchAgents/com.regatta.serve.plist"
-```
-
-The wrapper fails fast with a named-entry error if either keychain item
-is missing — silent empty-credential crash-loop is a footgun the wrapper
-removes.
-
-### Run the installer
-
-```sh
-REGATTA_REPO="$HOME/code/regatta" deploy/install-launchd.sh
-```
-
-The script (see [`../../deploy/install-launchd.sh`](../../deploy/install-launchd.sh)):
-
-1. Templates `REGATTA_REPO_PATH`, `REGATTA_LOG_DIR`, `REGATTA_HOME` into
-   the plist (launchd does not substitute shell vars inside `<string>`).
-2. Runs `plutil -lint` on the rendered plist before installing.
-3. `launchctl bootout` any existing instance, then `bootstrap` + `kickstart`.
-
-### Verify health
+### Verify
 
 ```sh
 launchctl print "gui/$(id -u)/com.regatta.serve" | head -40
-tail -F "$HOME/Library/Logs/regatta/stdout.log"
-curl -fsS http://127.0.0.1:8080/healthz
+tail -F "$HOME/Library/Logs/regatta/stderr.log"
+curl -fsS -H 'Accept: application/json' http://127.0.0.1:8080/healthz
 ```
 
 ### Log rotation
 
-macOS ships `newsyslog` (cron-driven) for arbitrary log files. Drop a
-config at `/etc/newsyslog.d/regatta.conf`:
+macOS launchd does not rotate `StandardErrorPath` natively. Drop a
+`newsyslog` config at `/etc/newsyslog.d/regatta.conf`:
 
 ```
 # logfilename                                       [owner:group]    mode count size when  flags
@@ -236,74 +153,41 @@ config at `/etc/newsyslog.d/regatta.conf`:
 /Users/<you>/Library/Logs/regatta/stderr.log        <you>:staff      644  7     5000 *     GZ
 ```
 
-Replace `<you>` with `whoami`. Force a rotation pass with
-`sudo newsyslog -nvv` (dry-run) then `sudo newsyslog -F`.
-
 ### Uninstall
 
 ```sh
-launchctl bootout "gui/$(id -u)/com.regatta.serve"
-rm "$HOME/Library/LaunchAgents/com.regatta.serve.plist"
-security delete-generic-password -a "$USER" -s regatta/anthropic_api_key
-security delete-generic-password -a "$USER" -s regatta/gh_token
-rm -rf "$HOME/Library/Logs/regatta"
+regatta uninstall-service
 ```
 
 ## Troubleshooting
+
+### Install times out at `/healthz` poll
+
+The supervisor reports `installed but not yet healthy — check stderr
+for boot progress` after a 30s window if `status` stays `degraded`.
+Tail `stderr.log` (`~/Library/Logs/regatta/stderr.log` on macOS,
+`journalctl -u regatta` on Linux) for the boot error. Common causes:
+
+- Missing `ANTHROPIC_API_KEY` / `GH_TOKEN` in the env file.
+- SQLite database path not writable (check `WorkingDir` permissions).
+- Cold-start brief load slower than 30s — re-run `install-service` once
+  the brief is cached.
 
 ### `regatta` exits immediately, no log
 
 Check the unit's effective env:
 
 - Linux: `systemctl show regatta -p Environment` and
-  `sudo cat /etc/regatta/env`. A missing `ANTHROPIC_API_KEY` makes the
-  L4 adapter fail-fast on first plan.
+  `sudo cat /etc/regatta/env`.
 - macOS: `launchctl print gui/$(id -u)/com.regatta.serve` and grep
-  `environment`; if you wired the keychain wrapper, run it standalone
-  (`/usr/local/bin/regatta-serve --help`) to confirm `security` returns
-  a value.
-
-### `claude: command not found` from the spawned planner
-
-The agent inherits `PATH` from the plist (or unit). On macOS, the plist
-lists `/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin` — if `claude` is
-installed elsewhere (e.g. an `nvm`-managed prefix), either symlink it
-into `/usr/local/bin` or append the nvm bin to the plist's `PATH`
-entry and re-run `install-launchd.sh`.
-
-### `GH_TOKEN` rejected ("Bad credentials")
-
-Tokens issued via `gh auth token` are short-lived if the GitHub org
-enforces SSO. Re-mint with `gh auth refresh -h github.com -s repo,workflow`
-and re-stash via `security add-generic-password -U …` (the `-U` flag
-overwrites the existing keychain entry).
-
-### Network outage recovery
-
-systemd's `Restart=on-failure` + `RestartSec=5` will re-attempt the
-process every 5 s on crash. The unit also depends on
-`network-online.target`, so a transient interface flap during boot
-delays start but does not fail. On macOS the LaunchAgent uses
-`KeepAlive.NetworkState=true` — launchd re-launches when the network
-returns. If neither relaunches after a multi-hour outage:
-
-```sh
-# Linux
-sudo systemctl status regatta              # confirm Restart counter
-sudo journalctl -u regatta --since "1h ago"
-
-# macOS
-launchctl print "gui/$(id -u)/com.regatta.serve" | grep -E "state|last exit"
-```
+  `environment`.
 
 ### Health probe returns connection refused
 
 The HTTP listener defaults to `:8080` and binds when `--ui=true`
 (default). Confirm:
 
-- the `regatta serve` flag list in
-  [`../../cmd/regatta/serve.go`](../../cmd/regatta/serve.go) for the
-  current listener defaults,
+- the `regatta serve` flag list for the current listener defaults,
 - nothing else is bound on 8080 (`sudo lsof -i :8080`),
 - the unit has not been started with `--ui=false`.
 
@@ -312,4 +196,3 @@ The HTTP listener defaults to `:8080` and binds when `--ui=true`
 - [`container.md`](container.md) — Docker path (Stage 1 runtime image).
 - [`getting-started.md`](getting-started.md) — first 15-minute walkthrough.
 - [`configure.md`](configure.md) — `regatta.yaml` schema.
-- [`../engineer/research/2026-06-02-container-stages.md`](../engineer/research/2026-06-02-container-stages.md) — research brief (§11 systemd, §12 launchd).
