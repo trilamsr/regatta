@@ -198,3 +198,55 @@ func TestConfig_SoftCapModeEnforce_NoAckRequired(t *testing.T) {
 		t.Fatalf("ValidateConfig: %v; want nil (enforce mode never requires ack)", err)
 	}
 }
+
+// TestCUEValidate_CostCap_Accepted W5 cap block passes CUE.
+func TestCUEValidate_CostCap_Accepted(t *testing.T) {
+	yaml := baseYAML + `safety:
+  cost:
+    per_dag_usd: 100
+    cap:
+      daily_usd: 40.00
+      timezone: "America/Los_Angeles"
+      memoize_ttl_seconds: 60
+`
+	if err := validate.ValidateConfig([]byte(yaml)); err != nil {
+		t.Fatalf("ValidateConfig: %v; want nil (W5 cap block valid)", err)
+	}
+}
+
+// TestLoadCostCapSettings_AbsentReturnsZero W5 missing cap block → zero settings.
+func TestLoadCostCapSettings_AbsentReturnsZero(t *testing.T) {
+	yaml := baseYAML + "safety:\n  cost:\n    per_dag_usd: 100\n"
+	s, err := validate.LoadCostCapSettings([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadCostCapSettings: %v", err)
+	}
+	if s.CapMicro != 0 || s.TZ != "" || s.MemoizeTTL != 0 {
+		t.Fatalf("settings=%+v; want zero", s)
+	}
+}
+
+// TestLoadCostCapSettings_ParsesFloatUSDToMicro W5 yaml float coerces to int64 micro.
+func TestLoadCostCapSettings_ParsesFloatUSDToMicro(t *testing.T) {
+	yaml := baseYAML + `safety:
+  cost:
+    per_dag_usd: 100
+    cap:
+      daily_usd: 40.00
+      timezone: "UTC"
+      memoize_ttl_seconds: 60
+`
+	s, err := validate.LoadCostCapSettings([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadCostCapSettings: %v", err)
+	}
+	if s.CapMicro != 40_000_000 {
+		t.Fatalf("CapMicro=%d; want 40_000_000", s.CapMicro)
+	}
+	if s.TZ != "UTC" {
+		t.Fatalf("TZ=%q; want UTC", s.TZ)
+	}
+	if s.MemoizeTTL.String() != "1m0s" {
+		t.Fatalf("MemoizeTTL=%v; want 60s", s.MemoizeTTL)
+	}
+}

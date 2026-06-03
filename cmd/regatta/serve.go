@@ -285,6 +285,11 @@ func runServe(args []string) int {
 		logger.Printf("approval gates: %v", err)
 		return 2
 	}
+	costCapEnf, err := buildCostCapEnforcer(db, *repoRoot, clock, slogger)
+	if err != nil {
+		logger.Printf("cost cap: %v", err)
+		return 2
+	}
 	sched := scheduler.New(db, scheduler.Config{
 		LaneCaps:       map[string]int(laneCaps),
 		LockTTL:        *lockTTL,
@@ -292,6 +297,7 @@ func runServe(args []string) int {
 		OutputsSchemas: outputsSchemaResolverFor(loader),
 		Gate:           gate,
 		GateResolver:   gateResolver,
+		CostCap:        costCapEnf,
 		Clock:          clock,
 	})
 

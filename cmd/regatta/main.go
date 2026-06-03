@@ -62,6 +62,8 @@ var subcommands = []subcommand{
 	{subcmdAudit, runAudit},
 	{subcmdSecret, runSecret},
 	{subcmdStatus, runStatus},
+	{subcmdCost, runCost},
+	{subcmdResume, runResume},
 }
 
 func main() {
@@ -107,6 +109,8 @@ func usage(w io.Writer) {
   regatta audit verify --run-id <id> [--db <path>]    Walk recorded gate verdicts; print tool/version/det/hmac-status per gate
   regatta secret set|get|status                       Manage operator credentials in OS keychain (macOS) / pass (Linux) with env fallback
   regatta status [--refresh DUR] [--once]             Terminal live-status TUI (5 panels: subagents, PRs, merges, cost, green-clock)
+  regatta cost status [--db <path>] [--config <path>] Print W5 global daily-cap state (24h spend, cap, scheduler state, resume horizon)
+  regatta resume [--actor <id>] [--db <path>]         Lift the W5 cost-cap throttle until the next day rollover (operator override audit event)
   regatta version                                     Print build info
   regatta help                                        This message
 
