@@ -257,6 +257,21 @@ import "list"
 	// via in-tree PR is still the default; this is the escape hatch
 	// for operators who cannot fork. Spec §10 S2 + §3.8.
 	pricing_override_path?:     string
+	// cap is the optional global daily-spend ceiling
+	// (PHASE-AUTONOMY W5). When daily_usd > 0 the scheduler refuses
+	// new spawns once sum(spend_24h) >= cap; auto-resumes at
+	// TZ-aware day rollover. Absent or zero means per-scope-only
+	// (pre-W5 behaviour byte-equal).
+	cap?:                       #CostCap
+}
+
+// #CostCap is the global daily-cap block (spec PHASE-AUTONOMY W5 §4).
+// All fields optional — daily_usd absent OR zero degrades to per-scope
+// caps only.
+#CostCap: {
+	daily_usd?:           float & >=0
+	timezone?:            *"UTC" | string
+	memoize_ttl_seconds?: *60 | int & >=0 & <=3600
 }
 
 #Context: {

@@ -147,3 +147,19 @@ func loadCostReconcileSettingsFor(repoRoot string) validateconfig.CostReconcileS
 	}
 	return s
 }
+
+// loadCostCapSettingsFor returns the parsed safety.cost.cap settings
+// for repo rooted at repoRoot. Returns zero settings (CapMicro=0) when
+// no regatta.yaml exists OR no cap block is configured — degrades to
+// per-scope-only, matching pre-W5 behaviour byte-equal.
+func loadCostCapSettingsFor(repoRoot string) validateconfig.CostCapSettings {
+	data, err := os.ReadFile(filepath.Join(repoRoot, "regatta.yaml")) //nolint:gosec // operator repo-root; same posture as loadCostReconcileSettingsFor
+	if err != nil {
+		return validateconfig.CostCapSettings{}
+	}
+	s, err := validateconfig.LoadCostCapSettings(data)
+	if err != nil {
+		return validateconfig.CostCapSettings{}
+	}
+	return s
+}

@@ -20,6 +20,7 @@ var expectedSteps = []string{
 	"fold",
 	"gate_approval",
 	"gate_cost",
+	"gate_cost_cap",
 	"gate_l0",
 	"gate_l4",
 	"persist",

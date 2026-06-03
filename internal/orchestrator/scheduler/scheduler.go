@@ -151,6 +151,11 @@ type Config struct {
 	// L4GateResolver maps wi to L4 config + Input; nil disables the pass.
 	L4GateResolver L4GateResolver
 
+	// CostCap is the global daily-spend ceiling (spec PHASE-AUTONOMY W5).
+	// Allow=false halts the entire tick BEFORE any per-scope gate runs.
+	// nil short-circuits applyCostCap to identity (zero overhead).
+	CostCap CostCapGate
+
 	// Clock is the time source for tick + step latency measurement;
 	// nil falls back to time.Now (production wiring). Injection seam
 	// is the same shape as the rest of regatta (state.OpenWithClock,
@@ -339,6 +344,14 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 				return fmt.Errorf("scheduler: list spawnable: %w", e)
 			}
 			spawnable = sp
+			return nil
+		}},
+		// gate_cost_cap runs BEFORE per-scope evaluation so a saturated
+		// 24h budget halts the entire tick — saves the approval/cost/l4
+		// passes their per-candidate work when nothing is going to spawn
+		// anyway. Spec PHASE-AUTONOMY W5 §5.
+		{"gate_cost_cap", func() error {
+			spawnable = s.applyCostCap(ctx, spawnable)
 			return nil
 		}},
 		{"gate_approval", func() error {

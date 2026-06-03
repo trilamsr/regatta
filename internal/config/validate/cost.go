@@ -3,9 +3,12 @@ package validate
 import (
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/trilamsr/regatta/internal/cost/spend"
 )
 
 // ErrCostBlockEmpty fires when safety.cost is present but no cap
@@ -76,6 +79,16 @@ type rawCost struct {
 	EstimationStrategy *string `yaml:"estimation_strategy"`
 	ReconcileInterval  *string `yaml:"reconcile_interval"`
 	UsageAPIKeyEnv     *string `yaml:"usage_api_key_env"`
+	Cap                *rawCostCap `yaml:"cap"`
+}
+
+// rawCostCap mirrors safety.cost.cap (spec PHASE-AUTONOMY W5 §4).
+// DailyUSD=0 (or unset) disables the global ceiling; the per-scope
+// gate keeps enforcing the legacy caps unchanged.
+type rawCostCap struct {
+	DailyUSD          *float64 `yaml:"daily_usd"`
+	TZ                *string  `yaml:"timezone"`
+	MemoizeTTLSeconds *int     `yaml:"memoize_ttl_seconds"`
 }
 
 func (c *rawCost) anyCapSet() bool {
@@ -127,6 +140,48 @@ func LoadCostReconcileSettings(data []byte) (CostReconcileSettings, error) {
 	}
 	if cfg.Safety.Cost.UsageAPIKeyEnv != nil {
 		out.UsageAPIKeyEnv = *cfg.Safety.Cost.UsageAPIKeyEnv
+	}
+	return out, nil
+}
+
+// CostCapSettings is the subset of safety.cost.cap the W5 global-cap
+// enforcer needs at startup. CapMicro=0 disables the global ceiling
+// entirely (degrades to per-scope-only — matches pre-W5 behaviour).
+type CostCapSettings struct {
+	CapMicro   spend.USDMicro
+	TZ         string
+	MemoizeTTL time.Duration
+}
+
+// LoadCostCapSettings extracts safety.cost.cap.{daily_usd, timezone,
+// memoize_ttl_seconds} from regatta.yaml bytes (spec PHASE-AUTONOMY
+// W5 §4). Missing block returns zero value so cmd/regatta + serve.go
+// can no-op cleanly. Float USD coerces to int64 micro at boundary —
+// every downstream comparison is integer (#554).
+func LoadCostCapSettings(data []byte) (CostCapSettings, error) {
+	out := CostCapSettings{}
+	if len(data) == 0 {
+		return out, nil
+	}
+	var cfg rawConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return out, fmt.Errorf("cost-cap: %w", err)
+	}
+	if cfg.Safety == nil || cfg.Safety.Cost == nil || cfg.Safety.Cost.Cap == nil {
+		return out, nil
+	}
+	cc := cfg.Safety.Cost.Cap
+	if cc.DailyUSD != nil && *cc.DailyUSD > 0 {
+		// Half-away-from-zero — mirrors spend.FromUSD. Boundary
+		// conversion is the only place float touches money for the W5
+		// path; every comparison downstream is int64 micro.
+		out.CapMicro = spend.USDMicro(math.Round(*cc.DailyUSD * 1_000_000))
+	}
+	if cc.TZ != nil {
+		out.TZ = *cc.TZ
+	}
+	if cc.MemoizeTTLSeconds != nil && *cc.MemoizeTTLSeconds > 0 {
+		out.MemoizeTTL = time.Duration(*cc.MemoizeTTLSeconds) * time.Second
 	}
 	return out, nil
 }

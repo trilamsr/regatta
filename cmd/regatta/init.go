@@ -88,7 +88,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		action string
 	}
 	files := []decision{
-		{path: "regatta.yaml", blurb: "(your config; L0 gate enabled)", bytes: yamlBytes},
+		{path: defaultRegattaConfig, blurb: "(your config; L0 gate enabled)", bytes: yamlBytes},
 		{path: filepath.Join(".regatta", "sample.diff"), blurb: "(a demo attack against MILESTONES.md)", bytes: diffBytes},
 	}
 	for i := range files {

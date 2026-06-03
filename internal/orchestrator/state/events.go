@@ -97,6 +97,27 @@ func (d *DB) ListEventsByKindSince(ctx context.Context, kind string, sinceID int
 	return out, rows.Err()
 }
 
+// LatestEventByKind returns the most recent event of kind by
+// created_at, or sql.ErrNoRows when none exists. Cost-cap derives the
+// operator-resume window from the row's created_at: a Resume event
+// whose created_at >= today's day_anchor lifts the throttle until the
+// next rollover (spec PHASE-AUTONOMY W5 §3).
+func (d *DB) LatestEventByKind(ctx context.Context, kind string) (Event, error) {
+	row := d.sql.QueryRowContext(ctx,
+		`SELECT id, agent_id, kind, payload_json, created_at
+		 FROM events
+		 WHERE kind = ?
+		 ORDER BY created_at DESC, id DESC
+		 LIMIT 1`, kind)
+	var e Event
+	var created int64
+	if err := row.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
+		return Event{}, err
+	}
+	e.CreatedAt = time.Unix(created, 0).UTC()
+	return e, nil
+}
+
 // ListEvents returns events ordered by id ascending. Used by tests and
 // the audit log writer.
 func (d *DB) ListEvents(ctx context.Context, limit int) ([]Event, error) {
