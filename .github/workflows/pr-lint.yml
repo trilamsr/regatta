@@ -51,7 +51,7 @@ jobs:
                 *.md|docs/*) ;;
                 .github/*) ;;
                 scripts/*) ;;
-                Makefile|.gitignore|.gitattributes) ;;
+                Makefile|Makefile.d/*|.gitignore|.gitattributes) ;;
                 .claude/*|.mcp.json) ;;
                 *) skip=0; break ;;
               esac
