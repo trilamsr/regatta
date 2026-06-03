@@ -1,0 +1,18 @@
+# Operator-editable trigger thresholds. Loaded by internal/triggers
+# at boot; validated against slo/triggers.cue on make slo-compile.
+# Spec: docs/engineer/specs/2026-06-02-obs-wave-d-operator-surface.md §5.4.
+triggers:
+  30_day_green:
+    start_date: "2026-05-24"
+    window_days: 30
+    threshold_prs_per_day: 10
+  external_customer:
+    activated: false
+    start_date: ""
+    window_days: 30
+    threshold_prs_per_day: 10
+  self_host_30:
+    start_date: "2026-05-09"
+    window_days: 30
+    threshold_prs_per_day: 10
+timezone: UTC

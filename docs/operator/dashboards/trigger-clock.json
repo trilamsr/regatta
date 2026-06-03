@@ -85,6 +85,45 @@
           "instant": true
         }
       ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Green-clock day counter (Phase GREEN-CLOCK)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 26 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "green", "value": 25 },
+              { "color": "super-light-green", "value": 30 }
+            ]
+          }
+        }
+      },
+      "options": { "reduceOptions": { "calcs": ["last"] }, "textMode": "value_and_name", "colorMode": "background" },
+      "targets": [
+        { "refId": "A", "expr": "max(regatta_green_clock_day_count)", "legendFormat": "day count" }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "state-timeline",
+      "title": "30-day green calendar",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 6, "w": 16, "x": 8, "y": 26 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time(regatta_green_clock_day_count[1d])",
+          "legendFormat": "day-N"
+        }
+      ]
     }
   ]
 }

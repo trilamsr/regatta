@@ -1,0 +1,90 @@
+{
+  "uid": "regatta-adversarial-findings",
+  "title": "Regatta — Adversarial Reviewer Findings (Wave-D T1)",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["regatta", "adversarial", "wave-d", "tier-2"],
+  "timezone": "browser",
+  "refresh": "1m",
+  "time": { "from": "now-7d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      },
+      {
+        "name": "severity",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "${datasource}" },
+        "query": "label_values(regatta_adversarial_findings_total, severity)",
+        "includeAll": true,
+        "multi": true,
+        "refresh": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "bargauge",
+      "title": "Top-10 recurring patterns (7d)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 0 },
+      "options": { "orientation": "horizontal", "displayMode": "gradient" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by (pattern) (increase(regatta_adversarial_findings_total[7d])))",
+          "legendFormat": "{{pattern}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Findings rate by severity (1h windows)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "stacking": { "mode": "normal" } } } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (severity) (rate(regatta_adversarial_findings_total{severity=~\"$severity\"}[1h]))",
+          "legendFormat": "{{severity}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "barchart",
+      "title": "Findings by severity, weekly (8w)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 10 },
+      "fieldConfig": { "defaults": { "custom": { "stacking": { "mode": "normal" } } } },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (severity) (increase(regatta_adversarial_findings_total[1w]))",
+          "legendFormat": "{{severity}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "piechart",
+      "title": "Findings by scope (7d)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 10 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (scope) (increase(regatta_adversarial_findings_total[7d]))",
+          "legendFormat": "{{scope}}"
+        }
+      ]
+    }
+  ]
+}
