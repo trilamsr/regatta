@@ -28,6 +28,7 @@ import (
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/lockfile"
+	"github.com/trilamsr/regatta/internal/orchestrator/merge"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
@@ -135,6 +136,7 @@ type Orchestrator struct {
 	spawner     spawner.Spawner
 	reaper      *reaper.Reaper
 	rejection   *rejectionrouter.Router
+	mergeCoord  *merge.Coordinator
 	dbPath      string
 	cfg         Config
 	log         *slog.Logger
@@ -192,27 +194,53 @@ func (o *Orchestrator) SetRejectionRouter(r *rejectionrouter.Router) {
 	o.rejection = r
 }
 
+// SetMergeCoordinator installs the merge.Coordinator used by Recover
+// to reconcile agents stranded in AwaitingMerge after a crash. Optional
+// — without a Coordinator the daemon still functions for everything
+// except the auto-merge path (PHASE AUTONOMY §11 W2), in which case
+// AwaitingMerge agents stay enumerated by Recover but only get their
+// locks heartbeated (no PR re-probe). Production wiring installs this
+// once auto-merge ships; tests inject a fake-prober-backed Coordinator
+// to exercise the recovery branches.
+func (o *Orchestrator) SetMergeCoordinator(c *merge.Coordinator) {
+	o.mergeCoord = c
+}
+
 // Recover implements the crash-recovery contract in docs/design.md
 // §State, persistence, recovery. It MUST be called once on startup
 // before Run, PollOnce, or ScheduleOnce.
 //
 // The contract:
 //
-//  1. Every non-terminal agent whose PID is no longer alive is
-//     transitioned to crashed, then re-queued by re-inserting a
-//     pending row for the same work_item_id on the next PollOnce.
-//  2. Stale locks (heartbeat older than 2× LockTTL) are dropped.
+//  1. Every non-terminal agent whose PID is no longer alive AND whose
+//     state belongs to the pid-bound recovery set
+//     ({spawning, running, pr_open, gates_running}) is transitioned
+//     to crashed, then re-queued by re-inserting a pending row for
+//     the same work_item_id on the next PollOnce.
+//  2. Every agent in AwaitingMerge is reconciled against real GitHub
+//     PR state by the merge.Coordinator (PHASE AUTONOMY §11 W2 c0).
+//     AwaitingMerge agents have no live worktree PID by design — the
+//     pid-alive probe does not apply. Without a Coordinator wired
+//     (SetMergeCoordinator never called) the agent stays enumerated
+//     so its lock is heartbeatable but no re-probe runs; production
+//     wiring installs the Coordinator once auto-merge ships.
+//  3. Stale locks (heartbeat older than 2× LockTTL) are dropped.
 func (o *Orchestrator) Recover(ctx context.Context) error {
 	if _, err := o.db.ExpireStaleLocks(ctx, 2*o.cfg.LockTTL); err != nil {
 		return fmt.Errorf("orchestrator: expire stale locks: %w", err)
 	}
-	nonTerminal := []state.AgentState{
+	// pidBound is the set of states whose recovery uses pidAlive() to
+	// decide live-vs-crashed. AwaitingMerge is intentionally excluded:
+	// the agent has already produced a PR and is waiting on an
+	// external merge — there is no live worktree PID, so pidAlive
+	// would always read "dead" and force-crash a healthy agent.
+	pidBound := []state.AgentState{
 		state.AgentSpawning,
 		state.AgentRunning,
 		state.AgentPROpen,
 		state.AgentGatesRunning,
 	}
-	agents, err := o.db.ListAgentsByState(ctx, nonTerminal...)
+	agents, err := o.db.ListAgentsByState(ctx, pidBound...)
 	if err != nil {
 		return err
 	}
@@ -240,6 +268,17 @@ func (o *Orchestrator) Recover(ctx context.Context) error {
 			string(obs.KeyAgentID), a.ID,
 			string(obs.KeyWorkItemID), a.WorkItemID,
 		)
+	}
+	// AwaitingMerge agents reconcile against the external GitHub PR
+	// state — never against pidAlive — because the merge sits on the
+	// far side of an external side-effect the substrate does not own.
+	// Without a Coordinator the sweep is skipped (operator pre-W2);
+	// non-fatal so a Coordinator-less daemon still recovers everything
+	// else.
+	if o.mergeCoord != nil {
+		if err := o.mergeCoord.Reconcile(ctx); err != nil {
+			return fmt.Errorf("orchestrator: merge reconcile: %w", err)
+		}
 	}
 	return nil
 }
@@ -385,9 +424,16 @@ func (o *Orchestrator) RouteRejections(ctx context.Context) error {
 // Heartbeat refreshes every lock owned by an active agent. The
 // orchestrator runs Heartbeat on cfg.HeartbeatInterval so that locks
 // only age out when an agent has truly crashed.
+//
+// AwaitingMerge is included so an agent stalled on a long external
+// merge call (gh API slowness, branch-protection wait) does not lose
+// its hotspot lock to the stale-lock sweep mid-merge. PHASE AUTONOMY
+// §11 W2 c0 made this load-bearing — pre-c0 AwaitingMerge was excluded
+// here and would silently leak locks across long merges.
 func (o *Orchestrator) Heartbeat(ctx context.Context) error {
 	active, err := o.db.ListAgentsByState(ctx,
-		state.AgentSpawning, state.AgentRunning, state.AgentPROpen, state.AgentGatesRunning)
+		state.AgentSpawning, state.AgentRunning, state.AgentPROpen,
+		state.AgentGatesRunning, state.AgentAwaitingMerge)
 	if err != nil {
 		return err
 	}

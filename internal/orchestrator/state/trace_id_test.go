@@ -226,6 +226,22 @@ func TestMigration0005_BackwardCompatible(t *testing.T) {
 		ts INTEGER NOT NULL, kind TEXT NOT NULL,
 		actor TEXT NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}',
 		token_jti TEXT NOT NULL DEFAULT '')`)
+	// agents + events come from migration 0001; the legacy seed marks
+	// v1 as applied without recreating them, so later migrations that
+	// touch these tables (e.g. 0013's partial unique index on events)
+	// must see them on the rebuilt-by-hand subset too.
+	mustExec(t, raw, `CREATE TABLE agents (
+		id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		work_item_id TEXT NOT NULL UNIQUE, lane TEXT NOT NULL,
+		state TEXT NOT NULL, pid INTEGER NOT NULL DEFAULT 0,
+		session_id TEXT NOT NULL DEFAULT '', pr_sha TEXT NOT NULL DEFAULT '',
+		rejection_count INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`)
+	mustExec(t, raw, `CREATE TABLE events (
+		id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		agent_id INTEGER REFERENCES agents(id),
+		kind TEXT NOT NULL, payload_json TEXT NOT NULL DEFAULT '{}',
+		created_at INTEGER NOT NULL)`)
 
 	// Seed one legacy work_item + one legacy approval_event.
 	now := time.Now().UTC().Unix()

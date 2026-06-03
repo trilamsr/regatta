@@ -128,10 +128,18 @@ func (d *DB) TryAcquireLock(ctx context.Context, name string, agentID int64, ttl
 
 // HeartbeatLock refreshes the heartbeat_at column for every lock
 // currently held by agentID. Returns the number of rows refreshed.
+//
+// The UPDATE is CAS-guarded by `heartbeat_at < ?`: two orchestrator
+// instances writing concurrently cannot lose a newer heartbeat to an
+// older one's commit order. A rows-affected of zero is a no-op — the
+// row already carries a newer (or equal) timestamp — and is not an
+// error; the stale-lock sweep keys off MAX(heartbeat_at), not on which
+// writer last touched the row.
 func (d *DB) HeartbeatLock(ctx context.Context, agentID int64) (int64, error) {
+	now := d.now().UTC().Unix()
 	res, err := d.sql.ExecContext(ctx,
-		`UPDATE locks SET heartbeat_at = ? WHERE agent_id = ?`,
-		d.now().UTC().Unix(), agentID)
+		`UPDATE locks SET heartbeat_at = ? WHERE agent_id = ? AND heartbeat_at < ?`,
+		now, agentID, now)
 	if err != nil {
 		return 0, fmt.Errorf("state: heartbeat lock: %w", err)
 	}
