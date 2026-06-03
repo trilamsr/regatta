@@ -189,9 +189,10 @@ func parseEntries(data []byte) ([]entry, error) {
 			})
 		}
 	}
-	if len(entries) == 0 {
-		return nil, fmt.Errorf("no PRIORITY entries found")
-	}
+	// Empty PRIORITY is valid post-Phase-S: items now live in
+	// .regatta/items/*.md directly. The parser is a no-op when the
+	// boot prompt carries only phase headers without numbered
+	// S1-T*/S2-T*/S3-T* dispatch entries.
 	// dup-check
 	seen := map[string]int{}
 	for _, e := range entries {
