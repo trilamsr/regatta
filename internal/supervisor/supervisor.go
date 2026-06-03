@@ -9,6 +9,7 @@ package supervisor
 
 import (
 	"bytes"
+	"context"
 	_ "embed"
 	"fmt"
 	"io"
@@ -33,7 +34,7 @@ var cronTemplate string
 // Options bundles the install/uninstall flag set so callers (cmd
 // wrappers + tests) share one structured input.
 type Options struct {
-	Mode    Mode   // user|system
+	Mode    Mode // user|system
 	DryRun  bool
 	Force   bool
 	NoCron  bool
@@ -44,6 +45,15 @@ type Options struct {
 	Binary  string // override binary path (testing); empty ⇒ os.Executable
 	HomeDir string // override $HOME (testing)
 	UID     int    // override geteuid (testing); -1 ⇒ real
+
+	// Runner is the launchctl/systemctl seam — nil ⇒ realRunner via os/exec.
+	Runner Runner
+	// HealthzURL overrides the :8080 loopback default; tests inject httptest URLs.
+	HealthzURL string
+	// HealthzTimeout overrides the 30s spec window; tests use ~300ms.
+	HealthzTimeout time.Duration
+	// HealthzPollInterval overrides the 1s spec cadence; tests use ~50ms.
+	HealthzPollInterval time.Duration
 }
 
 // Mode discriminates user vs system install.
@@ -64,7 +74,7 @@ const (
 // String stringifies Mode for diagnostic + idempotency-status output.
 func (m Mode) String() string {
 	if m == ModeSystem {
-		return "system"
+		return domainSystem
 	}
 	return "user"
 }
@@ -154,6 +164,24 @@ func Install(opts Options) error {
 		}
 	}
 	checkSecurityModule(plan.OS, opts.Out)
+	// step 6 — bootstrap OS init system; rollback unit file on failure.
+	ctx, cancel := context.WithTimeout(context.Background(), opts.HealthzTimeout+10*time.Second)
+	defer cancel()
+	if err := bootstrapOS(ctx, plan, opts); err != nil {
+		rollback(ctx, plan, opts)
+		return fmt.Errorf("bootstrap: %w", err)
+	}
+	// step 7 — poll /healthz until ok|degraded; rollback on timeout|down.
+	degraded, err := pollHealthz(ctx, resolveHealthzURL(opts), opts.HealthzTimeout, opts.HealthzPollInterval)
+	if err != nil {
+		rollback(ctx, plan, opts)
+		return fmt.Errorf("healthz: %w", err)
+	}
+	if degraded {
+		fpf(opts.Err, "WARN: installed but not yet healthy — status=degraded; tail %s for boot progress\n", plan.LogDir)
+	} else {
+		fpf(opts.Out, "healthz: ok\n")
+	}
 	fpf(opts.Out, "installed %s\n", plan.UnitPath)
 	return nil
 }
@@ -207,6 +235,15 @@ func normalize(o Options) Options {
 	}
 	if o.GOOS == "" {
 		o.GOOS = runtime.GOOS
+	}
+	if o.Runner == nil {
+		o.Runner = realRunner
+	}
+	if o.HealthzTimeout == 0 {
+		o.HealthzTimeout = defaultHealthzTimeout
+	}
+	if o.HealthzPollInterval == 0 {
+		o.HealthzPollInterval = defaultHealthzPoll
 	}
 	return o
 }

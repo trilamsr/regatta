@@ -2,6 +2,9 @@ package supervisor
 
 import (
 	"bytes"
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,17 +12,38 @@ import (
 	"time"
 )
 
+// fakeOKHealthz spins up an httptest server that always returns ok —
+// every helper now routes through Install() step-7 so pre-existing
+// happy-path tests need a healthz URL the poller can reach.
+func fakeOKHealthz(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// noopRunner stubs every subprocess call to zero-byte success so
+// pre-bootstrap tests stay hermetic — no real launchctl/systemctl.
+func noopRunner(_ context.Context, _ string, _ ...string) ([]byte, error) {
+	return nil, nil
+}
+
 func newDarwinOpts(t *testing.T) (Options, string) {
 	t.Helper()
 	home := t.TempDir()
 	return Options{
-		Mode:    ModeUser,
-		Out:     &bytes.Buffer{},
-		Err:     &bytes.Buffer{},
-		Now:     func() time.Time { return time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC) },
-		GOOS:    "darwin",
-		Binary:  "/opt/homebrew/bin/regatta",
-		HomeDir: home,
+		Mode:       ModeUser,
+		Out:        &bytes.Buffer{},
+		Err:        &bytes.Buffer{},
+		Now:        func() time.Time { return time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC) },
+		GOOS:       "darwin",
+		Binary:     "/opt/homebrew/bin/regatta",
+		HomeDir:    home,
+		Runner:     noopRunner,
+		HealthzURL: fakeOKHealthz(t),
 	}, home
 }
 
@@ -27,14 +51,16 @@ func newLinuxOpts(t *testing.T) (Options, string) {
 	t.Helper()
 	home := t.TempDir()
 	return Options{
-		Mode:    ModeUser,
-		Out:     &bytes.Buffer{},
-		Err:     &bytes.Buffer{},
-		Now:     func() time.Time { return time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC) },
-		GOOS:    "linux",
-		Binary:  "/usr/local/bin/regatta",
-		HomeDir: home,
-		NoCron:  true,
+		Mode:       ModeUser,
+		Out:        &bytes.Buffer{},
+		Err:        &bytes.Buffer{},
+		Now:        func() time.Time { return time.Date(2026, 6, 2, 0, 0, 0, 0, time.UTC) },
+		GOOS:       "linux",
+		Binary:     "/usr/local/bin/regatta",
+		HomeDir:    home,
+		NoCron:     true,
+		Runner:     noopRunner,
+		HealthzURL: fakeOKHealthz(t),
 	}, home
 }
 
