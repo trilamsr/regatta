@@ -9,6 +9,7 @@ package spend
 // the legacy float emission kept for forward-compatible read by
 // dashboards + ad-hoc tools that grep $.usd directly. Reader prefers
 // $.usd_micro and falls back to $.usd*1e6 for pre-#554 rows.
+// Deprecated dual-emit; legacy $.usd / $.delta_usd readers may drop float fields after 2026-Q4 (90 days of clean canonical-int reads).
 //
 // Writers populate BOTH on every new row so the shadow window is
 // read-side-only (no operator config flag, no migration script).
@@ -38,6 +39,7 @@ type TokenSpendPayload struct {
 // *USD float64 are kept for legacy dashboard read. DriftPct stays
 // float — it's a ratio, not money, and the cap-enforcement path does
 // not aggregate ratios.
+// Deprecated dual-emit; legacy $.usd / $.delta_usd readers may drop float fields after 2026-Q4 (90 days of clean canonical-int reads).
 type BudgetReconciledPayload struct {
 	PeriodStart      int64               `json:"period_start"`
 	PeriodEnd        int64               `json:"period_end"`
