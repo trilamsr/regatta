@@ -339,6 +339,70 @@ func TestClassifyStderr_OutcomeMap(t *testing.T) {
 	}
 }
 
+// TestClassifyStderr_BranchDeleted_ReturnsBranchDeletedOutcome asserts the delete-branch-after-merge race classifies as BranchDeleted (#655).
+func TestClassifyStderr_BranchDeleted_ReturnsBranchDeletedOutcome(t *testing.T) {
+	cases := []string{
+		"branch was already deleted",
+		"the branch has been deleted",
+		// Compound stderr: real gh emits both substrings on the
+		// delete-branch race. BranchDeleted wins because it's tested
+		// first in the classifier switch — both outcomes drive
+		// IsSuccess so the FSM outcome is identical, but the more
+		// specific signal lands in the audit event.
+		"pull request was already merged; branch was already deleted",
+	}
+	for _, s := range cases {
+		got := merge.ClassifyStderrForTest(s)
+		if got != merge.OutcomeBranchDeleted {
+			t.Errorf("classify(%q)=%s, want %s", s, got, merge.OutcomeBranchDeleted)
+		}
+	}
+}
+
+// TestClassifyStderr_GhNotInstalled asserts a "command not found" stderr maps to GhNotInstalled even when exec.ErrNotFound is not set (#657).
+func TestClassifyStderr_GhNotInstalled(t *testing.T) {
+	cases := []string{
+		"gh: command not found",
+		"executable file not found in $PATH",
+	}
+	for _, s := range cases {
+		got := merge.ClassifyStderrForTest(s)
+		if got != merge.OutcomeGhNotInstalled {
+			t.Errorf("classify(%q)=%s, want %s", s, got, merge.OutcomeGhNotInstalled)
+		}
+	}
+}
+
+// TestClassifyStderr_Timeout asserts deadline-exceeded stderr surfaces Timeout when classifyStderr is invoked directly (#657).
+func TestClassifyStderr_Timeout(t *testing.T) {
+	cases := []string{
+		"context deadline exceeded",
+		"operation timed out after 30s",
+	}
+	for _, s := range cases {
+		got := merge.ClassifyStderrForTest(s)
+		if got != merge.OutcomeTimeout {
+			t.Errorf("classify(%q)=%s, want %s", s, got, merge.OutcomeTimeout)
+		}
+	}
+}
+
+// TestClassifyStderr_PRClosed asserts both legacy + gh-2.45 PRClosed phrasings classify correctly (#657).
+func TestClassifyStderr_PRClosed(t *testing.T) {
+	cases := []string{
+		"pull request is closed",
+		"pull request 42 is not in the open state",
+		"pull request not in open state",
+		"merged or closed without merging",
+	}
+	for _, s := range cases {
+		got := merge.ClassifyStderrForTest(s)
+		if got != merge.OutcomePRClosed {
+			t.Errorf("classify(%q)=%s, want %s", s, got, merge.OutcomePRClosed)
+		}
+	}
+}
+
 // TestOutcomeTerminality asserts spec §4.3 terminal-vs-recoverable split.
 func TestOutcomeTerminality(t *testing.T) {
 	terminal := []merge.Outcome{
@@ -362,4 +426,62 @@ func TestOutcomeTerminality(t *testing.T) {
 	if !merge.OutcomeMerged.IsSuccess() || !merge.OutcomeAlreadyMerged.IsSuccess() {
 		t.Errorf("success outcomes IsSuccess mismatch")
 	}
+}
+
+// TestOutcomeTerminality_AllOutcomes pins every Outcome's IsTerminal + IsSuccess class so a new outcome cannot silently default to recoverable-non-success (#657).
+func TestOutcomeTerminality_AllOutcomes(t *testing.T) {
+	cases := []struct {
+		o          merge.Outcome
+		isTerminal bool
+		isSuccess  bool
+	}{
+		// Success-via-success-exit + success-via-error-exit all drive
+		// merge_completed; IsTerminal stays false because the worker
+		// short-circuits on IsSuccess before the terminal branch.
+		{merge.OutcomeMerged, false, true},
+		{merge.OutcomeAlreadyMerged, false, true},
+		{merge.OutcomeBranchDeleted, false, true},
+		// Queue-accepted: agent stays in AwaitingMerge.
+		{merge.OutcomeAutoQueued, false, false},
+		// Terminal failures: write merge_failed + transition Crashed.
+		{merge.OutcomeSHADiverged, true, false},
+		{merge.OutcomeBranchProtection, true, false},
+		{merge.OutcomeConflict, true, false},
+		{merge.OutcomePRClosed, true, false},
+		// Transient: next sweep retries.
+		{merge.OutcomeRateLimit, false, false},
+		{merge.OutcomeAuthExpired, false, false},
+		{merge.OutcomeGhNotInstalled, false, false},
+		{merge.OutcomeTimeout, false, false},
+		{merge.OutcomeUnknown, false, false},
+	}
+	if len(cases) != 13 {
+		t.Fatalf("test covers %d outcomes, want 13 (add a new case when extending the enum)", len(cases))
+	}
+	for _, tc := range cases {
+		if got := tc.o.IsTerminal(); got != tc.isTerminal {
+			t.Errorf("%s.IsTerminal()=%v, want %v", tc.o, got, tc.isTerminal)
+		}
+		if got := tc.o.IsSuccess(); got != tc.isSuccess {
+			t.Errorf("%s.IsSuccess()=%v, want %v", tc.o, got, tc.isSuccess)
+		}
+	}
+}
+
+// TestExecuteMerge_BranchDeleted_TreatsAsSuccess asserts gh's branch-deleted stderr drives the merge_completed success path (#655).
+func TestExecuteMerge_BranchDeleted_TreatsAsSuccess(t *testing.T) {
+	ctx := context.Background()
+	db := statetest.OpenDB(t)
+	a := driveToGatesRunning(t, db, "WORK-1")
+	exec := &fakeExecutor{Result: merge.ExecutorResult{Outcome: merge.OutcomeBranchDeleted}}
+	c := newCoordinatorWithExecutor(t, db, exec)
+
+	if err := c.ExecuteMerge(ctx, a.ID, 8, "sha8"); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	got, _ := db.GetAgent(ctx, a.ID)
+	if got.State != state.AgentDone {
+		t.Fatalf("state=%s, want done (branch_deleted is success-via-error)", got.State)
+	}
+	assertEventExists(t, db, a.ID, merge.EventKindMergeCompleted)
 }

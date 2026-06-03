@@ -406,7 +406,7 @@ func TestVersionAtLeast(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.got+"_vs_"+tc.floor, func(t *testing.T) {
-			ok, err := versionAtLeast(tc.got, tc.floor)
+			ok, err := VersionAtLeast(tc.got, tc.floor)
 			if tc.wantErr && err == nil {
 				t.Fatalf("want err, got nil")
 			}
