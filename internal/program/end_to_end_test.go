@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil/reporoot"
 )
 
 // TestEndToEnd_PlanAndServe exercises the MVP-1 acceptance flow:
@@ -22,7 +23,7 @@ func TestEndToEnd_PlanAndServe(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e test; skip with -short")
 	}
-	repoRoot := mustRepoRoot(t)
+	repoRoot := reporoot.Must(t)
 	binDir := t.TempDir()
 	bin := filepath.Join(binDir, "regatta")
 	build := exec.Command("go", "build", "-o", bin, "./cmd/regatta")
@@ -119,21 +120,3 @@ func scanCount(t *testing.T, db *sql.DB, query string, args ...any) int {
 	return n
 }
 
-func mustRepoRoot(t *testing.T) string {
-	t.Helper()
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := wd
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		next := filepath.Dir(dir)
-		if next == dir {
-			t.Fatalf("no go.mod above %s", wd)
-		}
-		dir = next
-	}
-}

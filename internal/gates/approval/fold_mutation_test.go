@@ -2,6 +2,7 @@ package approval
 
 import (
 	"encoding/json"
+	"strconv"
 	"testing"
 
 	"pgregory.net/rapid"
@@ -256,11 +257,11 @@ func TestReaperMutation_PipelineProperty(t *testing.T) {
 		chainLen := rapid.IntRange(1, 4).Draw(rt, "chain_len")
 		chain := make([]state.TierConfig, chainLen)
 		for i := 0; i < chainLen; i++ {
-			n := rapid.IntRange(1, len(pool)).Draw(rt, "tier_size_"+itoa(i))
+			n := rapid.IntRange(1, len(pool)).Draw(rt, "tier_size_"+strconv.Itoa(i))
 			revs := rapid.SliceOfN(rapid.SampledFrom(pool), n, n).
 				Filter(func(rs []string) bool { return len(distinct(rs)) == len(rs) }).
-				Draw(rt, "tier_revs_"+itoa(i))
-			chain[i] = state.TierConfig{Reviewers: revs, Quorum: rapid.IntRange(1, len(revs)).Draw(rt, "tier_q_"+itoa(i))}
+				Draw(rt, "tier_revs_"+strconv.Itoa(i))
+			chain[i] = state.TierConfig{Reviewers: revs, Quorum: rapid.IntRange(1, len(revs)).Draw(rt, "tier_q_"+strconv.Itoa(i))}
 		}
 		a := state.Approval{EscalationChain: chain}
 
@@ -279,8 +280,8 @@ func TestReaperMutation_PipelineProperty(t *testing.T) {
 		nVotes := rapid.IntRange(0, 6).Draw(rt, "n_votes")
 		votersPool := append(append([]string{}, pool...), "mallory")
 		for i := 0; i < nVotes; i++ {
-			actor := rapid.SampledFrom(votersPool).Draw(rt, "vote_actor_"+itoa(i))
-			dec := rapid.SampledFrom([]string{DecisionAllow, DecisionDeny}).Draw(rt, "vote_dec_"+itoa(i))
+			actor := rapid.SampledFrom(votersPool).Draw(rt, "vote_actor_"+strconv.Itoa(i))
+			dec := rapid.SampledFrom([]string{DecisionAllow, DecisionDeny}).Draw(rt, "vote_dec_"+strconv.Itoa(i))
 			// Canonical "decision" key — matches decide.go's emit (issue #508).
 			payload, _ := json.Marshal(map[string]string{"decision": dec})
 			events = append(events, state.ApprovalEvent{Kind: EventKindDecided, Actor: actor, Payload: payload})
@@ -393,25 +394,3 @@ func equalStringSlice(a, b []string) bool {
 	return true
 }
 
-func itoa(i int) string {
-	const digits = "0123456789"
-	if i == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	pos := len(buf)
-	neg := i < 0
-	if neg {
-		i = -i
-	}
-	for i > 0 {
-		pos--
-		buf[pos] = digits[i%10]
-		i /= 10
-	}
-	if neg {
-		pos--
-		buf[pos] = '-'
-	}
-	return string(buf[pos:])
-}

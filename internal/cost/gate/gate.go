@@ -1,11 +1,8 @@
 // Package gate is the cost-governor pre-call deny primitive (spec
-// §3.2). Concrete type, no interface (S5 — substrate spec parity);
-// the second implementation forces the interface extraction.
-//
-// The Gate is consumed by the scheduler at step 0.6 (per-tick) and
-// will be consumed by the spawner SupervisorLimits (per running-agent
-// post-stream tick — Wave 2). One reader (internal/cost/spend.Reader)
-// services both call sites against the same substrate event log.
+// §3.2). Concrete type, no interface (S5 substrate-spec parity).
+// Consumed by the scheduler at step 0.6 and by the spawner
+// SupervisorLimits (Wave 2). One Reader services both call sites
+// against the same substrate event log.
 package gate
 
 import (
@@ -32,37 +29,29 @@ type SafetyCost struct {
 	SoftPct         int // 0 means soft-cap disabled
 }
 
-// Config holds the Gate's wiring. Safety==nil means "no cost gate
-// configured" — Evaluate returns Allow=true without reading substrate.
-// Closes I6 (zero overhead when unset).
-//
-// Tracer follows the W6 normalization pattern: nil falls back to
-// otel.Tracer("internal/cost/gate") which resolves to the global
-// provider — noop until obs/otel.Setup runs. No WithTracer setter;
-// uniform injection per spec §7 A8.
+// Config holds the Gate's wiring. Safety==nil → Evaluate returns
+// Allow=true without reading substrate (closes I6 zero-overhead).
+// Tracer nil falls back to otel.Tracer("internal/cost/gate") — noop
+// until obs/otel.Setup runs (uniform injection per spec §7 A8).
 type Config struct {
 	Safety *SafetyCost
 	Tracer trace.Tracer
 	Logger *slog.Logger
 }
 
-// Estimator decouples the gate from internal/cost/estimate (T2 scope).
-// One method; T2's *estimate.UpperBound satisfies it without an extra
-// adapter type.
+// Estimator decouples gate from internal/cost/estimate.
+// *estimate.UpperBound satisfies without an adapter type.
 type Estimator interface {
 	Estimate(ctx context.Context, hint EstHint, model string) (float64, error)
 }
 
-// Pricing decouples the gate from internal/cost/pricing (T2 scope).
-// The gate only needs the downgrade-target lookup at soft-cap time;
-// the full Lookup / Row API stays in T2. T2's pricing.Lookup is wrapped
-// to satisfy this interface at call-site wiring.
+// Pricing decouples gate from internal/cost/pricing — gate only needs
+// the downgrade-target lookup at soft-cap time.
 type Pricing interface {
-	DowngradeFor(model string) string // returns "" when no downgrade applicable
+	DowngradeFor(model string) string // "" when no downgrade applicable
 }
 
-// Gate is the cost-governor pre-call deny primitive. Spec §3.2 lines
-// 138-145 verbatim.
+// Gate — cost-governor pre-call deny primitive (spec §3.2 lines 138-145).
 type Gate struct {
 	cfg     Config
 	pricing Pricing
@@ -72,7 +61,7 @@ type Gate struct {
 	log     *slog.Logger
 }
 
-// New constructs a Gate. cfg.Tracer / cfg.Logger nil-defaults run
+// New constructs a Gate; cfg.Tracer / cfg.Logger nil-defaults apply
 // here so callers never check before use.
 func New(cfg Config, pricing Pricing, reader *spend.Reader, estim Estimator) *Gate {
 	tracer := cfg.Tracer
@@ -86,30 +75,27 @@ func New(cfg Config, pricing Pricing, reader *spend.Reader, estim Estimator) *Ga
 	return &Gate{cfg: cfg, pricing: pricing, spend: reader, estim: estim, tracer: tracer, log: log}
 }
 
-// Evaluate decides whether one work_item may spawn. Returns Allow=false
-// when any active cap (dag, operator, work_item, global) would be
-// breached by recorded + estimated. Idempotent + side-effect-free
-// EXCEPT for the cost.evaluate span emitted via cfg.Tracer.
+// Evaluate decides whether one work_item may spawn. Allow=false when
+// any active cap (dag, operator, work_item) would be breached by
+// recorded + estimated. Idempotent + side-effect-free except the
+// cost.evaluate span emit.
 //
 // Precedence (spec §3.6 + R-A2): every configured cap is checked
-// independently; ANY breach denies. Most-restrictive-wins, no silent
-// inheritance.
+// independently; ANY breach denies. Most-restrictive-wins.
 //
-// Soft-cap policy (spec R10): SoftPct crossed at any scope sets
-// SoftCapBreached=true. DowngradeTo is populated only when
-// scope.AllowDowngrade=true AND Pricing surfaces a downgrade target.
-// Default WARN-only posture.
+// Soft-cap (spec R10): SoftPct crossed sets SoftCapBreached=true.
+// DowngradeTo populated only when scope.AllowDowngrade=true AND
+// Pricing surfaces a downgrade target. WARN-only default posture.
 func (g *Gate) Evaluate(ctx context.Context, w WorkItemScope) (Verdict, error) {
-	// Zero-overhead short-circuit when no cost config is wired (I6).
-	// Skips estimator + substrate read + span emission.
 	if g.cfg.Safety == nil {
+		// I6 zero-overhead short-circuit — skips estimator + substrate
+		// read + span emission.
 		return Verdict{Allow: true}, nil
 	}
 
-	// Estimate once; reused across every cap check. OperatorID flows
-	// through the hint so the History estimator (opt-in, spec §10 S1)
-	// can scope its cohort p95 to (tenant, operator, model). Default
-	// upper_bound ignores the field — zero-cost for the default path.
+	// Estimate once; reused across every cap. OperatorID through hint
+	// lets the History estimator (opt-in, spec §10 S1) scope cohort
+	// p95 to (tenant, operator, model). Default upper_bound ignores it.
 	hint := w.EstHint
 	if hint.OperatorID == "" {
 		hint.OperatorID = w.OperatorID
@@ -185,9 +171,8 @@ func (g *Gate) Evaluate(ctx context.Context, w WorkItemScope) (Verdict, error) {
 	return v, nil
 }
 
-// emitSpan writes the cost.evaluate span — spec §3.7. One span per
-// Evaluate call. Attribute set is the spec's verbatim list; no extra
-// cardinality (closes R14).
+// emitSpan writes the cost.evaluate span (spec §3.7). One per
+// Evaluate; verbatim attr set; no extra cardinality (closes R14).
 func (g *Gate) emitSpan(ctx context.Context, w WorkItemScope, v Verdict) {
 	_, span := g.tracer.Start(ctx, "cost.evaluate",
 		trace.WithSpanKind(trace.SpanKindInternal),
@@ -205,8 +190,8 @@ func (g *Gate) emitSpan(ctx context.Context, w WorkItemScope, v Verdict) {
 	span.End()
 }
 
-// dagCap returns the per-DAG cap or 0 when Safety is nil (sentinel for
-// "no cap configured" on the span attribute, per spec §3.7 row 2).
+// dagCap returns the per-DAG cap or 0 — the spec §3.7 row 2 sentinel
+// for "no cap configured" on the span attribute.
 func (s *SafetyCost) dagCap() float64 {
 	if s == nil {
 		return 0
@@ -221,8 +206,8 @@ func (s *SafetyCost) operatorCap() float64 {
 	return s.PerOperatorUSD
 }
 
-// period returns the configured spend window, defaulting to 1h when
-// unset so the Reader's substrate scan stays bounded.
+// period defaults to 1h when unset so the Reader's substrate scan
+// stays bounded.
 func (s *SafetyCost) period() time.Duration {
 	if s == nil || s.Period <= 0 {
 		return time.Hour

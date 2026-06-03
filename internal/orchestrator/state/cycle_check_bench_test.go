@@ -3,24 +3,16 @@ package state_test
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
-func newBenchDB(b *testing.B) *state.DB {
-	b.Helper()
-	db, err := state.Open(context.Background(), state.DSN(filepath.Join(b.TempDir(), "cyc.db")))
-	if err != nil {
-		b.Fatalf("Open: %v", err)
-	}
-	b.Cleanup(func() { _ = db.Close() })
-	return db
-}
+func newBenchDB(b *testing.B) *state.DB { return statetest.OpenBenchDB(b) }
 
 // seedDenseDAG populates work_items with a layered DAG of `depth` levels
 // where each layer has `fanout` features. Every feature at layer L+1

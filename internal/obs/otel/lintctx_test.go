@@ -4,15 +4,16 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/trilamsr/regatta/internal/testutil/reporoot"
 )
 
 // TestGoroutineCtxPropagation_LintCheck — W6 spec A+2 goroutine-ctx-propagation lint over 8 T5 files.
 func TestGoroutineCtxPropagation_LintCheck(t *testing.T) {
-	repoRoot := mustRepoRoot(t)
+	repoRoot := reporoot.Must(t)
 	t5TouchedFiles := []string{
 		"internal/orchestrator/orchestrator.go",
 		"internal/orchestrator/scheduler/scheduler.go",
@@ -143,30 +144,3 @@ func closureUsesCtxOrTracer(body *ast.BlockStmt) bool {
 	return found
 }
 
-// mustRepoRoot returns the absolute path of the module root by
-// walking upward from the test's working directory until a go.mod
-// is found. Keeps the lint test pinnable from any package depth.
-func mustRepoRoot(t *testing.T) string {
-	t.Helper()
-	dir, err := filepath.Abs(".")
-	if err != nil {
-		t.Fatalf("abs cwd: %v", err)
-	}
-	for i := 0; i < 10; i++ {
-		if fileExists(filepath.Join(dir, "go.mod")) {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	t.Fatalf("repo root (go.mod) not found upward from cwd")
-	return ""
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}

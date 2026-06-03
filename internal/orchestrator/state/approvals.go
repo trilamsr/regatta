@@ -16,6 +16,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/strutil"
 )
 
 // ErrTokenReplay is returned by AppendApprovalEvent when a second
@@ -107,7 +109,7 @@ func (d *DB) CreateApproval(ctx context.Context, a Approval) error {
 	if err != nil {
 		return fmt.Errorf("state: marshal escalation chain: %w", err)
 	}
-	decidedByJSON, err := json.Marshal(orEmpty(a.DecidedBy))
+	decidedByJSON, err := json.Marshal(strutil.OrEmpty(a.DecidedBy))
 	if err != nil {
 		return fmt.Errorf("state: marshal decided_by: %w", err)
 	}
@@ -273,7 +275,7 @@ func (d *DB) ListApprovalsTimedOutBefore(ctx context.Context, t time.Time) ([]Ap
 // itself, by design — bypassing AppendApprovalEvent here would let a
 // row's status diverge from fold(events).
 func (d *DB) MarkApprovalDecided(ctx context.Context, id, status string, decidedBy []string, decidedAt time.Time) error {
-	by, err := json.Marshal(orEmpty(decidedBy))
+	by, err := json.Marshal(strutil.OrEmpty(decidedBy))
 	if err != nil {
 		return fmt.Errorf("state: marshal decided_by: %w", err)
 	}
@@ -340,16 +342,6 @@ func scanApprovals(rows *sql.Rows) ([]Approval, error) {
 		out = append(out, a)
 	}
 	return out, rows.Err()
-}
-
-// orEmpty turns a nil slice into [] so the JSON encoding is "[]" not
-// "null"; matches the DEFAULT '[]' on the columns and keeps fold-of-
-// events math symmetric across NULL-vs-empty edge cases.
-func orEmpty(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
 }
 
 // isUniqueTokenConsume returns true when err is the sqlite UNIQUE

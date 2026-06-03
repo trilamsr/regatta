@@ -8,36 +8,23 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// CallScope carries the per-process metadata SpawnerCallback stamps onto
-// every CallRecord. WrittenBy identifies the producer (one writer per
-// process — spec §3.5 R12 single-writer invariant). TenantID falls back
-// to substrate.DefaultTenantID when empty so single-tenant operators
-// stay zero-config.
+// CallScope carries per-process metadata stamped onto every CallRecord.
+// WrittenBy identifies the producer (spec §3.5 R12 single-writer).
+// Empty TenantID falls back to substrate.DefaultTenantID.
 type CallScope struct {
 	WrittenBy string
 	TenantID  string
 }
 
-// SpawnerCallback returns a per-Spawn factory the ClaudeSpawner invokes
-// once per request — the closure receives the spawner.Request so it can
-// stamp operator_id/dag_id/work_item_id derived from the request before
-// RecordCall fires. Production wiring lands in cmd/regatta/serve.go;
-// the closure runs inside ParseStream's result-event handler, opens a
-// substrate tx, calls RecordCall, and commits on success.
-//
-// Identifier sourcing (#295): the closure reads OperatorID/DAGID/RunID
-// directly from spawner.Request. Pre-#295 the wave-2 wiring collapsed
-// these three onto Lane+WorkItemID; the orchestrator now supplies the
-// distinct values per spec §3.5. Empty fields fall back to the legacy
-// shortcut so a caller that has not yet been threaded still writes a
-// valid row (defense in depth — the orchestrator threads all three
-// today, but defaulting here keeps the writer seam single-source).
-//
-// Rollback-on-error: the deferred Rollback is a no-op after a successful
-// Commit, so the happy path commits exactly one substrate row. A
-// RecordCall failure (pricing_missing, replay, marshal) returns the
-// error to ParseStream which marks the chat span error+record_call_failed
-// per the R4 open-span-as-smoke-alarm contract.
+// SpawnerCallback returns a per-Spawn factory ClaudeSpawner invokes
+// once per request — the closure reads OperatorID/DAGID/RunID directly
+// from spawner.Request (#295 supplies distinct values per spec §3.5)
+// and falls back to Lane+WorkItemID when fields are empty (defense in
+// depth at the writer seam). Closure runs inside ParseStream's result-
+// event handler: open tx → RecordCall → Commit. A failure
+// (pricing_missing, replay, marshal) returns the error to ParseStream
+// which marks the chat span error+record_call_failed per the R4
+// open-span-as-smoke-alarm contract.
 func SpawnerCallback(db *sql.DB, opt WriteOptions, scope CallScope) func(spawner.Request) spawner.ResultEventCallback {
 	tenant := scope.TenantID
 	if tenant == "" {

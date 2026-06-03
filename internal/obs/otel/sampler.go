@@ -7,38 +7,34 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// ErrorOverrideSampler wraps a base sampler with two always-on overrides
-// the spec §2.5 sampling policy pins:
+// ErrorOverrideSampler wraps a base sampler with two always-on
+// overrides (spec §2.5):
+//   - `error.type`-tagged spans always sample so failure traces
+//     survive a low-ratio head decision.
+//   - chain-verify + divergence-emit spans always sample — their
+//     audit trails are load-bearing for forensic replay.
 //
-//   - Spans carrying an `error.type` attribute always sample so failure
-//     traces survive a low-ratio head-sampling decision.
-//   - Spans originating in the chain-verify (`substrate/sign.go`) or
-//     divergence-emit (`substrate/divergence_emit.go`) packages always
-//     sample because their audit trails are load-bearing for the
-//     forensic-replay contract.
-//
-// Every other span delegates to the wrapped base sampler — typically
-// the env-driven `ParentBased(TraceIDRatioBased(p))` Setup wires.
+// Every other span delegates to base (typically the env-driven
+// `ParentBased(TraceIDRatioBased(p))` Setup wires).
 type ErrorOverrideSampler struct {
 	base sdktrace.Sampler
 }
 
-// NewErrorOverrideSampler returns a Sampler that overrides the base
-// decision to RecordAndSample for error-tagged + audit-package spans.
+// NewErrorOverrideSampler wraps base so errored + audit-substrate spans escape head-sampling and stay forensically replayable.
 func NewErrorOverrideSampler(base sdktrace.Sampler) *ErrorOverrideSampler {
 	return &ErrorOverrideSampler{base: base}
 }
 
-// alwaysSamplePkgSuffixes lists the substrate audit packages whose
-// spans must escape head-sampling unconditionally. The match is on
-// suffix so vendor / replay-test copies do not bypass the override.
+// alwaysSamplePkgSuffixes lists substrate audit packages whose spans
+// escape head-sampling unconditionally. Match-on-suffix so vendor /
+// replay-test copies cannot bypass the override.
 var alwaysSamplePkgSuffixes = []string{
 	"orchestrator/state/substrate/sign",
 	"orchestrator/state/substrate/divergence_emit",
 }
 
-// ShouldSample implements sdktrace.Sampler. The override fires when
-// either condition holds; otherwise the base sampler's decision wins.
+// ShouldSample fires the override when either condition holds;
+// otherwise base wins.
 func (s *ErrorOverrideSampler) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
 	for _, kv := range p.Attributes {
 		if string(kv.Key) == "error.type" {
@@ -56,15 +52,14 @@ func (s *ErrorOverrideSampler) ShouldSample(p sdktrace.SamplingParameters) sdktr
 	return s.base.ShouldSample(p)
 }
 
-// Description carries a stable sampler-name string so the SDK's
-// diagnostic logs surface which sampler decided a given span.
+// Description carries a stable sampler-name so SDK diagnostic logs
+// surface which sampler decided a given span.
 func (s *ErrorOverrideSampler) Description() string {
 	return "ErrorOverride{" + s.base.Description() + "}"
 }
 
-// sampleResult builds a RecordAndSample result that preserves the
-// parent's tracestate, matching the SDK convention for override
-// samplers that bypass the base decision.
+// sampleResult preserves the parent's tracestate per SDK convention
+// for override samplers that bypass the base decision.
 func sampleResult(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
 	var ts trace.TraceState
 	if sc := trace.SpanContextFromContext(p.ParentContext); sc.IsValid() {

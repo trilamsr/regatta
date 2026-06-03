@@ -1,20 +1,16 @@
-// Package estimate — history.go adds the opt-in p95-of-recorded-spend
+// Package estimate — history.go: opt-in p95-of-recorded-spend
 // estimator gated by `safety.cost.estimation_strategy: history`
-// (spec §10 S1, issue #238). Default remains upper_bound — this type
-// is constructed and wired ONLY when the operator flips the flag.
+// (spec §10 S1, #238). Default remains upper_bound; this is wired
+// ONLY when the operator flips the flag.
 //
-// Replay-safety (W9 forward-fit): the p95 is a pure function of the
-// substrate snapshot the Reader sees. Sorted-then-indexed quantile (no
-// random sampling, no time.Now in the estimator itself — the Reader's
-// injected clock is the only time source) keeps the result deterministic
-// across identical snapshots — same property the upper_bound default holds.
+// Replay-safe (W9): p95 is a pure function of the Reader snapshot
+// (sorted-then-indexed quantile; no random sampling, no time.Now in
+// the estimator — Reader's injected clock is the only time source).
 //
-// Cold-start fallback: when fewer than MinSamples rows exist for the
-// (tenant_id, model) cohort, Estimate delegates to Fallback (production
-// wiring passes a gate.Estimator adapter over UpperBound). This is the
-// load-bearing escape hatch — first-ever call per cohort cannot generate
-// a meaningful p95, so we keep the "never-undercount" Waxell-$47K-trap
-// defense intact.
+// Cold-start fallback: under MinSamples rows for the cohort,
+// Estimate delegates to Fallback (UpperBound behind a gate.Estimator
+// adapter) — the load-bearing escape hatch keeping the never-
+// undercount Waxell-$47K-trap defense intact.
 package estimate
 
 import (
@@ -75,14 +71,10 @@ func NewHistory(cfg HistoryConfig) *History {
 }
 
 // Estimate returns the p95 USD over recent (tenant, operator, model)
-// token_spend rows, falling back to the configured Fallback when the
-// cohort holds fewer than MinSamples rows.
-//
-// Cohort scoping uses hint.OperatorID (populated by Gate.Evaluate from
-// WorkItemScope.OperatorID). When empty (no operator pinned), the
-// cohort widens to (tenant, model) — acceptable for shared-pool
-// estimation but not the issue-#238 acceptance shape. Production
-// wiring routes OperatorID through; tests pass it explicitly.
+// token_spend rows; falls back to Fallback when the cohort holds
+// fewer than MinSamples rows. Cohort scoping uses hint.OperatorID;
+// when empty the cohort widens to (tenant, model) — acceptable for
+// shared-pool but not the #238 acceptance shape.
 func (h *History) Estimate(ctx context.Context, hint gate.EstHint, model string) (float64, error) {
 	samples, err := h.cfg.Reader.CohortSpends(ctx, h.cfg.TenantID, hint.OperatorID, model, h.cfg.Period)
 	if err != nil {
@@ -94,12 +86,9 @@ func (h *History) Estimate(ctx context.Context, hint gate.EstHint, model string)
 	return p95(samples), nil
 }
 
-// p95 returns the nearest-rank 95th percentile. Sorted-in-place on a
-// local copy so the caller's slice is not mutated.
-//
-// Nearest-rank: rank = ceil(0.95 × N). For N=20 → rank=19 → index 18
-// of the sorted slice. Deterministic given identical input — W9 replay
-// safe.
+// p95 returns the nearest-rank 95th percentile on a local copy so
+// the caller's slice is not mutated. rank = ceil(0.95 × N); for N=20
+// → rank=19 → index 18. Deterministic — W9 replay-safe.
 func p95(in []float64) float64 {
 	if len(in) == 0 {
 		return 0

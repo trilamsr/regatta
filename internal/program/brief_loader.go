@@ -1,13 +1,11 @@
 // Package program — BriefLoader scans .regatta/programs/*.json,
 // verifies each brief, and upserts child work_items rows.
 //
-// per spec §2.4 + §3 sign-then-persist: a brief that fails Validate
-// or VerifySignature emits obs.EventBriefRejected through the
-// injected logger and no child rows touch state. Rejections never
-// enter the brief-children table. Issue #80 adds a parallel durable
-// audit sink — every rejection slog.Warn is followed by a best-effort
-// substrate `brief_rejected` row so the rejection survives log
-// rotation + restart.
+// Sign-then-persist (spec §2.4 + §3): a brief failing Validate or
+// VerifySignature emits obs.EventBriefRejected through the injected
+// logger and no child rows touch state. Issue #80 adds a parallel
+// durable audit sink so every rejection slog.Warn is followed by a
+// best-effort substrate `brief_rejected` row.
 package program
 
 import (
@@ -31,211 +29,21 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// auditNowFunc is the clock recordBriefRejection uses for substrate
-// timestamps. Production binds to time.Now via NewBriefLoader; tests
-// that need a deterministic clock swap it through a future field once
-// the use-case lands.
+// auditNowFunc — clock recordBriefRejection uses for substrate stamps.
 type auditNowFunc = func() time.Time
-
-// maxBriefSize caps the bytes BriefLoader will read for any single
-// brief. 1 MiB is ~3 orders of magnitude above a realistic ProgramBrief
-// (a handful of features with short titles) and bounds the OOM blast
-// radius of a malicious or corrupt drop. Rejected at Stat() — never
-// reaches json.Unmarshal.
-const maxBriefSize = 1 << 20
 
 // maxCascadeIterations bounds the fixed-point loop in
 // reconcileDependencyArchive so a corrupt depends_on_features graph
-// cannot wedge the orchestrator. With well-formed data the loop
-// converges in O(max-chain-depth) iterations.
+// cannot wedge the orchestrator. Well-formed data converges in
+// O(max-chain-depth).
 const maxCascadeIterations = 1000
 
-// LoadAndVerifyBrief reads path from fsys, unmarshals into
-// ProgramBrief, runs ProgramBrief.Validate, then VerifySignature
-// under keyring. Returns ErrHMACInvalid (wrapped) when the
-// signature does not check out under any key. Rejects briefs whose
-// on-disk size exceeds maxBriefSize before any read into RAM.
-//
-// For v2 briefs the function routes through LoadAndVerifyBriefV2,
-// then projects the v2 features into the v1 ProgramBrief.Features
-// slice so downstream Sync (which only consults v1 fields) operates
-// unchanged. The Edge → DependsOnFeatures projection mirrors
-// LowerV1ToV2's inverse and preserves the dependency closure.
-func LoadAndVerifyBrief(fsys fs.FS, path string, keyring map[string][]byte) (*ProgramBrief, error) {
-	if len(keyring) == 0 {
-		return nil, fmt.Errorf("program: keyring required to verify briefs")
-	}
-	raw, err := readBriefBytes(fsys, path)
-	if err != nil {
-		return nil, err
-	}
-	if IsV2Brief(raw) {
-		v2, err := loadAndVerifyV2FromBytes(raw, keyring)
-		if err != nil {
-			return nil, err
-		}
-		return projectV2ToV1(v2), nil
-	}
-	var brief ProgramBrief
-	if err := json.Unmarshal(raw, &brief); err != nil {
-		return nil, fmt.Errorf("program: parse brief: %w", err)
-	}
-	if err := brief.Validate(); err != nil {
-		return nil, fmt.Errorf("program: validate brief: %w", err)
-	}
-	if err := brief.VerifySignature(keyring); err != nil {
-		return nil, fmt.Errorf("%w: %w", orchestrator.ErrHMACInvalid, err)
-	}
-	return &brief, nil
-}
-
-// loadAndVerifyBriefBoth returns both the v1-projected brief (for the
-// existing v1-shaped Sync pipeline) and, when the source brief was v2,
-// the raw v2 view (so Sync can lower edges + outputs_schemas without
-// re-reading the file). v1 briefs return (brief, nil, nil).
-//
-// Centralising this here keeps the v2 detection + verification logic in
-// one place — LoadAndVerifyBrief continues to satisfy callers that only
-// need the v1 projection.
-func loadAndVerifyBriefBoth(fsys fs.FS, path string, keyring map[string][]byte) (*ProgramBrief, *ProgramBriefV2, error) {
-	if len(keyring) == 0 {
-		return nil, nil, fmt.Errorf("program: keyring required to verify briefs")
-	}
-	raw, err := readBriefBytes(fsys, path)
-	if err != nil {
-		return nil, nil, err
-	}
-	if IsV2Brief(raw) {
-		v2, err := loadAndVerifyV2FromBytes(raw, keyring)
-		if err != nil {
-			return nil, nil, err
-		}
-		return projectV2ToV1(v2), v2, nil
-	}
-	var brief ProgramBrief
-	if err := json.Unmarshal(raw, &brief); err != nil {
-		return nil, nil, fmt.Errorf("program: parse brief: %w", err)
-	}
-	if err := brief.Validate(); err != nil {
-		return nil, nil, fmt.Errorf("program: validate brief: %w", err)
-	}
-	if err := brief.VerifySignature(keyring); err != nil {
-		return nil, nil, fmt.Errorf("%w: %w", orchestrator.ErrHMACInvalid, err)
-	}
-	return &brief, nil, nil
-}
-
-// LoadAndVerifyBriefV2 is the v2-typed sibling of LoadAndVerifyBrief.
-// v1 briefs are lowered via LowerV1ToV2 so callers see a single
-// representation; v2 briefs flow through ValidateV2 + signature
-// verification untouched.
-func LoadAndVerifyBriefV2(fsys fs.FS, path string, keyring map[string][]byte) (*ProgramBriefV2, error) {
-	if len(keyring) == 0 {
-		return nil, fmt.Errorf("program: keyring required to verify briefs")
-	}
-	raw, err := readBriefBytes(fsys, path)
-	if err != nil {
-		return nil, err
-	}
-	if IsV2Brief(raw) {
-		return loadAndVerifyV2FromBytes(raw, keyring)
-	}
-	var brief ProgramBrief
-	if err := json.Unmarshal(raw, &brief); err != nil {
-		return nil, fmt.Errorf("program: parse brief: %w", err)
-	}
-	if err := brief.Validate(); err != nil {
-		return nil, fmt.Errorf("program: validate brief: %w", err)
-	}
-	if err := brief.VerifySignature(keyring); err != nil {
-		return nil, fmt.Errorf("%w: %w", orchestrator.ErrHMACInvalid, err)
-	}
-	return LowerV1ToV2(&brief), nil
-}
-
-func readBriefBytes(fsys fs.FS, path string) ([]byte, error) {
-	info, err := fs.Stat(fsys, path)
-	if err != nil {
-		return nil, fmt.Errorf("program: stat brief: %w", err)
-	}
-	if info.Size() > maxBriefSize {
-		return nil, fmt.Errorf("program: brief %s size %d exceeds cap %d", path, info.Size(), maxBriefSize)
-	}
-	raw, err := fs.ReadFile(fsys, path)
-	if err != nil {
-		return nil, fmt.Errorf("program: read brief: %w", err)
-	}
-	return raw, nil
-}
-
-// loadAndVerifyV2FromBytes parses raw as v2, runs ValidateV2, then
-// verifies HMAC against the canonicalised payload. HMAC verification
-// reuses the v1 signature scheme: marshal to JSON, decode into a
-// generic map, run schemas.Verify on that map. Because the embedded
-// ProgramBrief carries the Signature field, schemas.Verify operates
-// on the same canonical body the v1 path uses.
-func loadAndVerifyV2FromBytes(raw []byte, keyring map[string][]byte) (*ProgramBriefV2, error) {
-	var v2 ProgramBriefV2
-	if err := json.Unmarshal(raw, &v2); err != nil {
-		return nil, fmt.Errorf("program: parse v2 brief: %w", err)
-	}
-	if err := v2.ValidateV2(); err != nil {
-		return nil, fmt.Errorf("program: validate v2 brief: %w", err)
-	}
-	if err := v2.VerifySignatureV2(keyring); err != nil {
-		return nil, fmt.Errorf("%w: %w", orchestrator.ErrHMACInvalid, err)
-	}
-	return &v2, nil
-}
-
-// projectV2ToV1 fills the embedded ProgramBrief.Features slice from
-// FeaturesV2, translating Edges into DependsOnFeatures entries so the
-// existing v1-shaped Sync pipeline accepts a v2 brief unchanged.
-// Outputs schema + predicate metadata is preserved on the returned
-// ProgramBriefV2 (callers needing v2 fields use LoadAndVerifyBriefV2).
-//
-// V2 edges use outgoing semantics (e.From == owning feature ID). To
-// reconstruct the v1 incoming-edge DependsOnFeatures view we reverse-
-// index: for each edge U -> D in U.Edges, append U to D's
-// DependsOnFeatures.
-func projectV2ToV1(v2 *ProgramBriefV2) *ProgramBrief {
-	out := v2.ProgramBrief
-	out.Features = make([]PlannedFeature, len(v2.FeaturesV2))
-	idxByID := make(map[string]int, len(v2.FeaturesV2))
-	for i, f := range v2.FeaturesV2 {
-		out.Features[i] = f.PlannedFeature
-		idxByID[f.ID] = i
-	}
-	seenDep := make([]map[string]bool, len(v2.FeaturesV2))
-	for i := range out.Features {
-		seenDep[i] = map[string]bool{}
-		for _, d := range out.Features[i].DependsOnFeatures {
-			seenDep[i][d] = true
-		}
-	}
-	for _, f := range v2.FeaturesV2 {
-		for _, e := range f.Edges {
-			j, ok := idxByID[e.To]
-			if !ok {
-				continue
-			}
-			if seenDep[j][e.From] {
-				continue
-			}
-			out.Features[j].DependsOnFeatures = append(out.Features[j].DependsOnFeatures, e.From)
-			seenDep[j][e.From] = true
-		}
-	}
-	return &out
-}
-
-// BriefLoaderConfig holds dependencies for a BriefLoader. Mirrors the
-// Config.Logger DI pattern used by orchestrator, scheduler, and reaper
-// so all components share one injection shape.
+// BriefLoaderConfig holds BriefLoader deps; mirrors the Config.Logger
+// DI pattern shared across orchestrator/scheduler/reaper.
 type BriefLoaderConfig struct {
-	// FS is the briefs directory. Typically
+	// FS is the briefs directory — typically
 	// os.DirFS(filepath.Join(repoRoot, ".regatta", "programs")) in
-	// production and fstest.MapFS in tests. Required.
+	// production, fstest.MapFS in tests. Required.
 	FS fs.FS
 
 	// DB is the universal state store. Required.
@@ -249,37 +57,25 @@ type BriefLoaderConfig struct {
 	// pass (legal for v1-only deployments and tests).
 	Evaluator *EdgeEvaluator
 
-	// Logger is the structured-event sink for brief-rejection
-	// diagnostics. Nil falls back to slog.Default() so embedded
-	// callers still get output without panicking (spec §4.1 + §5.7).
+	// Logger sinks brief-rejection diagnostics; nil falls back to
+	// slog.Default().
 	Logger *slog.Logger
 
-	// Tracer is the OTel tracer this component uses to open spans.
-	// Nil falls back to otel.Tracer("program") which resolves to the
-	// global provider — noop until obs/otel.Setup runs. Per W6 spec
-	// §3.3 + feedback_spec_pattern_authority.
+	// Tracer falls back to otel.Tracer("program") — noop until
+	// obs/otel.Setup runs (W6 spec §3.3).
 	Tracer trace.Tracer
 
-	// Meter is the OTel instrument factory for brief-loader telemetry.
-	// Nil resolves to otel.Meter("program") at the first ResolveMeter()
-	// call so the global MeterProvider Setup wires (or a noop when
-	// Setup was skipped) wins by default. Mirrors the W6 Config.Tracer
-	// pattern so callers stay on one DI seam across trace + metric.
+	// Meter resolves lazily at ResolveMeter() so a global provider
+	// swap takes effect on the next call.
 	Meter metric.Meter
 
 	// Audit is the substrate-sink config for durable rejection records
-	// (issue #80). Zero value disables the sink; an operator without
-	// REGATTA_HMAC_KEY keeps the slog-only behaviour. When enabled,
-	// every rejection slog.Warn is followed by a best-effort
-	// substrate.AppendEvent so the record outlives log rotation +
-	// restart.
+	// (#80). Zero value disables — an operator without REGATTA_HMAC_KEY
+	// keeps slog-only behaviour.
 	Audit BriefAuditConfig
 }
 
-// ResolveMeter returns the configured meter or falls back to the
-// global provider's scoped meter. The fallback is lazy so a global
-// provider swap (e.g. test injection of a noop provider) takes effect
-// on the next call. Matches the W6 Config.Tracer nil-fallback shape.
+// ResolveMeter returns the configured meter or falls back lazily.
 func (c BriefLoaderConfig) ResolveMeter() metric.Meter {
 	if c.Meter != nil {
 		return c.Meter
@@ -287,13 +83,11 @@ func (c BriefLoaderConfig) ResolveMeter() metric.Meter {
 	return otel.Meter("program")
 }
 
-// BriefLoader is the recurring sync. Construct once at orchestrator
-// boot; Sync once per PollOnce tick.
-//
-// outputsSchemas + programByFeature are the live brief-load projection
-// the scheduler's OutputsSchemaResolver reads. They are rebuilt from
-// scratch on every Sync so a re-plan that drops feature F-X removes
-// F-X's schema entry by next tick (cross-brief staleness defence).
+// BriefLoader is the recurring sync — construct once at orchestrator
+// boot; Sync once per PollOnce tick. outputsSchemas + programByFeature
+// are the live brief-load projection the scheduler reads; they are
+// rebuilt from scratch on every Sync so a re-plan that drops feature
+// F-X removes F-X's schema entry by next tick.
 type BriefLoader struct {
 	fsys      fs.FS
 	db        *state.DB
@@ -309,13 +103,11 @@ type BriefLoader struct {
 	programByFeature map[FeatureID]string
 }
 
-// NewBriefLoader constructs a BriefLoader from a BriefLoaderConfig.
-// Returns an error if any required field (FS, DB, Keyring) is nil —
-// surfacing misconfiguration at boot instead of deferring a nil-deref
-// panic to the first Sync call. Timestamps are threaded through Sync's
-// pollStartedAt rather than held here, mirroring the AdapterSync DI
-// pattern — concurrent producers cannot race on a constructor-bound
-// clock.
+// NewBriefLoader returns an error when any required field (FS, DB,
+// Keyring) is nil — surfaces misconfiguration at boot instead of
+// deferring a nil-deref panic to the first Sync. Timestamps are
+// threaded through Sync's pollStartedAt rather than held here, mirroring
+// the AdapterSync DI pattern.
 func NewBriefLoader(cfg BriefLoaderConfig) (*BriefLoader, error) {
 	if cfg.FS == nil {
 		return nil, fmt.Errorf("program: BriefLoaderConfig.FS is required")
@@ -348,15 +140,9 @@ func NewBriefLoader(cfg BriefLoaderConfig) (*BriefLoader, error) {
 	}, nil
 }
 
-// OutputsSchemaForFeature returns the OutputsSchema declared by the
-// most-recent successful brief Sync for featureID. (nil, false) when
-// no brief has declared a schema for that feature — schedulers treat
-// this as "no schema", matching the runtime evaluator's contract that
-// schema is opaque at the runtime seam (type-check is at brief-load).
-//
-// Production wires this into scheduler.Config.OutputsSchemas via an
-// adapter closure in cmd/regatta that boxes the *OutputsSchema return
-// as the scheduler-side `any`.
+// OutputsSchemaForFeature returns the most-recent successful brief
+// Sync's OutputsSchema for featureID; (nil, false) when no brief has
+// declared a schema. Scheduler-side adapter boxes the return as `any`.
 func (b *BriefLoader) OutputsSchemaForFeature(id FeatureID) (*OutputsSchema, bool) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -365,28 +151,24 @@ func (b *BriefLoader) OutputsSchemaForFeature(id FeatureID) (*OutputsSchema, boo
 }
 
 // Sync globs *.json in fsys (skipping *.tmp), verifies each, and
-// upserts child WorkItems for the brief's features. Rows whose
-// last_seen_at predates pollStartedAt and source=brief are
-// tombstoned at the end of the loop. pollStartedAt is the single
-// timestamp source for every write — DB-clock injection is forbidden
-// in production paths.
+// upserts child WorkItems. Rows whose last_seen_at predates
+// pollStartedAt and source=brief are tombstoned at the end of the
+// loop. pollStartedAt is the single timestamp source for every write
+// — DB-clock injection is forbidden in production paths.
 //
 // Cross-brief feature-ID collisions are first-writer-wins: the
 // alphabetically-first brief that claims a feature ID gets it; later
 // briefs trying to redefine the same ID under a different parent are
 // skipped + warned. Glob output is sort.Strings'd so collision
-// resolution is deterministic.
+// resolution stays deterministic.
 //
 // Briefs whose ParentWorkItemID does not resolve to an existing
-// work_items row are rejected (orphan-prevention).
-//
-// Replay defense: briefs whose ProducedAt is <= MAX(updated_at) over
-// existing brief children of the program are rejected with reason
-// stale_produced_at. This survives orchestrator restart because the
-// watermark is derived from durable state.
+// work_items row are rejected (orphan-prevention). Replay defense:
+// briefs whose ProducedAt is <= MAX(updated_at) over existing brief
+// children of the program are rejected stale_produced_at. Survives
+// restart because the watermark is derived from durable state.
 func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
-	// W6 spec §8 T5: open a span at the main entry function so brief
-	// sync activity shows up in the trace tree.
+	// W6 spec §8 T5: open a span at the main entry function.
 	ctx, span := b.tracer.Start(ctx, "brief_loader.sync")
 	defer span.End()
 	entries, err := fs.Glob(b.fsys, "*.json")
@@ -397,10 +179,9 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 
 	// Stage v2 OutputsSchemas in a per-sync scratch map so a brief
 	// rejected mid-loop never leaks into the resolver, and features
-	// dropped from the new sync's brief set vanish from the resolver
-	// when we swap maps at the end. The active map is only replaced on
-	// the success path so a panic during loop body leaves the prior
-	// view intact.
+	// dropped from the new sync vanish from the resolver when we swap
+	// at the end. The active map is only replaced on success so a
+	// panic during loop body leaves the prior view intact.
 	freshSchemas := map[FeatureID]*OutputsSchema{}
 	freshProgramBy := map[FeatureID]string{}
 
@@ -409,8 +190,8 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		// *.json glob already filters; belt-and-suspenders for
-		// atypical atomic-write patterns like foo.tmp.json.
+		// *.json glob already filters; belt-and-suspenders for atypical
+		// atomic-write patterns like foo.tmp.json.
 		if strings.HasSuffix(path, ".tmp") {
 			continue
 		}
@@ -450,8 +231,8 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		if err != nil {
 			return fmt.Errorf("brief_loader: freshness watermark for %s: %w", brief.ParentWorkItemID, err)
 		}
-		// MAX over both layers — the durable floor cannot regress when
-		// work_items rows are deleted (the original #92 attack).
+		// MAX over both layers — durable floor cannot regress when
+		// operators delete work_items rows (the original #92 attack).
 		if hasRecorded && recorded.LastProducedAt.After(watermark) {
 			watermark = recorded.LastProducedAt
 		}
@@ -468,12 +249,11 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		for _, c := range brief.ParentCriteria {
 			acceptanceByFulfilled[c.ID] = c.Text
 		}
-		// Stage this brief's surviving children, then flush in one
-		// BatchUpsertWorkItems call (issue #89). Per-brief flush preserves
-		// the cross-brief CycleCheck contract: the next brief sees the
-		// prior brief's rows in work_items before its own CycleCheck runs.
-		// Intra-brief cycles are already rejected by brief.Validate /
-		// checkDAG before this loop.
+		// Stage children, flush in one BatchUpsertWorkItems (#89).
+		// Per-brief flush preserves the cross-brief CycleCheck contract
+		// — next brief sees prior brief's rows before its own
+		// CycleCheck. Intra-brief cycles are rejected by brief.Validate
+		// before this loop.
 		staged := make([]state.WorkItem, 0, len(brief.Features))
 		for _, feat := range brief.Features {
 			if firstPath, dup := seenFeature[feat.ID]; dup {
@@ -489,14 +269,13 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 			if mErr != nil {
 				return fmt.Errorf("brief_loader: marshal snapshot for %s: %w", feat.ID, mErr)
 			}
-			// Issue #78: warn the operator when a re-loaded brief's
-			// acceptance criteria diverge from an in-flight child's
-			// snapshot. Snapshot semantics stay intentional per spec §2.4
-			// + §2.5 Locked decision #5 (no auto-resync) — this is the
-			// visibility seam so silent re-snapshots no longer surprise
-			// agents whose gate bar just shifted. Skip planned + archived:
-			// planned rows snap forward harmlessly on this same upsert;
-			// archived rows are no longer gating anything.
+			// Issue #78: warn when a re-loaded brief's acceptance
+			// diverges from an in-flight child's snapshot. Snapshot
+			// semantics stay intentional (spec §2.4 + §2.5 Locked #5 —
+			// no auto-resync); this is the visibility seam so silent
+			// re-snapshots no longer surprise agents whose gate bar
+			// just shifted. Skip planned + archived: planned snaps
+			// forward harmlessly; archived no longer gates.
 			if existing, gErr := b.db.GetWorkItem(ctx, feat.ID); gErr == nil &&
 				existing.Status != state.WorkStatusPlanned &&
 				existing.Status != state.WorkStatusArchived &&
@@ -512,7 +291,7 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 				ID:                feat.ID,
 				Kind:              state.KindFeature,
 				Title:             feat.Title,
-				Lane:              "server", // MVP-1: single-lane; spec §out-of-scope notes multi-lane is MVP-2
+				Lane:              "server", // MVP-1 single-lane; multi-lane is MVP-2
 				Status:            state.WorkStatusPlanned,
 				ParentProgramID:   brief.ParentWorkItemID,
 				DependsOnFeatures: feat.DependsOnFeatures,
@@ -541,10 +320,10 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 				freshProgramBy[f.ID] = v2.ProgramID
 			}
 		}
-		// Issue #92: persist replay-defence watermark independent of
-		// work_items so an operator deleting brief children cannot reset
-		// the floor to zero. Written last so a partial-failure brief
-		// (any return above) never records as accepted.
+		// #92: persist replay-defence watermark independent of
+		// work_items so deleting brief children cannot reset the floor.
+		// Written last so a partial-failure brief never records as
+		// accepted.
 		if err := b.db.RecordProcessedBrief(ctx, brief.ParentWorkItemID,
 			brief.ProducedAt, brief.Signature.MAC, pollStartedAt); err != nil {
 			return fmt.Errorf("brief_loader: record processed_brief %s: %w", brief.ParentWorkItemID, err)
@@ -570,81 +349,12 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	return nil
 }
 
-// materialiseEdges lowers a v2 brief's Edges + DefaultNext into
-// work_item_edges rows and upserts them in one transaction (per
-// UpsertEdgesAt's contract). v1 briefs have no edge data and skip
-// this pass entirely.
-//
-// Existing rows preserve their fired/fired_against state — re-plans
-// that mutate predicate text refresh predicate_cel + on_skip but the
-// scheduler's eval result for the prior predicate stays put. Operators
-// who want a clean re-evaluation tombstone the program manually.
-func (b *BriefLoader) materialiseEdges(ctx context.Context, v2 *ProgramBriefV2, at time.Time) error {
-	if v2 == nil {
-		return nil
-	}
-	var rows []state.EdgeRow
-	for _, f := range v2.FeaturesV2 {
-		for _, e := range f.Edges {
-			rows = append(rows, state.EdgeRow{
-				ProgramID:    v2.ProgramID,
-				FromID:       e.From,
-				ToID:         e.To,
-				PredicateCEL: e.Predicate,
-				IsDefault:    false,
-				OnSkip:       string(skipOrDefault(e.OnSkip)),
-			})
-		}
-		if f.DefaultNext != nil {
-			rows = append(rows, state.EdgeRow{
-				ProgramID:    v2.ProgramID,
-				FromID:       f.ID,
-				ToID:         *f.DefaultNext,
-				PredicateCEL: "",
-				IsDefault:    true,
-				OnSkip:       string(SkipCascade),
-			})
-		}
-	}
-	if len(rows) == 0 {
-		return nil
-	}
-	if err := b.db.UpsertEdgesAt(ctx, v2.ProgramID, rows, at); err != nil {
-		return fmt.Errorf("brief_loader: upsert edges for %s: %w", v2.ProgramID, err)
-	}
-	b.log.Info(string(obs.EventBriefEdgesMaterialised),
-		string(obs.KeyProgramID), v2.ProgramID, "count", len(rows))
-	return nil
-}
-
-// skipOrDefault canonicalises an empty SkipMode to SkipCascade so
-// every persisted edge row carries a non-empty on_skip value.
-func skipOrDefault(s SkipMode) SkipMode {
-	if s == "" {
-		return SkipCascade
-	}
-	return s
-}
-
-// featureAcceptanceSnapshot snapshots the criteria a feature fulfills
-// at brief-ingestion time so downstream cascade-soft archival keeps the
-// child self-describing — operators reading a stale archived row can
-// still see what acceptance bar it was meant to clear (per spec §2.4).
-func featureAcceptanceSnapshot(f PlannedFeature, byFulfilled map[string]string) []PlanCriterion {
-	out := make([]PlanCriterion, 0, len(f.Fulfills))
-	for _, fid := range f.Fulfills {
-		out = append(out, PlanCriterion{ID: fid, Text: byFulfilled[fid]})
-	}
-	return out
-}
-
 // reconcileDependencyArchive walks children whose depends_on_features
-// references a tombstoned (archived) sibling and cascade-archives
-// them. Idempotent + Sync-independent: safe to call repeatedly with
-// no producer activity. Loops to a fixed point so a chain
-// A(archived) -> B -> C converges in one Sync invocation rather than
-// taking N ticks. Bounded by maxCascadeIterations to guard a corrupt
-// graph from wedging the orchestrator.
+// references a tombstoned sibling and cascade-archives them.
+// Idempotent + Sync-independent: safe to call repeatedly with no
+// producer activity. Loops to a fixed point so chain
+// A(archived) → B → C converges in one Sync rather than N ticks.
+// maxCascadeIterations guards against corrupt graphs.
 func (b *BriefLoader) reconcileDependencyArchive(ctx context.Context, at time.Time) error {
 	for i := 0; i < maxCascadeIterations; i++ {
 		applied, err := b.cascadeDependencyArchiveOnce(ctx, at)
@@ -660,8 +370,8 @@ func (b *BriefLoader) reconcileDependencyArchive(ctx context.Context, at time.Ti
 
 // cascadeDependencyArchiveOnce executes one pass over live brief
 // children and archives any whose depends_on_features includes an
-// already-archived sibling. Returns true if any row was newly
-// archived (driving the fixed-point loop).
+// already-archived sibling. Returns true on any new archive (drives
+// the fixed-point loop).
 func (b *BriefLoader) cascadeDependencyArchiveOnce(ctx context.Context, at time.Time) (bool, error) {
 	rows, err := b.db.SQL().QueryContext(ctx, `
 		SELECT id, depends_on_features FROM work_items
@@ -710,10 +420,9 @@ func (b *BriefLoader) cascadeDependencyArchiveOnce(ctx context.Context, at time.
 			// Fetch the child's current status to CAS-from. The outer
 			// SELECT excluded status=archived, but two BriefLoader
 			// passes can race on the same row: the typed transition
-			// wins exactly once (whichever pass commits first), the
-			// loser observes ErrInvalidWorkItemTransition and treats
-			// the row as already archived. Idempotent against the
-			// fixed-point retry loop.
+			// wins once, the loser sees ErrInvalidWorkItemTransition
+			// and treats the row as already archived (idempotent
+			// against the fixed-point retry loop).
 			child, err := b.db.GetWorkItem(ctx, r.id)
 			if err != nil {
 				if errors.Is(err, state.ErrWorkItemNotFound) {

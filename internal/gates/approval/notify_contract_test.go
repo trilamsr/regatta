@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/trilamsr/regatta/internal/obs"
+	"github.com/trilamsr/regatta/internal/slogutil"
 )
 
 // Spec §7 audit-trail conformance: shared suite every Notifier impl runs through.
@@ -100,12 +101,12 @@ func TestNotifier_InterfaceContract(t *testing.T) {
 					string(obs.KeyGateID):     req.GateName,
 				}
 				for k, want := range wantStrs {
-					v, ok := attrValue(rec, k)
+					v, ok := slogutil.AttrValue(rec, k)
 					if !ok || v.String() != want {
 						t.Errorf("attr %q=%q want %q (ok=%v)", k, v.String(), want, ok)
 					}
 				}
-				cnt, ok := attrValue(rec, string(obs.KeyReviewerCount))
+				cnt, ok := slogutil.AttrValue(rec, string(obs.KeyReviewerCount))
 				if !ok || cnt.Int64() != int64(len(req.Reviewers)) {
 					t.Errorf("attr %q=%d want %d (ok=%v)", obs.KeyReviewerCount, cnt.Int64(), len(req.Reviewers), ok)
 				}

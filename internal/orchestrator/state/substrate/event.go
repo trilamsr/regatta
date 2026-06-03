@@ -11,40 +11,35 @@ import (
 )
 
 // EventKind enumerates the substrate's append-only event channels.
-// The SQL CHECK on substrate_events.kind pins the same set; parity is
-// enforced by TestSubstrate_EventKindEnumMatchesSQLCheck.
-//
-// Note (spec S3): KindLockHeld / KindLockReleased are deliberately
-// omitted. Locks have mutable lifecycle; they live on the existing
-// locks table.
+// SQL CHECK on substrate_events.kind pins the same set
+// (TestSubstrate_EventKindEnumMatchesSQLCheck enforces parity).
+// Spec S3: locks have mutable lifecycle and stay on the locks table.
 type EventKind string
 
 const (
 	// KindNodeOutput replaces work_item_outputs (lww per spec §4).
 	KindNodeOutput EventKind = "node_output"
-	// KindFact is a blackboard fact write (W11 consumer; lww default).
+	// KindFact — blackboard fact write (W11; lww default).
 	KindFact EventKind = "fact"
-	// KindApprovalEvent replaces approval_events rows (append).
+	// KindApprovalEvent — append; replaces approval_events.
 	KindApprovalEvent EventKind = "approval_event"
-	// KindTokenSpend is one LLM-call spend record (append; budget = SUM).
+	// KindTokenSpend — one LLM-call spend record (append; budget = SUM).
 	KindTokenSpend EventKind = "token_spend"
-	// KindBudgetReconciled is the Anthropic Usage API cron output (lww).
+	// KindBudgetReconciled — Anthropic Usage API cron output (lww).
 	KindBudgetReconciled EventKind = "budget_reconciled"
-	// KindGateVerdict is a signed CELDecider output (append; T-S2 owns
-	// the payload validator + producer).
+	// KindGateVerdict — signed CELDecider output (append; T-S2 owns
+	// payload validator + producer).
 	KindGateVerdict EventKind = "gate_verdict"
-	// KindHeartbeat is running-agent liveness (lww per work_item_id).
+	// KindHeartbeat — running-agent liveness (lww per work_item_id).
 	KindHeartbeat EventKind = "heartbeat"
-	// KindBriefRejected records a durable audit row for every brief
-	// the loader rejects (HMAC fail, schema invalid, replay, unknown
-	// parent, feature-id collision). Issue #80 — substrate replaces
-	// slog-only retention so an operator running `regatta` for months
-	// keeps the rejection history under the HMAC chain.
+	// KindBriefRejected — durable audit row for every brief the loader
+	// rejects (issue #80, replaces slog-only retention so months-long
+	// rejection history stays under the HMAC chain).
 	KindBriefRejected EventKind = "brief_rejected"
 )
 
-// AllKinds returns the canonical kind list in declaration order. Used
-// by the enum-parity test (T-S3) and by reducer.go's default table.
+// AllKinds returns the canonical kind list in declaration order —
+// used by the enum-parity test (T-S3) and reducer.go's default table.
 func AllKinds() []EventKind {
 	return []EventKind{
 		KindNodeOutput, KindFact, KindApprovalEvent, KindTokenSpend,

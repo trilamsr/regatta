@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"math"
+	"strconv"
 	"testing"
 	"time"
 
@@ -153,21 +154,7 @@ func asSlogAttrs(gs []primitiveAttr) []slog.Attr {
 // the printable ASCII range so a shrunk counterexample is readable.
 func uniqueKey(i int) string {
 	const alphabet = "abcdefghijklmnopqrstuvwxyz"
-	return string(alphabet[i%len(alphabet)]) + "_" + itoa(i)
-}
-
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	var buf [20]byte
-	n := len(buf)
-	for i > 0 {
-		n--
-		buf[n] = byte('0' + i%10)
-		i /= 10
-	}
-	return string(buf[n:])
+	return string(alphabet[i%len(alphabet)]) + "_" + strconv.Itoa(i)
 }
 
 // collectAttrs flattens slog.Record.Attrs to a key→Value map. Property

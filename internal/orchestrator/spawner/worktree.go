@@ -11,15 +11,11 @@ import (
 	"sync"
 )
 
-// WorktreeManager creates and removes git worktrees rooted under
-// <RepoRoot>/.regatta/worktrees. Each agent gets a deterministic path
-// keyed by agent ID so a restart can find and reap orphaned trees
-// without consulting state.DB.
-//
-// Concurrency: Create/Remove serialize on an internal mutex; the
-// underlying `git worktree` commands hold a global git lock for the
-// duration of each call, so coarse serialization is the simplest
-// correctness-preserving approach.
+// WorktreeManager creates and removes git worktrees under
+// <RepoRoot>/.regatta/worktrees. Deterministic path per agent so a
+// restart can find and reap orphaned trees without consulting state.DB.
+// Create/Remove serialize on a mutex — `git worktree` already holds a
+// global git lock per call, so coarse serialization is simplest.
 type WorktreeManager struct {
 	repoRoot   string
 	branchBase string
@@ -31,24 +27,22 @@ type WorktreeManager struct {
 // binary. Production callers leave it nil; New supplies execRunner.
 type CommandRunner func(ctx context.Context, dir, name string, args ...string) ([]byte, error)
 
-// WorktreeManagerConfig is the constructor input.
+// WorktreeManagerConfig is the constructor seam — fields are immutable post-New so concurrent agents cannot race on repo root or branch base.
 type WorktreeManagerConfig struct {
-	// RepoRoot is the absolute path of the repo whose worktrees this
-	// manager owns.
+	// RepoRoot — absolute path of the repo the manager owns worktrees for.
 	RepoRoot string
 
-	// BranchBase is the branch prefix used when creating new
-	// worktrees. Default: "regatta/agent". A worktree for agent 7
-	// uses branch "regatta/agent-7".
+	// BranchBase — branch prefix for new worktrees (default
+	// "regatta/agent"; agent 7 → "regatta/agent-7").
 	BranchBase string
 
-	// Runner overrides the command runner. Tests use this to inject
-	// a fake git binary; production code MUST NOT call this.
+	// Runner overrides the command runner — tests inject a fake git;
+	// production MUST NOT.
 	Runner CommandRunner
 }
 
-// NewWorktreeManager constructs a manager. RepoRoot is resolved to
-// an absolute path; nonexistent paths are rejected eagerly.
+// NewWorktreeManager constructs a manager. RepoRoot is absolutised;
+// nonexistent paths are rejected eagerly.
 func NewWorktreeManager(cfg WorktreeManagerConfig) (*WorktreeManager, error) {
 	if cfg.RepoRoot == "" {
 		return nil, errors.New("spawner: WorktreeManagerConfig.RepoRoot is required")
@@ -74,22 +68,20 @@ func NewWorktreeManager(cfg WorktreeManagerConfig) (*WorktreeManager, error) {
 	}, nil
 }
 
-// PathFor returns the deterministic worktree path for agentID. The
-// path is identical across processes so a restart can locate an
-// orphaned tree.
+// PathFor — deterministic worktree path; identical across processes
+// so a restart can locate an orphaned tree.
 func (w *WorktreeManager) PathFor(agentID int64) string {
 	return filepath.Join(w.repoRoot, ".regatta", "worktrees", fmt.Sprintf("agent-%d", agentID))
 }
 
-// BranchFor returns the deterministic branch name for agentID.
+// BranchFor returns the deterministic branch name so a crashed-then-restarted manager can re-attach to an orphan worktree without state lookup.
 func (w *WorktreeManager) BranchFor(agentID int64) string {
 	return fmt.Sprintf("%s-%d", w.branchBase, agentID)
 }
 
 // Create runs `git worktree add` at PathFor(agentID) tracking a new
-// branch off baseRef. Returns the absolute worktree path on success.
-// If the worktree already exists (e.g. from a previous crashed run),
-// the call is a no-op and returns the existing path.
+// branch off baseRef. Idempotent — an existing worktree (e.g. from a
+// crashed run) returns the existing path.
 func (w *WorktreeManager) Create(ctx context.Context, agentID int64, baseRef string) (string, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -106,8 +98,8 @@ func (w *WorktreeManager) Create(ctx context.Context, agentID int64, baseRef str
 		baseRef = "HEAD"
 	}
 	branch := w.BranchFor(agentID)
-	// `-B` creates or resets the branch so a stale branch from a
-	// previous run does not block re-creation.
+	// `-B` resets the branch so a stale branch from a previous run
+	// does not block re-creation.
 	out, err := w.runner(ctx, w.repoRoot, "git", "worktree", "add", "-B", branch, path, baseRef)
 	if err != nil {
 		return "", fmt.Errorf("spawner: git worktree add: %w (output: %s)", err, strings.TrimSpace(string(out)))
@@ -115,9 +107,9 @@ func (w *WorktreeManager) Create(ctx context.Context, agentID int64, baseRef str
 	return path, nil
 }
 
-// Remove tears down the worktree at PathFor(agentID). The branch is
-// left intact (it may carry the agent's work; deleting it loses
-// history). Returns nil if the worktree does not exist; idempotent.
+// Remove tears down the worktree but leaves the branch intact (it
+// may carry agent work; deleting loses history). Idempotent — nil
+// when the worktree does not exist.
 func (w *WorktreeManager) Remove(ctx context.Context, agentID int64) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -130,20 +122,18 @@ func (w *WorktreeManager) Remove(ctx context.Context, agentID int64) error {
 	}
 	out, err := w.runner(ctx, w.repoRoot, "git", "worktree", "remove", "--force", path)
 	if err != nil {
-		// Fall back to a plain rm; the worktree-list metadata is
-		// pruned lazily by git on the next operation.
+		// Fall back to plain rm + prune so leftover worktree metadata
+		// does not haunt future operations.
 		if rmErr := os.RemoveAll(path); rmErr != nil {
 			return fmt.Errorf("spawner: git worktree remove: %w (output: %s); rm fallback: %w", err, strings.TrimSpace(string(out)), rmErr)
 		}
-		// Run `git worktree prune` so the leftover metadata does not
-		// haunt future operations.
 		_, _ = w.runner(ctx, w.repoRoot, "git", "worktree", "prune")
 	}
 	return nil
 }
 
-// execRunner is the production CommandRunner. It runs the command in
-// dir with no environment changes and returns the combined output.
+// execRunner runs the command in dir with no env changes and returns
+// combined output.
 func execRunner(ctx context.Context, dir, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
