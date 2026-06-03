@@ -3,7 +3,7 @@
   "title": "Regatta — Substrate Event-Rate",
   "schemaVersion": 39,
   "version": 1,
-  "tags": ["regatta", "substrate", "wave-b", "tier-2", "slo-3"],
+  "tags": ["regatta", "substrate", "wave-b", "tier-2", "slo-3", "slo-5"],
   "timezone": "browser",
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
@@ -87,6 +87,31 @@
           "refId": "A",
           "expr": "sum by (layer) (increase(regatta_substrate_divergence_detected_total[24h]))",
           "legendFormat": "{{layer}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Replay duration P50/P95/P99 by program_kind (SLO-5 band)",
+      "description": "T4 — OBS Wave-B replay-latency histogram. Warn at P95 > 30s, critical at P95 > 60s.",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 18 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.5, sum by (le, program_kind) (rate(regatta_substrate_replay_duration_seconds_bucket[5m])))",
+          "legendFormat": "P50 {{program_kind}}"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le, program_kind) (rate(regatta_substrate_replay_duration_seconds_bucket[5m])))",
+          "legendFormat": "P95 {{program_kind}}"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le, program_kind) (rate(regatta_substrate_replay_duration_seconds_bucket[5m])))",
+          "legendFormat": "P99 {{program_kind}}"
         }
       ]
     },

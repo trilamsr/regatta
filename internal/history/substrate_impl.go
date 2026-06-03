@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/trilamsr/regatta/internal/dbutil"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
@@ -51,6 +52,21 @@ func (s *substrateImpl) Tail(ctx context.Context, runID string, since string) (<
 
 // Replay is Phase X (spec §1 OUT + §11 F1/F2/F3). Wave-2 of S2-T1
 // lands the engine + diff harness (parent §7 T2).
+//
+// OBS Wave-B T4: even the stub records a histogram observation at
+// the function boundary so the metric scope is wired before the
+// Phase-X impl lands. Defer-time recording with time.Since(start)
+// is the single timestamp source (spec §6 R5: no double-count with
+// the W6 trace span; both consume the same duration value).
 func (s *substrateImpl) Replay(ctx context.Context, runID string, opts ReplayOpts) (<-chan ReplayedEvent, io.Closer, error) {
+	start := time.Now()
+	defer func() {
+		// Stub records "error" outcome; the Phase-X impl will pass
+		// the real outcome (match / divergent / cancelled). ReplayOpts
+		// will carry program_kind in the Phase-X plumbing; until then
+		// the histogram routes through the closed-enum "other" tag so
+		// cardinality stays bounded.
+		substrate.RecordReplayDuration(ctx, "other", "error", time.Since(start).Seconds())
+	}()
 	return nil, nil, ErrUnsupported
 }

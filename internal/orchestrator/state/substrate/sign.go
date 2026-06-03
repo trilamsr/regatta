@@ -1,6 +1,7 @@
 package substrate
 
 import (
+	"context"
 	"crypto/hmac"
 	"encoding/hex"
 	"encoding/json"
@@ -124,6 +125,12 @@ func Verify(e Event, keyring map[string][]byte) error {
 		return fmt.Errorf("%w: mac not hex: %w", ErrUnverifiable, err)
 	}
 	if !hmac.Equal(got, want) {
+		// T2 (OBS Wave-B) read-path emitter: a real MAC mismatch is a
+		// chain break, distinct from the missing-key path above
+		// (unknown_key never reaches this branch). Record before
+		// returning so the operator sees breaks at the moment a reducer
+		// reads the row; the sweeper covers cold rows.
+		recordChainBreak(context.Background(), e.Kind)
 		return ErrUnverifiable
 	}
 	return nil

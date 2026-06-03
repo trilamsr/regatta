@@ -1,0 +1,45 @@
+# Wave-B T3 — Substrate divergence (alarm-only, no SLO)
+#
+# Source spec: docs/engineer/specs/2026-06-02-obs-wave-b-substrate-health.md §5.
+# Tier:        critical (parity with T2 chain-break — divergence is the
+#              substrate-tamper sibling signal).
+# Window:      n/a; zero-tolerance.
+# Dedup:       Alertmanager 15m.
+#
+# Metric origin: T3 (internal/orchestrator/state/substrate/divergence.go
+# audit-table reader). Wire form regatta_substrate_divergence_detected_total
+# per §2.1 double-unit suffix lock.
+version: "prometheus/v1"
+service: "regatta-substrate"
+labels:
+  owner: "regatta"
+  tier: "1"
+  wave: "b"
+  slo_id: "slo-divergence"
+slos:
+  - name: "substrate-divergence"
+    objective: 100.0
+    description: "Zero replay-vs-recorded divergence detections tolerated. Source: spec §5."
+    labels:
+      category: "integrity"
+      runbook: "docs/operator/runbooks/substrate-divergence.md"
+    sli:
+      events:
+        # See substrate-chain-break.yaml comment for rationale on the
+        # synthetic total_query — Sloth requires {{.window}}.
+        error_query: |
+          sum(increase(regatta_substrate_divergence_detected_total[{{.window}}]))
+        total_query: |
+          sum(count_over_time(vector(1)[{{.window}}:1m])) or vector(1)
+    alerting:
+      name: SubstrateDivergenceDetected
+      labels:
+        category: "integrity"
+        slo_id: "slo-divergence"
+      annotations:
+        summary: "Substrate divergence — replay verdict diverged from recorded"
+        runbook: "docs/operator/runbooks/substrate-divergence.md"
+      page_alert:
+        labels:
+          severity: critical
+          sloth_severity: page
