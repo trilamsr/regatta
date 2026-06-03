@@ -33,17 +33,33 @@ var cronTemplate string
 // Options bundles the install/uninstall flag set so callers (cmd
 // wrappers + tests) share one structured input.
 type Options struct {
-	Mode    Mode   // user|system
-	DryRun  bool
-	Force   bool
-	NoCron  bool
-	Out     io.Writer
-	Err     io.Writer
-	Now     func() time.Time
-	GOOS    string // override for tests
-	Binary  string // override binary path (testing); empty ⇒ os.Executable
-	HomeDir string // override $HOME (testing)
-	UID     int    // override geteuid (testing); -1 ⇒ real
+	Mode       Mode // user|system
+	DryRun     bool
+	Force      bool
+	NoCron     bool
+	HealthzURL string // operator override for post-bootstrap /healthz polling (#667); empty ⇒ DefaultHealthzURL
+	Out        io.Writer
+	Err        io.Writer
+	Now        func() time.Time
+	GOOS       string // override for tests
+	Binary     string // override binary path (testing); empty ⇒ os.Executable
+	HomeDir    string // override $HOME (testing)
+	UID        int    // override geteuid (testing); -1 ⇒ real
+}
+
+// DefaultHealthzURL is the loopback /healthz the supervisor polls when
+// the operator does not supply --healthz-url — matches the :8080 default
+// of cmd/regatta/serve.go::defaultListenerAddr. Non-default --addr deploys
+// MUST override via Options.HealthzURL or the post-install poll false-rolls-back (#667).
+const DefaultHealthzURL = "http://127.0.0.1:8080/healthz"
+
+// ResolveHealthzURL picks the operator override, falling back to the
+// :8080 loopback default.
+func ResolveHealthzURL(opts Options) string {
+	if opts.HealthzURL != "" {
+		return opts.HealthzURL
+	}
+	return DefaultHealthzURL
 }
 
 // Mode discriminates user vs system install.
@@ -119,6 +135,7 @@ func Install(opts Options) error {
 		fpf(opts.Out, "binary:    %s\n", plan.BinaryPath)
 		fpf(opts.Out, "workdir:   %s\n", plan.WorkingDir)
 		fpf(opts.Out, "logs:      %s\n", plan.LogDir)
+		fpf(opts.Out, "healthz:   %s\n", ResolveHealthzURL(opts))
 		fpln(opts.Out, "=== rendered ===")
 		fpln(opts.Out, rendered)
 		return nil

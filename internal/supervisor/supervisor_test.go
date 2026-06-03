@@ -76,6 +76,36 @@ func TestInstallService_FreshLinux_WritesSystemdUnit(t *testing.T) {
 	}
 }
 
+// TestResolveHealthzURL_OverrideWins asserts Options.HealthzURL wins over the :8080 default (#667).
+func TestResolveHealthzURL_OverrideWins(t *testing.T) {
+	got := ResolveHealthzURL(Options{HealthzURL: "http://127.0.0.1:9876/healthz"})
+	if got != "http://127.0.0.1:9876/healthz" {
+		t.Fatalf("got %q want override", got)
+	}
+}
+
+// TestResolveHealthzURL_EmptyFallsBack asserts the :8080 loopback default when override is empty (#667).
+func TestResolveHealthzURL_EmptyFallsBack(t *testing.T) {
+	if got := ResolveHealthzURL(Options{}); got != DefaultHealthzURL {
+		t.Fatalf("got %q want %q", got, DefaultHealthzURL)
+	}
+}
+
+// TestInstallService_DryRun_PrintsHealthzURL asserts dry-run surfaces the resolved healthz URL so operators verify before install (#667).
+func TestInstallService_DryRun_PrintsHealthzURL(t *testing.T) {
+	opts, _ := newDarwinOpts(t)
+	opts.DryRun = true
+	opts.HealthzURL = "http://127.0.0.1:9876/healthz"
+	buf := &bytes.Buffer{}
+	opts.Out = buf
+	if err := Install(opts); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if !strings.Contains(buf.String(), ":9876") {
+		t.Fatalf("dry-run missing operator override; got:\n%s", buf.String())
+	}
+}
+
 // TestInstallService_IdempotentSameContent_Skips covers spec §3.1 branch A.
 func TestInstallService_IdempotentSameContent_Skips(t *testing.T) {
 	opts, _ := newDarwinOpts(t)
