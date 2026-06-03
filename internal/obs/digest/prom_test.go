@@ -197,7 +197,7 @@ func TestPromSource_FetchPartialOutageCostWeek(t *testing.T) {
 }
 
 // TestPromSource_FetchSanitizesNegInf locks the symmetric guard against -Inf
-// (issue #513 / PR #510 reviewer finding G1). int(-math.Inf) saturates to
+// (G1 finding). int(-math.Inf) saturates to
 // MinInt64; %.2f formats to "-Inf" which is invalid YAML in strict parsers.
 // Future narrowing of the IsInf check to (f, 1) would let -Inf slip through —
 // this test fails before that regression ships.

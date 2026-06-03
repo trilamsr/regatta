@@ -203,7 +203,7 @@ func TestRender_ValidatesDate(t *testing.T) {
 }
 
 // TestDigest_RenderProducesValidYAML locks the §6.2 front-matter contract
-// end-to-end (issue #513 / PR #510 reviewer finding S1): the rendered
+// end-to-end (S1 finding): the rendered
 // markdown's `---`-fenced YAML front-matter parses cleanly via
 // yaml.Unmarshal and every numeric scalar is finite. A regression that lets
 // NaN/Inf reach the formatter would either fail YAML parsing or surface as
