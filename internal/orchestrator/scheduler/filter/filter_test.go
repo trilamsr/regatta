@@ -5,7 +5,8 @@ import (
 	"errors"
 	"sort"
 	"testing"
-	"testing/quick"
+
+	"pgregory.net/rapid"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler/filter"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -169,14 +170,16 @@ func TestApplyComposition(t *testing.T) {
 	}
 }
 
-// TestApply_Idempotent asserts Apply(Apply(x))==Apply(x) for pure Evaluate (#251 §5 property).
-func TestApply_Idempotent(t *testing.T) {
-	f := func(ids []string, dropMod uint8) bool {
+// TestFilterApply_PropertyIdempotent asserts Apply(Apply(x))==Apply(x) and reorder-invariant kept-set (#251 §5).
+func TestFilterApply_PropertyIdempotent(t *testing.T) {
+	t.Parallel()
+	rapid.Check(t, func(rt *rapid.T) {
+		ids := rapid.SliceOfN(rapid.StringMatching(`[a-z]{1,4}`), 0, 12).Draw(rt, "ids")
+		mod := rapid.IntRange(1, 7).Draw(rt, "mod")
 		in := make([]state.WorkItem, 0, len(ids))
 		for _, id := range ids {
 			in = append(in, wi(id))
 		}
-		mod := int(dropMod%5) + 1
 		ev := func(_ context.Context, w state.WorkItem, _ struct{}) (bool, error) {
 			h := 0
 			for _, b := range []byte(w.ID) {
@@ -184,20 +187,34 @@ func TestApply_Idempotent(t *testing.T) {
 			}
 			return h%mod != 0, nil
 		}
-		p := filter.Pass[struct{}]{Name: "idem", Resolve: keepAll, Evaluate: ev}
+		p := filter.Pass[struct{}]{Name: "prop", Resolve: keepAll, Evaluate: ev}
 		first, err := filter.Apply(context.Background(), p, in)
 		if err != nil {
-			return false
+			rt.Fatal(err)
 		}
 		second, err := filter.Apply(context.Background(), p, first)
 		if err != nil {
-			return false
+			rt.Fatal(err)
 		}
-		return equalSlice(ids2(first), ids2(second))
-	}
-	if err := quick.Check(f, &quick.Config{MaxCount: 200}); err != nil {
-		t.Fatal(err)
-	}
+		if !equalSlice(ids2(first), ids2(second)) {
+			rt.Fatalf("idempotence: %v vs %v", ids2(first), ids2(second))
+		}
+		reversed := make([]state.WorkItem, len(in))
+		for i, w := range in {
+			reversed[len(in)-1-i] = w
+		}
+		rev, err := filter.Apply(context.Background(), p, reversed)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		a := ids2(first)
+		b := ids2(rev)
+		sort.Strings(a)
+		sort.Strings(b)
+		if !equalSlice(a, b) {
+			rt.Fatalf("kept-set reorder: %v vs %v", a, b)
+		}
+	})
 }
 
 // FuzzApply_OrderIndependentVerdict asserts kept-set invariant under input reorder (#251 §5).
