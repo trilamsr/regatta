@@ -137,9 +137,9 @@ back into a v2 spec slice.
   `hashedrekord` typed-entry signer + verify CLI extension).
 - **Why deferred from v1:** Rekor v1 doesn't accept opaque hashes;
   requires `hashedrekord` typed entry + signing keypair. v1
-  S3-bucket-object-lock alone is industry-standard tamper-evidence.
-  Sigstore is defense-in-depth + public-verifiability — not a v1
-  acceptance criterion.
+  S3-bucket-object-lock + versioning alone provides write-once tamper-
+  evidence. Sigstore is defense-in-depth + public-verifiability — not a
+  v1 acceptance criterion.
 
 ---
 

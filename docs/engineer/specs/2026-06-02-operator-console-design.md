@@ -12,9 +12,9 @@ companion:
   - docs/engineer/specs/2026-06-02-operator-console-v2-backlog.md
 scope_umbrella: "[#183](https://github.com/trilamsr/regatta/issues/183) operator web UI"
 framing: |
-  Sunk-cost = free. Existing code may be ripped + rebuilt whenever it
-  produces better software. Best-in-class delivery > velocity > preserving
-  in-flight work.
+  Sunk-cost = free. Existing code may be ripped + rebuilt whenever
+  measurable design quality improves. Delivery quality > velocity >
+  preserving in-flight work.
 ---
 
 # Regatta Operator Console — v1 design (v5.1)
@@ -140,13 +140,13 @@ self-actions; inbox + debug + steer one click each.
 | Style | Tailwind v4, content globs scoped to `web/src/**/*.{svelte,ts}` | No template double-scan. |
 | Design tokens | shadcn defaults + slate + one accent (locked S2) | Chip palette depends on it. |
 | Client state | SvelteKit client-side `load()` + per-channel SSE stores | adapter-static = no SSR; per-channel cursors. |
-| Backend | Go `cmd/regatta serve`; rip + replace `internal/web/` in 3 phases | Sunk-cost = free; rebuild for best-in-class. |
+| Backend | Go `cmd/regatta serve`; rip + replace `internal/web/` in 3 phases | Sunk-cost = free; rebuild to lift bundle size, a11y, and audit-chain depth. |
 | API | REST `/api/v1/operator/<resource>` + `/api/v1/self/<resource>` + per-channel SSE `/api/v1/stream/<channel>` | Two-principal tree. |
 | Auth — operator | `__Host-regatta` cookie SameSite=Lax httpOnly Secure + CSRF double-submit + Origin / Sec-Fetch-Site | S5 Slack-deep-link uses Partitioned cookie alongside. |
 | Auth — regatta-self | `Authorization: Bearer <self-KID-token>` HMAC over `(method, path, body-hash, ts, nonce, kid_version)` + version-pinned + overlap-grace rotation | Closes silent self-API outage on rotation. |
 | Replay protection | Mandatory `Idempotency-Key`; scoped `(actor_kind, user_id, run_id, key)` | No cross-run collision. |
 | Rate limit | Per-principal token bucket (separate human / self) + global cap | Stolen-cookie blast bounded. |
-| Audit | `audit_log` Merkle hash chain + actor_kind + causal_hash + execution_mode + cost_budget + blast_radius + retracted_by_row_id + rollback_policy + regatta_confidence + predicted_outcome columns + **single S3-bucket external anchor v1** (object-lock + versioning, hourly). Sigstore Rekor → v2 backlog D6. | S3+object-lock is industry-standard tamper-evidence. |
+| Audit | `audit_log` Merkle hash chain + actor_kind + causal_hash + execution_mode + cost_budget + blast_radius + retracted_by_row_id + rollback_policy + regatta_confidence + predicted_outcome columns + **single S3-bucket external anchor v1** (object-lock + versioning, hourly). Sigstore Rekor → v2 backlog D6. | S3+object-lock is S3 object-lock + versioning tamper-evidence. |
 | Build | Dev-machine SvelteKit dist v1; CI + SLSA = v2 backlog D1-D5 | No ceremony v1. |
 | Assets | `embed.FS` into Go binary; hashed filenames + `Cache-Control: immutable` + `.br`/`.gz` siblings | Sub-100ms TTI on localhost. |
 | CSP | `default-src 'self'; connect-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'` + standard hardening + Referrer-Policy: no-referrer + Permissions-Policy camera/mic/geo deny + X-Content-Type-Options nosniff + COR same-origin. **External-only assets; zero inline.** | adapter-static + Vite emit external-only; `inlineStyleThreshold: 0`. |
@@ -876,7 +876,7 @@ Sigstore Rekor transparency-log anchor (D6).
 | R1 | 26-wk timeline vs autonomy-loop concurrent dispatches | High | S0 dispatches in parallel; serialize on `internal/web/` rip. |
 | R2 | `tool_call` substrate kind = full table-rewrite per 0012 precedent | Med | S0 budget 3-4 d; pattern proven. |
 | R3 | Claude-Code shim observed-effect capture requires in-tree wrap | Med | S0 wraps inside `internal/orchestrator/spawner/claude.go`. |
-| R4 | S3 bucket dependency for external audit anchor | Low | Industry-standard tamper-evidence; Sigstore = v2 backlog D6. |
+| R4 | S3 bucket dependency for external audit anchor | Low | S3 object-lock + versioning tamper-evidence; Sigstore = v2 backlog D6. |
 | R5 | S3 anchor sole external store v1; operator-with-S3-write could rewrite | Low | Object-lock + versioning prevents same-key overwrite; old versions retained 7 y per Q4. Sigstore lifts from D6 if defense-in-depth needed. |
 | R6 | shadcn-svelte runes-port lag | Med | Pin versions; fix upstream bugs in-tree. |
 | R7 | Closed-loop calibration needs operator-reactions volume | Med | First weeks low volume; thresholds tunable. |
