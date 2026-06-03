@@ -18,6 +18,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
@@ -96,10 +97,18 @@ func (c SweeperConfig) withDefaults() SweeperConfig {
 // callers MUST NOT call Start twice on the same Sweeper — the goroutine
 // owns the read-only connection and exits cleanly on context cancel.
 type Sweeper struct {
-	cfg    SweeperConfig
-	roDB   *sql.DB
-	done   chan struct{}
-	cancel context.CancelFunc
+	cfg  SweeperConfig
+	roDB *sql.DB
+	// mu guards started/cancel/done against Start racing Close on the
+	// substrate-shutdown fan-out (#640): a defensive Close on the
+	// early-error path must not block waiting on a goroutine Start never
+	// spawned.
+	mu        sync.Mutex
+	started   bool
+	done      chan struct{}
+	cancel    context.CancelFunc
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // NewSweeper opens a read-only WAL connection to cfg.DBPath and returns
@@ -127,31 +136,51 @@ func NewSweeper(cfg SweeperConfig) (*Sweeper, error) {
 	// concurrent readers, but one fd is enough for this workload and
 	// shrinks the inode-cache footprint).
 	db.SetMaxOpenConns(1)
-	return &Sweeper{cfg: cfg, roDB: db, done: make(chan struct{})}, nil
+	return &Sweeper{cfg: cfg, roDB: db}, nil
 }
 
 // Start spawns the sweeper goroutine. Returns immediately; the loop
 // runs until ctx is cancelled or Close() is called. The first sweep
 // fires on the first Interval tick — NOT immediately — so a flap of
 // rapid Start/Close in tests cannot pile up half-completed sweeps.
+// Calling Start more than once is a no-op; the second call's ctx is
+// discarded so the goroutine identity (and its read-only DB handle)
+// stays singular.
 func (s *Sweeper) Start(ctx context.Context) {
+	s.mu.Lock()
+	if s.started {
+		s.mu.Unlock()
+		return
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	s.cancel = cancel
+	s.done = make(chan struct{})
+	s.started = true
+	s.mu.Unlock()
 	go s.run(ctx)
 }
 
-// Close stops the sweeper and waits for the goroutine to exit. Idempotent
-// — calling twice is a no-op so the substrate Close path can fan out
-// to the sweeper without tracking its own "started" bool.
+// Close stops the sweeper and waits for the goroutine to exit.
+// Idempotent and safe pre-Start: if Start was never called, Close
+// just shuts the read-only DB handle and returns. #640 — without the
+// started-guard, Close blocked forever on a done channel the goroutine
+// would never close.
 func (s *Sweeper) Close() error {
-	if s.cancel != nil {
-		s.cancel()
-	}
-	<-s.done
-	if s.roDB != nil {
-		return s.roDB.Close()
-	}
-	return nil
+	s.closeOnce.Do(func() {
+		s.mu.Lock()
+		started := s.started
+		cancel := s.cancel
+		done := s.done
+		s.mu.Unlock()
+		if started {
+			cancel()
+			<-done
+		}
+		if s.roDB != nil {
+			s.closeErr = s.roDB.Close()
+		}
+	})
+	return s.closeErr
 }
 
 // run is the goroutine body. Interval-driven; one sweep per tick. The
