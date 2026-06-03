@@ -8,10 +8,7 @@ import (
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
-// TestEnforcer_TwoSchedulersAgreeUnderRace_NoDuplicate pins the #652
-// storage-layer guard: two RecordEvent writes for the same UTC day +
-// kind=cost_cap_throttled collapse to one durable row via partial
-// UNIQUE index.
+// TestEnforcer_TwoSchedulersAgreeUnderRace_NoDuplicate asserts UNIQUE index collapses dup throttled events (#652).
 func TestEnforcer_TwoSchedulersAgreeUnderRace_NoDuplicate(t *testing.T) {
 	db := statetest.OpenDB(t)
 	ctx := context.Background()
