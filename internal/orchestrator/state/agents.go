@@ -345,6 +345,28 @@ func (d *DB) TransitionAgentTx(ctx context.Context, tx *sql.Tx, id int64, next A
 	return a, nil
 }
 
+// UpdateAgentPRSHA overwrites the pr_sha column without driving an
+// FSM transition. The pr-watcher uses this when an agent already in
+// pr_open observes a force-pushed head SHA: spec §3.3 row 6 (SHA
+// changed while in pr_open) is a column update + event emit, not a
+// transition. Returns sql.ErrNoRows when no agent matches.
+func (d *DB) UpdateAgentPRSHA(ctx context.Context, id int64, sha string) error {
+	res, err := d.sql.ExecContext(ctx,
+		`UPDATE agents SET pr_sha = ?, updated_at = ? WHERE id = ?`,
+		sha, d.now().UTC().Unix(), id)
+	if err != nil {
+		return fmt.Errorf("state: update agent pr_sha: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("state: rows affected: %w", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func txGetAgentForUpdate(ctx context.Context, tx *sql.Tx, id int64) (*Agent, error) {
 	row := tx.QueryRowContext(ctx,
 		`SELECT id, work_item_id, lane, state, pid, session_id, pr_sha, rejection_count, created_at, updated_at

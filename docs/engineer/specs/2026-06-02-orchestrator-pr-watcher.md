@@ -6,10 +6,17 @@ summary: "Orchestrator PR-watch wedge: drives `running → pr_open` by polling G
 
 # Orchestrator PR Watcher — Design Spec
 
-Status: ready for review
+Status: implemented (cluster #520+#521+#522+#526 baked in at land time)
 Date: 2026-06-02
 Author: design subagent <tri@lumalabs.ai>
 Supersedes: GH issue #15 (filed 2026-05-21 against an earlier `internal/orchestrator/prwatcher` shape; the orchestrator now drives state via `PollOnce` / `ScheduleOnce` / `ReapTerminal`, so the older package-as-noun framing no longer fits.)
+
+Cluster fixes applied at impl time (closes #520, #521, #522, #526):
+
+- §3.3 row 4 amended — `pr_open` + no open PR for `BranchRenameThreshold` (=12) consecutive sweeps emits `agent_branch_renamed` so the operator UI / reaper can re-route a branch-renamed agent (issue #520).
+- §3.4 hardened — migration 0014 adds a partial UNIQUE index on `events (agent_id, kind='agent_pr_opened')` so two operators racing the same repo see the loser's INSERT fail with a UNIQUE-constraint error; `Sweep` swallows it (issue #521).
+- §3.2 broadened — the `PRLister` contract accepts a title-prefix fallback so fork-pushed PRs (whose head ref is owner-qualified) match via `[agent-N]` title prefix when `--head regatta/agent-N` misses (issue #522).
+- R2 extended — `Watcher.Start` runs a `gh --version` probe at boot and refuses to start below `MinGHVersion = 2.40.0` (issue #526).
 
 Downstream seams (separate work items, do not bundle):
 

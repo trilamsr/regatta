@@ -34,6 +34,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
+	"github.com/trilamsr/regatta/internal/orchestrator/prwatch"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
@@ -144,6 +145,7 @@ func runServe(args []string) int {
 	fs.Var(&logFormat, "log-format", "Structured-log handler: text | json")
 	addr := fs.String("addr", defaultListenerAddr, "HTTP listener bind address when --ui=true")
 	ui := fs.Bool("ui", true, "Boot the operator HTTP listener; --ui=false skips bind entirely")
+	noPRWatch := fs.Bool("no-pr-watch", false, "[smoke-test only] disable the PR watcher; running agents stay in 'running' forever (issue #526)")
 	_ = fs.Parse(args)
 
 	// Resolution priority for the adapter items-root (spec
@@ -299,6 +301,32 @@ func runServe(args []string) int {
 	// who want richer routing land it when a real customer use-case
 	// shows up.
 	o.SetRejectionRouter(buildRejectionRouter(db, rejectionrouter.GHLabeler{}, slogger))
+
+	// PRWatcher drives the running→pr_open transition via gh CLI
+	// head-SHA polling. Spec docs/engineer/specs/2026-06-02-orchestrator-pr-watcher.md
+	// + cluster fixes for issues #520, #521, #522, #526. --no-pr-watch
+	// keeps the daemon bootable in smoke-test fixtures that have no
+	// GitHub remote; production always wires the Watcher.
+	if !*noPRWatch && set.Worktrees != nil {
+		watcher, err := prwatch.New(prwatch.Config{
+			DB:           db,
+			BranchFn:     set.Worktrees.BranchFor,
+			Lister:       prwatch.NewGHCLILister(),
+			VersionProbe: prwatch.NewGHCLIVersionProbe(),
+			Logger:       slogger,
+		})
+		if err != nil {
+			logger.Printf("pr-watch: %v", err)
+			return 2
+		}
+		if err := watcher.Start(ctx); err != nil {
+			logger.Printf("pr-watch: %v", err)
+			return 2
+		}
+		o.SetPRWatcher(watcher)
+	} else {
+		slogger.Info("orchestrator.starting", "pr_watch_enabled", false)
+	}
 
 	if err := o.Recover(ctx); err != nil {
 		logger.Printf("recover: %v", err)
