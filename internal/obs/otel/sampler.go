@@ -20,6 +20,7 @@ type ErrorOverrideSampler struct {
 	base sdktrace.Sampler
 }
 
+// NewErrorOverrideSampler wraps base so errored + audit-substrate spans escape head-sampling and stay forensically replayable.
 func NewErrorOverrideSampler(base sdktrace.Sampler) *ErrorOverrideSampler {
 	return &ErrorOverrideSampler{base: base}
 }

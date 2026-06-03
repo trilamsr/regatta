@@ -20,6 +20,7 @@ import (
 // depend on state need not also import schemas just for the enum.
 type WorkItemKind = schemas.WorkItemKind
 
+// KindFeature and KindProgram are the WorkItemKind values — see the type godoc above for the re-export rationale.
 const (
 	KindFeature = schemas.KindFeature
 	KindProgram = schemas.KindProgram
@@ -44,6 +45,7 @@ const (
 // scopes sweeps so AdapterSync and BriefLoader cannot stomp each other.
 type WorkItemSource string
 
+// SourceAdapter and SourceBrief scope TombstoneBySource sweeps so AdapterSync and BriefLoader cannot stomp each other's rows.
 const (
 	SourceAdapter WorkItemSource = "adapter"
 	SourceBrief   WorkItemSource = "brief"

@@ -25,6 +25,7 @@ const CurrentSchemaVersion int64 = 12
 // AgentState mirrors the state-machine in docs/design.md §378.
 type AgentState string
 
+// AgentPending and siblings are the closed enum the scheduler's transitions() table edge-checks — adding a value without updating transitions() silently breaks invariants.
 const (
 	AgentPending       AgentState = "pending"
 	AgentSpawning      AgentState = "spawning"
@@ -92,6 +93,7 @@ func OpenWithClock(ctx context.Context, dsn string, now func() time.Time) (*DB, 
 	return &DB{sql: raw, now: now}, nil
 }
 
+// Close releases the single sqlite connection — callers MUST defer it because SetMaxOpenConns(1) means a leak deadlocks the next Open.
 func (d *DB) Close() error { return d.sql.Close() }
 
 // SQL exposes the underlying *sql.DB for raw transactions. Use sparingly.

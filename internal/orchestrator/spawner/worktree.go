@@ -27,6 +27,7 @@ type WorktreeManager struct {
 // binary. Production callers leave it nil; New supplies execRunner.
 type CommandRunner func(ctx context.Context, dir, name string, args ...string) ([]byte, error)
 
+// WorktreeManagerConfig is the constructor seam — fields are immutable post-New so concurrent agents cannot race on repo root or branch base.
 type WorktreeManagerConfig struct {
 	// RepoRoot — absolute path of the repo the manager owns worktrees for.
 	RepoRoot string
@@ -73,6 +74,7 @@ func (w *WorktreeManager) PathFor(agentID int64) string {
 	return filepath.Join(w.repoRoot, ".regatta", "worktrees", fmt.Sprintf("agent-%d", agentID))
 }
 
+// BranchFor returns the deterministic branch name so a crashed-then-restarted manager can re-attach to an orphan worktree without state lookup.
 func (w *WorktreeManager) BranchFor(agentID int64) string {
 	return fmt.Sprintf("%s-%d", w.branchBase, agentID)
 }

@@ -28,7 +28,7 @@ type Hint struct {
 	MaxTokens   int64
 }
 
-// UpperBound: est_usd = (input·price_in + max·price_out) / 1e6.
+// UpperBound is the conservative-cap pricing estimator picked pre-call to fail-fast on runaway-spend risk: est_usd = (input·price_in + max·price_out) / 1e6.
 type UpperBound struct{}
 
 // Estimate returns ErrPricingMissing for unknown SKUs (Portkey-trap
