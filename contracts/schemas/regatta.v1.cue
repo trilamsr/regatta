@@ -27,8 +27,28 @@ import "list"
 	safety:        #Safety
 	context?:      #Context
 	telemetry?:    #Telemetry
-	prompts?:      #Prompts
+		prompts?:      #Prompts
 	programs?:     #Programs
+	alarm_webhook?: #AlarmWebhook
+}
+
+// #AlarmWebhook configures the PHASE-AUTONOMY-W1 in-process AlertManager
+// receiver. Empty / omitted block ⇒ disabled; operator opts in by
+// setting listen_addr. Same Handler runs out-of-process via
+// cmd/regatta-alarm-webhook when the operator prefers a sidecar.
+#AlarmWebhook: {
+	// listen_addr is the HTTP bind. Empty ⇒ disabled. Shape matches
+	// net.Listen("tcp", ...): host optional, port required.
+	listen_addr?: string
+
+	// gh_repo is owner/name. Empty ⇒ disabled even when listen_addr is
+	// set; the Go-side validator surfaces the conflict so a partial
+	// config never silently no-ops.
+	gh_repo?: string
+
+	// gh_token_env names the env var holding the GitHub API token.
+	// Defaulted to GITHUB_TOKEN so zero-config deployments work.
+	gh_token_env?: *"GITHUB_TOKEN" | string
 }
 
 #Repo: {

@@ -1,0 +1,49 @@
+{
+  "version": "4",
+  "groupKey": "{}:{alertname=\"HighErrorRate\"}",
+  "truncatedAlerts": 0,
+  "status": "firing",
+  "receiver": "regatta-webhook",
+  "groupLabels": {
+    "alertname": "HighErrorRate"
+  },
+  "commonLabels": {
+    "alertname": "HighErrorRate",
+    "severity": "critical",
+    "service": "regatta-orchestrator"
+  },
+  "commonAnnotations": {
+    "summary": "Error rate above 5% for 10m",
+    "description": "regatta-orchestrator error rate is 0.087 (threshold 0.05) over 10m window",
+    "runbook_url": "https://runbooks.example.com/regatta/high-error-rate",
+    "dashboard_url": "https://grafana.example.com/d/regatta/orchestrator?var-window=10m",
+    "current_value": "0.087",
+    "threshold": "0.05",
+    "replay_command": "regatta replay --substrate-fixture orchestrator --window 10m"
+  },
+  "externalURL": "https://alertmanager.example.com",
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "HighErrorRate",
+        "severity": "critical",
+        "service": "regatta-orchestrator",
+        "instance": "regatta-prod-0"
+      },
+      "annotations": {
+        "summary": "Error rate above 5% for 10m",
+        "description": "regatta-orchestrator error rate is 0.087 (threshold 0.05) over 10m window",
+        "runbook_url": "https://runbooks.example.com/regatta/high-error-rate",
+        "dashboard_url": "https://grafana.example.com/d/regatta/orchestrator?var-window=10m",
+        "current_value": "0.087",
+        "threshold": "0.05",
+        "replay_command": "regatta replay --substrate-fixture orchestrator --window 10m"
+      },
+      "startsAt": "2026-06-02T20:00:00.000Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "https://prometheus.example.com/graph?g0.expr=rate(errors_total[5m])",
+      "fingerprint": "abc123def456"
+    }
+  ]
+}
