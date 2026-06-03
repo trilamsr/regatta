@@ -65,6 +65,7 @@ var subcommands = []subcommand{
 	{subcmdCost, runCost},
 	{subcmdResume, runResume},
 	{subcmdSelfImprove, runSelfImprove},
+	{subcmdMerge, runMerge},
 }
 
 func main() {

@@ -291,15 +291,27 @@ func runServe(args []string) int {
 		logger.Printf("cost cap: %v", err)
 		return 2
 	}
+	// Merge wiring is built BEFORE the scheduler so OnGatesPass (#612)
+	// can pick up Coordinator+Worker from Config. Coordinator is always
+	// installed (drives Reconcile); Worker is nil when --auto-merge=false
+	// so OnGatesPass stays a no-op by default.
+	mergeCoord, mergeWorker, err := buildMergeWiring(db, *autoMerge, slogger)
+	if err != nil {
+		logger.Printf("merge wiring: %v", err)
+		return 2
+	}
+
 	sched := scheduler.New(db, scheduler.Config{
-		LaneCaps:       map[string]int(laneCaps),
-		LockTTL:        *lockTTL,
-		Evaluator:      schedulerEvaluator{evaluator},
-		OutputsSchemas: outputsSchemaResolverFor(loader),
-		Gate:           gate,
-		GateResolver:   gateResolver,
-		CostCap:        costCapEnf,
-		Clock:          clock,
+		LaneCaps:         map[string]int(laneCaps),
+		LockTTL:          *lockTTL,
+		Evaluator:        schedulerEvaluator{evaluator},
+		OutputsSchemas:   outputsSchemaResolverFor(loader),
+		Gate:             gate,
+		GateResolver:     gateResolver,
+		CostCap:          costCapEnf,
+		Clock:            clock,
+		MergeCoordinator: mergeCoord,
+		MergeWorker:      mergeWorker,
 	})
 
 	o := orchestrator.New(orchestrator.Config{
@@ -358,16 +370,11 @@ func runServe(args []string) int {
 		slogger.Info("orchestrator.starting", "pr_watch_enabled", false)
 	}
 
-	// PHASE AUTONOMY §11 W2 c2: wire the merge coordinator + auto-merge
-	// worker. Coordinator is always installed (drives the recovery
-	// sweep); the worker only runs when --auto-merge=true so the c2
-	// landing is operator-observable-equivalent to the pre-c2 daemon by
-	// default.
-	mergeCoord, mergeWorker, err := buildMergeWiring(db, *autoMerge, slogger)
-	if err != nil {
-		logger.Printf("merge wiring: %v", err)
-		return 2
-	}
+	// PHASE AUTONOMY §11 W2 c2: install the merge coordinator built
+	// above so Recover() drives Reconcile against stranded
+	// awaiting_merge agents. The auto-merge worker only runs when
+	// --auto-merge=true (see buildMergeWiring); the c2 default stays
+	// operator-observable-equivalent to the pre-c2 daemon.
 	if mergeCoord != nil {
 		o.SetMergeCoordinator(mergeCoord)
 	}
@@ -684,7 +691,7 @@ func parseBriefKeyring(raw string) (map[string][]byte, []string, error) {
 func buildMergeWiring(db *state.DB, autoMergeEnabled bool, logger *slog.Logger) (*merge.Coordinator, *merge.Worker, error) {
 	coord, err := merge.New(merge.Config{
 		DB:     db,
-		Prober: noopMergeProber{},
+		Prober: merge.NewGhProber(nil),
 		Logger: logger,
 	})
 	if err != nil {
@@ -707,15 +714,6 @@ func buildMergeWiring(db *state.DB, autoMergeEnabled bool, logger *slog.Logger) 
 // pinned version string so buildMergeWiring stays hermetic.
 var verifyGhVersionFn = func(ctx context.Context, logger *slog.Logger) error {
 	return merge.VerifyGhVersion(ctx, nil, logger)
-}
-
-// noopMergeProber is the temporary prober for c2 wiring — Reconcile
-// only probes when an agent reaches AwaitingMerge via PrepareMerge,
-// which c2's worker drives. The real gh-CLI prober lands with W7.
-type noopMergeProber struct{}
-
-func (noopMergeProber) Probe(_ context.Context, _ int, _ string) (merge.ProbeResult, error) {
-	return merge.ProbeResult{Status: merge.PRStatusUnknown}, nil
 }
 
 // buildRejectionRouter wires the RejectionRouter the orchestrator

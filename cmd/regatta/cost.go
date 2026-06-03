@@ -44,7 +44,7 @@ func runCost(args []string) int {
 		return 2
 	}
 	switch args[0] {
-	case "status":
+	case "status": //nolint:goconst // sub-subcommand verb shared with merge/secret; per-parent scoping reads cleaner than a global enum.
 		return runCostStatus(args[1:])
 	default:
 		_, _ = fmt.Fprintf(os.Stderr, "regatta cost: unknown subcommand %q\n", args[0])
