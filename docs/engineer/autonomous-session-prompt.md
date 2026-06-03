@@ -146,6 +146,7 @@ AUTOMERGE GATING
 WORKTREE / GIT HYGIENE (long-session)
 - **Agent tree spillage** (`feedback_agent_tree_spillage`): harness sometimes drops agents into primary tree instead of worktree. Stash primary before reset; verify `.claude/worktrees/agent-<id>/` matches before edits.
 - **Git ops speed** (`feedback_git_ops_speed`): periodic `git gc`; bulk-delete stale branches; batch `gh pr list --json`; ls-remote over fetch; classifier-overhead tax is real (1-3s/Bash invisible-but-real).
+- **Stale worktree GC**: `make worktree-gc` (dry-run) / `make worktree-gc-apply` removes agent worktrees whose branch is merged into `origin/main`. Skips primary checkout, cwd, and any worktree on `main`. Default mode is dry-run — destructive `--apply` is opt-in.
 
 NOTE: All other agent rules (token economy, identity, comments, CI gates, TDD, reviewer, worktree basics, dispatch caps, decision priority, root cause, deletion default, drop ceremony, self-host filter, branch protection) live in `CLAUDE.md` at repo root.
 
