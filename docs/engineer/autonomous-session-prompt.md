@@ -83,6 +83,7 @@ OPEN FOLLOWUPS (sweep when between phase items, ≤5 trivial PRs/session cap)
 - OBS followups inline in `docs/engineer/specs/2026-06-02-observability-roadmap.md` (cost-per-agent integration + Wave-C rollup-shape)
 - Open issue #15 superseded by #463 PR-watcher locked design (close on merge)
 - Late-arriving open PRs to triage: #435 (FuzzToken_Verify) · #449 (cost-gov runbook) · #458 (PHASE AUTONOMY spec) · #463 (PR-watcher locked design) · #464 #465 (otel/bridge property test + bench)
+- Architecture-review followups (filed 2026-06-02, boundary-gap + consistency set) — #553 canonical-JSON fork unify (HIGH, signing correctness) · #554 integer micro-USD money (HIGH, budget exactness) · #551 generalize external-side-effect intent/outbox · #550 gate-determinism reframe · #549 replay engine-version journal · #548 GDPR crypto-shred. #553+#554 are the two highest-value next PRs (real correctness bugs, well-bounded).
 - Recurring A+ rubric checkboxes — fuzz, mutation testing extensions, key-rotation drill extensions
 
 Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -120`. Per feedback_boot_prompt_per_wave_refresh, entries >2 waves old are pruned; older shipped wedges live in git history only.
