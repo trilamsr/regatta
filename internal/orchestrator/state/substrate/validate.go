@@ -313,6 +313,34 @@ func validatePRStageTransition(raw json.RawMessage) error {
 	return nil
 }
 
+// greenClockResetPayload carries the audit shape GreenClock reads
+// when a manual_merge or operator_intervention breaks the streak
+// (#659). SubjectID names the surface acted on (PR number, branch,
+// run-id); Actor names the operator; Reason carries the freeform
+// classification.
+type greenClockResetPayload struct {
+	SubjectID string `json:"subject_id"`
+	Actor     string `json:"actor"`
+	Reason    string `json:"reason"`
+}
+
+func validateGreenClockReset(kind EventKind) PayloadValidator {
+	return func(raw json.RawMessage) error {
+		if len(raw) == 0 {
+			return fmt.Errorf("%w: %s payload empty", ErrInvalidPayload, kind)
+		}
+		var p greenClockResetPayload
+		if err := strictUnmarshal(raw, &p); err != nil {
+			return fmt.Errorf("%w: %s: %w", ErrInvalidPayload, kind, err)
+		}
+		if p.SubjectID == "" || p.Actor == "" || p.Reason == "" {
+			return fmt.Errorf("%w: %s missing subject_id|actor|reason",
+				ErrInvalidPayload, kind)
+		}
+		return nil
+	}
+}
+
 // strictUnmarshal forbids unknown fields. Pins payload shape per
 // spec §S4 (typed Go structs, no JSON Schema files). A producer
 // emitting extra fields silently is a forward-version-compat trap.
@@ -337,5 +365,7 @@ func init() {
 	RegisterPayloadValidator(KindHeartbeat, validateHeartbeat)
 	RegisterPayloadValidator(KindBriefRejected, validateBriefRejected)
 	RegisterPayloadValidator(KindPRStageTransition, validatePRStageTransition)
+	RegisterPayloadValidator(KindManualMerge, validateGreenClockReset(KindManualMerge))
+	RegisterPayloadValidator(KindOperatorIntervention, validateGreenClockReset(KindOperatorIntervention))
 	// KindGateVerdict: registered by T-S2 in gate_verdict_payload.go init().
 }

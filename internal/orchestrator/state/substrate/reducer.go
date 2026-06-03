@@ -28,7 +28,8 @@ func defaultReducer(kind EventKind) ReducerStrategy {
 	case KindNodeOutput, KindFact, KindBudgetReconciled, KindHeartbeat:
 		return StrategyLWW
 	case KindApprovalEvent, KindTokenSpend, KindGateVerdict,
-		KindBriefRejected, KindPRStageTransition:
+		KindBriefRejected, KindPRStageTransition,
+		KindManualMerge, KindOperatorIntervention:
 		return StrategyAppend
 	default:
 		// Fail-closed to append so an override never silently drops

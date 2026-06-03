@@ -42,6 +42,15 @@ const (
 	// operational signal. Append is async (channel-batched) to keep
 	// the PR-watch hot path off substrate Append latency.
 	KindPRStageTransition EventKind = "pr_stage_transition"
+	// KindManualMerge — GreenClock reset signal: an operator merged a
+	// PR bypassing the autonomous path (#659). Append; reducer scans
+	// the day bucket for a non-zero count to break the streak.
+	KindManualMerge EventKind = "manual_merge"
+	// KindOperatorIntervention — GreenClock reset signal: an operator
+	// touched the loop outside the normal merge path (rollback, force
+	// rebase, branch-protection override). Append; same streak-break
+	// semantics as KindManualMerge (#659).
+	KindOperatorIntervention EventKind = "operator_intervention"
 )
 
 // AllKinds returns the canonical kind list in declaration order —
@@ -51,6 +60,7 @@ func AllKinds() []EventKind {
 		KindNodeOutput, KindFact, KindApprovalEvent, KindTokenSpend,
 		KindBudgetReconciled, KindGateVerdict, KindHeartbeat,
 		KindBriefRejected, KindPRStageTransition,
+		KindManualMerge, KindOperatorIntervention,
 	}
 }
 

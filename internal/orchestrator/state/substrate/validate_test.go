@@ -65,6 +65,20 @@ func TestSubstrate_KindPayloadValidation(t *testing.T) {
 			malformed:    `{"pr_number":42,"from_stage":"bogus","to_stage":"merged"}`,
 			wantStrategy: substrate.StrategyAppend,
 		},
+		{
+			name:         "manual_merge",
+			kind:         substrate.KindManualMerge,
+			wellFormed:   `{"subject_id":"pr-42","actor":"tree","reason":"emergency-rollback"}`,
+			malformed:    `{"subject_id":"pr-42","actor":"","reason":"x"}`,
+			wantStrategy: substrate.StrategyAppend,
+		},
+		{
+			name:         "operator_intervention",
+			kind:         substrate.KindOperatorIntervention,
+			wellFormed:   `{"subject_id":"branch-main","actor":"tree","reason":"force-rebase"}`,
+			malformed:    `{"subject_id":"","actor":"tree","reason":"x"}`,
+			wantStrategy: substrate.StrategyAppend,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
