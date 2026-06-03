@@ -95,11 +95,31 @@ The install command is a thin orchestrator. It:
 2. Resolves the absolute path of the running binary (`os.Executable`) and the operator's chosen install root (`--user` → `~/Library/LaunchAgents` or `~/.config/systemd/user`; `--system` → `/Library/LaunchDaemons` or `/etc/systemd/system`).
 3. Renders the template (text/template) substituting the resolved binary path, repo path, log directory, and environment-file path.
 4. Writes the unit / plist atomically (write-to-tmp + rename).
-5. Validates: `plutil -lint <path>` on macOS; `systemd-analyze verify <path>` on Linux. Roll back on failure.
+5. Validates: `plutil -lint <path>` on macOS; `systemd-analyze verify <path>` on Linux. Roll back on failure. **Fallback when the validator binary is missing on `$PATH`** (stripped-down container image, embedded Linux, macOS recovery shell): install-service falls back to an in-process text-schema validation pass (plist: regex check for `<?xml version="1.0"...?>` preamble + `<plist version="1.0">` open + balanced `<dict>`/`</dict>` + balanced `<array>`/`</array>` + closing `</plist>`; unit: required `[Service]` + `ExecStart=` + `[Install]` sections present) and emits `WARN: plutil/systemd-analyze not on PATH; applied text-schema validation only — recommend installing the validator before next install` to stderr. Install proceeds. The validator-missing case never blocks the install — it only downgrades the safety check with an operator-visible warning.
 6. Bootstraps: `launchctl bootstrap gui/$UID <path>` (user) or `launchctl bootstrap system <path>` (system) on macOS; `systemctl --user daemon-reload && systemctl --user enable --now <unit>` (user) or the system equivalent on Linux.
-7. Polls `/healthz` over loopback every 1s for 30s. First 200 → install reported success. Timeout → rollback (deregister unit, remove file) and exit with named error.
+7. Polls `/healthz` over loopback every 1s for 30s. First 200 → install reported success. Timeout → rollback (deregister unit, remove file) and exit with named error. Cold-start `degraded` handling (per §10 risk 11): the poll loop accepts `status: ok` as success and `status: degraded` after the full 30s window as `installed but not yet healthy — tail stderr for boot progress` (exit 0 with warning). Only `status: down` OR no-response-at-all triggers rollback.
 
-Idempotency: step 4 detects existing file → compares rendered template; identical → skip steps 5-7 and report `already installed`. Different → diff-print + apply + re-bootstrap.
+   **SELinux/AppArmor detection (Linux only, per §10 risk 8):** before the bootstrap call (step 6), install-service checks for SELinux and AppArmor:
+
+   - If `command -v sestatus` is on `$PATH` AND `sestatus` reports `SELinux status: enabled` AND `Current mode: enforcing`: emit a post-install instructions block to stdout (NOT stderr; this is operator guidance, not an error):
+     ```
+     NOTE: SELinux is enforcing. If the unit fails to start with a permission denial,
+           generate + load a local policy module:
+               sudo ausearch -m AVC -ts recent | audit2allow -M regatta_local
+               sudo semodule -i regatta_local.pp
+           Then re-run: regatta install-service
+     ```
+     Install proceeds — `audit2allow` is not auto-invoked because it requires `sudo` + an AVC denial trace that only exists AFTER the first failed start. F-6 tracks the autodetect-and-auto-generate flow.
+   - If `command -v aa-status` is on `$PATH` AND AppArmor is enabled in enforce mode: emit the analogous instruction pointing at `aa-complain` for the regatta profile path. Install proceeds.
+   - Neither tool present → silent (most non-RHEL/non-Ubuntu hosts).
+
+Idempotency: step 4 detects existing file → compares rendered template byte-for-byte. Three branches:
+
+- **Identical**: skip steps 5-7 and report `already installed`.
+- **Different + `--force` set**: write a timestamped backup at `<path>.bak.<RFC3339>`, then apply + re-bootstrap. Operator sees `existing unit differs; backed up to <path>.bak.<ts>; reinstalling`.
+- **Different + `--force` NOT set (default)**: refuse with named error `existing unit at <path> differs from rendered template; re-run with --force to overwrite (a .bak file will be written)`. Exit 1, no filesystem mutation. This is the safe default — operators who hand-edited the unit do not lose work to an unattended re-run.
+
+Additionally per §10 risk 12: idempotency-check verifies BOTH file presence AND unit registration (`systemctl is-enabled --quiet <unit>` on Linux, `launchctl print <domain>/<label>` on macOS). File-present-but-unregistered → step 4 falls through to bootstrap-only (steps 6-7) so a prior crash between write and register self-heals on re-run.
 
 ### 3.2 File layout (new files in this wedge)
 
@@ -145,6 +165,23 @@ deploy/systemd/regatta.service         # → replaced by dist/services/regatta.s
 ```
 
 Net LoC: +280 Go, +80 service templates, -244 bash, -91 service files = +25 net. README + native-deploy.md edits update install steps to call the new command.
+
+**Deleted-files transition (atomic with this spec's implementation PR, not a follow-up).** The implementer PR that lands `cmd/regatta install-service` deletes the listed `deploy/install-systemd.sh`, `deploy/install-launchd.sh`, `deploy/launchd/regatta-serve.sh`, `deploy/launchd/com.regatta.serve.plist`, and `deploy/systemd/regatta.service` files in the SAME commit as the new Go command. Atomic delete + replace is mandatory because:
+
+1. **No runtime callers in-tree.** Verification command for the implementer to run before staging the delete:
+   ```bash
+   git grep -nE 'deploy/(install-systemd|install-launchd|launchd/regatta-serve)\.sh|deploy/launchd/com\.regatta\.serve\.plist|deploy/systemd/regatta\.service'
+   ```
+   Expected hit shape (verified at spec-time on `main`): hits ONLY in (a) prose references inside this spec itself, (b) `docs/operator/native-deploy.md` (operator runbook prose pointing at the install scripts), and (c) `docs/engineer/autonomous-session-prompt.md` (boot-prompt Option B / Option C bullets). NO hits under `cmd/`, `internal/`, `Makefile`, `.github/workflows/`, `scripts/`, or any non-doc Go file — meaning no automated caller depends on the deleted paths. If the implementer's verification turns up a non-doc hit, that is a blocker; the implementer files a followup and stops the delete.
+2. **Doc callers rewritten in the SAME PR.** The implementer PR atomically:
+   - Rewrites `docs/operator/native-deploy.md` so all `deploy/install-systemd.sh` / `deploy/install-launchd.sh` / `deploy/launchd/regatta-serve.sh` invocations become `regatta install-service` walkthroughs (§6 of this spec is the source of truth for the new flow; the runbook copies the verbatim shell transcripts).
+   - Updates `docs/engineer/autonomous-session-prompt.md` Option B / Option C bullets to point at `regatta install-service [--user|--system]` instead of the bash scripts.
+   - Updates the top-level `README.md` install snippet.
+
+   All three doc updates land in the SAME commit as the script deletions; no doc-link-rot window exists between PR-open and PR-merge.
+3. **PR body operator instructions.** The implementer PR body's `release-notes` fence calls out the cutover explicitly: `## Breaking — deploy/install-{systemd,launchd}.sh removed; replace operator runbook invocation with regatta install-service [--user|--system]. Old scripts had no automated callers; doc references rewritten in same PR; no CI updates required.` This makes the migration visible in the release notes without needing a follow-up wedge.
+
+The spec rejects the alternative phased-deletion approach (leave bash scripts as a stub that `exec`s the Go command) because it (a) leaves dead bash in-tree against `feedback_deletion_default`, (b) duplicates the runtime path of failures (now an operator must debug bash-wrapping-Go), and (c) adds a second binary contract surface (the bash exit codes) that has to stay in sync. One atomic swap is cheaper.
 
 ### 3.3 Linux systemd unit template
 
@@ -263,7 +300,8 @@ Path: `dist/services/regatta.plist.tmpl`. Substitutes `{{.Label}}`, `{{.BinaryPa
 Changes vs existing `deploy/launchd/com.regatta.serve.plist`:
 
 - Placeholders templated rather than `REGATTA_*` literal-replaced (cleaner than sed-substitution).
-- `PATH` resolved at install-time: brew on Apple Silicon → `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`; brew on Intel → `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`; non-brew → `/usr/local/bin:/usr/bin:/bin`. Detect via `which brew` at install-time (see §10 risk 4).
+- `BinaryPath` for `ProgramArguments` is taken from `os.Executable()` (canonicalized via `filepath.EvalSymlinks`) — never from `which regatta` or `$PATH`. This pins the plist to the binary actually running install-service. Per §10 risk 4 amendment: ignore `which` entirely for binary resolution; `which` cross-arch failures (Apple-Silicon laptop returning the Intel brew path) silently break `launchctl bootstrap`.
+- `PATH` env var (for child invocations inside the loop) is resolved at install-time by inspecting `os.Executable()`'s parent directory: if it lives under `/opt/homebrew` → emit `/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin`; if under `/usr/local` → emit `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin`; otherwise → emit `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin` (non-brew path; both brew prefixes appended as fallback in case the operator later adds a brew dependency). `which brew` is consulted only as a tie-breaker when `os.Executable()` returns a generic path like `/usr/bin/regatta` (Linux distro package install); it is never authoritative on macOS.
 - All other keys carried verbatim.
 
 ### 3.5 `/healthz` semantics
@@ -290,6 +328,7 @@ Rules:
 
 - `db` — `sql.DB.PingContext` with 500ms timeout. `down` → overall `down` → HTTP 503.
 - `heartbeat` — the serve binary writes a row to `health_heartbeat (ts)` every 10s in a background goroutine. Stale = age > 60s. Stale → overall `degraded` → still HTTP 200 (the process is alive enough to answer; supervisor reads `status` field for restart decision).
+- **Dedicated `*sql.DB` for heartbeat writes (mitigates §10 risk 2)**: the heartbeat writer opens its own `*sql.DB` handle against the same database file (`sql.Open("sqlite3", dsn)`), and immediately calls `db.SetMaxOpenConns(1)` + `db.SetConnMaxIdleTime(0)` so this handle owns exactly one reserved SQLite connection that the main DB pool cannot exhaust. Effect: even if the main pool is fully saturated by a stuck migration / long transaction / pathological worker loop, the heartbeat writer continues to record liveness — and once heartbeats truly stop, that signal is honest (the supervisor's restart is then correct). Without the dedicated handle, pool exhaustion makes the heartbeat row stale even though the process is otherwise healthy, producing spurious supervisor restarts. The handle is shared with the `db` check (also `SetMaxOpenConns(1)`) so the readiness probe and the heartbeat writer fail together when SQLite is actually wedged.
 - `brief` — at-start the loader records the resolved brief path in an in-memory cell; missing → overall `degraded` → HTTP 200.
 - `status` derivation: any `down` → `down`. Otherwise any `stale|missing` → `degraded`. Otherwise `ok`.
 
@@ -309,6 +348,10 @@ The serve binary's worker goroutine emits `sd_notify(WATCHDOG=1)` every 10s — 
 Risk: the long-running LLM call can run > 30s. The notify goroutine is independent of any LLM client — it sleeps and writes, never blocks on a Claude API call. See §10 risk 2 for the failure mode where the entire process is wedged.
 
 No third-party dep needed; the wire format is one ~20-line socket-write implementation in `internal/watchdog/notify_linux.go`. Reference: systemd `sd_notify(3)` man page.
+
+**Socket-write error handling.** Each `WATCHDOG=1` write is fire-and-forget at the socket layer, but the implementation does NOT silently swallow errors. On any non-nil error from `conn.Write` (socket gone, permission, ENOBUFS), the goroutine logs at `WARN` with the error string + the syscall errno (when available), increments an internal `watchdog_notify_failures_total` counter (exposed via the existing `/metrics` endpoint when OTel is wired), and continues the 10s loop — it does NOT crash, does NOT exit, and does NOT escalate to panic. Rationale: if the notify socket is truly gone, systemd will kill the process within `WatchdogSec=30` anyway, and `Restart=on-failure` brings it back. The supervisor is the source of truth for "is the watchdog working"; the goroutine's job is to keep trying, not to second-guess the supervisor.
+
+**Shutdown coordination.** The notify goroutine takes a `context.Context` from the serve binary's main lifecycle. On context-cancel (SIGTERM, SIGINT, supervisor stop): emit one `STOPPING=1` notify (best-effort; ignore errors), then close the unix-domain socket, then `return`. This lets the goroutine exit cleanly under `go test -race` (no leaked goroutines) and gives systemd an explicit "I am about to exit" signal so it suppresses the `WatchdogSec` restart trigger on a graceful stop. Test 12 covers the `ctx.Cancel() → goroutine returns within 1s` contract.
 
 ### 3.7 Cron templates
 
@@ -339,6 +382,16 @@ regatta service status
 `--dry-run` renders the unit / plist + the install plan to stdout, makes zero filesystem writes, and exits 0. Operator inspects, then re-runs without `--dry-run`.
 
 `--no-cron` skips §3.7. Operator with an existing cron-management story can opt out; default is install crontab.
+
+**Uninstall idempotency.** `regatta uninstall-service` is fully idempotent. Behavior matrix:
+
+- Unit registered + file present → unregister (`launchctl bootout` / `systemctl --user disable --now`), remove file, strip cron block, report `uninstalled`.
+- Unit registered + file missing → unregister only, report `uninstalled (stale registration cleared)`.
+- Unit not registered + file present → remove file, strip cron block, report `uninstalled (file removed)`.
+- Unit not registered + file missing + no cron block → exit 0 with `INFO: nothing to remove (already uninstalled)`. NO error, NO non-zero exit, NO operator-action-required message. Re-run on an already-clean host is a green no-op.
+- Partial cron block remnant (block present but unit gone) → strip cron block, report `uninstalled (cron block stripped)`.
+
+Each step is independently best-effort: a failure to strip the cron block does NOT prevent the unit unregister from running, and vice versa. All errors are accumulated and reported at exit; partial success is the default mode. This matches the install-side idempotency contract — re-runs converge to the steady state regardless of how messy the starting point is.
 
 `regatta service status` reads the OS init system's state plus polls `/healthz` JSON:
 
