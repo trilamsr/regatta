@@ -3,12 +3,12 @@ package approval
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sort"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/canon"
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -128,10 +128,7 @@ func recordEvent(ctx context.Context, o recordEventOpts) error {
 	return nil
 }
 
-// sortedKeys returns map keys in lex order. Shared by canonicalisePayload
-// (deterministic JSON bytes) and recordEvent's slog-attr fan-out so the
-// per-key emission order stays stable across runs — non-deterministic
-// slog emission would otherwise be a needless source of test flake.
+// sortedKeys returns map keys in lex order so recordEvent's slog-attr fan-out emits keys deterministically across runs.
 func sortedKeys(m map[string]any) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
@@ -141,34 +138,10 @@ func sortedKeys(m map[string]any) []string {
 	return keys
 }
 
-// canonicalisePayload emits keys in lex-sorted order so byte-equality
-// between the slog attr and the DB row is deterministic. The repo's
-// canon.CanonicaliseJSON does the same job for token bodies; using
-// the same shape here keeps the two audit-trail formats parsed by
-// the same downstream tooling.
+// canonicalisePayload returns the canonical-JSON bytes for attrs via canon.Marshal so the audit-row + slog payload share one canonicaliser.
 func canonicalisePayload(attrs map[string]any) ([]byte, error) {
 	if len(attrs) == 0 {
 		return []byte("{}"), nil
 	}
-	keys := sortedKeys(attrs)
-	var buf []byte
-	buf = append(buf, '{')
-	for i, k := range keys {
-		if i > 0 {
-			buf = append(buf, ',')
-		}
-		kb, err := json.Marshal(k)
-		if err != nil {
-			return nil, err
-		}
-		buf = append(buf, kb...)
-		buf = append(buf, ':')
-		vb, err := json.Marshal(attrs[k])
-		if err != nil {
-			return nil, err
-		}
-		buf = append(buf, vb...)
-	}
-	buf = append(buf, '}')
-	return buf, nil
+	return canon.Marshal(attrs)
 }

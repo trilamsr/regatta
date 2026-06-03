@@ -1,4 +1,8 @@
-package canon
+// Package approvaltoken hosts the approval-token mint+verify primitives.
+// Split out of internal/canon so internal/canon stays a pure leaf with
+// no contracts/schemas dependency — letting contracts/schemas import
+// canon for the single-source canonicalisation (issue #553).
+package approvaltoken
 
 import (
 	"crypto/hmac"
@@ -12,6 +16,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/canon"
 )
 
 // Approval-token mint + verify. Wire format (spec §5.2):
@@ -190,15 +195,15 @@ func VerifyToken(kr Keyring, wire string, expectReviewer string, now time.Time) 
 }
 
 // canonicaliseTokenPayload marshals p with stdlib json, then runs the
-// strict CanonicaliseJSON pass to guarantee lex-key-sorted output. We
-// route through CanonicaliseJSON (not encoding/json directly) so the
-// signed bytes match the format every other canon-consumer expects.
+// strict canon.CanonicaliseJSON pass to guarantee lex-key-sorted output.
+// Routing through canon (not encoding/json directly) keeps the signed
+// bytes byte-identical to every other canon-consumer.
 func canonicaliseTokenPayload(p TokenPayload) ([]byte, error) {
 	raw, err := json.Marshal(p)
 	if err != nil {
 		return nil, err
 	}
-	return CanonicaliseJSON(raw)
+	return canon.CanonicaliseJSON(raw)
 }
 
 // extractKIDFromCanonical pulls the kid value from canonical-JSON body

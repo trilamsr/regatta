@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 )
 
 // Principal is the identity contract consumed by approval handlers.
@@ -23,13 +23,13 @@ type Principal struct {
 var (
 	// ErrCookieMissing signals no regatta_approval_token cookie on the request.
 	ErrCookieMissing = errors.New("web: approval token cookie missing")
-	// ErrTokenInvalid wraps canon.ErrTokenInvalid (framing / b64 / kid scan).
+	// ErrTokenInvalid wraps approvaltoken.ErrTokenInvalid (framing / b64 / kid scan).
 	ErrTokenInvalid = errors.New("web: approval token invalid")
-	// ErrTokenExpired wraps canon.ErrTokenExpired (now >= window).
+	// ErrTokenExpired wraps approvaltoken.ErrTokenExpired (now >= window).
 	ErrTokenExpired = errors.New("web: approval token expired")
 	// ErrTokenReplay signals reuse of a consumed token (decide path sentinel).
 	ErrTokenReplay = errors.New("web: approval token already consumed")
-	// ErrUnknownKey wraps canon.ErrUnknownKeyID (kid not in keyring).
+	// ErrUnknownKey wraps approvaltoken.ErrUnknownKeyID (kid not in keyring).
 	ErrUnknownKey = errors.New("web: approval token unknown key_id")
 	// ErrNotReviewer wraps approval.ErrNotReviewer (reviewer not in approval snapshot).
 	ErrNotReviewer = errors.New("web: reviewer not in approval snapshot")
@@ -40,24 +40,24 @@ var (
 // reviewerHintCookieName retains its server-set lifecycle for operator
 // UX (browser dev-tools surface a human-readable reviewer slug next to
 // the opaque HMAC token). The cookie is NOT load-bearing for
-// verification — canon.VerifyToken derives reviewer from the signed
+// verification — approvaltoken.VerifyToken derives reviewer from the signed
 // claim (issue #305). Removing the cookie would not weaken auth; it is
 // kept solely so operators can eyeball "who is this token for?" without
 // decoding the wire bytes.
 const reviewerHintCookieName = "regatta_reviewer_hint"
 
-// PrincipalFromRequest authenticates the cookie-bound approval token via canon.VerifyToken and returns the Principal claim derived from the HMAC-signed reviewer field.
-func PrincipalFromRequest(r *http.Request, kr canon.Keyring, now time.Time) (Principal, canon.TokenPayload, error) {
+// PrincipalFromRequest authenticates the cookie-bound approval token via approvaltoken.VerifyToken and returns the Principal claim derived from the HMAC-signed reviewer field.
+func PrincipalFromRequest(r *http.Request, kr approvaltoken.Keyring, now time.Time) (Principal, approvaltoken.TokenPayload, error) {
 	c, err := r.Cookie(ApprovalTokenCookieName)
 	if err != nil || c.Value == "" {
-		return Principal{}, canon.TokenPayload{}, ErrCookieMissing
+		return Principal{}, approvaltoken.TokenPayload{}, ErrCookieMissing
 	}
 	// Empty expectReviewer → derive identity from the signed claim
-	// (issue #305). HMAC compare inside canon.VerifyToken runs first,
+	// (issue #305). HMAC compare inside approvaltoken.VerifyToken runs first,
 	// so a forged token still fails before the derivation branch.
-	payload, verr := canon.VerifyToken(kr, c.Value, "", now)
+	payload, verr := approvaltoken.VerifyToken(kr, c.Value, "", now)
 	if verr != nil {
-		return Principal{}, canon.TokenPayload{}, mapCanonErr(verr)
+		return Principal{}, approvaltoken.TokenPayload{}, mapCanonErr(verr)
 	}
 	return Principal{ID: payload.Reviewer, Tenant: "default"}, payload, nil
 }
@@ -67,11 +67,11 @@ func PrincipalFromRequest(r *http.Request, kr canon.Keyring, now time.Time) (Pri
 // canon's internal envelope-vs-mismatch distinction.
 func mapCanonErr(err error) error {
 	switch {
-	case errors.Is(err, canon.ErrTokenExpired):
+	case errors.Is(err, approvaltoken.ErrTokenExpired):
 		return fmt.Errorf("%w: %w", ErrTokenExpired, err)
-	case errors.Is(err, canon.ErrUnknownKeyID):
+	case errors.Is(err, approvaltoken.ErrUnknownKeyID):
 		return fmt.Errorf("%w: %w", ErrUnknownKey, err)
-	case errors.Is(err, canon.ErrTokenInvalid), errors.Is(err, canon.ErrUnverifiable):
+	case errors.Is(err, approvaltoken.ErrTokenInvalid), errors.Is(err, approvaltoken.ErrUnverifiable):
 		return fmt.Errorf("%w: %w", ErrTokenInvalid, err)
 	default:
 		return fmt.Errorf("%w: %w", ErrTokenInvalid, err)
@@ -91,9 +91,9 @@ func RedeemHandler(deps Dependencies) http.Handler {
 			now = deps.Clock()
 		}
 		// Empty expectReviewer → derive identity from claim (issue #305).
-		// HMAC verify inside canon.VerifyToken precedes the derivation
+		// HMAC verify inside approvaltoken.VerifyToken precedes the derivation
 		// branch, so a forged wire still trips ErrUnverifiable.
-		payload, err := canon.VerifyToken(deps.Keyring, wire, "", now)
+		payload, err := approvaltoken.VerifyToken(deps.Keyring, wire, "", now)
 		if err != nil {
 			writeSentinelError(w, sentinelSlug(mapCanonErr(err)), errStatus(err))
 			return
@@ -175,9 +175,9 @@ func sentinelSlug(err error) string {
 // on 5xx does not flap on routine wrong-token clicks.
 func errStatus(err error) int {
 	switch {
-	case errors.Is(err, canon.ErrTokenExpired):
+	case errors.Is(err, approvaltoken.ErrTokenExpired):
 		return http.StatusGone
-	case errors.Is(err, canon.ErrUnknownKeyID):
+	case errors.Is(err, approvaltoken.ErrUnknownKeyID):
 		return http.StatusForbidden
 	default:
 		return http.StatusBadRequest

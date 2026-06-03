@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -52,8 +52,8 @@ func seedWorkItem(t *testing.T, db *state.DB, wi state.WorkItem, now time.Time) 
 	}
 }
 
-func testKeyring() canon.Keyring {
-	return canon.MapKeyring{"k1": []byte("test-key-bytes-32-bytes-long-aaa")}
+func testKeyring() approvaltoken.Keyring {
+	return approvaltoken.MapKeyring{"k1": []byte("test-key-bytes-32-bytes-long-aaa")}
 }
 
 func testCfg() Config {
@@ -335,7 +335,7 @@ func TestGate_TokensVerifyableAgainstKeyring(t *testing.T) {
 	}
 	req := notifier.requests[0]
 	for reviewer, wire := range req.Tokens {
-		payload, err := canon.VerifyToken(kr, wire, reviewer, now)
+		payload, err := approvaltoken.VerifyToken(kr, wire, reviewer, now)
 		if err != nil {
 			t.Fatalf("VerifyToken(%s): %v", reviewer, err)
 		}
@@ -477,7 +477,7 @@ func TestGate_UnknownKeyIDPropagates(t *testing.T) {
 	wi := testWorkItem()
 	seedWorkItem(t, db, wi, now)
 	_, err := g.Evaluate(context.Background(), wi, testCfg())
-	if !errors.Is(err, canon.ErrUnknownKeyID) {
-		t.Fatalf("err=%v; want errors.Is(canon.ErrUnknownKeyID)", err)
+	if !errors.Is(err, approvaltoken.ErrUnknownKeyID) {
+		t.Fatalf("err=%v; want errors.Is(approvaltoken.ErrUnknownKeyID)", err)
 	}
 }

@@ -25,7 +25,7 @@ import (
 
 	"log/slog"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/config"
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
@@ -104,7 +104,7 @@ type e2eHarness struct {
 	notifier *e2eCaptureNotifier
 	sched    *scheduler.Scheduler
 	gateCfg  approval.Config
-	keyring  canon.MapKeyring
+	keyring  approvaltoken.MapKeyring
 	keyID    string
 }
 
@@ -144,7 +144,7 @@ func newE2EHarness(t *testing.T, workItemLane string, cfgMutator ...func(*approv
 	// test must stage env via t.Setenv (restored on cleanup).
 	key := bytes.Repeat([]byte{0x77}, 32)
 	keyID := "ke2e"
-	kr := canon.MapKeyring{keyID: key}
+	kr := approvaltoken.MapKeyring{keyID: key}
 	envName := "REGATTA_APPROVAL_TOKEN_KEY_E2E_" + sanitizeTestName(t.Name())
 	t.Setenv(envName, string(key))
 	t.Setenv("REGATTA_APPROVAL_TOKEN_KEY_ENV", envName)

@@ -5,10 +5,10 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
+
+	"github.com/trilamsr/regatta/internal/canon"
 )
 
 // HMAC signing for tamper-evident gate results and program handoffs.
@@ -58,72 +58,13 @@ type SignatureBlock struct {
 	MAC   string `json:"mac"`    // lowercase hex sha256 mac
 }
 
-// CanonicalJSON returns a deterministic byte form of v suitable for
-// HMAC input. Object keys are recursively sorted; arrays preserve
-// order; nil/empty handled.
-//
-// The function works by round-tripping through encoding/json into a
-// generic map[string]any and re-emitting with sorted keys. This
-// covers every Regatta-emitted JSON payload because none of them
-// contain numbers requiring IEEE-754 normalization.
+// CanonicalJSON returns the canonical JSON encoding of v — a thin
+// adapter over canon.Marshal so every signed/hashed byte in the system
+// passes through the single canonicaliser in internal/canon (issue #553
+// eliminated the schemas-local fork that produced different MACs from
+// the canon path on large-int payloads).
 func CanonicalJSON(v any) ([]byte, error) {
-	raw, err := json.Marshal(v)
-	if err != nil {
-		return nil, fmt.Errorf("schemas: marshal: %w", err)
-	}
-	var generic any
-	if err := json.Unmarshal(raw, &generic); err != nil {
-		return nil, fmt.Errorf("schemas: round-trip unmarshal: %w", err)
-	}
-	return canonicalize(generic)
-}
-
-func canonicalize(v any) ([]byte, error) {
-	switch t := v.(type) {
-	case map[string]any:
-		keys := make([]string, 0, len(t))
-		for k := range t {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		buf := []byte{'{'}
-		for i, k := range keys {
-			if i > 0 {
-				buf = append(buf, ',')
-			}
-			kj, err := json.Marshal(k)
-			if err != nil {
-				return nil, err
-			}
-			buf = append(buf, kj...)
-			buf = append(buf, ':')
-			child, err := canonicalize(t[k])
-			if err != nil {
-				return nil, err
-			}
-			buf = append(buf, child...)
-		}
-		buf = append(buf, '}')
-		return buf, nil
-	case []any:
-		buf := []byte{'['}
-		for i, x := range t {
-			if i > 0 {
-				buf = append(buf, ',')
-			}
-			child, err := canonicalize(x)
-			if err != nil {
-				return nil, err
-			}
-			buf = append(buf, child...)
-		}
-		buf = append(buf, ']')
-		return buf, nil
-	default:
-		// Strings, numbers, booleans, nil -- encoding/json's default
-		// emission is canonical enough for HMAC purposes.
-		return json.Marshal(t)
-	}
+	return canon.Marshal(v)
 }
 
 // Sign returns a SignatureBlock for payload using key under keyID.

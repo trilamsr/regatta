@@ -11,7 +11,6 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
-	"sort"
 	"sync"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/trilamsr/regatta/internal/canon"
 	"github.com/trilamsr/regatta/internal/cost/pricing"
 	"github.com/trilamsr/regatta/internal/cost/spend"
 	"github.com/trilamsr/regatta/internal/obs"
@@ -510,52 +510,13 @@ func (r *Reconciler) maybeEmitDriftAlert(ctx context.Context, p spend.BudgetReco
 	)
 }
 
-// CanonicaliseJSON decodes raw and re-encodes it with map keys sorted
-// alphabetically. The sha256 of the canonical bytes is the
-// `api_response_sig` audit anchor (spec §3.5 line 288 + A2).
-//
-// Exported so tests can assert sha256(canonical(body)) == payload.sig
-// without re-implementing the canonicalisation rule.
-func CanonicaliseJSON(raw []byte) ([]byte, error) {
-	var v any
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.UseNumber()
-	if err := dec.Decode(&v); err != nil {
-		return nil, err
-	}
-	v = canonicaliseValue(v)
-	return json.Marshal(v)
-}
-
-// canonicaliseValue walks the decoded JSON and rebuilds maps as sorted
-// key-value pairs so the encoder emits a deterministic byte sequence.
-// encoding/json already sorts map[string]X by key alphabetically, but
-// we walk anyway to canonicalise nested objects inside slices.
-func canonicaliseValue(v any) any {
-	switch x := v.(type) {
-	case map[string]any:
-		out := make(map[string]any, len(x))
-		keys := make([]string, 0, len(x))
-		for k := range x {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			out[k] = canonicaliseValue(x[k])
-		}
-		return out
-	case []any:
-		for i := range x {
-			x[i] = canonicaliseValue(x[i])
-		}
-		return x
-	default:
-		return v
-	}
-}
-
+// canonicalHashHex returns the lowercase hex sha256 of the canonical
+// JSON form of raw — the `api_response_sig` audit anchor (spec §3.5
+// line 288 + A2). Routes through canon.CanonicaliseJSON so reconcile
+// shares the same dup-key-rejecting canonicaliser as every other signed
+// surface (issue #553 unified four forks).
 func canonicalHashHex(raw []byte) (string, error) {
-	c, err := CanonicaliseJSON(raw)
+	c, err := canon.CanonicaliseJSON(raw)
 	if err != nil {
 		return "", err
 	}

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -71,7 +71,7 @@ func foldDecisions(events []state.ApprovalEvent, quorum int, reviewerSetSize int
 }
 
 // DecideTx consumes the token, records the decision, folds the event log, and (when terminal) stamps the denorm status in one sqlite transaction (spec §3.2 step 6).
-func DecideTx(ctx context.Context, db *state.DB, payload canon.TokenPayload, reviewerID, decision, reason string, clock func() time.Time) (DecideTxResult, string, error) {
+func DecideTx(ctx context.Context, db *state.DB, payload approvaltoken.TokenPayload, reviewerID, decision, reason string, clock func() time.Time) (DecideTxResult, string, error) {
 	a, err := db.GetApproval(ctx, payload.AID)
 	if err != nil {
 		return DecideTxResult{}, "", err

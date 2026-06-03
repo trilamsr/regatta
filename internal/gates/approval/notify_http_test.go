@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -22,7 +22,7 @@ import (
 // NewHTTPCallback. Mirrors decideTxHarness but adds keyring + handler.
 type httpHarness struct {
 	db         *state.DB
-	keyring    canon.MapKeyring
+	keyring    approvaltoken.MapKeyring
 	kid        string
 	now        time.Time
 	clock      func() time.Time
@@ -67,7 +67,7 @@ func newHTTPHarness(t *testing.T) *httpHarness {
 		t.Fatalf("CreateApproval: %v", err)
 	}
 
-	kr := canon.MapKeyring{"k1": []byte("test-key-do-not-use-in-prod")}
+	kr := approvaltoken.MapKeyring{"k1": []byte("test-key-do-not-use-in-prod")}
 	path, handler := NewHTTPCallback(Dependencies{
 		DB:      db,
 		Keyring: kr,
@@ -87,7 +87,7 @@ func newHTTPHarness(t *testing.T) *httpHarness {
 
 func (h *httpHarness) mintToken(t *testing.T, reviewer string) string {
 	t.Helper()
-	wire, _, err := canon.MintToken(h.keyring, h.kid, canon.TokenPayload{
+	wire, _, err := approvaltoken.MintToken(h.keyring, h.kid, approvaltoken.TokenPayload{
 		KID:      h.kid,
 		WI:       "F-1",
 		AID:      h.approvalID,

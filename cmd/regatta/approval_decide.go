@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -133,7 +133,7 @@ func runApprovalDecideWith(deps approvalDecideDeps, args []string) int {
 		return 2
 	}
 
-	payload, err := canon.VerifyToken(keyring, *tokenFlag, *reviewerIDFlag, deps.Clock())
+	payload, err := approvaltoken.VerifyToken(keyring, *tokenFlag, *reviewerIDFlag, deps.Clock())
 	if err != nil {
 		_, _ = fmt.Fprintln(deps.Stderr, "regatta approval decide:", err)
 		return exitCodeFor(err)
@@ -142,7 +142,7 @@ func runApprovalDecideWith(deps approvalDecideDeps, args []string) int {
 	// Belt-and-suspenders constant-time re-check at the CLI surface so a
 	// future --impersonate flag cannot erode the timing-safe property.
 	if subtle.ConstantTimeCompare([]byte(payload.Reviewer), []byte(*reviewerIDFlag)) != 1 {
-		_, _ = fmt.Fprintln(deps.Stderr, "regatta approval decide:", canon.ErrUnverifiable)
+		_, _ = fmt.Fprintln(deps.Stderr, "regatta approval decide:", approvaltoken.ErrUnverifiable)
 		return exitUnverifiable
 	}
 
@@ -171,13 +171,13 @@ func runApprovalDecideWith(deps approvalDecideDeps, args []string) int {
 // exitCodeFor maps every typed sentinel the decide path can surface to its spec §5.6 exit code; anything outside the table maps to 1 (generic).
 func exitCodeFor(err error) int {
 	switch {
-	case errors.Is(err, canon.ErrTokenInvalid):
+	case errors.Is(err, approvaltoken.ErrTokenInvalid):
 		return exitTokenInvalid
-	case errors.Is(err, canon.ErrTokenExpired):
+	case errors.Is(err, approvaltoken.ErrTokenExpired):
 		return exitTokenExpired
-	case errors.Is(err, canon.ErrUnknownKeyID):
+	case errors.Is(err, approvaltoken.ErrUnknownKeyID):
 		return exitUnknownKeyID
-	case errors.Is(err, canon.ErrUnverifiable):
+	case errors.Is(err, approvaltoken.ErrUnverifiable):
 		return exitUnverifiable
 	case errors.Is(err, state.ErrTokenReplay):
 		return exitTokenReplay
@@ -191,7 +191,7 @@ func exitCodeFor(err error) int {
 }
 
 // loadApprovalTokenKeyring reads the HMAC key + key id from env so the approval-token surface rotates without touching brief signing.
-func loadApprovalTokenKeyring() (canon.Keyring, error) {
+func loadApprovalTokenKeyring() (approvaltoken.Keyring, error) {
 	envName := os.Getenv("REGATTA_APPROVAL_TOKEN_KEY_ENV")
 	if envName == "" {
 		envName = "REGATTA_APPROVAL_TOKEN_KEY"
@@ -204,5 +204,5 @@ func loadApprovalTokenKeyring() (canon.Keyring, error) {
 	if keyID == "" {
 		keyID = "k1"
 	}
-	return canon.MapKeyring{keyID: []byte(v)}, nil
+	return approvaltoken.MapKeyring{keyID: []byte(v)}, nil
 }

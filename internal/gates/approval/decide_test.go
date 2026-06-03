@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -75,8 +75,8 @@ func newDecideTxHarness(t *testing.T, requestedBy string, reviewers []string, qu
 	}
 }
 
-func (h *decideTxHarness) payload(reviewer string) canon.TokenPayload {
-	return canon.TokenPayload{
+func (h *decideTxHarness) payload(reviewer string) approvaltoken.TokenPayload {
+	return approvaltoken.TokenPayload{
 		WI:       h.workItemID,
 		AID:      h.approvalID,
 		Reviewer: reviewer,
