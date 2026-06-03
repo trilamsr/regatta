@@ -15,7 +15,9 @@ Read time: 1 minute (this index).
    provenance, install the binary.
 4. [`container.md`](container.md) — Docker image build + run
    recipe, mount strategy, env-var contract, troubleshooting.
-5. [`configure.md`](configure.md) — full `regatta.yaml` schema with
+5. [`native-deploy.md`](native-deploy.md) — host-side install via
+   systemd (Linux) or LaunchAgent (macOS); no Docker required.
+6. [`configure.md`](configure.md) — full `regatta.yaml` schema with
    per-field semantics and defaults.
 
 ## Operate
