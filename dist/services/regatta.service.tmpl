@@ -1,19 +1,21 @@
 [Unit]
-Description=Regatta orchestrator (self-host serve)
+Description=regatta autonomous PR loop
 Documentation=https://github.com/treedesk-ai/regatta/blob/main/docs/operator/native-deploy.md
 After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=simple
-User=regatta
-Group=regatta
-WorkingDirectory=/var/lib/regatta
-ExecStart=/usr/local/bin/regatta serve --config /etc/regatta/regatta.yaml --repo /var/lib/regatta/repo
-EnvironmentFile=/etc/regatta/env
+Type=notify
+NotifyAccess=main
+ExecStart={{.BinaryPath}} serve --config {{.ConfigPath}} --repo {{.WorkingDir}}/repo
+EnvironmentFile={{.EnvFile}}
+User={{.User}}
+Group={{.User}}
+WorkingDirectory={{.WorkingDir}}
 
 Restart=on-failure
 RestartSec=5
+WatchdogSec=30
 
 MemoryHigh=2G
 MemoryMax=4G
@@ -35,7 +37,7 @@ RestrictNamespaces=true
 RestrictRealtime=true
 SystemCallArchitectures=native
 
-ReadWritePaths=/var/lib/regatta /var/log/regatta
+ReadWritePaths={{.ReadWritePaths}}
 
 [Install]
 WantedBy=multi-user.target

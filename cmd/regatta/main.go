@@ -35,6 +35,8 @@ const (
 	subcmdApproval         = "approval"
 	subcmdKeys             = "keys"
 	subcmdDigest           = "digest"
+	subcmdInstallService   = "install-service"
+	subcmdUninstallService = "uninstall-service"
 )
 
 // subcmdAudit is declared in audit.go (its run function lives there).
@@ -62,6 +64,8 @@ var subcommands = []subcommand{
 	{subcmdAudit, runAudit},
 	{subcmdSecret, runSecret},
 	{subcmdStatus, runStatus},
+	{subcmdInstallService, runInstallService},
+	{subcmdUninstallService, runUninstallService},
 }
 
 func main() {
@@ -107,6 +111,8 @@ func usage(w io.Writer) {
   regatta audit verify --run-id <id> [--db <path>]    Walk recorded gate verdicts; print tool/version/det/hmac-status per gate
   regatta secret set|get|status                       Manage operator credentials in OS keychain (macOS) / pass (Linux) with env fallback
   regatta status [--refresh DUR] [--once]             Terminal live-status TUI (5 panels: subagents, PRs, merges, cost, green-clock)
+  regatta install-service [--user|--system]           Install OS-native supervisor (launchd or systemd)
+  regatta uninstall-service [--user|--system]         Reverse install-service (idempotent)
   regatta version                                     Print build info
   regatta help                                        This message
 

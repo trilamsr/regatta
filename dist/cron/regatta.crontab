@@ -1,0 +1,5 @@
+# BEGIN regatta cron (managed by regatta install-service; do not edit between markers)
+0 4  * * *   /usr/local/bin/regatta digest --emit                  >> /var/log/regatta/cron.log 2>&1
+*/15 * * * * /usr/local/bin/regatta items refresh                  >> /var/log/regatta/cron.log 2>&1
+0 *  * * *   /usr/local/bin/regatta followups triage               >> /var/log/regatta/cron.log 2>&1
+# END regatta cron

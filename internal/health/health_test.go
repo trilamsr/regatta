@@ -1,0 +1,116 @@
+package health
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	_ "modernc.org/sqlite"
+)
+
+func openMemDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+// TestHealthz_DBUp_HeartbeatRecent_Returns200OK covers spec §3.5 happy path.
+func TestHealthz_DBUp_HeartbeatRecent_Returns200OK(t *testing.T) {
+	db := openMemDB(t)
+	hb := NewHeartbeatCell(time.Now)
+	hb.Touch()
+	brief := NewBriefCell()
+	brief.SetPath("/etc/regatta/brief.md")
+	h := Handler(Dependencies{DB: db, Heartbeat: hb, Brief: brief, Version: "v0.1.0"})
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	req.Header.Set("Accept", "application/json")
+	rr := httptest.NewRecorder()
+	h(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d", rr.Code)
+	}
+	var got Response
+	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != StatusOK {
+		t.Fatalf("status: want ok, got %s", got.Status)
+	}
+}
+
+// TestHealthz_DBDown_Returns503 covers down-aggregation + 503 contract.
+func TestHealthz_DBDown_Returns503(t *testing.T) {
+	db := openMemDB(t)
+	_ = db.Close() // induce ping failure
+	hb := NewHeartbeatCell(time.Now)
+	hb.Touch()
+	brief := NewBriefCell()
+	brief.SetPath("/x")
+	h := Handler(Dependencies{DB: db, Heartbeat: hb, Brief: brief, Version: "v"})
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	req.Header.Set("Accept", "application/json")
+	rr := httptest.NewRecorder()
+	h(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status: want 503, got %d", rr.Code)
+	}
+}
+
+// TestHealthz_HeartbeatStale_ReturnsDegradedNot503 covers degraded 200 contract.
+func TestHealthz_HeartbeatStale_ReturnsDegradedNot503(t *testing.T) {
+	db := openMemDB(t)
+	hb := NewHeartbeatCell(time.Now)
+	// never Touch ⇒ stale
+	brief := NewBriefCell()
+	brief.SetPath("/x")
+	h := Handler(Dependencies{DB: db, Heartbeat: hb, Brief: brief, Version: "v"})
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	req.Header.Set("Accept", "application/json")
+	rr := httptest.NewRecorder()
+	h(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: want 200 for degraded, got %d", rr.Code)
+	}
+	var got Response
+	_ = json.NewDecoder(rr.Body).Decode(&got)
+	if got.Status != StatusDegraded {
+		t.Fatalf("want degraded, got %s", got.Status)
+	}
+}
+
+// TestHealthz_LegacyPlaintext_PreservesW7Contract covers no-Accept legacy.
+func TestHealthz_LegacyPlaintext_PreservesW7Contract(t *testing.T) {
+	h := Handler(Dependencies{})
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	rr := httptest.NewRecorder()
+	h(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rr.Code)
+	}
+	if rr.Body.String() != "ok\n" {
+		t.Fatalf("want ok\\n, got %q", rr.Body.String())
+	}
+}
+
+// TestHeartbeatPool_SetMaxOpenConns1_NoContention covers spec §3.5 dedicated pool.
+func TestHeartbeatPool_SetMaxOpenConns1_NoContention(t *testing.T) {
+	db, err := OpenHeartbeatPool("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = db.Close() }()
+	if got := db.Stats().MaxOpenConnections; got != 1 {
+		t.Fatalf("want MaxOpenConns=1, got %d", got)
+	}
+	if err := db.PingContext(context.Background()); err != nil {
+		t.Fatalf("ping: %v", err)
+	}
+}
