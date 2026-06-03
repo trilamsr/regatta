@@ -1,0 +1,53 @@
+# SLO-6 — PR lifecycle stage p95 duration
+#
+# Source spec: docs/engineer/specs/2026-06-02-obs-wave-c-agent-loop-telemetry.md §7 SLO-6.
+# Objective: p95 of regatta_pr_stage_duration_seconds_bucket <= 3600 s (1 hr).
+# Window:    30d rolling.
+# Budget:    5 % of stages slower than 1 hr.
+#
+# Metric origin: internal/orchestrator/state/substrate pr_stage_transition
+# event + downstream collector (OBS-WAVE-C-T2). Prom-wire form is
+# `regatta_pr_stage_duration_seconds_bucket` per the §2.1 double-unit suffix
+# convention pinned at A-T0a. The bucket boundary `le="3600"` must exist
+# in the emitter's view; the SDK exponential buckets include 4096 s — if
+# the view drift bites, file [OBS-followup] Histogram bucket boundaries.
+version: "prometheus/v1"
+service: "regatta-pr-lifecycle"
+labels:
+  owner: "regatta"
+  tier: "1"
+  wave: "c"
+  slo_id: "slo-6"
+slos:
+  - name: "pr-lifecycle-stage-p95"
+    objective: 95.0
+    description: "p95 PR lifecycle stage duration <= 1 hr. Source: spec §7 SLO-6."
+    labels:
+      category: "latency"
+      runbook: "docs/operator/runbooks/pr-lifecycle-stage-p95.md"
+    sli:
+      events:
+        error_query: |
+          (
+            sum(rate(regatta_pr_stage_duration_seconds_count[{{.window}}]))
+            -
+            sum(rate(regatta_pr_stage_duration_seconds_bucket{le="3600"}[{{.window}}]))
+          )
+        total_query: |
+          sum(rate(regatta_pr_stage_duration_seconds_count[{{.window}}]))
+    alerting:
+      name: PRLifecycleStageLatencyHigh
+      labels:
+        category: "latency"
+        slo_id: "slo-6"
+      annotations:
+        summary: "PR lifecycle stage p95 latency budget burning"
+        runbook: "docs/operator/runbooks/pr-lifecycle-stage-p95.md"
+      page_alert:
+        labels:
+          severity: critical
+          sloth_severity: page
+      ticket_alert:
+        labels:
+          severity: warning
+          sloth_severity: ticket

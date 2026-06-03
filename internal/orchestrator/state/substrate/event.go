@@ -36,6 +36,12 @@ const (
 	// rejects (issue #80, replaces slog-only retention so months-long
 	// rejection history stays under the HMAC chain).
 	KindBriefRejected EventKind = "brief_rejected"
+	// KindPRStageTransition — OBS-WAVE-C-T2 PR lifecycle stage change.
+	// Carries {pr_number, from_stage, to_stage, duration_seconds};
+	// HMAC chain is the long-term audit trail, the counter is the
+	// operational signal. Append is async (channel-batched) to keep
+	// the PR-watch hot path off substrate Append latency.
+	KindPRStageTransition EventKind = "pr_stage_transition"
 )
 
 // AllKinds returns the canonical kind list in declaration order —
@@ -44,7 +50,7 @@ func AllKinds() []EventKind {
 	return []EventKind{
 		KindNodeOutput, KindFact, KindApprovalEvent, KindTokenSpend,
 		KindBudgetReconciled, KindGateVerdict, KindHeartbeat,
-		KindBriefRejected,
+		KindBriefRejected, KindPRStageTransition,
 	}
 }
 

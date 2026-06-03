@@ -243,6 +243,76 @@ func validateBriefRejected(raw json.RawMessage) error {
 	return nil
 }
 
+// PRStage is the closed enum for OBS-WAVE-C-T2 PR lifecycle stages.
+// Adding a stage MUST update both this enum AND parent spec §3.1; the
+// closed shape is the cardinality fence for `from_stage` / `to_stage`
+// metric labels.
+type PRStage string
+
+// PRStage closed-enum members — adding a stage MUST update both the
+// list below AND parent spec §3.1. The shape is the cardinality fence
+// for `from_stage` / `to_stage` metric labels.
+const (
+	PRStageDraft          PRStage = "draft"
+	PRStageGatesRunning   PRStage = "gates_running"
+	PRStageGatesPass      PRStage = "gates_pass"
+	PRStageAwaitingReview PRStage = "awaiting_review"
+	PRStageAwaitingMerge  PRStage = "awaiting_merge"
+	PRStageMerged         PRStage = "merged"
+	PRStageFailed         PRStage = "failed"
+)
+
+// AllPRStages returns the canonical PR-stage list in declaration order.
+func AllPRStages() []PRStage {
+	return []PRStage{
+		PRStageDraft, PRStageGatesRunning, PRStageGatesPass,
+		PRStageAwaitingReview, PRStageAwaitingMerge,
+		PRStageMerged, PRStageFailed,
+	}
+}
+
+// prStageTransitionPayload mirrors the OBS-WAVE-C-T2 substrate event
+// shape per spec §3.4. PRNumber rides the payload (audit trail); the
+// metric counter keeps from_stage / to_stage as closed-enum labels but
+// banishes pr_number to preserve the cardinality budget.
+type prStageTransitionPayload struct {
+	PRNumber        int64   `json:"pr_number"`
+	FromStage       string  `json:"from_stage"`
+	ToStage         string  `json:"to_stage"`
+	DurationSeconds float64 `json:"duration_seconds,omitempty"`
+}
+
+func validPRStage(s string) bool {
+	for _, allowed := range AllPRStages() {
+		if string(allowed) == s {
+			return true
+		}
+	}
+	return false
+}
+
+func validatePRStageTransition(raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return fmt.Errorf("%w: pr_stage_transition payload empty", ErrInvalidPayload)
+	}
+	var p prStageTransitionPayload
+	if err := strictUnmarshal(raw, &p); err != nil {
+		return fmt.Errorf("%w: pr_stage_transition: %w", ErrInvalidPayload, err)
+	}
+	if p.PRNumber <= 0 {
+		return fmt.Errorf("%w: pr_stage_transition missing pr_number", ErrInvalidPayload)
+	}
+	if !validPRStage(p.FromStage) {
+		return fmt.Errorf("%w: pr_stage_transition from_stage %q not in closed enum",
+			ErrInvalidPayload, p.FromStage)
+	}
+	if !validPRStage(p.ToStage) {
+		return fmt.Errorf("%w: pr_stage_transition to_stage %q not in closed enum",
+			ErrInvalidPayload, p.ToStage)
+	}
+	return nil
+}
+
 // strictUnmarshal forbids unknown fields. Pins payload shape per
 // spec §S4 (typed Go structs, no JSON Schema files). A producer
 // emitting extra fields silently is a forward-version-compat trap.
@@ -266,5 +336,6 @@ func init() {
 	RegisterPayloadValidator(KindBudgetReconciled, validateBudgetReconciled)
 	RegisterPayloadValidator(KindHeartbeat, validateHeartbeat)
 	RegisterPayloadValidator(KindBriefRejected, validateBriefRejected)
+	RegisterPayloadValidator(KindPRStageTransition, validatePRStageTransition)
 	// KindGateVerdict: registered by T-S2 in gate_verdict_payload.go init().
 }
