@@ -137,8 +137,7 @@ func TestLabelFailureMetric_Unknown(t *testing.T) {
 	}
 }
 
-// TestLabelFailureMetric_MeterFromConfigIsConsumed pins that Config.Meter is wired into emission (not orphan).
-// Failure case: a meter that records nothing means Config.Meter never reached the emit site (issue #499).
+// TestLabelFailureMetric_MeterFromConfigIsConsumed pins that Config.Meter is wired into emission (not orphan per issue #499).
 func TestLabelFailureMetric_MeterFromConfigIsConsumed(t *testing.T) {
 	reader, mp := newMetricReader(t)
 	err := errors.New(`could not add label: 'needs-human' not found`)
