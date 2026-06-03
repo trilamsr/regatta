@@ -144,6 +144,19 @@ Two kinds, both keyed by `(agent_id, pr_sha)` so downstream consumers fold by tu
 
 Both write via `db.RecordEvent(ctx, agentID, kind, jsonPayload)` — the existing substrate-event seam used by `spawned`, `reaped`, etc. No schema migration; the `events` table already accepts arbitrary `kind` strings.
 
+#### 3.4.1 Seam decision: legacy `events` is the long-term home (closes #527)
+
+The two kinds land in legacy `state.events`, NOT `substrate_events`. Decision recorded per `feedback_unaddressed_load_bearing`; alternative ("mirror to substrate_events + extend the migration-0012 CHECK whitelist") considered and rejected.
+
+Rationale:
+
+1. **Consumers are orchestrator-internal, not user-facing.** Both kinds drive in-process consumers: the gate runner (#33) and the rejection router (#16) consume `agent_pr_opened` / `agent_pr_head_changed` via `ListEventsByKindSince` over `state.events`. The K=3 escalation in `internal/orchestrator/rejectionrouter/router.go` already consumes `gate_rejected` from the same seam — `agent_*` kinds belong with the verdicts they correlate against.
+2. **Substrate events serve a different audience.** `substrate_events` exists for the replay harness (W9), the substrate-export CLI, and external observers. Whitelisting `agent_pr_opened` would surface an in-process transition signal as if it were a substrate-of-record fact — false signal for the replay use case, which cares about adapter/gate verdicts not internal scheduling.
+3. **HMAC chain coverage is not load-bearing for orchestrator-internal kinds.** Tamper-evidence (`#550`) is the property `substrate_events` guarantees because external auditors care. Nobody audits a head-SHA-change event after the fact; the state-machine transitions it gates against are themselves audited via `agent_state_transitions`.
+4. **Precedent is consistent.** `gate_rejected`, `escalated`, `labeled`, `spawned`, `reaped` all live in `state.events`. Splitting `agent_pr_*` into `substrate_events` introduces a seam asymmetry without a consumer demanding it.
+
+Reopen-trigger for the alternative (mirror-to-substrate): external replay harness (W9) or substrate-export consumer asks for `agent_pr_*` visibility. If that ask lands, the followup is a new migration extending the `substrate_events.kind` CHECK whitelist with `agent_pr_opened` + `agent_pr_head_changed` + dual-write inside `Watcher.emit*`; the legacy write stays for backward compat with existing consumers.
+
 ### 3.5 Auth + rate-limit posture
 
 - Auth: `gh` CLI uses the operator's `~/.config/gh/hosts.yml` token. The watcher inherits that — no new env vars, no new secret.
@@ -226,6 +239,27 @@ Operator sets `--no-pr-watch` during a smoke test, forgets to unset it, ships to
 ---
 
 ## §5 Grade rubric
+
+### §5.0 Pre-named tests (TDD-first commits per `feedback_tdd_discipline`)
+
+Implementer commits the failing tests below FIRST, one per §3.3 decision-matrix row + the T2 gh-CLI shell-out shape. Test names are load-bearing — a renamed test breaks the implementer↔reviewer audit trail. Closes #524.
+
+T1 — `internal/orchestrator/prwatch/prwatch_test.go` (one per §3.3 row):
+
+- `TestSweep_RunningNoOpenPR_NoOp` — row 1: `running` + no open PR → no transition, no event.
+- `TestSweep_RunningOneOpenPR_TransitionsAndEmits` — row 2: `running` + one PR → `pr_open` + `agent_pr_opened` event.
+- `TestSweep_RunningMultipleOpenPRs_PicksLowestNumber` — row 3: `running` + 2 PRs → lowest number wins, `pr_watcher.ambiguous_head` warn logged.
+- `TestSweep_PROpenNoOpenPR_NoOp` — row 4: `pr_open` + no open PR → no transition (close-path is reaper's, not ours); see also #520 branch-rename amendment.
+- `TestSweep_PROpenSameSHA_NoOp` — row 5: `pr_open` + sha unchanged → no event (idempotency on repeat sweeps).
+- `TestSweep_PROpenSHAChanged_UpdatesAndEmits` — row 6: `pr_open` + sha changed → `UpdateAgentPRSHA` + `agent_pr_head_changed` event with `prev_sha`.
+
+T2 — `internal/orchestrator/prwatch/ghcli_test.go`:
+
+- `TestGHCLILister_OpenPR_ReturnsList` — happy path: stubbed `gh pr list --json` output parses into `[]PullRequest`.
+- `TestGHCLILister_Missing_ReturnsLookPathErr` — `exec.LookPath("gh")` fails → caller-actionable error.
+- `TestGHCLILister_AuthFail_ReturnsAuthErr` — `gh` exits non-zero with `gh auth status: not logged in` → typed auth-fail error so the startup probe can format it.
+
+A future row added to §3.3 lands one new `Test*` in T1 with the same naming shape (`TestSweep_<State>_<Condition>_<Action>`); A+ scorecard item (d) calls out that the fixture table must accept it without rewrite.
 
 ### B (floor — ships)
 

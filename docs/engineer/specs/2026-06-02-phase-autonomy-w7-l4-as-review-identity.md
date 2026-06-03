@@ -83,9 +83,45 @@ This is the A+ rubric item (g) in the source item, lifted into the floor because
 
 1. Walks operator through reviewer-bot creation (link to GH docs; refuses on PAT scope drift).
 2. Writes `GH_TOKEN_REVIEWER` through W6 credential store.
-3. Verifies branch protection: ≥1 approving review required, stale-dismiss on, required checks set.
+3. Verifies branch protection: ≥1 approving review required, stale-dismiss on, required checks set. (Exact API calls in §6.1.)
 4. Verifies `CODEOWNERS` lists the reviewer bot for at least one path glob; refuses on catch-all `* @regatta-reviewer-bot`.
 5. Emits a `service_installed` substrate event with the setup-check pass/fail vector.
+
+#### 6.1 Branch-protection setup-check — exact GH API contract (closes #609)
+
+Setup step 3 calls the GitHub REST endpoint:
+
+```
+GET /repos/{owner}/{repo}/branches/{branch}/protection
+```
+
+Required token scopes (fine-grained PAT): `Administration: read` on the target repo. The operator's bootstrap PAT (`GH_TOKEN_BOT`), NOT the reviewer-bot PAT — the reviewer bot deliberately has no admin read. The setup-check reuses the operator's bootstrap creds; if the bootstrap PAT lacks `Administration: read`, the check emits `service_install_warn_protection_unreadable` and proceeds (degraded; operator must verify manually).
+
+Response shape (subset consumed):
+
+```json
+{
+  "required_pull_request_reviews": {
+    "dismiss_stale_reviews": true,
+    "required_approving_review_count": 1
+  },
+  "required_status_checks": {
+    "strict": false,
+    "contexts": ["pr-lint", "go-check"]
+  }
+}
+```
+
+Setup-check assertions (each emits a named substrate event on fail):
+
+- `required_pull_request_reviews == nil` → `service_install_refused_no_review_requirement`; refuse to install. Without the review requirement L4-as-review has no semantic purpose.
+- `required_pull_request_reviews.required_approving_review_count < 1` → same refusal kind. Branch protection must require ≥1 approval.
+- `required_pull_request_reviews.dismiss_stale_reviews == false` → `service_install_warn_stale_dismiss_off`; emit warning, document operator action (`gh api -X PATCH /repos/.../branches/main/protection/required_pull_request_reviews -f dismiss_stale_reviews=true`), proceed only if `--allow-stale-dismiss` flag set. Default refuses install. Combined with §5's substrate-side re-review-on-`agent_pr_head_changed`, both layers are required per the §11 R3 finding.
+- `required_status_checks == nil` → `service_install_refused_no_required_checks`; refuse. L4-as-review without required CI collapses defense in depth to one gate.
+
+Implementation shells `gh api /repos/{owner}/{repo}/branches/{branch}/protection` and parses the JSON via `encoding/json` with explicit struct tags. The endpoint returns 404 if no protection is configured — that path maps to `service_install_refused_no_protection`. The setup-check is a single GH call; the response is small (≤2 KB), so no pagination or rate-limit concern.
+
+Test name: `TestInstallService_BranchProtection_RefusesOnStaleDismissOff` (covers §10 A-tier item k).
 
 `regatta review status`:
 
@@ -145,6 +181,8 @@ Response-code matrix:
 | Rate-limit hit | 403 + `X-RateLimit-Remaining: 0` | back-off + retry; no double-post |
 | Human-authored PR | (no call made) | `review_skipped_human_authored` |
 | CODEOWNERS catch-all detected at install | (setup-time, no PR) | `service_install_refused_codeowners_catchall` |
+| Dismissal 404 (prior review already dismissed or PR closed) | `PUT /reviews/{id}/dismissals` → 404 | `review_dismiss_stale`; log + continue (the dismissal was the goal; if the review is gone, the goal is met). NO error propagated; fresh APPROVE/REQUEST_CHANGES POST proceeds. Closes #608. |
+| Dismissal 422 (review already in dismissed state) | `PUT /reviews/{id}/dismissals` → 422 with `state: DISMISSED` body | `review_dismiss_stale`; same handling as 404. |
 
 Property test: redactor is idempotent — `redact(redact(body)) == redact(body)`.
 
@@ -160,6 +198,7 @@ Each 1-line godoc per `feedback_test_godoc_one_line`:
 - `TestReview_RefusesHumanAuthoredPR` — author != bot identity short-circuits before HTTP call.
 - `TestReview_RefusesCatchAllCodeowners` — install-service setup-check fails on `* @reviewer-bot`.
 - `TestReview_DismissesPriorOnVerdictFlip` — verdict change posts dismissal then new review.
+- `TestReview_DismissStale_404_LogsAndContinues` — 404 on dismissal (prior review already gone) logs `review_dismiss_stale` and proceeds with fresh POST; no error propagated (#608).
 - `TestReview_SkipsIdempotentRepost` — byte-identical body + same verdict short-circuits the POST.
 - `TestReview_RetriesOnStaleSHA` — 422 commit_id mismatch triggers re-score against current head.
 - `TestReview_AbandonsOnPRClosed` — 404 surfaces `review_target_gone`, no retry.

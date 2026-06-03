@@ -14,9 +14,9 @@ Source brief: PHASE AUTONOMY amendment §11 W7 (Landing 3, depends on W2 — the
 
 ## Scope
 
-L4 gate's ADOPT verdict becomes an actual GitHub PR review with `event=APPROVED`, so branch-protection's "≥1 approving review" count is satisfied without introducing a bot account. Operator's PAT signs the review.
+L4 gate's ADOPT verdict becomes an actual GitHub PR review with `event=APPROVED`, so branch-protection's "≥1 approving review" count is satisfied. L4 REJECT becomes `event=REQUEST_CHANGES` with the failed-criteria list. Review body is deterministic: same PR + same gate state = byte-identical body.
 
-L4 REJECT becomes `event=REQUEST_CHANGES` with the failed-criteria list. Review body is deterministic: same PR + same gate state = byte-identical body.
+**Two-identity model** (reconciled with [`docs/engineer/specs/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md`](../../docs/engineer/specs/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md) §3 per `feedback_spec_pattern_authority`; closes #610): the original item-file framing ("operator's PAT signs the review", "no bot account introduced") was unsafe — GitHub returns 422 when `reviewer.login == pr.user.login`, and regatta opens PRs under a bot identity. The design subagent owns the deviation: a dedicated `regatta-reviewer-bot` PAT signs reviews, distinct from the author-side `regatta-bot` PAT. Both tokens flow through W6's credential store. Setup is encoded in `regatta install-service`.
 
 ## Approach
 
@@ -31,7 +31,7 @@ L4 REJECT becomes `event=REQUEST_CHANGES` with the failed-criteria list. Review 
 - [planned] c1: L4 ADOPT verdict → `gh api repos/.../pulls/N/reviews` POST with `event=APPROVED`; body carries the per-criterion citation summary.
 - [planned] c2: L4 REJECT verdict → POST with `event=REQUEST_CHANGES`; body carries the failed-criteria list.
 - [planned] c3: Branch-protection "≥1 approving review" satisfied by the L4 review; W2 auto-merge proceeds.
-- [planned] c4: Operator-side PAT is the actor; no bot account introduced.
+- [planned] c4: Reviewer-bot identity (`regatta-reviewer-bot`) signs the review; distinct from the author-side bot PAT to avoid GH's 422 self-approval refusal. (Originally "operator's PAT, no bot account"; reconciled to two-identity model — see Scope.)
 - [planned] c5: Review body is reproducible — same PR + same gate state = same review body verbatim.
 - [planned] c6: Adversarial reviewer subagent posts.
 
