@@ -509,3 +509,56 @@ func TestLoad_Authz_ReloadToggles(t *testing.T) {
 		t.Fatalf("ReloadDebounce=%q; want 500ms", az.ReloadDebounce)
 	}
 }
+
+// TestLoad_AlarmWebhook_DisabledByDefault asserts the typed accessor returns nil when alarm_webhook is omitted entirely.
+func TestLoad_AlarmWebhook_DisabledByDefault(t *testing.T) {
+	cfg, err := LoadConfig([]byte(minimalValid))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if got := cfg.AlarmWebhookConfig(); got != nil {
+		t.Fatalf("AlarmWebhookConfig()=%+v; want nil for omitted block", got)
+	}
+}
+
+// TestLoad_AlarmWebhook_EmptyListenAddrDisabled asserts setting alarm_webhook with empty listen_addr still surfaces as nil — partial config never silently no-ops.
+func TestLoad_AlarmWebhook_EmptyListenAddrDisabled(t *testing.T) {
+	yaml := minimalValid + `
+alarm_webhook:
+  gh_repo: trilamsr/regatta
+`
+	cfg, err := LoadConfig([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if got := cfg.AlarmWebhookConfig(); got != nil {
+		t.Fatalf("AlarmWebhookConfig()=%+v; want nil when listen_addr empty", got)
+	}
+}
+
+// TestLoad_AlarmWebhook_SurfacedOnConfig asserts a fully-populated alarm_webhook block round-trips through CUE → Go.
+func TestLoad_AlarmWebhook_SurfacedOnConfig(t *testing.T) {
+	yaml := minimalValid + `
+alarm_webhook:
+  listen_addr: ":9099"
+  gh_repo: trilamsr/regatta
+  gh_token_env: GH_PAT
+`
+	cfg, err := LoadConfig([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	wh := cfg.AlarmWebhookConfig()
+	if wh == nil {
+		t.Fatalf("AlarmWebhookConfig()=nil")
+	}
+	if wh.ListenAddr != ":9099" {
+		t.Errorf("ListenAddr=%q want :9099", wh.ListenAddr)
+	}
+	if wh.GHRepo != "trilamsr/regatta" {
+		t.Errorf("GHRepo=%q want trilamsr/regatta", wh.GHRepo)
+	}
+	if wh.GHTokenEnv != "GH_PAT" {
+		t.Errorf("GHTokenEnv=%q want GH_PAT", wh.GHTokenEnv)
+	}
+}

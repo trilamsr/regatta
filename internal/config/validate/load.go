@@ -87,9 +87,26 @@ type Prompts struct {
 // validated by LoadBytes against the CUE schema. New fields go in
 // alongside their CUE peer in contracts/schemas/regatta.v1.cue.
 type Config struct {
-	Prompts     *Prompts     `yaml:"prompts,omitempty" json:"prompts,omitempty"`
-	SpecAdapter *SpecAdapter `yaml:"spec_adapter,omitempty" json:"spec_adapter,omitempty"`
-	Safety      *Safety      `yaml:"safety,omitempty" json:"safety,omitempty"`
+	Prompts      *Prompts      `yaml:"prompts,omitempty" json:"prompts,omitempty"`
+	SpecAdapter  *SpecAdapter  `yaml:"spec_adapter,omitempty" json:"spec_adapter,omitempty"`
+	Safety       *Safety       `yaml:"safety,omitempty" json:"safety,omitempty"`
+	AlarmWebhook *AlarmWebhook `yaml:"alarm_webhook,omitempty" json:"alarm_webhook,omitempty"`
+}
+
+// AlarmWebhook is the typed view of `regatta.yaml::alarm_webhook`. Empty
+// ListenAddr ⇒ in-process receiver disabled; the operator can still
+// run cmd/regatta-alarm-webhook out-of-process. Schema authority:
+// contracts/schemas/regatta.v1.cue §AlarmWebhook.
+type AlarmWebhook struct {
+	// ListenAddr is the HTTP bind. Empty ⇒ disabled.
+	ListenAddr string `yaml:"listen_addr,omitempty" json:"listen_addr,omitempty"`
+	// GHRepo is owner/name of the issue-target repo. Empty disables
+	// even when ListenAddr is set; partial config never silently
+	// no-ops.
+	GHRepo string `yaml:"gh_repo,omitempty" json:"gh_repo,omitempty"`
+	// GHTokenEnv names the env var holding the GitHub API token.
+	// Defaulted to GITHUB_TOKEN by CUE.
+	GHTokenEnv string `yaml:"gh_token_env,omitempty" json:"gh_token_env,omitempty"`
 }
 
 // Safety is the typed view of `regatta.yaml::safety`. Only the fields a
@@ -159,6 +176,20 @@ func (c *Config) AuthzConfig() *Authz {
 		return nil
 	}
 	return c.Safety.Authz
+}
+
+// AlarmWebhookConfig returns the resolved alarm_webhook block, or nil
+// when the operator omitted it or left listen_addr empty (disabled).
+// cmd/regatta serve calls this to decide whether to start the
+// in-process alarm-webhook listener goroutine.
+func (c *Config) AlarmWebhookConfig() *AlarmWebhook {
+	if c == nil || c.AlarmWebhook == nil {
+		return nil
+	}
+	if c.AlarmWebhook.ListenAddr == "" {
+		return nil
+	}
+	return c.AlarmWebhook
 }
 
 // MarkdownCatalogRoot returns the resolved spec_adapter.root when the
