@@ -1,5 +1,5 @@
 # Binary + static-asset builds.
-.PHONY: build build-tailwind
+.PHONY: build build-tailwind provision-dashboards
 
 build:  ## Build cmd/regatta with engine-version + dirty flag pinned from git (#549). Replay-skew detection relies on this binary having a real SHA stamp.
 	@SHA=$$(git rev-parse HEAD 2>/dev/null || echo unknown); \
@@ -13,3 +13,6 @@ build-tailwind:  ## Re-compile internal/web/static/tailwind.min.css from CSS sou
 		-i ./internal/web/css/input.css \
 		-o ./internal/web/static/tailwind.min.css \
 		--minify
+
+provision-dashboards:  ## Upsert every docs/operator/dashboards/*.json into a Grafana instance via POST /api/dashboards/db. Requires GRAFANA_URL + GRAFANA_API_TOKEN (#523).
+	bash scripts/provision-dashboards.sh

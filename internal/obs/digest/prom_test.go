@@ -195,3 +195,33 @@ func TestPromSource_FetchPartialOutageCostWeek(t *testing.T) {
 		t.Errorf("backendUp = true; want false on partial outage (cost-today 200 + cost-week 500)")
 	}
 }
+
+// TestPromSource_FetchSanitizesNegInf locks the symmetric guard against -Inf
+// (issue #513 / PR #510 reviewer finding G1). int(-math.Inf) saturates to
+// MinInt64; %.2f formats to "-Inf" which is invalid YAML in strict parsers.
+// Future narrowing of the IsInf check to (f, 1) would let -Inf slip through —
+// this test fails before that regression ships.
+func TestPromSource_FetchSanitizesNegInf(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1717286400,"-Inf"]}]}}`))
+	}))
+	defer srv.Close()
+
+	src := NewPromSource(srv.URL)
+	snap, up, err := src.Fetch("2026-06-03")
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if !up {
+		t.Fatalf("backendUp = false; want true (stub returns 200)")
+	}
+	if snap.TickP95Ms != 0 {
+		t.Errorf("TickP95Ms = %d; want 0 when Prom returns -Inf (raw int(-Inf) = MinInt64)", snap.TickP95Ms)
+	}
+	if snap.CostUSDToday != 0 {
+		t.Errorf("CostUSDToday = %v; want 0 when Prom returns -Inf", snap.CostUSDToday)
+	}
+	if snap.CostUSDWeek != 0 {
+		t.Errorf("CostUSDWeek = %v; want 0 when Prom returns -Inf", snap.CostUSDWeek)
+	}
+}

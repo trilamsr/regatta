@@ -33,6 +33,12 @@ import (
 // emit Create+Rename+Remove storms; 250 ms collapses them safely.
 const DefaultDebounce = 250 * time.Millisecond
 
+// DefaultRetryInterval is the watchLoop tick that retries Add on a
+// missing/recreated policy_dir. 5 s matches operator-perceptible recovery
+// latency after `rm -rf` + `mkdir`; tests inject a smaller value via
+// Reloader.RetryInterval to avoid wall-clock load.
+const DefaultRetryInterval = 5 * time.Second
+
 // Trigger labels propagate to OTel `regatta.authz.reload.trigger`.
 const (
 	TriggerSighup   = "sighup"
@@ -57,6 +63,11 @@ type Reloader struct {
 	// Debounce coalesces a storm of fsnotify events into a single reload.
 	// Zero ⇒ DefaultDebounce.
 	Debounce time.Duration
+
+	// RetryInterval is how often watchLoop re-attempts Add on a missing
+	// policy_dir (HR8 restore-after-removal). Zero ⇒ DefaultRetryInterval.
+	// Production leaves this zero; tests shrink it to span fewer ticks.
+	RetryInterval time.Duration
 
 	// Logger receives structured load / error events. Required; nil
 	// causes Run to return an error.
@@ -116,6 +127,9 @@ func (r *Reloader) Run(ctx context.Context) error {
 	}
 	if r.Debounce <= 0 {
 		r.Debounce = DefaultDebounce
+	}
+	if r.RetryInterval <= 0 {
+		r.RetryInterval = DefaultRetryInterval
 	}
 	if r.Tracer == nil {
 		r.Tracer = otel.Tracer("internal/authz/reload")
@@ -202,7 +216,7 @@ func (r *Reloader) watchLoop(ctx context.Context, reloads chan<- string, ready c
 		mu          sync.Mutex
 		pendingHit  bool
 		debounceCh  = make(chan struct{}, 1)
-		retryTicker = time.NewTicker(5 * time.Second)
+		retryTicker = time.NewTicker(r.RetryInterval)
 	)
 	defer retryTicker.Stop()
 
