@@ -7,9 +7,18 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
+
+// workItemGetter is the local upcast used by reserveOrphans to re-fetch
+// a wi for the orphan gate re-check (#167). Declared here rather than
+// pinned onto schedulerDB so the gate-recheck stays a reservation-loop
+// concern.
+type workItemGetter interface {
+	GetWorkItem(ctx context.Context, id string) (state.WorkItem, error)
+}
 
 // reserveOrphans rediscovers AgentPending rows that reserveFromSpawnable
 // did not transition this tick — typically lane-capped items from a
@@ -30,6 +39,11 @@ func (s *Scheduler) reserveOrphans(ctx context.Context, tc *tickCtx, occupancy m
 			continue
 		}
 		if !s.laneHasCapacity(a.Lane, occupancy) {
+			continue
+		}
+		if skip, err := s.recheckApprovalGate(ctx, tc, a.WorkItemID); err != nil {
+			return reserved, err
+		} else if skip {
 			continue
 		}
 		locks := s.resolveLocks(a.WorkItemID)
@@ -61,6 +75,66 @@ func (s *Scheduler) reserveOrphans(ctx context.Context, tc *tickCtx, occupancy m
 		reserved = append(reserved, a.ID)
 	}
 	return reserved, nil
+}
+
+// recheckApprovalGate guards the orphan reservation path against a wi
+// that became gated AFTER its pending agent was materialised (#167).
+// skip=true drops the orphan from this tick — pause, reject, fetch
+// error, and evaluator error all fail-closed so a half-wired gate
+// cannot leak a spawn. Gate or GateResolver nil → no-op.
+func (s *Scheduler) recheckApprovalGate(ctx context.Context, tc *tickCtx, workItemID string) (skip bool, err error) {
+	if s.cfg.Gate == nil || s.cfg.GateResolver == nil {
+		return false, nil
+	}
+	getter, ok := s.db.(workItemGetter)
+	if !ok {
+		return false, nil
+	}
+	wi, err := getter.GetWorkItem(ctx, workItemID)
+	if err != nil {
+		s.log.Warn(string(obs.EventApprovalDecided),
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyReason), "get_work_item_failed",
+			string(obs.KeyErr), err.Error(),
+		)
+		return true, nil
+	}
+	cfg, gated := s.cfg.GateResolver(wi)
+	if !gated {
+		return false, nil
+	}
+	res, evalErr := s.cfg.Gate.Evaluate(ctx, wi, cfg)
+	if evalErr != nil {
+		s.log.Warn(string(obs.EventApprovalDecided),
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyGateID), cfg.Name,
+			string(obs.KeyVerdict), approval.ResultPause.String(),
+			string(obs.KeyReason), "evaluate_error",
+			string(obs.KeyErr), evalErr.Error(),
+		)
+		return true, nil
+	}
+	switch res {
+	case approval.ResultProceed:
+		return false, nil
+	case approval.ResultReject:
+		if mErr := s.markWorkItemRejected(ctx, tc, wi.ID); mErr != nil {
+			return true, fmt.Errorf("mark %s rejected: %w", wi.ID, mErr)
+		}
+		s.log.Info(string(obs.EventApprovalDecided),
+			string(obs.KeyWorkItemID), wi.ID,
+			string(obs.KeyGateID), cfg.Name,
+			string(obs.KeyVerdict), approval.ResultReject.String(),
+		)
+		return true, nil
+	default:
+		s.log.Info(string(obs.EventApprovalDecided),
+			string(obs.KeyWorkItemID), wi.ID,
+			string(obs.KeyGateID), cfg.Name,
+			string(obs.KeyVerdict), approval.ResultPause.String(),
+		)
+		return true, nil
+	}
 }
 
 func (s *Scheduler) resolveLocks(workItemID string) []string {
