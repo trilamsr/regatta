@@ -143,3 +143,55 @@ func TestPromSource_Fetch5xxIsBackendDown(t *testing.T) {
 		t.Errorf("backendUp = true; want false on 500")
 	}
 }
+
+// TestPromSource_FetchPartialOutageTickP95 locks issue #512: 404 on tick_p95 query (cost-today 200) must flip backendUp=false.
+func TestPromSource_FetchPartialOutageTickP95(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		q := r.URL.Query().Get("query")
+		if strings.Contains(q, "regatta_scheduler_tick_latency_ms") {
+			// Histogram endpoint missing — operator removed the recording
+			// rule but cost-today is still emitted. Without AND-folding
+			// `up` across all 3 queries, the digest renders zeros and
+			// claims the backend is healthy.
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1717286400,"87.42"]}]}}`))
+	}))
+	defer srv.Close()
+
+	src := NewPromSource(srv.URL)
+	_, up, err := src.Fetch("2026-06-03")
+	if err != nil {
+		t.Fatalf("Fetch should soft-fail; got err: %v", err)
+	}
+	if up {
+		t.Errorf("backendUp = true; want false on partial outage (cost-today 200 + tick_p95 404)")
+	}
+}
+
+// TestPromSource_FetchPartialOutageCostWeek locks issue #512: 500 on cost-week query (cost-today 200) must flip backendUp=false.
+func TestPromSource_FetchPartialOutageCostWeek(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		// First call is cost-today (24h) — return success. Second call
+		// is cost-week (7d) which uses the same metric; fail it with
+		// 500 to model a partial recording-rule outage.
+		if calls == 2 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		_, _ = w.Write([]byte(`{"status":"success","data":{"resultType":"vector","result":[{"metric":{},"value":[1717286400,"87.42"]}]}}`))
+	}))
+	defer srv.Close()
+
+	src := NewPromSource(srv.URL)
+	_, up, err := src.Fetch("2026-06-03")
+	if err != nil {
+		t.Fatalf("Fetch should soft-fail; got err: %v", err)
+	}
+	if up {
+		t.Errorf("backendUp = true; want false on partial outage (cost-today 200 + cost-week 500)")
+	}
+}
