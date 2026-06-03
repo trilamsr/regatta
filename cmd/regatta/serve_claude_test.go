@@ -23,17 +23,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// TestServeWithClaudeSpawnerEndToEnd builds the regatta binary,
-// points it at a temp repo, and asserts that
-// `serve --spawner=claude --tick-once` spawns a fake-claude shim
-// into a worktree, captures a real PID, and reaches the `running`
-// state. The fake-claude shim is killed deterministically via the
-// captured PID at teardown.
-//
-// Uses modernc.org/sqlite directly to read the agent row so the
-// test does not require the sqlite3 CLI on PATH. Excluded from
-// Windows builds via the `unix` build tag — the bash shim and
-// syscall.Kill are POSIX-only.
+// TestServeWithClaudeSpawnerEndToEnd asserts `serve --spawner=claude --tick-once` spawns a fake-claude shim into a worktree, captures a real PID, and reaches running state (POSIX-only; bash shim + syscall.Kill).
 func TestServeWithClaudeSpawnerEndToEnd(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not on PATH")

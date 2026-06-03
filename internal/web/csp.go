@@ -2,11 +2,10 @@ package web
 
 import "net/http"
 
-// CSPHeader pins spec §3.7 verbatim. Drift here trips
-// TestCSPMiddleware_SetsAllSpecHeadersByteEqual; the literal lives outside
-// CSPMiddleware so other handlers can assert byte-equality without spawning
-// the middleware. No `unsafe-inline`, no `unsafe-eval`, no third-party origin
-// (R3: bearer-token leak defense + supply-chain anchor).
+// CSPHeader pins spec §3.7 verbatim; the literal lives outside CSPMiddleware
+// so other handlers can assert byte-equality without spawning the middleware.
+// No `unsafe-inline`, no `unsafe-eval`, no third-party origin (R3: bearer-token
+// leak defense + supply-chain anchor).
 const CSPHeader = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
 // referrerPolicy + nosniff + frameOptions are spec §3.7 belt-and-suspenders

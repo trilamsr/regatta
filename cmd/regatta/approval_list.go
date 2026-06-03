@@ -78,11 +78,9 @@ func runApprovalListWith(deps approvalListDeps, args []string) int {
 	return emitApprovalsTable(deps.Stdout, approvals)
 }
 
-// approvalListRow aliases the canonical schemas.ApprovalListRow — the contract
-// surface for --format=json. Adding/removing a column requires editing
-// contracts/schemas/approval_list.v1.json + approval_list.go together;
-// TestApprovalList_JSONMatchesSchema and TestApprovalListSchemaLockstep
-// fail on drift.
+// approvalListRow aliases schemas.ApprovalListRow so adding/removing a column
+// requires editing contracts/schemas/approval_list.v1.json and this file
+// together.
 type approvalListRow = schemas.ApprovalListRow
 
 func emitApprovalsJSON(out io.Writer, approvals []state.Approval) int {

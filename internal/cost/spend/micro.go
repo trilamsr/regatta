@@ -24,16 +24,12 @@ type USDMicro int64
 // reader, gate, and reconciler.
 const scale = 1_000_000
 
-// FromUSD converts a float USD amount (LLM API return value, pricing
-// table multiplication result, operator cap setting) into integer
-// micro-USD using half-away-from-zero (math.Round); test pins via
-// TestMicroUSD_FromUSD_RoundsHalfAwayFromZero. Boundary conversion is
-// the ONLY place float math touches the money path; downstream cap
-// comparisons + sums are pure int64. The math.Round (not math.Floor /
-// math.Trunc) choice preserves the operator-intuitive "0.005 → 1
-// cent" behaviour an invoice reviewer expects (over-recording cents
-// by 1 micro is the safe-rounding direction for cap-defending budget
-// enforcement).
+// FromUSD converts a float USD amount into integer micro-USD using
+// half-away-from-zero (math.Round). This is the ONLY place float math touches
+// the money path; downstream cap comparisons + sums are pure int64. Round
+// (not Floor / Trunc) preserves the operator-intuitive "0.005 → 1 cent"
+// behaviour an invoice reviewer expects (over-recording by 1 micro is the
+// safe-rounding direction for cap-defending budget enforcement).
 func FromUSD(usd float64) USDMicro {
 	// NaN/Inf collapse to 0 — a non-finite spend is a writer-side bug,
 	// not a recordable amount. Returning 0 keeps the substrate sum

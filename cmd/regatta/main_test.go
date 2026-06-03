@@ -2,10 +2,7 @@ package main
 
 import "testing"
 
-// TestMain_DispatchTableCoversAllCommands locks the dispatch table: each
-// entry has a non-empty name, a non-nil run func, and no duplicate
-// names. Drops a class of regression where moving a run* into its own
-// file deletes the table row but main still compiles.
+// TestMain_DispatchTableCoversAllCommands locks the dispatch table so moving a run* into its own file cannot silently drop the entry while main still compiles.
 func TestMain_DispatchTableCoversAllCommands(t *testing.T) {
 	want := []string{
 		"l0",
