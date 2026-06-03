@@ -61,6 +61,7 @@ var subcommands = []subcommand{
 	{subcmdDigest, runDigest},
 	{subcmdAudit, runAudit},
 	{subcmdSecret, runSecret},
+	{subcmdStatus, runStatus},
 }
 
 func main() {
@@ -105,6 +106,7 @@ func usage(w io.Writer) {
   regatta digest --date YYYY-MM-DD                    Generate docs/digests/<date>.md from Prom metrics
   regatta audit verify --run-id <id> [--db <path>]    Walk recorded gate verdicts; print tool/version/det/hmac-status per gate
   regatta secret set|get|status                       Manage operator credentials in OS keychain (macOS) / pass (Linux) with env fallback
+  regatta status [--refresh DUR] [--once]             Terminal live-status TUI (5 panels: subagents, PRs, merges, cost, green-clock)
   regatta version                                     Print build info
   regatta help                                        This message
 
