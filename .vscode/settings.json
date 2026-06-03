@@ -2,7 +2,17 @@
   "gopls": {
     "directoryFilters": [
       "-.claude/worktrees",
-      "-triage-"
-    ]
+      "-triage-",
+      "-vendor",
+      "-node_modules"
+    ],
+    "expandWorkspaceToModule": false
+  },
+  "files.watcherExclude": {
+    "**/.claude/worktrees/**": true,
+    "**/.git/objects/**": true
+  },
+  "search.exclude": {
+    "**/.claude/worktrees": true
   }
 }
