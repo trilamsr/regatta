@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/user"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
 const subcmdResume = "resume"
@@ -23,6 +25,7 @@ const subcmdResume = "resume"
 var sqlErrNoRows = sql.ErrNoRows
 
 // resumeDeps injects every side-effect the resume path touches.
+// Opener mirrors costDeps.Opener — test seam for Close-assertion.
 type resumeDeps struct {
 	Stdout     io.Writer
 	Stderr     io.Writer
@@ -30,6 +33,7 @@ type resumeDeps struct {
 	DSN        string
 	ConfigPath string
 	Actor      string // "" → derived from os/user
+	Opener     func(context.Context, string) (*state.DB, error)
 }
 
 func runResume(args []string) int {
@@ -65,17 +69,19 @@ func runResumeWith(deps resumeDeps, args []string) int {
 		*actor = deriveActor()
 	}
 	ctx := context.Background()
-	enf, err := buildEnforcer(ctx, costDeps{
+	enf, closeDB, err := buildEnforcer(ctx, costDeps{
 		Stdout:     deps.Stdout,
 		Stderr:     deps.Stderr,
 		Clock:      deps.Clock,
 		DSN:        deps.DSN,
 		ConfigPath: deps.ConfigPath,
+		Opener:     deps.Opener,
 	})
 	if err != nil {
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta resume: %v\n", err)
 		return 1
 	}
+	defer closeDB()
 	if enf.CapMicro() == 0 {
 		_, _ = fmt.Fprintln(deps.Stderr, "regatta resume: cost.cap.daily_usd is unset — there is no global throttle to lift")
 		return 1

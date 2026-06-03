@@ -4,13 +4,29 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
+
+// openCounter records every state.Open call the Opener seam routes
+// through it so tests can assert "buildEnforcer opened once per
+// invocation" — the close invariant of #649 then follows from each
+// invocation having a matching deferred closeDB().
+type openCounter struct {
+	opens int64
+}
+
+func (c *openCounter) open(ctx context.Context, dsn string) (*state.DB, error) {
+	atomic.AddInt64(&c.opens, 1)
+	return state.Open(ctx, dsn)
+}
 
 // TestCostStatus_CapUnset_ExplainsDegradedMode no config → unset path.
 func TestCostStatus_CapUnset_ExplainsDegradedMode(t *testing.T) {
@@ -152,6 +168,130 @@ func TestResume_EmitsAuditEvent(t *testing.T) {
 	}
 	if !strings.Contains(ev.PayloadJSON, `"actor":"trilamsr"`) {
 		t.Fatalf("audit event missing actor: %s", ev.PayloadJSON)
+	}
+}
+
+// countOpenDBFiles uses lsof to count this process's open FDs that
+// point at the sqlite DB file. Cross-platform readlink against /dev/fd
+// works on Linux but Darwin's /dev/fd entries are character-device
+// shims that do not expose the underlying path — lsof is the only
+// reliable surface on both. Skip if lsof is unavailable. Resolves
+// symlinks so /var/...→/private/var/... canonicalization (Darwin
+// TempDir) does not produce a false miss.
+func countOpenDBFiles(t *testing.T, dbPath string) int {
+	t.Helper()
+	if _, err := exec.LookPath("lsof"); err != nil {
+		t.Skipf("lsof unavailable: %v", err)
+	}
+	resolved, err := filepath.EvalSymlinks(dbPath)
+	if err != nil {
+		resolved = dbPath
+	}
+	pid := strconv.Itoa(os.Getpid())
+	out, err := exec.Command("lsof", "-p", pid).Output()
+	if err != nil {
+		t.Fatalf("lsof: %v", err)
+	}
+	n := 0
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.Contains(line, resolved) {
+			n++
+		}
+	}
+	return n
+}
+
+// TestRunCostStatus_ClosesDB invokes runCostStatusWith N times and
+// asserts no FDs point at the sqlite file after the calls return.
+// Without #649's defer-closeDB() each invocation leaks one FD — directly
+// observable via /dev/fd. Opener counter additionally proves each
+// invocation opened exactly once.
+func TestRunCostStatus_ClosesDB(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "state.db")
+	db, err := state.Open(context.Background(), state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	_ = db.Close()
+	cfgPath := filepath.Join(dir, "regatta.yaml")
+	if err := writeFile(cfgPath, `safety:
+  cost:
+    per_dag_usd: 5
+    cap:
+      daily_usd: 40.00
+`); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	const runs = 3
+	baseline := countOpenDBFiles(t, dbPath)
+	counter := &openCounter{}
+	for i := 0; i < runs; i++ {
+		var stdout, stderr bytes.Buffer
+		code := runCostStatusWith(costDeps{
+			Stdout:     &stdout,
+			Stderr:     &stderr,
+			Clock:      func() time.Time { return time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC) },
+			DSN:        state.DSN(dbPath),
+			ConfigPath: cfgPath,
+			Opener:     counter.open,
+		}, nil)
+		if code != 0 {
+			t.Fatalf("invocation %d: exit=%d stderr=%s", i+1, code, stderr.String())
+		}
+	}
+	if got := atomic.LoadInt64(&counter.opens); got != runs {
+		t.Fatalf("Opener called %d times, want %d", got, runs)
+	}
+	if leaked := countOpenDBFiles(t, dbPath) - baseline; leaked != 0 {
+		t.Fatalf("post-run %d leaked FD(s) on %s — Close not invoked", leaked, dbPath)
+	}
+}
+
+// TestRunResume_ClosesDB mirrors TestRunCostStatus_ClosesDB for the
+// resume CLI path — buildEnforcer is shared, but resume.go has its own
+// defer closeDB() the fix must add.
+func TestRunResume_ClosesDB(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "state.db")
+	ctx := context.Background()
+	db, err := state.Open(ctx, state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	_ = db.Close()
+	cfgPath := filepath.Join(dir, "regatta.yaml")
+	if err := writeFile(cfgPath, `safety:
+  cost:
+    per_dag_usd: 5
+    cap:
+      daily_usd: 40.00
+`); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	const runs = 3
+	baseline := countOpenDBFiles(t, dbPath)
+	counter := &openCounter{}
+	for i := 0; i < runs; i++ {
+		var stdout, stderr bytes.Buffer
+		code := runResumeWith(resumeDeps{
+			Stdout:     &stdout,
+			Stderr:     &stderr,
+			Clock:      func() time.Time { return time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC) },
+			DSN:        state.DSN(dbPath),
+			ConfigPath: cfgPath,
+			Actor:      "tester",
+			Opener:     counter.open,
+		}, nil)
+		if code != 0 {
+			t.Fatalf("invocation %d: exit=%d stderr=%s", i+1, code, stderr.String())
+		}
+	}
+	if got := atomic.LoadInt64(&counter.opens); got != runs {
+		t.Fatalf("Opener called %d times, want %d", got, runs)
+	}
+	if leaked := countOpenDBFiles(t, dbPath) - baseline; leaked != 0 {
+		t.Fatalf("post-run %d leaked FD(s) on %s — Close not invoked", leaked, dbPath)
 	}
 }
 
