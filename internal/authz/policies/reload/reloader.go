@@ -203,11 +203,15 @@ func (r *Reloader) watchLoop(ctx context.Context, reloads chan<- string, ready c
 	}
 	defer func() { _ = watcher.Close() }()
 
-	if err := r.addWatch(watcher, root); err != nil {
+	// rootWatched tracks whether the current root has a live watch. On
+	// transitions from absent→present, the retry ticker enqueues a reload
+	// so writes that landed during the no-watch gap are not stranded.
+	rootWatched := r.addWatch(watcher, root) == nil
+	if !rootWatched {
 		// Dir missing at boot is normal (operator hasn't populated it
 		// yet); embed.FS fallback handles serving. Log + keep trying
 		// every 5 s so a later `mkdir` resumes hot-reload.
-		r.Logger.Info("reload: watcher waiting for policy dir", "dir", root, "err", err)
+		r.Logger.Info("reload: watcher waiting for policy dir", "dir", root)
 	}
 	close(ready)
 
@@ -251,7 +255,20 @@ func (r *Reloader) watchLoop(ctx context.Context, reloads chan<- string, ready c
 		case <-retryTicker.C:
 			// Re-add the root if the previous attempt failed. Cheap if
 			// the watch already covers the dir (fsnotify returns nil).
-			_ = r.addWatch(watcher, root)
+			// On absent→present transitions, enqueue a reload so a write
+			// that landed in the no-watch gap (rm -rf + mkdir + write all
+			// before the next tick) is not stranded until the next event.
+			err := r.addWatch(watcher, root)
+			if err == nil && !rootWatched {
+				rootWatched = true
+				select {
+				case reloads <- TriggerFsnotify:
+				case <-ctx.Done():
+					return
+				}
+			} else if err != nil {
+				rootWatched = false
+			}
 		case ev, ok := <-watcher.Events:
 			if !ok {
 				return
@@ -262,6 +279,7 @@ func (r *Reloader) watchLoop(ctx context.Context, reloads chan<- string, ready c
 			if ev.Has(fsnotify.Remove) && ev.Name == root {
 				// Operator removed the watch root; queue re-add via the
 				// retry ticker and let embed.FS fallback continue serving.
+				rootWatched = false
 				continue
 			}
 			armDebounce()
