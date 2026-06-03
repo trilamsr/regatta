@@ -97,8 +97,8 @@ func TestAuditVerify_DBSchemaSkew_SurfacesInOutput(t *testing.T) {
 	if row.RunningSchema != state.CurrentSchemaVersion {
 		t.Errorf("row.RunningSchema=%d want %d", row.RunningSchema, state.CurrentSchemaVersion)
 	}
-	if row.HMACStatus != "chain-ok" {
-		t.Errorf("row.HMACStatus=%q want chain-ok", row.HMACStatus)
+	if row.HMACStatus != hmacStatusChainOK {
+		t.Errorf("row.HMACStatus=%q want %s", row.HMACStatus, hmacStatusChainOK)
 	}
 	if row.AuditPosture != "reproduce" {
 		t.Errorf("row.AuditPosture=%q want reproduce", row.AuditPosture)
@@ -286,11 +286,11 @@ func TestAuditVerify_LegacyVerdictBackfill_ShowsUnknownLegacy(t *testing.T) {
 		t.Fatalf("rows=%d want 1", len(got.Rows))
 	}
 	row := got.Rows[0]
-	if row.Tool != "unknown-legacy" {
-		t.Errorf("Tool=%q want unknown-legacy", row.Tool)
+	if row.Tool != toolUnknownLegacy {
+		t.Errorf("Tool=%q want %s", row.Tool, toolUnknownLegacy)
 	}
-	if row.ToolVersion != "unknown-legacy" {
-		t.Errorf("ToolVersion=%q want unknown-legacy", row.ToolVersion)
+	if row.ToolVersion != toolUnknownLegacy {
+		t.Errorf("ToolVersion=%q want %s", row.ToolVersion, toolUnknownLegacy)
 	}
 	if row.Deterministic {
 		t.Errorf("Deterministic=true want false (legacy is non-replayable by construction)")
@@ -298,8 +298,8 @@ func TestAuditVerify_LegacyVerdictBackfill_ShowsUnknownLegacy(t *testing.T) {
 	if row.AuditPosture != "verify-only" {
 		t.Errorf("AuditPosture=%q want verify-only", row.AuditPosture)
 	}
-	if row.HMACStatus != "chain-ok" {
-		t.Errorf("HMACStatus=%q want chain-ok (chain must verify even for legacy)", row.HMACStatus)
+	if row.HMACStatus != hmacStatusChainOK {
+		t.Errorf("HMACStatus=%q want %s (chain must verify even for legacy)", row.HMACStatus, hmacStatusChainOK)
 	}
 	if got.Summary.VerifyOnly != 1 || got.Summary.Reproducible != 0 {
 		t.Errorf("summary VerifyOnly=%d Reproducible=%d want 1/0", got.Summary.VerifyOnly, got.Summary.Reproducible)

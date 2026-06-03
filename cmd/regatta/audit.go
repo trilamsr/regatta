@@ -37,6 +37,17 @@ const (
 	// constant covers the decode-error + unknown-legacy backfill path
 	// where the payload itself never returned a posture string.
 	postureVerifyOnly = "verify-only"
+
+	// toolUnknownLegacy is the Tool / ToolVersion sentinel for pre-#550
+	// verdicts decoded at audit time. Single source of truth so prod
+	// fold + every test that pins the legacy-backfill path reference
+	// one literal — goconst would otherwise flag the 4th occurrence.
+	toolUnknownLegacy = "unknown-legacy"
+
+	// hmacStatusChainOK is the per-row HMAC verdict when Verify
+	// returns nil. Hoisted to a constant so the production fold + test
+	// assertions share one literal; lint goconst rejects 3+ inline.
+	hmacStatusChainOK = "chain-ok"
 )
 
 // auditDeps injects every side-effect the audit path touches so
@@ -190,8 +201,8 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 			// explicit "unknown-legacy" tool so the row is visibly
 			// distinct from a properly-tagged verify-only verdict.
 			if row.Tool == "" {
-				row.Tool = "unknown-legacy"
-				row.ToolVersion = "unknown-legacy"
+				row.Tool = toolUnknownLegacy
+				row.ToolVersion = toolUnknownLegacy
 				row.Deterministic = false
 				row.AuditPosture = postureVerifyOnly
 			}
@@ -214,7 +225,7 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 			row.HMACStatus = "chain-unverifiable"
 		default:
 			if verr := substrate.Verify(e, keyring); verr == nil {
-				row.HMACStatus = "chain-ok"
+				row.HMACStatus = hmacStatusChainOK
 				summary.ChainOK++
 			} else {
 				row.HMACStatus = "chain-broken"
