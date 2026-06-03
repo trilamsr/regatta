@@ -46,7 +46,7 @@ PHASE MVR-1 — First external-customer wedges [SPECS LANDED · IMPL BLOCKED on 
     MVR-1 T5: CUE gate — #602
     MVR-1 T6: goja runtime — #604
     MVR-1 T7: strategy interface + concurrency-policy unify (DW-superset Wave A; pieces 1+5 from roadmap §14) — refactor only, parallel with T1, internal-velocity compound
-  GATED on: customer-0 interview (#423 — must interview ≥3 OSS-maintainers-of-large-repos before dispatch). Estimated 7 weeks once customer-0 confirmed.
+  GATED on: customer-0 interview (interview ≥3 OSS-maintainers-of-large-repos before dispatch — original tracker #423 closed; re-open via search `gh issue list --search 'customer-0' --state open` if a successor tracker exists). Estimated 7 weeks once customer-0 confirmed.
 
 PHASE MVR-2 — First paying customer [SKELETON SPECS LANDED #670 · IMPL DEFERRED until MVR-1 closes AND 1 signed pilot LOI from persona-B/D per roadmap §2 Gate 2 tier 2]
   Per #433 §4 + §14. Adds two DW-superset pieces alongside W7 Wave 2/3:
@@ -73,9 +73,9 @@ PHASE X — External-buyer wedges [DEFERRED]
   P3.8 swap-out adapters · W9 Temporal-backed DurableHistory. Specs in main. DO NOT dispatch implementers. Reopen on: external-customer-ask OR 30-day-green trigger. (W8/W10/W11/W12 moved into MVR-2/MVR-3 above.)
 
 OPEN FOLLOWUPS (sweep when between phase items, ≤5 trivial PRs/session cap)
-- RISK followups #423 #424 #426 #427 (strategic-design closeout)
+- RISK followups — strategic-design closeout: #423 #424 #426 #427 all CLOSED 2026-06-03; no open RISK trackers remain in this slice.
 - ~80 followup tracking issues filed across PHASE-AUTONOMY + OBS wave drains (#573-#588, #606-#667) — sweep by tier (correctness > consistency > docs)
-- Architecture-review followups — #553 canonical-JSON fork unify (HIGH, signing correctness) · #554 integer micro-USD money (HIGH, budget exactness) · #551 generalize external-side-effect intent/outbox · #550 gate-determinism reframe · #549 replay engine-version journal · #548 GDPR crypto-shred. #553+#554 remain the two highest-value next correctness PRs.
+- Architecture-review followups — #551 generalize external-side-effect intent/outbox · #548 GDPR crypto-shred. (#549 #550 #553 #554 CLOSED 2026-06-03.)
 - Recurring A+ rubric checkboxes — fuzz, mutation testing extensions, key-rotation drill extensions
 
 Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -200`. Per feedback_boot_prompt_per_wave_refresh, entries >2 waves old are pruned; older shipped wedges live in git history only.
@@ -123,7 +123,7 @@ The bulk of agent rules now live in repo-root `CLAUDE.md` (auto-loaded by every 
 
 - Subagents do everything: design, plan, impl, review, doc, PR-body drafting, issue filing, debugging. Main thread = dispatcher + integrator.
 - **W9 substrate-choice locked = option C hybrid, self-host scope = substrate-default impl ONLY** (memory/wedge_roadmap_assessment §"Substrate + W9 substrate-choice locked 2026-06-01" + self-host-first brief §3 S2-T1): ship W9 against `DurableHistory` Go interface, default impl on substrate `events`. Temporal-backed impl is Phase X — gated behind refined P2.5 trigger (sqlite contention >5% OR ≥30 concurrent OR replay-recovery >60s — any one, two consecutive 24h windows) AND external customer ask. W9 promoted ahead of W7/W8 for self-host loop closure. Never re-litigate during implementer dispatch.
-- PHASE-S-RELAX (`feedback_gate_relaxation_phase_s`) ARCHIVED 2026-06-02 — window closed; templates restored to full-gate posture. Reopen-trigger: next gate-relaxation window (pre-launch hardening freeze OR customer-pilot mode).
+- PHASE-S-RELAX no relaxations active — full-gate posture across all templates. Reopen-trigger: next gate-relaxation window (pre-launch hardening freeze OR customer-pilot mode). Archived rule at `archive/feedback_gate_relaxation_phase_s.md` in operator memory.
 - **Comment-noise gate trip-traps** per #333 followup — reviewer-tag regex over-matches reviewer-Request / reviewer-JSON prose; banner-comment regex rejects `# --- Section ---`. Dodge: hyphenate or lowercase, replace banners with plain `# Section.`.
 
 AUTONOMOUS-LOOP CADENCE

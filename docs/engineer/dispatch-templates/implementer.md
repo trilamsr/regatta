@@ -33,10 +33,10 @@ A+ SCORECARD
 - CITATION GATE: every `[x]` on a criterion row MUST carry a `Test*`-name OR `file:line` OR `#issue` OR `N/A — <rationale>` on the SAME line. `scripts/check-scorecard.sh` enforces in pr-lint; vibes-grading fails CI. Pre-push: `bash scripts/check-scorecard.sh --body-file <body>` exit 0.
 
 DOC-CHECK
-- Pre-push grep banned phrases — token list (11 entries) lives in `scripts/doc-check.sh` (`banned_tokens` array). Reword hits to falsifiable claims (version pin, benchmark, named reference). Per `feedback_doc_check_banned_phrases`.
+- Pre-push grep banned phrases — token list (11 entries) lives in `scripts/doc-check.sh` (`banned_tokens` array). Reword hits to falsifiable claims (version pin, benchmark, named reference). Per `CLAUDE.md` §CI gates "Banned-phrase gate".
 
 RELEASE NOTES
-- PR body MUST contain a ```release-notes ... ``` fence (one line: user-visible change OR `none (internal)`). Body-edit alone won't retrigger pr-lint — needs a new commit. Per `feedback_pr_body_release_notes_fence`.
+- PR body MUST contain a ```release-notes ... ``` fence (one line: user-visible change OR `none (internal)`). Body-edit alone won't retrigger pr-lint — needs a new commit. Per `feedback_release_notes_fence_missing` + `CLAUDE.md` §CI gates "PR body hygiene".
 
 NO SIGNATURES
 - No `Co-Authored-By`, no AI footer, no "Generated with" tags. Anywhere. Per `feedback_no_signatures`.
@@ -89,7 +89,7 @@ INDEPENDENT REVIEW MEASURES vs A+ RUBRIC
 - [ ] no banned phrases
 - [ ] no signatures
 - [ ] memory rules cited
-- [ ] worktree removed after merge (`feedback_worktree_cleanup_post_merge`)
+- [ ] worktree removed after merge (`CLAUDE.md` §Worktree discipline)
 
 ## RECURRING-FAILURE TRAPS (2026-06-02 session)
 
@@ -101,7 +101,7 @@ INDEPENDENT REVIEW MEASURES vs A+ RUBRIC
    ```
    Must return empty. CONCRETE FIX: collapse `// TestX pins behavior A: when input I, expect output O; ensures bug #N doesn't recur` (3 lines wrapped) → `// TestX asserts O on I (#N).` (1 line, hard wrap-free). Drop sub-clauses, the test name + body carry intent.
 
-2. **`gh pr create` / `gh pr edit` MUST use `--body-file <path>`** per `feedback_pr_body_file_only`. HEREDOC bodies (`--body "$(cat <<EOF ... EOF)"`) escape backticks and silently break the release-notes fence detector. Write body to `/tmp/pr-<branch>.md` first.
+2. **`gh pr create` / `gh pr edit` MUST use `--body-file <path>`** per `CLAUDE.md` §CI gates "PR body hygiene". HEREDOC bodies (`--body "$(cat <<EOF ... EOF)"`) escape backticks and silently break the release-notes fence detector. Write body to `/tmp/pr-<branch>.md` first.
 
 3. **Comment-noise gate trip-traps** per #333 followup. Regex was tightened in #371; if it still over-matches your prose, hyphenate the matching token (`reviewer-Request` / `reviewer-JSON`) or lowercase the following capital. Banner regex rejects `# --- Section ---` — use plain `# Section.` instead.
 

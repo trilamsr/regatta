@@ -32,13 +32,13 @@ ADVERSARIAL REVIEW ON SPEC
 - After draft, spawn reviewer subagent (see sibling `reviewer.md`) targeting: simplification opportunities, deletion candidates, edge cases, risk tiers, OSS reuse the spec missed. Fix findings inline OR cite as deferred with reopen-trigger.
 
 DOC-CHECK
-- No banned phrases (`scripts/doc-check.sh`, 11 tokens). Reword to falsifiable claims (version pin, benchmark, named reference). Pre-push grep mandatory. Per `feedback_doc_check_banned_phrases`.
+- No banned phrases (`scripts/doc-check.sh`, 11 tokens). Reword to falsifiable claims (version pin, benchmark, named reference). Pre-push grep mandatory. Per `CLAUDE.md` §CI gates "Banned-phrase gate".
 
 DELETION DEFAULT
 - Spec answers "what got smaller?" Additions need A+ defense. Per `feedback_deletion_default`.
 
 RELEASE NOTES
-- Spec PR body needs ```release-notes ... ``` fence (typically `none (internal)` for design-only). Per `feedback_pr_body_release_notes_fence`.
+- Spec PR body needs ```release-notes ... ``` fence (typically `none (internal)` for design-only). Per `feedback_release_notes_fence_missing` + `CLAUDE.md` §CI gates "PR body hygiene".
 
 NO SIGNATURES
 - No `Co-Authored-By`, no AI footer. Per `feedback_no_signatures`.
@@ -75,7 +75,7 @@ DESIGN ITERATION LOCAL (no per-revision PR)
 
 ## RECURRING-FAILURE TRAPS
 
-1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `feedback_pr_body_file_only`. HEREDOC bodies escape backticks.
+1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `CLAUDE.md` §CI gates "PR body hygiene". HEREDOC bodies escape backticks.
 2. **GH base-sha drift workaround** per #343 (fix #347 merged): tag release-notes with `[DOCS]` for spec-only PRs to skip check-tdd.
 3. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Spec PR body MUST include a triple-fence ` ```release-notes ` block with `[DOCS] one-line summary (#issue)` inside. Without the fence, `check-scorecard.sh` falls through to the error branch even on `[DOCS]` PRs — the category-exempt branch only fires when the fence is present.
 4. **Scorecard rubric in spec MUST use bare citation tokens** per `feedback_scorecard_citation_token_outside_backticks`. The A+ rubric you ship in the spec will be copy-pasted into the implementer PR body. Wrapping `TestX` or `file.go:42` in backticks in the spec rubric template propagates invisible-token failures to the implementer. Write tokens bare in the spec rubric scorecard template.
