@@ -2,10 +2,12 @@ package merge
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -50,6 +52,40 @@ func New(cfg Config) (*Coordinator, error) {
 		log = slog.Default()
 	}
 	return &Coordinator{db: cfg.DB, prober: cfg.Prober, log: log}, nil
+}
+
+// PrepareMerge atomically writes the merge_intent audit row + transitions
+// the agent from GatesRunning → AwaitingMerge in a single transaction.
+// The c2 auto-merge policy engine calls this immediately before the
+// external `gh pr merge` invocation so a crash between the policy
+// decision and the external call leaves a recoverable intent row and a
+// state Recover() + Coordinator.Reconcile can re-probe.
+//
+// Single tx guarantees: either both writes commit (intent on file,
+// state == awaiting_merge) or neither does (no orphan intent, no half-
+// transitioned agent). Validation runs PRE-tx so a buggy caller cannot
+// burn DB cycles on doomed inputs.
+//
+// The external `gh pr merge` call is NOT made here — c2 wires that
+// after PrepareMerge succeeds. The split exists so the substrate side
+// (this method) stays gh-CLI-free and the external side can fail
+// independently without corrupting the audit row.
+func (c *Coordinator) PrepareMerge(ctx context.Context, agentID int64, prNumber int, headSHA string) error {
+	if prNumber <= 0 {
+		return fmt.Errorf("merge: PrepareMerge: pr_number must be positive, got %d", prNumber)
+	}
+	if headSHA == "" {
+		return fmt.Errorf("merge: PrepareMerge: head_sha required")
+	}
+	return c.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := WriteIntent(ctx, tx, c.db, agentID, prNumber, headSHA); err != nil {
+			return err
+		}
+		if _, err := c.db.TransitionAgentTx(ctx, tx, agentID, state.AgentAwaitingMerge, state.AgentMutation{}); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 // Reconcile walks every agent in AwaitingMerge, looks up the latest
@@ -152,14 +188,20 @@ func (c *Coordinator) markCompleted(ctx context.Context, a state.Agent, prNumber
 	if err != nil {
 		return fmt.Errorf("marshal completed: %w", err)
 	}
-	if err := c.db.RecordEvent(ctx, a.ID, EventKindMergeCompleted, string(payload)); err != nil {
+	if err := c.recordMergeEvent(ctx, a, EventKindMergeCompleted, string(payload)); err != nil {
 		return fmt.Errorf("record completed: %w", err)
 	}
-	if err := c.db.RecordEvent(ctx, a.ID, EventKindMergeRecovered, `{"outcome":"completed"}`); err != nil {
+	if err := c.recordMergeEvent(ctx, a, EventKindMergeRecovered, `{"outcome":"completed"}`); err != nil {
 		return fmt.Errorf("record recovered: %w", err)
 	}
 	if _, err := c.db.TransitionAgent(ctx, a.ID, state.AgentDone, state.AgentMutation{}); err != nil {
-		return fmt.Errorf("transition done: %w", err)
+		// Already-Done from a concurrent winning instance is fine —
+		// the unique-event-index already guarded against double-write;
+		// the transition is the FSM-layer mirror. ErrInvalidTransition
+		// here is the "agent is already terminal" race.
+		if !errors.Is(err, state.ErrInvalidTransition) {
+			return fmt.Errorf("transition done: %w", err)
+		}
 	}
 	c.log.Info("merge.recovered_completed",
 		"agent_id", a.ID,
@@ -185,14 +227,19 @@ func (c *Coordinator) markFailed(ctx context.Context, a state.Agent, prNumber in
 	if err != nil {
 		return fmt.Errorf("marshal failed: %w", err)
 	}
-	if err := c.db.RecordEvent(ctx, a.ID, EventKindMergeFailed, string(payload)); err != nil {
+	if err := c.recordMergeEvent(ctx, a, EventKindMergeFailed, string(payload)); err != nil {
 		return fmt.Errorf("record failed: %w", err)
 	}
-	if err := c.db.RecordEvent(ctx, a.ID, EventKindMergeRecovered, fmt.Sprintf(`{"outcome":"failed","reason":%q}`, reason)); err != nil {
+	if err := c.recordMergeEvent(ctx, a, EventKindMergeRecovered, fmt.Sprintf(`{"outcome":"failed","reason":%q}`, reason)); err != nil {
 		return fmt.Errorf("record recovered: %w", err)
 	}
 	if _, err := c.db.TransitionAgent(ctx, a.ID, state.AgentCrashed, state.AgentMutation{}); err != nil {
-		return fmt.Errorf("transition crashed: %w", err)
+		// Already-Crashed/Done from a concurrent winning instance is
+		// fine — the unique-event-index already guarded against
+		// double-write; the FSM transition is the mirror.
+		if !errors.Is(err, state.ErrInvalidTransition) {
+			return fmt.Errorf("transition crashed: %w", err)
+		}
 	}
 	if _, err := c.db.ReleaseAgentLocks(ctx, a.ID); err != nil {
 		return fmt.Errorf("release locks: %w", err)
@@ -205,4 +252,42 @@ func (c *Coordinator) markFailed(ctx context.Context, a state.Agent, prNumber in
 		"reason", reason,
 	)
 	return nil
+}
+
+// recordMergeEvent wraps state.RecordEvent with unique-violation
+// suppression. Two coordinator instances may race the same agent into
+// markCompleted/markFailed; the partial unique index on
+// events(agent_id, kind) (migration 0013) makes the second writer's
+// INSERT fail with a UNIQUE constraint violation. We swallow that as
+// "the other instance already recorded this outcome" and continue —
+// without the suppression the loser's per-agent reconcile errors,
+// gets logged as a sweep failure, and a future W4 self-improvement
+// detector mistakes routine multi-instance recovery for a real bug
+// (PR #558 adversarial-review Bug-3).
+func (c *Coordinator) recordMergeEvent(ctx context.Context, a state.Agent, kind, payloadJSON string) error {
+	err := c.db.RecordEvent(ctx, a.ID, kind, payloadJSON)
+	if err == nil {
+		return nil
+	}
+	if isUniqueViolation(err) {
+		c.log.Info("merge.duplicate_event_suppressed",
+			"agent_id", a.ID,
+			"work_item_id", a.WorkItemID,
+			"kind", kind,
+		)
+		return nil
+	}
+	return err
+}
+
+// isUniqueViolation matches modernc.org/sqlite's UNIQUE-constraint
+// error text. Same substring-probe shape substrate uses for its replay
+// guard — see internal/orchestrator/state/substrate/event.go's
+// isUniqueNonceViolation. The driver does not surface extended error
+// codes through database/sql so the substring is the stable seam.
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "UNIQUE constraint failed")
 }

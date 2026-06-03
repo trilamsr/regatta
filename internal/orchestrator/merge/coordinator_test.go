@@ -145,12 +145,7 @@ func loadEvent(t *testing.T, db *state.DB, agentID int64, kind string) string {
 	return raw
 }
 
-// TestAwaitingMerge_CrashBetweenCallAndCompletion_RecoversCorrectly
-// simulates the canonical crash scenario: substrate wrote
-// merge_intent, the external `gh pr merge` call landed (PR is now
-// merged on GitHub) but the regatta process died before writing
-// merge_completed. Recovery must observe the real PR state and
-// transition the agent to Done without re-issuing the merge.
+// TestAwaitingMerge_CrashBetweenCallAndCompletion_RecoversCorrectly asserts a crash post-merge-call pre-completion-event recovers to Done without re-issuing the merge.
 func TestAwaitingMerge_CrashBetweenCallAndCompletion_RecoversCorrectly(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -183,13 +178,7 @@ func TestAwaitingMerge_CrashBetweenCallAndCompletion_RecoversCorrectly(t *testin
 	}
 }
 
-// TestAwaitingMerge_RecoveryWhenBranchDeleted covers the
-// squash-merge-outside-regatta case: operator clicked the merge
-// button, the branch is now deleted upstream, and our merge_intent
-// dangles. Prober reports merged; recovery completes the agent. The
-// scenario is identical to the canonical crash case from regatta's
-// point of view — the difference is in how the prober translates
-// gh-CLI output (branch deleted + state=merged → PRStatusMerged).
+// TestAwaitingMerge_RecoveryWhenBranchDeleted asserts the squash-merge-outside-regatta path completes the agent via the merged-prober verdict.
 func TestAwaitingMerge_RecoveryWhenBranchDeleted(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -221,10 +210,7 @@ func TestAwaitingMerge_RecoveryWhenBranchDeleted(t *testing.T) {
 	}
 }
 
-// TestAwaitingMerge_RecoveryWhenSHADiverged covers the
-// force-push-between-decision-and-recovery case. The gate verdict was
-// against the OLD SHA; recovery must NOT re-issue the merge (that
-// would ship un-gated code) and must fail+requeue the agent.
+// TestAwaitingMerge_RecoveryWhenSHADiverged asserts a force-push between decision and recovery fails the agent rather than re-merging un-gated code.
 func TestAwaitingMerge_RecoveryWhenSHADiverged(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -253,10 +239,7 @@ func TestAwaitingMerge_RecoveryWhenSHADiverged(t *testing.T) {
 	}
 }
 
-// TestAwaitingMerge_RecoveryClosedUnmerged covers the
-// PR-closed-without-merge case (operator dismissed it, or auto-close
-// from a stale-branch policy). Recovery writes merge_failed and
-// transitions to crashed for requeue.
+// TestAwaitingMerge_RecoveryClosedUnmerged asserts a PR closed without merge writes merge_failed and crashes the agent for requeue.
 func TestAwaitingMerge_RecoveryClosedUnmerged(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -281,11 +264,7 @@ func TestAwaitingMerge_RecoveryClosedUnmerged(t *testing.T) {
 	}
 }
 
-// TestAwaitingMerge_RecoveryOpenSHAMatches_LeavesInPlace covers the
-// "merge call never reached GitHub" recovery case. The PR is still
-// open at the same SHA the intent recorded, so it is SAFE for the
-// next normal-path tick to re-issue the merge. Recovery must NOT
-// transition the agent — it stays in awaiting_merge.
+// TestAwaitingMerge_RecoveryOpenSHAMatches_LeavesInPlace asserts a still-open same-SHA PR leaves the agent in awaiting_merge for the next normal-path retry.
 func TestAwaitingMerge_RecoveryOpenSHAMatches_LeavesInPlace(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -312,10 +291,7 @@ func TestAwaitingMerge_RecoveryOpenSHAMatches_LeavesInPlace(t *testing.T) {
 	}
 }
 
-// TestAwaitingMerge_RecoveryUnknownStatus_StaysForNextSweep covers
-// the transient-prober-failure case (gh API rate limit, network
-// blip). Recovery leaves the agent in awaiting_merge so the next
-// sweep retries.
+// TestAwaitingMerge_RecoveryUnknownStatus_StaysForNextSweep asserts a transient prober Unknown verdict leaves the agent in awaiting_merge for the next sweep retry.
 func TestAwaitingMerge_RecoveryUnknownStatus_StaysForNextSweep(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -336,11 +312,7 @@ func TestAwaitingMerge_RecoveryUnknownStatus_StaysForNextSweep(t *testing.T) {
 	}
 }
 
-// TestAwaitingMerge_RecoveryNoIntent_TransitionsCrashed covers the
-// invariant violation case: an agent reached awaiting_merge without
-// the substrate appending merge_intent. This is a logic bug worth
-// surfacing — recovery transitions the agent to crashed (not leave
-// it stuck) and writes merge_failed with reason=no_intent_on_file.
+// TestAwaitingMerge_RecoveryNoIntent_TransitionsCrashed asserts an awaiting_merge agent with no intent on file crashes rather than stays stuck.
 func TestAwaitingMerge_RecoveryNoIntent_TransitionsCrashed(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -366,11 +338,7 @@ func TestAwaitingMerge_RecoveryNoIntent_TransitionsCrashed(t *testing.T) {
 	}
 }
 
-// TestAwaitingMerge_RecoveryProberError_IsNonFatal proves a flaky
-// prober for one agent does not stop the sweep from handling the
-// rest. Two agents in awaiting_merge: the first probe errors, the
-// second probe succeeds. Reconcile must complete agent #2 even
-// though agent #1 failed.
+// TestAwaitingMerge_RecoveryProberError_IsNonFatal asserts a per-agent prober failure does not strand the rest of the sweep.
 func TestAwaitingMerge_RecoveryProberError_IsNonFatal(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -402,11 +370,7 @@ func TestAwaitingMerge_RecoveryProberError_IsNonFatal(t *testing.T) {
 	}
 }
 
-// TestAwaitingMerge_RecoveryIsIdempotent proves re-running Reconcile
-// over already-completed agents is a no-op (terminal states are not
-// enumerated). Recovery storms (operator runs recover twice, or boot
-// re-launches against a partially-recovered DB) must not double-write
-// completion events.
+// TestAwaitingMerge_RecoveryIsIdempotent asserts re-running Reconcile across already-completed agents does not double-write completion events.
 func TestAwaitingMerge_RecoveryIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -432,10 +396,7 @@ func TestAwaitingMerge_RecoveryIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestWriteIntent_ValidatesInputs pins WriteIntent's defensive
-// checks — pr_number must be positive and head_sha non-empty. A
-// silent acceptance of zero/empty would let a buggy caller write
-// an unrecoverable intent (prober can't be called against pr 0).
+// TestWriteIntent_ValidatesInputs asserts pr_number > 0 and head_sha non-empty are enforced to block unrecoverable intent rows.
 func TestWriteIntent_ValidatesInputs(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -456,12 +417,7 @@ func TestWriteIntent_ValidatesInputs(t *testing.T) {
 	}
 }
 
-// TestNonceCollision_RevertedBranchSafe pins the head-SHA-can-repeat
-// adversarial-review concern: if a branch is force-pushed back to a
-// previously-recorded SHA (revert + re-push), the second intent
-// writes a fresh audit row — the first intent's outcome does not
-// poison the second. LatestIntent returns the most recent row by id
-// DESC, so a second probe sees the second intent's SHA.
+// TestNonceCollision_RevertedBranchSafe asserts a revert + re-push to a prior SHA writes a fresh intent that LatestIntent picks over the first.
 func TestNonceCollision_RevertedBranchSafe(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -479,9 +435,7 @@ func TestNonceCollision_RevertedBranchSafe(t *testing.T) {
 	}
 }
 
-// TestLatestIntent_NoIntent_ReturnsErrNoIntent pins the sentinel
-// error so the Coordinator's no_intent_on_file branch matches against
-// a stable type rather than text.
+// TestLatestIntent_NoIntent_ReturnsErrNoIntent asserts the sentinel ErrNoIntent surfaces so callers can errors.Is rather than text-match.
 func TestLatestIntent_NoIntent_ReturnsErrNoIntent(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)

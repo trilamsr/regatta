@@ -66,12 +66,7 @@ func (f *fakeProber) Probe(_ context.Context, _ int, _ string) (merge.ProbeResul
 	return f.Result, f.Err
 }
 
-// TestRecover_WithMergeCoordinator_ReconcilesAwaitingMerge proves the
-// orchestrator-level wiring of c0: when SetMergeCoordinator is wired
-// and an agent is stranded in awaiting_merge with a merge_intent,
-// Recover() invokes the Coordinator and the agent reaches Done (or
-// Crashed, depending on prober outcome) without re-issuing the merge
-// from the orchestrator side.
+// TestRecover_WithMergeCoordinator_ReconcilesAwaitingMerge asserts SetMergeCoordinator wires Reconcile into Recover so stranded awaiting_merge agents reach a terminal state.
 func TestRecover_WithMergeCoordinator_ReconcilesAwaitingMerge(t *testing.T) {
 	ctx := context.Background()
 	o, _, db, _ := newHarness(t, 0)
@@ -99,12 +94,7 @@ func TestRecover_WithMergeCoordinator_ReconcilesAwaitingMerge(t *testing.T) {
 	}
 }
 
-// TestRecover_WithoutMergeCoordinator_LeavesAwaitingMergeAlone proves
-// the pid-bound recovery loop does NOT touch awaiting_merge agents.
-// Pre-c0 the agent was excluded from enumeration entirely; c0 widened
-// Heartbeat() coverage but kept Recover()'s pid path narrow. Wiring
-// the merge package without a Coordinator (operator on a pre-W2
-// build) must leave a healthy awaiting_merge agent in place.
+// TestRecover_WithoutMergeCoordinator_LeavesAwaitingMergeAlone asserts a pre-W2 build (no Coordinator) leaves a healthy awaiting_merge agent in place.
 func TestRecover_WithoutMergeCoordinator_LeavesAwaitingMergeAlone(t *testing.T) {
 	ctx := context.Background()
 	o, _, db, _ := newHarness(t, 0)
@@ -124,10 +114,7 @@ func TestRecover_WithoutMergeCoordinator_LeavesAwaitingMergeAlone(t *testing.T) 
 	}
 }
 
-// TestHeartbeat_RefreshesAwaitingMergeLocks proves the c0 widening of
-// Heartbeat() — pre-c0 an awaiting_merge agent's locks would age out
-// during a long external merge call (gh API slowness, branch
-// protection wait); now they keep refreshing.
+// TestHeartbeat_RefreshesAwaitingMergeLocks asserts an awaiting_merge agent's locks keep refreshing during long external merge calls.
 func TestHeartbeat_RefreshesAwaitingMergeLocks(t *testing.T) {
 	ctx := context.Background()
 	o, _, db, _ := newHarness(t, 0)
