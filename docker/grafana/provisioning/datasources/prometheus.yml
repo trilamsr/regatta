@@ -1,0 +1,19 @@
+# Grafana file-based datasource provisioning. Read at startup by Grafana
+# 11 from /etc/grafana/provisioning/datasources/*.yaml. The dashboards
+# in docs/operator/dashboards/ reference the datasource by UID, so the
+# `uid: prometheus` line is load-bearing — do not rename without a
+# follow-up sweep of the dashboard JSON files.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s

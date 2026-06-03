@@ -1,0 +1,20 @@
+# Grafana file-based dashboard provisioning. Read at startup by Grafana
+# 11 from /etc/grafana/provisioning/dashboards/*.yaml. `path` points at
+# a folder Grafana scans for *.json — the compose file mounts
+# docs/operator/dashboards/ to that path so the in-repo dashboards are
+# the single source of truth (no copy step; edits to the JSON survive
+# `docker compose down + up`).
+
+apiVersion: 1
+
+providers:
+  - name: regatta
+    orgId: 1
+    folder: Regatta
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards/regatta
+      foldersFromFilesStructure: false

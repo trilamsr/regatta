@@ -1,0 +1,137 @@
+# Container Stage 2 — local self-host obs stack.
+#
+# Wires four services on one bridge: regatta (Stage 1 image) emits OTLP
+# metrics to a Prometheus 3 native receiver (no OTel Collector hop — #519
+# §6), Grafana 11 reads the same Prom for dashboards, AlertManager fires
+# webhooks to regatta-alarm-webhook (#458 W1) when SLO rules breach.
+#
+# Spec authority: docs/engineer/research/2026-06-02-container-stages.md §6 + §14.
+# Stage 1 runbook lives at docs/operator/container.md. Stage 2 operator
+# runbook lives at docs/operator/docker-compose.md.
+#
+# Quickstart:
+#   docker compose up -d
+#   open http://localhost:3000   # Grafana — admin / admin
+#   open http://localhost:9090   # Prometheus UI
+#   open http://localhost:9093   # AlertManager UI
+
+services:
+  regatta:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: regatta:stage2
+    container_name: regatta
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # OTLP/HTTP → Prometheus 3 native receiver. Prom 3.x writes the
+      # OTLP payload direct to TSDB via --web.enable-otlp-receiver; no
+      # collector hop. Protocol is http/protobuf because Prom's native
+      # receiver only accepts the HTTP path today (gRPC OTLP would
+      # require a collector hop, which #519 §6 explicitly rejects).
+      # Endpoint contract: internal/obs/otel/meter.go reads
+      # OTEL_EXPORTER_OTLP_METRICS_ENDPOINT for the per-signal override.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://prometheus:9090/api/v1/otlp"
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "http://prometheus:9090/api/v1/otlp/v1/metrics"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
+      OTEL_SERVICE_NAME: "regatta"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=self-host"
+    # --ui=false avoids the REGATTA_HMAC_KEY requirement for the default
+    # local stack; flip to true + supply the key when wiring the UI.
+    command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=false"]
+    volumes:
+      - ${REPO_PATH:-.}:/repo
+      - regatta-data:/data
+    ports:
+      - "8080:8080"
+    networks:
+      - regatta-net
+    depends_on:
+      prometheus:
+        condition: service_healthy
+
+  prometheus:
+    image: prom/prometheus:v3.7.2
+    container_name: regatta-prometheus
+    restart: unless-stopped
+    # --web.enable-otlp-receiver: TSDB-direct OTLP ingest (Prom 3.x stable).
+    # --enable-feature=otlp-deltatocumulative: regatta exports delta-temporality
+    # counters (OTel default); Prom converts to cumulative at ingest.
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-otlp-receiver"
+      - "--enable-feature=otlp-deltatocumulative"
+      - "--web.enable-lifecycle"
+    volumes:
+      - ./docker/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Sloth-compiled SLO recording + alerting rules (in-tree per #503).
+      - ./dashboards/prometheus/rules:/etc/prometheus/rules:ro
+      - prom-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - regatta-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    depends_on:
+      alertmanager:
+        condition: service_started
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: regatta-grafana
+    restart: unless-stopped
+    environment:
+      # Self-host default — operator rotates on first login. Documented
+      # in docs/operator/docker-compose.md.
+      GF_SECURITY_ADMIN_USER: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      # Dashboards JSON is the source of truth in the repo. Grafana
+      # provisioning reads this folder; no make target needed.
+      - ./docs/operator/dashboards:/var/lib/grafana/dashboards/regatta:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - regatta-net
+    depends_on:
+      prometheus:
+        condition: service_healthy
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: regatta-alertmanager
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+    volumes:
+      - ./docker/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "9093:9093"
+    networks:
+      - regatta-net
+
+networks:
+  regatta-net:
+    driver: bridge
+
+volumes:
+  regatta-data:
+  prom-data:
+  grafana-data:
+  alertmanager-data:
