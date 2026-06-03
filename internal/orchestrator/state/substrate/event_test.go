@@ -2,10 +2,12 @@ package substrate_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/canon"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
@@ -106,6 +108,70 @@ func TestSubstrate_SupersedesCycleRejected(t *testing.T) {
 	err := appendEventTx(ctx, t, db, self)
 	if !errors.Is(err, substrate.ErrSupersedesCycle) {
 		t.Fatalf("self-loop append: err=%v want ErrSupersedesCycle", err)
+	}
+}
+
+// TestSubstrate_AppendEventCanonicalizedEquivalence pins F1 fast-path produces a row Verify-able under the slow-path MAC (#216).
+func TestSubstrate_AppendEventCanonicalizedEquivalence(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedDB(t)
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	substrate.ResetClockForTesting()
+
+	payload := []byte(`{"work_item_id":"WI-FP","timestamp":1}`)
+	preCanon, err := canon.CanonicaliseJSON(payload)
+	if err != nil {
+		t.Fatalf("pre-canon: %v", err)
+	}
+	e := mkEvent(0xfa, "run-FP", substrate.KindHeartbeat, string(payload), now)
+
+	err = withinTx(ctx, t, db, func(tx *sql.Tx) error {
+		return substrate.AppendEventCanonicalized(ctx, tx, e, preCanon, testKey, testKeyID)
+	})
+	if err != nil {
+		t.Fatalf("AppendEventCanonicalized: %v", err)
+	}
+
+	events, err := substrate.Fold(ctx, db, "run-FP", substrate.KindHeartbeat)
+	if err != nil {
+		t.Fatalf("Fold: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("fold got %d events, want 1", len(events))
+	}
+	// Verify under the SAME keyring the slow path uses — equivalence is
+	// the MAC compare, not a textual diff. If the fast-path canon bytes
+	// drift from the slow-path canon bytes, Verify catches it here.
+	if err := substrate.Verify(events[0], testKeyring()); err != nil {
+		t.Fatalf("Verify on fast-path row: %v", err)
+	}
+}
+
+// TestSubstrate_AppendEventCanonicalizedMatchesSlowPath pins fast-path MAC byte-equals slow-path MAC for identical input (#216).
+func TestSubstrate_AppendEventCanonicalizedMatchesSlowPath(t *testing.T) {
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+	substrate.ResetClockForTesting()
+
+	payload := []byte(`{"work_item_id":"WI-EQ","timestamp":1}`)
+	preCanon, err := canon.CanonicaliseJSON(payload)
+	if err != nil {
+		t.Fatalf("pre-canon: %v", err)
+	}
+	base := mkEvent(0xeb, "run-EQ", substrate.KindHeartbeat, string(payload), now)
+
+	slow := base
+	if err := substrate.Sign(&slow, testKey, testKeyID); err != nil {
+		t.Fatalf("Sign slow: %v", err)
+	}
+	fast := base
+	if err := substrate.SignCanonicalized(&fast, preCanon, testKey, testKeyID); err != nil {
+		t.Fatalf("SignCanonicalized: %v", err)
+	}
+	if slow.SigMAC != fast.SigMAC {
+		t.Fatalf("MAC drift: slow=%q fast=%q", slow.SigMAC, fast.SigMAC)
+	}
+	if slow.SigAlg != fast.SigAlg || slow.SigKeyID != fast.SigKeyID {
+		t.Fatalf("alg/keyID drift: slow=%+v fast=%+v", slow, fast)
 	}
 }
 

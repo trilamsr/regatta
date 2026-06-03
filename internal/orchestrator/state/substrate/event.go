@@ -205,6 +205,68 @@ func AppendEvent(ctx context.Context, tx *sql.Tx, e Event, key []byte, keyID str
 	return nil
 }
 
+// AppendEventCanonicalized is the F1 fast-path twin of AppendEvent for
+// hot writers (token_spend, etc.) that pre-canonicalise the payload
+// once and reuse the bytes across many rows. Signs via SignCanonicalized
+// (skips the slow CanonicalJSON round-trip); all other invariants —
+// validate, clock, supersedes cycle-check, replay, metric — are
+// identical to AppendEvent. Spec §7 + §12 F1 (#216).
+//
+// preCanonPayload MUST be canon.CanonicaliseJSON(e.PayloadJSON); the
+// contract is caller-trusted (Verify catches drift downstream). Cold
+// callers should keep using AppendEvent.
+func AppendEventCanonicalized(ctx context.Context, tx *sql.Tx, e Event, preCanonPayload []byte, key []byte, keyID string) error {
+	if e.TenantID == "" {
+		return ErrTenantRequired
+	}
+	if err := validatePayload(e.Kind, e.PayloadJSON); err != nil {
+		return err
+	}
+
+	clockMu.Lock()
+	if e.WrittenAt < lastWrittenAt {
+		clockMu.Unlock()
+		return fmt.Errorf("%w: got %d < watermark %d", ErrClockRegression, e.WrittenAt, lastWrittenAt)
+	}
+	defer clockMu.Unlock()
+
+	if err := SignCanonicalized(&e, preCanonPayload, key, keyID); err != nil {
+		return fmt.Errorf("substrate: sign: %w", err)
+	}
+
+	if e.Supersedes != "" {
+		if err := cycleCheck(ctx, tx, e.RunID, e.ID, e.Supersedes); err != nil {
+			return err
+		}
+	}
+
+	_, err := tx.ExecContext(ctx,
+		`INSERT INTO substrate_events
+		   (id, run_id, work_item_id, tenant_id, trace_id, span_id,
+		    kind, key, payload_json, blob_digest, supersedes,
+		    written_by, written_at, schema_version, nonce,
+		    sig_alg, sig_key_id, sig_mac)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.ID, e.RunID, nullableString(e.WorkItemID), e.TenantID,
+		e.TraceID, e.SpanID, string(e.Kind), e.Key,
+		payloadOrEmpty(e.PayloadJSON), e.BlobDigest, nullableString(e.Supersedes),
+		e.WrittenBy, e.WrittenAt, e.SchemaVersion, e.Nonce,
+		e.SigAlg, e.SigKeyID, e.SigMAC,
+	)
+	if err != nil {
+		if isUniqueNonceViolation(err) {
+			return fmt.Errorf("%w: %w", ErrReplay, err)
+		}
+		return fmt.Errorf("substrate: insert: %w", err)
+	}
+
+	if e.WrittenAt > lastWrittenAt {
+		lastWrittenAt = e.WrittenAt
+	}
+	recordEventAppended(ctx, e.Kind)
+	return nil
+}
+
 // payloadOrEmpty returns "{}" when PayloadJSON is empty so the schema
 // CHECK (length(payload_json) <= 1024) sees a valid JSON literal. Empty
 // payloads are a legitimate writer choice (heartbeat); the schema
