@@ -30,7 +30,7 @@ func collectMetrics(t *testing.T, r sdkmetric.Reader) metricdata.ResourceMetrics
 	return rm
 }
 
-// failuresByReason returns the (reason, count) pairs emitted for label_failures_total.
+// failuresByReason returns the (reason, count) pairs emitted for label_failures.
 func failuresByReason(t *testing.T, rm metricdata.ResourceMetrics) map[string]int64 {
 	t.Helper()
 	out := map[string]int64{}
@@ -156,6 +156,34 @@ func TestLabelFailureMetric_MeterFromConfigIsConsumed(t *testing.T) {
 	t.Errorf("metric %q not emitted via Config.Meter — Router ignored cfg.Meter", wantName)
 }
 
+// TestLabelFailureMetric_ConfigReuse_NoDoubleCount pins the pass-by-value Config-reuse invariant: building two Routers from the same Config does not double-wrap the labeler.
+func TestLabelFailureMetric_ConfigReuse_NoDoubleCount(t *testing.T) {
+	ctx := context.Background()
+	reader, mp := newMetricReader(t)
+	db := openDB(t)
+	id := newAgentInGatesRunning(t, db, "wi-reuse", "shaB")
+
+	cfg := rejectionrouter.Config{
+		DB:      db,
+		K:       1,
+		Labeler: erringLabeler{err: errors.New(`could not add label: 'needs-human' not found`)},
+		Meter:   mp.Meter("test"),
+	}
+	// Two Routers from one cfg value. New takes cfg by value so the
+	// caller's cfg.Labeler stays the original — a single failure must
+	// increment the metric exactly once on the second Router's Tick.
+	_ = rejectionrouter.New(cfg)
+	r := rejectionrouter.New(cfg)
+
+	mustRecordRejection(t, db, id, "shaB")
+	_ = r.Tick(ctx)
+
+	got := failuresByReason(t, collectMetrics(t, reader))
+	if got["absent"] != 1 {
+		t.Errorf("absent count = %d; want 1 (Config reuse must not double-wrap labeler)", got["absent"])
+	}
+}
+
 // TestLabelFailureMetric_NoEmitOnSuccess pins that a successful label call does NOT increment the failure counter.
 func TestLabelFailureMetric_NoEmitOnSuccess(t *testing.T) {
 	reader, mp := newMetricReader(t)
@@ -253,6 +281,11 @@ func TestClassifyGHError_FourReasons(t *testing.T) {
 		{"PR not found", errors.New(`Could not resolve to a PullRequest with the number of 42 (not found)`), "not_found"},
 		{"no open PR for branch", errors.New(`no open PR for branch "regatta/agent-7"`), "not_found"},
 		{"network", errors.New(`dial tcp: no such host`), "unknown"},
+		// Adversarial: an operator-configured label literal that contains the
+		// substring "rate limit" must still classify as absent, not rate_limited.
+		// Locks in the absent-first precedence guard against the operator-naming
+		// foot-gun surfaced in the in-thread review.
+		{"label literal 'rate-limit' missing", errors.New(`could not add label: 'rate limit' not found`), "absent"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

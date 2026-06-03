@@ -78,15 +78,20 @@ func (c Config) resolveMeter() metric.Meter {
 // novel error shapes.
 //
 // Reason precedence — checked in order so a substring overlap
-// (e.g. an error string that contains both "rate limit" and "not found")
-// resolves to the more-specific bucket:
+// (e.g. an error string that contains both "rate limit" inside a
+// quoted label literal AND "not found") resolves to the more-specific
+// bucket. Absent-label is checked BEFORE rate-limit so an operator who
+// configures an EscalationLabel literally containing "rate limit"
+// (e.g. EscalationLabel="rate limit breach") does not misclassify as
+// rate_limited when the repo lacks that label.
 //
-//  1. ReasonRateLimited — "rate limit" / "HTTP 403 ... rate limit"
-//  2. ReasonAbsent — "could not add label" + "not found" (the github
-//     CLI emits this exact pair when the label literal is absent from
-//     the repo's label set; see PR #480 reviewer finding #498)
-//  3. ReasonNotFound — bare "not found" / "no open PR for branch" /
-//     "Could not resolve" (PR-not-found, branch-not-found, 404)
+//  1. ReasonAbsent — "could not add label" + "not found" (the gh CLI
+//     emits this exact pair when the label literal is absent from the
+//     repo's label set; see issue #498)
+//  2. ReasonRateLimited — "rate limit" (post-absent so a label
+//     literal containing "rate limit" cannot collide)
+//  3. ReasonNotFound — "no open PR for branch" / "could not resolve" /
+//     bare "not found" (PR-not-found, branch-not-found, 404)
 //  4. ReasonUnknown — every other surface
 func ClassifyGHError(err error) string {
 	if err == nil {
@@ -94,10 +99,10 @@ func ClassifyGHError(err error) string {
 	}
 	s := strings.ToLower(err.Error())
 	switch {
-	case strings.Contains(s, "rate limit"):
-		return ReasonRateLimited
 	case strings.Contains(s, "could not add label") && strings.Contains(s, "not found"):
 		return ReasonAbsent
+	case strings.Contains(s, "rate limit"):
+		return ReasonRateLimited
 	case strings.Contains(s, "no open pr for branch"),
 		strings.Contains(s, "could not resolve"),
 		strings.Contains(s, "not found"):
