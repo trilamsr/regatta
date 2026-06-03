@@ -42,20 +42,28 @@ func (c composite) Name() string {
 // here); anything else aborts so misconfig surfaces loudly rather
 // than silently falling back to a stale env entry.
 func (c composite) Get(ctx context.Context, key string) (Value, error) {
+	v, _, err := c.GetWithSource(ctx, key)
+	return v, err
+}
+
+// GetWithSource walks the chain and returns the resolving adapter's
+// Name() alongside the value — the per-key source operators need to
+// debug rotation drift (#653 reopen-trigger).
+func (c composite) GetWithSource(ctx context.Context, key string) (Value, string, error) {
 	if err := ValidateKey(key); err != nil {
-		return Value{}, err
+		return Value{}, "", err
 	}
 	for _, f := range c.fs {
 		v, err := f.Get(ctx, key)
 		if err == nil {
-			return v, nil
+			return v, f.Name(), nil
 		}
 		if errors.Is(err, ErrNotFound) || errors.Is(err, ErrUnsupported) {
 			continue
 		}
-		return Value{}, fmt.Errorf("%s: %w", f.Name(), err)
+		return Value{}, f.Name(), fmt.Errorf("%s: %w", f.Name(), err)
 	}
-	return Value{}, ErrNotFound
+	return Value{}, sourceMissing, ErrNotFound
 }
 
 // Default returns the platform-correct chain. On darwin: keychain →

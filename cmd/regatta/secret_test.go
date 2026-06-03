@@ -101,6 +101,41 @@ func TestCLI_SecretStatus_ShowsSourcePerKey(t *testing.T) {
 	}
 }
 
+// TestCLI_SecretStatus_PerKeySourceNotChainName asserts each row shows the resolving adapter, not the chain name (#653).
+func TestCLI_SecretStatus_PerKeySourceNotChainName(t *testing.T) {
+	t.Setenv("REGATTA_SECRETS_DISABLE_KEYCHAIN", "1")
+	t.Setenv("REGATTA_ANTHROPIC_API_KEY", "sk-a")
+	t.Setenv("REGATTA_GH_TOKEN", "tok")
+	t.Setenv("REGATTA_BRIEF_HMAC_KEYS", "k1=aaa")
+	t.Setenv("REGATTA_AUDIT_HMAC_KEY", "auditkey")
+	d, stdout, _ := newSecretDeps([]string{secretSubStatus}, "")
+	rc := runSecretWithDeps(d)
+	if rc != 0 {
+		t.Fatalf("exit=%d, want 0", rc)
+	}
+	out := stdout.String()
+	// Per-row source must be the adapter that resolved, not the
+	// chain. With keychain disabled, every present key resolves to
+	// "env" — the chain name "env" (single adapter) is still a
+	// per-key answer. The bug previously printed the composite
+	// chain Name() literally; assert the column does NOT contain
+	// the chain arrow.
+	for _, line := range strings.Split(out, "\n") {
+		if !strings.HasPrefix(line, "regatta.") {
+			continue
+		}
+		if strings.Contains(line, "→") {
+			t.Fatalf("status row contains chain arrow (per-key source regression): %q", line)
+		}
+	}
+	// Chain footer still names the composite chain — that line is
+	// a separate diagnostic. We assert its presence so we know the
+	// per-key column above is not just hiding the bug.
+	if !strings.Contains(out, "chain:") {
+		t.Fatalf("status missing chain footer: %q", out)
+	}
+}
+
 // TestCLI_SecretGet_RejectsInvalidKey asserts the canonical-key regex gates CLI input against path-traversal (R12).
 func TestCLI_SecretGet_RejectsInvalidKey(t *testing.T) {
 	d, _, stderr := newSecretDeps([]string{"get", "../etc/passwd"}, "")

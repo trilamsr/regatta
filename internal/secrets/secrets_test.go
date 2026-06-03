@@ -417,6 +417,66 @@ func TestCache_ReadersDoNotBlockDuringRotation(t *testing.T) {
 	wg.Wait()
 }
 
+// TestComposite_GetWithSource_ReturnsWinningAdapter asserts the per-key source is the adapter that resolved, not the chain name (#653).
+func TestComposite_GetWithSource_ReturnsWinningAdapter(t *testing.T) {
+	t.Parallel()
+	first := stubFetcher{name: AdapterKeychain, err: ErrNotFound}
+	second := stubFetcher{name: AdapterEnv, v: NewValue([]byte("v"))}
+	c := NewComposite(first, second)
+	v, src, err := GetWithSource(context.Background(), c, KeyAnthropic)
+	if err != nil {
+		t.Fatalf("GetWithSource: %v", err)
+	}
+	if string(v.Bytes()) != "v" {
+		t.Fatalf("value = %q, want v", v.Bytes())
+	}
+	if src != AdapterEnv {
+		t.Fatalf("source = %q, want %q (per-key adapter, not chain name)", src, AdapterEnv)
+	}
+}
+
+// TestComposite_GetWithSource_MissingReturnsSourceMissing asserts a clean miss maps to the sourceMissing label.
+func TestComposite_GetWithSource_MissingReturnsSourceMissing(t *testing.T) {
+	t.Parallel()
+	c := NewComposite(
+		stubFetcher{name: AdapterKeychain, err: ErrNotFound},
+		stubFetcher{name: AdapterEnv, err: ErrNotFound},
+	)
+	_, src, err := GetWithSource(context.Background(), c, KeyAnthropic)
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if src != sourceMissing {
+		t.Fatalf("source = %q, want %q", src, sourceMissing)
+	}
+}
+
+// TestGetWithSource_PlainFetcherFallback asserts non-SourceFetcher implementations still resolve via Name().
+func TestGetWithSource_PlainFetcherFallback(t *testing.T) {
+	t.Parallel()
+	// stubFetcher does not implement SourceFetcher.
+	f := stubFetcher{name: "plain", v: NewValue([]byte("x"))}
+	v, src, err := GetWithSource(context.Background(), f, KeyAnthropic)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if src != "plain" || string(v.Bytes()) != "x" {
+		t.Fatalf("got (%q,%q), want (x,plain)", v.Bytes(), src)
+	}
+}
+
+// TestCache_LoadAssignsPerKeySource asserts the cache snapshot records the resolving adapter per key (#653).
+func TestCache_LoadAssignsPerKeySource(t *testing.T) {
+	t.Setenv(disableEnv, "1")
+	t.Setenv("REGATTA_ANTHROPIC_API_KEY", "a")
+	c := NewCache()
+	c.Load(context.Background(), Default(context.Background()), nil)
+	snap := c.Snapshot()
+	if snap[KeyAnthropic] != AdapterEnv {
+		t.Fatalf("snapshot source = %q, want %q (per-key)", snap[KeyAnthropic], AdapterEnv)
+	}
+}
+
 // TestDefault_DefaultChainIncludesEnv asserts env is always the tail fetcher across platforms.
 func TestDefault_DefaultChainIncludesEnv(t *testing.T) {
 	t.Setenv(disableEnv, "")

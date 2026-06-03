@@ -194,16 +194,17 @@ func runSecretGet(d secretDeps) int {
 }
 
 // runSecretStatus walks every canonical key and prints (key, source,
-// present) rows. Never prints values, never reflects into Value.
+// present) rows where source is the adapter that actually resolved
+// the key (per spec §9 example: "regatta.audit_hmac_key: env" vs
+// "regatta.gh_token: keychain"). Operators debugging rotation drift
+// need per-key source, not the chain name (#653). Never prints values.
 func runSecretStatus(d secretDeps) int {
 	ctx := context.Background()
 	fetcher := secrets.Default(ctx)
 	_, _ = fmt.Fprintln(d.Stdout, "key                          source     present")
 	for _, key := range secrets.CanonicalKeys {
-		v, err := fetcher.Get(ctx, key)
-		source := fetcher.Name()
+		_, source, err := secrets.GetWithSource(ctx, fetcher, key)
 		present := "yes"
-		_ = v
 		if errors.Is(err, secrets.ErrNotFound) {
 			source = "missing" //nolint:goconst
 			present = "no"

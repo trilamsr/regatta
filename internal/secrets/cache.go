@@ -128,7 +128,7 @@ func fetchAll(ctx context.Context, fetcher Fetcher, logger *slog.Logger) *snapsh
 		at:     time.Now(),
 	}
 	for _, key := range CanonicalKeys {
-		v, err := fetcher.Get(ctx, key)
+		v, src, err := GetWithSource(ctx, fetcher, key)
 		if err != nil {
 			snap.values[key] = Value{}
 			snap.source[key] = sourceMissing
@@ -141,25 +141,14 @@ func fetchAll(ctx context.Context, fetcher Fetcher, logger *slog.Logger) *snapsh
 			continue
 		}
 		snap.values[key] = v
-		// Source label: composite chains report their full path, but
-		// for the per-key audit row we want which adapter actually
-		// resolved. The composite already reports "chain"; we tag
-		// "resolved" so the audit shows the chain that fed us.
-		snap.source[key] = sourceLabel(fetcher)
+		snap.source[key] = src
 		if logger != nil {
 			logger.LogAttrs(ctx, slog.LevelInfo, "secret_resolved",
 				slog.String("key", key),
-				slog.String("source", snap.source[key]),
+				slog.String("source", src),
 				slog.Int("bytes", v.Len()),
 			)
 		}
 	}
 	return snap
-}
-
-// sourceLabel pulls a coarse identifier for the snapshot row. For a
-// composite chain, we report the chain name; per-adapter resolution
-// is captured in the substrate event stream at fetchAll time.
-func sourceLabel(f Fetcher) string {
-	return f.Name()
 }

@@ -61,6 +61,7 @@ var subcommands = []subcommand{
 	{subcmdDigest, runDigest},
 	{subcmdAudit, runAudit},
 	{subcmdSecret, runSecret},
+	{subcmdReloadSecrets, runReloadSecrets},
 	{subcmdStatus, runStatus},
 	{subcmdCost, runCost},
 	{subcmdResume, runResume},
@@ -109,6 +110,7 @@ func usage(w io.Writer) {
   regatta digest --date YYYY-MM-DD                    Generate docs/digests/<date>.md from Prom metrics
   regatta audit verify --run-id <id> [--db <path>]    Walk recorded gate verdicts; print tool/version/det/hmac-status per gate
   regatta secret set|get|status                       Manage operator credentials in OS keychain (macOS) / pass (Linux) with env fallback
+  regatta reload-secrets [--pidfile P]                 Send SIGHUP to regatta-serve so the secret cache re-fetches (W6 §7 rotation drill)
   regatta status [--refresh DUR] [--once]             Terminal live-status TUI (5 panels: subagents, PRs, merges, cost, green-clock)
   regatta cost status [--db <path>] [--config <path>] Print W5 global daily-cap state (24h spend, cap, scheduler state, resume horizon)
   regatta resume [--actor <id>] [--db <path>]         Lift the W5 cost-cap throttle until the next day rollover (operator override audit event)

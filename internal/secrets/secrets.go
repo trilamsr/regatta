@@ -80,6 +80,30 @@ type Fetcher interface {
 	Name() string
 }
 
+// SourceFetcher is the optional extension implemented by chains that
+// can report WHICH adapter resolved a key (composite walks adapters in
+// order; the winning adapter's Name() is the source). Operators reading
+// `regatta secret status` need per-key source to debug rotation drift;
+// chain-name alone (e.g. "keychain→env") collapses the answer (#653).
+type SourceFetcher interface {
+	GetWithSource(ctx context.Context, key string) (Value, string, error)
+}
+
+// GetWithSource returns (Value, adapterName, error) using the
+// SourceFetcher extension when available, falling back to the plain
+// Fetcher.Get + Name() pair. Centralized so callers do not duplicate
+// the type-assert.
+func GetWithSource(ctx context.Context, f Fetcher, key string) (Value, string, error) {
+	if sf, ok := f.(SourceFetcher); ok {
+		return sf.GetWithSource(ctx, key)
+	}
+	v, err := f.Get(ctx, key)
+	if err != nil {
+		return Value{}, f.Name(), err
+	}
+	return v, f.Name(), nil
+}
+
 // Value wraps a secret byte slice. The struct has ZERO exported fields
 // — reflection-based formatters cannot reach the underlying bytes.
 type Value struct {
