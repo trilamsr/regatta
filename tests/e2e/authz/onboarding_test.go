@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -87,20 +88,6 @@ func blockLabel(i int, body string) string {
 	if len(first) > 48 {
 		first = first[:48]
 	}
-	return strings.ReplaceAll(strings.Trim(strings.Fields(first)[0]+"_"+itoa(i), "_"), " ", "_")
+	return strings.ReplaceAll(strings.Trim(strings.Fields(first)[0]+"_"+strconv.Itoa(i), "_"), " ", "_")
 }
 
-func itoa(i int) string {
-	const digits = "0123456789"
-	if i == 0 {
-		return "0"
-	}
-	var b [20]byte
-	n := len(b)
-	for i > 0 {
-		n--
-		b[n] = digits[i%10]
-		i /= 10
-	}
-	return string(b[n:])
-}

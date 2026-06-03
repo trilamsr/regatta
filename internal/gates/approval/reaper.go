@@ -17,6 +17,7 @@ import (
 
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/strutil"
 )
 
 // on_timeout policy enum + vote-side enum. Centralised so the goconst
@@ -409,7 +410,7 @@ func listApprovalEventsTx(ctx context.Context, tx *sql.Tx, approvalID string) ([
 // columns. Mirrors state.MarkApprovalDecided but operates on a *sql.Tx
 // so the per-row commit boundary aligns with the event append.
 func markDecided(ctx context.Context, tx *sql.Tx, approvalID, status string, decidedBy []string, at time.Time) error {
-	by, err := json.Marshal(orEmpty(decidedBy))
+	by, err := json.Marshal(strutil.OrEmpty(decidedBy))
 	if err != nil {
 		return err
 	}
@@ -441,12 +442,3 @@ func advanceTier(ctx context.Context, tx *sql.Tx, approvalID string, snap state.
 	return err
 }
 
-// orEmpty turns nil into [] so the JSON wire shape matches the column
-// default and fold-of-events math stays symmetric across NULL-vs-empty
-// (same contract as state.orEmpty).
-func orEmpty(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
-}

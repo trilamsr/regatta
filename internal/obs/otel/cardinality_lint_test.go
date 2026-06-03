@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/trilamsr/regatta/internal/testutil/reporoot"
 )
 
 // TestMetricCardinality_PRNumberLabelBanned walks the repo for high-cardinality label literals on metric instruments.
 func TestMetricCardinality_PRNumberLabelBanned(t *testing.T) {
-	repoRoot := mustRepoRoot(t)
+	repoRoot := reporoot.Must(t)
 	banned := map[string]struct{}{
 		"pr_number":    {},
 		"run_id":       {},

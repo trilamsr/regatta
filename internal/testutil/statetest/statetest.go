@@ -8,6 +8,7 @@ package statetest
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
 // OpenDB returns a fresh *state.DB rooted at t.TempDir() with the
@@ -28,6 +30,38 @@ func OpenDB(t *testing.T) *state.DB {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	return db
+}
+
+// OpenBenchDB mirrors OpenDB for benchmarks — *testing.B's distinct
+// Helper/Fatalf/Cleanup surface forces a separate signature.
+func OpenBenchDB(b *testing.B) *state.DB {
+	b.Helper()
+	db, err := state.Open(context.Background(), state.DSN(filepath.Join(b.TempDir(), "state.db")))
+	if err != nil {
+		b.Fatalf("statetest.OpenBenchDB: %v", err)
+	}
+	b.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+// OpenMigratedRaw returns a *sql.DB at t.TempDir() with migrations
+// applied; resets the substrate process-local clock-regression
+// watermark so test order does not bleed. Used by history + substrate
+// tests that want to operate against the raw sqlite handle.
+func OpenMigratedRaw(t *testing.T) *sql.DB {
+	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "raw.db")
+	raw, err := sql.Open("sqlite", state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("statetest.OpenMigratedRaw: open: %v", err)
+	}
+	t.Cleanup(func() { _ = raw.Close() })
+	raw.SetMaxOpenConns(1)
+	if err := state.Migrate(context.Background(), raw); err != nil {
+		t.Fatalf("statetest.OpenMigratedRaw: migrate: %v", err)
+	}
+	substrate.ResetClockForTesting()
+	return raw
 }
 
 // goldenOnce + goldenBytes amortise the ~6ms goose-migration cost

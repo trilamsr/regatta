@@ -6,19 +6,17 @@ package history_test
 
 import (
 	"context"
+	"database/sql"
 	"encoding/hex"
 	"errors"
-	"path/filepath"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite"
 
-	"database/sql"
-
 	"github.com/trilamsr/regatta/internal/history"
-	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
+	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
 // testKey + testKeyID mirror the substrate test fixture so signature
@@ -27,21 +25,7 @@ var testKey = []byte("0123456789abcdef0123456789abcdef")
 
 const testKeyID = "test-key-1"
 
-func openMigratedDB(t *testing.T) *sql.DB {
-	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "h.db")
-	raw, err := sql.Open("sqlite", state.DSN(dbPath))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	t.Cleanup(func() { _ = raw.Close() })
-	raw.SetMaxOpenConns(1)
-	if err := state.Migrate(context.Background(), raw); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	substrate.ResetClockForTesting()
-	return raw
-}
+func openMigratedDB(t *testing.T) *sql.DB { return statetest.OpenMigratedRaw(t) }
 
 func fixedNonce(seed byte) string {
 	b := make([]byte, 16)

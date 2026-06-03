@@ -32,6 +32,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/strutil"
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
@@ -281,7 +282,7 @@ func pollJaegerForTrace(t *testing.T, traceID string, deadline time.Duration) ([
 				return names, nil
 			}
 		}
-		lastErr = fmt.Errorf("status=%d body=%s", resp.StatusCode, truncate(string(body), 200))
+		lastErr = fmt.Errorf("status=%d body=%s", resp.StatusCode, strutil.Truncate(string(body), 200))
 		time.Sleep(500 * time.Millisecond)
 	}
 	if len(names) > 0 {
@@ -311,12 +312,5 @@ func traceSpanNames(body []byte) []string {
 		}
 	}
 	return out
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
 }
 

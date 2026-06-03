@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
 // discardLogger silences scheduler slog output during benches so
@@ -20,19 +20,7 @@ import (
 // scenarios (one Info per edge × N from_ids).
 var discardLogger = slog.New(slog.NewTextHandler(io.Discard, nil))
 
-// newBenchDB opens a fresh sqlite-backed DB for the lifetime of a sub-
-// benchmark. Each sub-bench gets its own temp file to keep state
-// isolated; reusing a DB across sub-benches would amortise UpsertPending
-// cost into the wrong N bucket.
-func newBenchDB(b *testing.B) *state.DB {
-	b.Helper()
-	db, err := state.Open(context.Background(), state.DSN(filepath.Join(b.TempDir(), "s.db")))
-	if err != nil {
-		b.Fatalf("Open: %v", err)
-	}
-	b.Cleanup(func() { _ = db.Close() })
-	return db
-}
+func newBenchDB(b *testing.B) *state.DB { return statetest.OpenBenchDB(b) }
 
 func seedPlannedBench(b *testing.B, db *state.DB, id, lane string) {
 	b.Helper()

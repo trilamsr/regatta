@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/strutil"
 )
 
 // AnthropicPlanner is a ModelClient that calls Anthropic's
@@ -100,7 +101,7 @@ func (a *AnthropicPlanner) Plan(ctx context.Context, parent schemas.WorkItem) (*
 		return nil, fmt.Errorf("anthropic: read body: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("anthropic: status %d: %s", resp.StatusCode, truncate(string(raw), 500))
+		return nil, fmt.Errorf("anthropic: status %d: %s", resp.StatusCode, strutil.Truncate(string(raw), 500))
 	}
 	return a.parseResponse(raw)
 }
@@ -232,13 +233,6 @@ func (a *AnthropicPlanner) parseResponse(raw []byte) (*ProgramBrief, error) {
 		return &ProgramBrief{Features: partial.Features}, nil
 	}
 	return nil, fmt.Errorf("anthropic: no tool_use block in response (stop_reason=%s)", msg.StopReason)
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
 }
 
 // defaultPlannerPrompt is the system prompt for one-shot program
