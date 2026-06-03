@@ -57,6 +57,13 @@ var transitions = map[AgentState]map[AgentState]struct{}{
 	AgentAwaitingMerge: {
 		AgentDone:      {},
 		AgentWithdrawn: {},
+		// AgentCrashed lets merge-recovery requeue agents whose merge
+		// intent never materialized (PR closed unmerged, branch SHA
+		// diverged, or merge call lost between intent + completion).
+		// Crashed→Pending re-uses the existing requeue path so the
+		// work_item can be re-driven without a bespoke recovery state
+		// (PHASE AUTONOMY §11 W2 c0).
+		AgentCrashed: {},
 	},
 	// Terminal states have no outgoing edges.
 	AgentDone:      {},
