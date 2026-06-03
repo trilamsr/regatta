@@ -31,13 +31,29 @@ func NewReader(db *sql.DB, clock func() time.Time) *Reader {
 	return &Reader{db: db, clock: clock}
 }
 
-// BudgetState returns cumulative recorded spend (USD) for a scope over
-// a period ending at the Reader clock's now (spec §3.5: single SELECT
-// with SUM(json_extract($.usd)) over token_spend rows in window AND
-// payload scope-field matches). scope.TenantID required and pinned in
-// every query (R9). Scope IDs flow through `?` placeholders so a
+// usdMicroExpr is the per-row money-extraction SQL the reader sums
+// over. Issue #554 micro-USD discipline: prefer the canonical integer
+// `usd_micro` field; fall back to `CAST(ROUND($.usd * 1e6) AS
+// INTEGER)` for pre-#554 rows so legacy replays still tally without
+// float SUM ULP drift. CAST before SUM keeps the aggregation in
+// integer space — per-row drift is bounded at ±0.5 micro, never
+// cumulative across N rows.
+const usdMicroExpr = `COALESCE(
+	json_extract(payload_json, '$.usd_micro'),
+	CAST(ROUND(json_extract(payload_json, '$.usd') * 1000000) AS INTEGER)
+)`
+
+// BudgetState returns cumulative recorded spend (micro-USD) for a
+// scope over a period ending at the Reader clock's now. Spec §3.5:
+// single SELECT with SUM(usd_micro) over token_spend rows in window
+// AND payload scope-field matches. scope.TenantID required and pinned
+// in every query (R9). Scope IDs flow through `?` placeholders so a
 // hostile payload cannot break out of the SQL literal.
-func (r *Reader) BudgetState(ctx context.Context, scope ScopeKey, period time.Duration) (float64, error) {
+//
+// Return is USDMicro (int64): cap enforcement in cost.gate compares
+// projected sums in micro space, eliminating the SQLite SUM(float)
+// ULP drift that let cap-boundary spawns slip past (#554).
+func (r *Reader) BudgetState(ctx context.Context, scope ScopeKey, period time.Duration) (USDMicro, error) {
 	if scope.TenantID == "" {
 		return 0, errors.New("spend.Reader.BudgetState: tenant_id required")
 	}
@@ -63,7 +79,7 @@ func (r *Reader) BudgetState(ctx context.Context, scope ScopeKey, period time.Du
 		return 0, fmt.Errorf("spend.Reader.BudgetState: unknown scope kind %q", scope.Kind)
 	}
 
-	q := `SELECT COALESCE(SUM(json_extract(payload_json, '$.usd')), 0)
+	q := `SELECT COALESCE(SUM(` + usdMicroExpr + `), 0)
 	      FROM substrate_events
 	      WHERE kind = 'token_spend'
 	        AND tenant_id = ?
@@ -72,20 +88,20 @@ func (r *Reader) BudgetState(ctx context.Context, scope ScopeKey, period time.Du
 	if scopeFilter != "" {
 		args = append(args, scopeArg)
 	}
-	var total float64
+	var total int64
 	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("spend.Reader.BudgetState: %w", err)
 	}
-	return total, nil
+	return USDMicro(total), nil
 }
 
-// CohortSpends returns the USD column of every token_spend row
-// matching (tenant_id, model), optionally filtered by operator_id,
-// within the period ending at the Reader clock's now. Consumed by the
-// opt-in `history` estimator (#238) for p95-cohort spend; cold-start
-// falls back to upper_bound under threshold rows. operatorID="" means
-// "all operators in tenant".
-func (r *Reader) CohortSpends(ctx context.Context, tenantID, operatorID, model string, period time.Duration) ([]float64, error) {
+// CohortSpends returns the micro-USD per-row column of every
+// token_spend row matching (tenant_id, model), optionally filtered by
+// operator_id, within the period ending at the Reader clock's now.
+// Consumed by the opt-in `history` estimator (#238) for p95-cohort
+// spend; cold-start falls back to upper_bound under threshold rows.
+// operatorID="" means "all operators in tenant".
+func (r *Reader) CohortSpends(ctx context.Context, tenantID, operatorID, model string, period time.Duration) ([]USDMicro, error) {
 	if tenantID == "" {
 		return nil, errors.New("spend.Reader.CohortSpends: tenant_id required")
 	}
@@ -93,7 +109,7 @@ func (r *Reader) CohortSpends(ctx context.Context, tenantID, operatorID, model s
 		return nil, errors.New("spend.Reader.CohortSpends: model required")
 	}
 	cutoff := r.clock().Add(-period).UnixMilli()
-	q := `SELECT json_extract(payload_json, '$.usd')
+	q := `SELECT ` + usdMicroExpr + `
 	      FROM substrate_events
 	      WHERE kind = 'token_spend'
 	        AND tenant_id = ?
@@ -109,13 +125,13 @@ func (r *Reader) CohortSpends(ctx context.Context, tenantID, operatorID, model s
 		return nil, fmt.Errorf("spend.Reader.CohortSpends: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var out []float64
+	var out []USDMicro
 	for rows.Next() {
-		var v float64
+		var v int64
 		if err := rows.Scan(&v); err != nil {
 			return nil, fmt.Errorf("spend.Reader.CohortSpends scan: %w", err)
 		}
-		out = append(out, v)
+		out = append(out, USDMicro(v))
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("spend.Reader.CohortSpends rows: %w", err)
@@ -123,20 +139,21 @@ func (r *Reader) CohortSpends(ctx context.Context, tenantID, operatorID, model s
 	return out, nil
 }
 
-// RecordedUSDForWindow returns the cumulative locally-recorded USD
-// for `tenantID` over `[start, end)`. The reconciler diffs this
-// against the Anthropic Cost/Usage API total to compute drift_pct.
-// Window is operator-supplied (reconciler aligns to bucket boundaries
-// via WindowForTick) — unlike BudgetState's now-period anchoring.
-func (r *Reader) RecordedUSDForWindow(ctx context.Context, tenantID string, start, end time.Time) (float64, error) {
+// RecordedUSDForWindow returns the cumulative locally-recorded spend
+// in micro-USD for `tenantID` over `[start, end)`. The reconciler
+// diffs this against the Anthropic Cost/Usage API total to compute
+// drift_pct. Window is operator-supplied (reconciler aligns to bucket
+// boundaries via WindowForTick) — unlike BudgetState's now-period
+// anchoring.
+func (r *Reader) RecordedUSDForWindow(ctx context.Context, tenantID string, start, end time.Time) (USDMicro, error) {
 	if tenantID == "" {
 		return 0, errors.New("spend.Reader.RecordedUSDForWindow: tenant_id required")
 	}
 	startMS := start.UnixMilli()
 	endMS := end.UnixMilli()
-	var total float64
+	var total int64
 	err := r.db.QueryRowContext(ctx,
-		`SELECT COALESCE(SUM(json_extract(payload_json, '$.usd')), 0)
+		`SELECT COALESCE(SUM(`+usdMicroExpr+`), 0)
 		 FROM substrate_events
 		 WHERE kind = 'token_spend'
 		   AND tenant_id = ?
@@ -147,7 +164,7 @@ func (r *Reader) RecordedUSDForWindow(ctx context.Context, tenantID string, star
 	if err != nil {
 		return 0, fmt.Errorf("spend.Reader.RecordedUSDForWindow: %w", err)
 	}
-	return total, nil
+	return USDMicro(total), nil
 }
 
 // LastReconciliation returns the most recent budget_reconciled row

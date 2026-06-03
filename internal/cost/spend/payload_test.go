@@ -10,10 +10,14 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// TestPayload_TokenSpendJSONTags pins spec §3.5 lines 264-276 verbatim.
+// TestPayload_TokenSpendJSONTags asserts TokenSpendPayload dual-emits usd_micro plus legacy usd JSON tags.
 func TestPayload_TokenSpendJSONTags(t *testing.T) {
 	p := spend.TokenSpendPayload{
-		USD: 1.0, Model: "m", InputTokens: 1, OutputTokens: 2,
+		USDMicro:        spend.FromUSD(1.0),
+		USD:             1.0,
+		Model:           "m",
+		InputTokens:     1,
+		OutputTokens:    2,
 		CacheReadTokens: 3, CacheCreationTokens: 4,
 		OperatorID: "o", DAGID: "d", WorkItemID: "w",
 		PricingRev: "r", CallID: "c",
@@ -23,7 +27,8 @@ func TestPayload_TokenSpendJSONTags(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 	for _, tag := range []string{
-		`"usd":1`, `"model":"m"`, `"input_tokens":1`, `"output_tokens":2`,
+		`"usd_micro":1000000`, `"usd":1`, `"model":"m"`,
+		`"input_tokens":1`, `"output_tokens":2`,
 		`"cache_read_tokens":3`, `"cache_creation_tokens":4`,
 		`"operator_id":"o"`, `"dag_id":"d"`, `"work_item_id":"w"`,
 		`"pricing_rev":"r"`, `"call_id":"c"`,
@@ -34,12 +39,17 @@ func TestPayload_TokenSpendJSONTags(t *testing.T) {
 	}
 }
 
-// TestPayload_BudgetReconciledJSONTags pins spec §3.5 lines 278-289 verbatim.
+// TestPayload_BudgetReconciledJSONTags asserts BudgetReconciledPayload dual-emits *_usd_micro plus legacy usd JSON tags.
 func TestPayload_BudgetReconciledJSONTags(t *testing.T) {
 	p := spend.BudgetReconciledPayload{
-		PeriodStart: 1, PeriodEnd: 2, ActualUSD: 10, RecordedUSD: 9,
+		PeriodStart:      1,
+		PeriodEnd:        2,
+		ActualUSDMicro:   spend.FromUSD(10),
+		RecordedUSDMicro: spend.FromUSD(9),
+		DeltaUSDMicro:    spend.FromUSD(1),
+		ActualUSD:        10, RecordedUSD: 9,
 		DeltaUSD: 1, DriftPct: 0.1,
-		ModelBreakdown: []spend.ModelBreakdownRow{{Model: "m", USD: 1}},
+		ModelBreakdown: []spend.ModelBreakdownRow{{Model: "m", USDMicro: spend.FromUSD(1), USD: 1}},
 		APIResponseSig: "sha",
 	}
 	b, err := json.Marshal(p)
@@ -47,9 +57,11 @@ func TestPayload_BudgetReconciledJSONTags(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 	for _, tag := range []string{
-		`"period_start":1`, `"period_end":2`, `"actual_usd":10`,
-		`"recorded_usd":9`, `"delta_usd":1`, `"drift_pct":0.1`,
-		`"model_breakdown"`, `"api_response_sig":"sha"`,
+		`"period_start":1`, `"period_end":2`,
+		`"actual_usd_micro":10000000`, `"actual_usd":10`,
+		`"recorded_usd_micro":9000000`, `"recorded_usd":9`,
+		`"delta_usd_micro":1000000`, `"delta_usd":1`,
+		`"drift_pct":0.1`, `"model_breakdown"`, `"api_response_sig":"sha"`,
 	} {
 		if !strings.Contains(string(b), tag) {
 			t.Errorf("missing %s in %s", tag, b)

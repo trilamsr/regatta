@@ -68,13 +68,21 @@ func RecordCall(ctx context.Context, tx *sql.Tx, r CallRecord, opt WriteOptions)
 		return fmt.Errorf("spend: pricing for %q: %w", r.Model, err)
 	}
 
-	usd := tokensToUSD(r.InputTokens, row.InputUSDPerMTok) +
-		tokensToUSD(r.OutputTokens, row.OutputUSDPerMTok) +
-		tokensToUSD(r.CacheReadTokens, row.CacheReadUSDPerMTok) +
-		tokensToUSD(r.CacheCreationTokens, row.CacheCreationUSDPerMTok)
+	// Per-token-class rates are float64 per-Mtok; multiply tokens *
+	// rate, divide by 1e6 last to keep every intermediate term in the
+	// mantissa-exact band (#554 boundary discipline). Each class is
+	// summed in micro space so the four cache/input/output components
+	// accumulate without ULP drift even when one rate is sub-cent.
+	usdMicro := tokensToMicro(r.InputTokens, row.InputUSDPerMTok) +
+		tokensToMicro(r.OutputTokens, row.OutputUSDPerMTok) +
+		tokensToMicro(r.CacheReadTokens, row.CacheReadUSDPerMTok) +
+		tokensToMicro(r.CacheCreationTokens, row.CacheCreationUSDPerMTok)
 
 	payload := TokenSpendPayload{
-		USD:                 usd,
+		USDMicro: usdMicro,
+		// Legacy float emission — kept for forward-compat dashboards
+		// (#554 shadow window). Reader prefers $.usd_micro.
+		USD:                 usdMicro.USD(),
 		Model:               r.Model,
 		InputTokens:         r.InputTokens,
 		OutputTokens:        r.OutputTokens,
@@ -115,7 +123,7 @@ func RecordCall(ctx context.Context, tx *sql.Tx, r CallRecord, opt WriteOptions)
 	if err := substrate.AppendEvent(ctx, tx, ev, opt.Key, opt.KeyID); err != nil {
 		return fmt.Errorf("spend: append token_spend: %w", err)
 	}
-	emitMetrics(ctx, opt.Cfg, r, usd)
+	emitMetrics(ctx, opt.Cfg, r, usdMicro.USD())
 	return nil
 }
 
@@ -166,11 +174,13 @@ func emitMetrics(ctx context.Context, cfg Config, r CallRecord, usd float64) {
 	addToken("cache_read", r.CacheReadTokens+r.CacheCreationTokens)
 }
 
-// tokensToUSD converts a per-million-token rate to a per-token cost.
-// Pricing rows store USD-per-Mtok; CallRecord holds absolute token
-// counts. The pure-arithmetic form keeps RecordCall replay-deterministic.
-func tokensToUSD(tokens int64, usdPerMTok float64) float64 {
-	return float64(tokens) * usdPerMTok / 1_000_000.0
+// tokensToMicro prices one token-class in micro-USD with a single
+// float→int boundary at the end. Per-Mtok rate × tokens stays in the
+// mantissa-exact band for production magnitudes (rates < $100/Mtok,
+// tokens < 1e8); dividing by 1e6 last and rounding to int64 lands
+// every per-call charge on an exact micro-USD count. Issue #554.
+func tokensToMicro(tokens int64, usdPerMTok float64) USDMicro {
+	return FromUSD(float64(tokens) * usdPerMTok / 1_000_000.0)
 }
 
 // nonceFor derives the substrate idempotency nonce per spec §9 R12:

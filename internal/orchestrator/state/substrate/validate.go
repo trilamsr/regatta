@@ -123,9 +123,13 @@ func validateApprovalEvent(raw json.RawMessage) error {
 // tokenSpendPayload mirrors cost-governor design spec §3.5 lines 264-276
 // verbatim. Cost-governor (P8) owns the field set per
 // feedback_shared_primitive_owner; substrate hosts the validator only.
-// The unused field on this struct flags a field-name drift between
-// spec §3.5 and the writer (spend.TokenSpendPayload).
+// USDMicro is the canonical integer-micro-USD signed value (#554); USD
+// is the legacy float emission kept for forward-compat dashboards.
+// Either field MAY be present — the writer emits both; pre-#554
+// replay rows carry only USD and the reader synthesises the micro
+// equivalent at read time.
 type tokenSpendPayload struct {
+	USDMicro            int64   `json:"usd_micro"`
 	USD                 float64 `json:"usd"`
 	Model               string  `json:"model"`
 	InputTokens         int64   `json:"input_tokens"`
@@ -155,16 +159,21 @@ func validateTokenSpend(raw json.RawMessage) error {
 
 // budgetReconciledPayload mirrors cost-governor design spec §3.5 lines
 // 278-289 verbatim. Reconciler (T4) writes one row per tenant per
-// period; reducer is LWW per (tenant_id, period_start).
+// period; reducer is LWW per (tenant_id, period_start). Money fields
+// dual-emit per #554: *_usd_micro (int64) is canonical signed; *_usd
+// (float64) is legacy display.
 type budgetReconciledPayload struct {
-	PeriodStart    int64                            `json:"period_start"`
-	PeriodEnd      int64                            `json:"period_end"`
-	ActualUSD      float64                          `json:"actual_usd"`
-	RecordedUSD    float64                          `json:"recorded_usd"`
-	DeltaUSD       float64                          `json:"delta_usd"`
-	DriftPct       float64                          `json:"drift_pct"`
-	ModelBreakdown []modelBreakdownPayloadRow       `json:"model_breakdown"`
-	APIResponseSig string                           `json:"api_response_sig"`
+	PeriodStart      int64                      `json:"period_start"`
+	PeriodEnd        int64                      `json:"period_end"`
+	ActualUSDMicro   int64                      `json:"actual_usd_micro"`
+	RecordedUSDMicro int64                      `json:"recorded_usd_micro"`
+	DeltaUSDMicro    int64                      `json:"delta_usd_micro"`
+	ActualUSD        float64                    `json:"actual_usd"`
+	RecordedUSD      float64                    `json:"recorded_usd"`
+	DeltaUSD         float64                    `json:"delta_usd"`
+	DriftPct         float64                    `json:"drift_pct"`
+	ModelBreakdown   []modelBreakdownPayloadRow `json:"model_breakdown"`
+	APIResponseSig   string                     `json:"api_response_sig"`
 }
 
 type modelBreakdownPayloadRow struct {
@@ -173,6 +182,7 @@ type modelBreakdownPayloadRow struct {
 	OutputTokens        int64   `json:"output_tokens"`
 	CacheReadTokens     int64   `json:"cache_read_tokens"`
 	CacheCreationTokens int64   `json:"cache_creation_tokens"`
+	USDMicro            int64   `json:"usd_micro"`
 	USD                 float64 `json:"usd"`
 }
 

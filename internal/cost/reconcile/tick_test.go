@@ -70,13 +70,16 @@ func (f *fakeAppender) snapshot() []recordedAppend {
 // recordedReader returns a fixed cumulative recorded_usd for the
 // reconcile window. Gate-side spend.Reader is not on the Reconciler
 // hot path; an interface keeps the file-disjoint contract pure.
+// Per #554 the returned value is micro-USD; the fixture stores
+// USD and converts at the seam so test sites still type natural
+// dollar amounts.
 type fakeRecordedReader struct {
 	usd float64
 	err error
 }
 
-func (f *fakeRecordedReader) RecordedUSDForWindow(ctx context.Context, tenantID string, start, end time.Time) (float64, error) {
-	return f.usd, f.err
+func (f *fakeRecordedReader) RecordedUSDForWindow(ctx context.Context, tenantID string, start, end time.Time) (spend.USDMicro, error) {
+	return spend.FromUSD(f.usd), f.err
 }
 
 // capturingHandler captures slog records so R15 + drift-alert tests
