@@ -11,11 +11,41 @@ layout changes.
 Stage 1 of containerization. The image ships:
 
 - a static `regatta` binary built from `cmd/regatta`,
-- `git` + `github-cli` for the spawner's shell-outs,
-- `nodejs` + `npm` with `@anthropic-ai/claude-code` pre-installed.
+- `git` (Debian 12 binary + libpcre2-8 + libz copied into the image),
+- `gh` v2.65.0 — static Go release binary,
+- `claude` v2.1.161 — native binary extracted from
+  `@anthropic-ai/claude-code` (the npm package now ships a single
+  per-platform binary; no Node runtime needed at runtime).
 
-There is no published registry tag yet — operators build locally.
-Stage 2 will publish to a registry and pin a digest.
+Runtime base is `gcr.io/distroless/base-debian12:nonroot`. There is no
+shell, no package manager, no `apk`/`apt`/`npm`. The entrypoint runs
+as UID 65532 (`nonroot`). No published registry tag yet — operators
+build locally. Stage 2 will publish to a registry and pin a digest.
+
+## Security baseline
+
+| dimension | Stage 1 distroless |
+|---|---|
+| Container user | `nonroot` (UID 65532) — non-zero, no shell entry |
+| Shell present | no (`/bin/sh` does not exist) |
+| Package manager | none — image is content-addressable, immutable |
+| Writable paths | `/repo`, `/data`, `/tmp` only; `/usr` and `/lib` are read by the kernel but cannot be modified by the entrypoint user |
+| CA certs | pre-baked in `distroless/base-debian12` |
+
+A compromised agent prompt cannot rewrite `/usr/local/bin/claude` or
+`/usr/local/bin/regatta` from inside the container: the UID-65532
+entrypoint has no write permission on system paths and there is no
+shell to chain into a privilege escalation. This closes the
+load-bearing root-uid gap surfaced by the Stage 1 review (#518).
+
+Per-arch image weight (single-platform tarball, `docker save | wc -c`):
+
+| arch | distroless (this stage) | alpine (#518) | delta |
+|---|---|---|---|
+| arm64 | ~130 MB | ~438 MB | -308 MB |
+
+The claude native binary (~241 MB after extraction) dominates the
+remaining weight; the runtime base itself is ~8 MB.
 
 ## Build
 
@@ -23,10 +53,19 @@ Stage 2 will publish to a registry and pin a digest.
 docker build -t regatta:latest .
 ```
 
-The build is a multi-stage layout: a `golang:1.25-alpine` builder
-runs `go mod download` then `CGO_ENABLED=0 go build -trimpath`, and
-the runtime stage starts from `alpine:3.20`. Expect ~250 MB final
-image; the builder layer is discarded.
+Multi-stage layout:
+
+1. `golang:1.25-alpine` builder → `CGO_ENABLED=0 go build -trimpath`.
+2. `debian:12-slim` tools builder → downloads `gh` static release,
+   `npm install`s the pinned `@anthropic-ai/claude-code` so its
+   postinstall resolves the native per-platform binary, stages a
+   `/rootfs` overlay with git + git-core + the two glibc libraries
+   (`libpcre2-8`, `libz`) that distroless does not ship.
+3. `gcr.io/distroless/base-debian12:nonroot` runtime → two `COPY`
+   layers (regatta binary + the `/rootfs` overlay).
+
+Build args available for reproducibility pins: `GH_VERSION`,
+`CLAUDE_VERSION` (current defaults: 2.65.0 and 2.1.161).
 
 ## Run
 
@@ -59,6 +98,17 @@ The default `CMD` runs `serve --repo /repo --db /data/regatta.db`.
 The container's `WORKDIR` is `/repo`; relative paths in operator
 commands resolve against the bind-mounted repo.
 
+The entrypoint runs as UID 65532. Bind-mount host directories must
+either be world-writable or owned by UID 65532 / a group the host
+shares with 65532. The simplest pattern on Linux:
+
+```sh
+sudo chown -R 65532:65532 ./path-to-repo
+```
+
+On macOS Docker Desktop, file-sharing translates ownership
+transparently — no chown needed.
+
 ### Environment
 
 | Var | Required | Source |
@@ -71,45 +121,52 @@ A template lives in `.env.example` at the repo root.
 
 ## Verification
 
-After `docker run`, confirm the toolchain inside the container:
+Distroless has no shell, so `docker exec regatta sh -c '...'` does not
+work. Verify each tool by running it as the entrypoint:
 
 ```sh
-docker exec regatta regatta version
-docker exec regatta gh --version
-docker exec regatta claude --version
+docker run --rm regatta:latest version
+docker run --rm --entrypoint /usr/local/bin/gh    regatta:latest --version
+docker run --rm --entrypoint /usr/local/bin/claude regatta:latest --version
+docker run --rm --entrypoint /usr/bin/git         regatta:latest --version
 ```
 
-`claude --version` reaching the binary confirms the npm install
-succeeded; non-zero exit means the image is broken — rebuild before
-launching agents.
-
-To smoke-test Anthropic reachability without spawning a planner:
+Each command should exit 0 and print a version line. UID assertion:
 
 ```sh
-docker exec regatta sh -c \
-  'wget -q -O- --header="x-api-key: $ANTHROPIC_API_KEY" \
-     https://api.anthropic.com/v1/models | head -c 200'
+docker inspect regatta:latest --format '{{.Config.User}}'
+# expected: 65532
 ```
 
-A JSON response (any 2xx body) confirms egress + auth.
+To smoke-test Anthropic reachability without spawning a planner, run
+`claude` non-interactively:
+
+```sh
+docker run --rm -e ANTHROPIC_API_KEY \
+  --entrypoint /usr/local/bin/claude regatta:latest --version
+```
+
+Anthropic egress is exercised the moment the agent loop starts; there
+is no separate wget shim in the image (and no shell to call one from).
 
 ## Troubleshooting
 
-### `claude: command not found` inside the container
+### `permission denied` writing to bind-mounted `/repo`
 
-The npm global bin is on `PATH` because `apk add npm` configures
-`/usr/local/bin`. If you've rebuilt with a different base image and
-this breaks, re-add `ENV PATH=/usr/local/lib/node_modules/.bin:$PATH`
-before the `ENTRYPOINT` line.
+The entrypoint runs as UID 65532. Either chown the host directory
+to 65532 (Linux) or rely on Docker Desktop's file-sharing translation
+(macOS). Running `--user root` is not supported — distroless has no
+shell to fall back to and several binaries refuse uid 0.
 
 ### `regatta` exits immediately with no log
 
-Check `/data` is writable — sqlite needs O_RDWR on the DB path. If
-the named volume was created with a non-root owner, fix with:
+Check `/data` is writable by UID 65532 — sqlite needs O_RDWR on the
+DB path. If the named volume was created with root ownership, fix it
+from a one-shot helper container that does have a shell:
 
 ```sh
 docker run --rm -v regatta-data:/data alpine \
-  chown -R 0:0 /data
+  chown -R 65532:65532 /data
 ```
 
 ### `gh: authentication required`
@@ -117,28 +174,11 @@ docker run --rm -v regatta-data:/data alpine \
 `GH_TOKEN` is missing or has wrong scopes. The container does not
 attempt `gh auth login`; the env-var path is the only auth surface.
 
-### Files in `/repo` end up owned by root on the host
-
-Stage 1 runs the entrypoint as uid 0 inside the container. Bind-mount
-writes therefore land as root-owned on the host, which trips `git`
-on subsequent host-side commits. Workarounds until Stage 2 ships a
-uid-mapping flag:
-
-```sh
-# After the container exits, reclaim ownership from the host:
-sudo chown -R "$(id -u):$(id -g)" .
-```
-
-Or pass `--user "$(id -u):$(id -g)"` to `docker run` — note that
-this disables npm/apk inside the container if you later `docker exec`
-as the same user.
-
 ### Image rebuild after upstream `claude-code` release
 
-The Dockerfile pins `@anthropic-ai/claude-code@latest`, so a rebuild
-picks up the newest npm publish. For reproducible deployments, pin
-an explicit version in the `RUN npm install -g ...` line before
-shipping to operators.
+`CLAUDE_VERSION` is a Dockerfile build-arg pinned to 2.1.161. Override
+with `--build-arg CLAUDE_VERSION=<next>` and rebuild. Same pattern
+for `GH_VERSION`.
 
 ## Related
 
