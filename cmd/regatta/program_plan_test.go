@@ -20,10 +20,7 @@ import (
 	"github.com/trilamsr/regatta/internal/program"
 )
 
-// TestRunProgramPlanRejectsNonProgramKind verifies that `regatta program plan`
-// refuses a work item whose Kind is not "program". The planner is normative
-// on this; silent acceptance would let a feature item slip into the planner
-// and produce a brief with no meaningful decomposition.
+// TestRunProgramPlanRejectsNonProgramKind asserts `regatta program plan` refuses a non-program Kind so feature items cannot slip past the planner and emit empty briefs.
 func TestRunProgramPlanRejectsNonProgramKind(t *testing.T) {
 	t.Setenv("HMAC_KEY", "dummy")
 	dir := t.TempDir()
@@ -68,11 +65,7 @@ status: planned
 - [planned] c3: do c
 `
 
-// TestRunProgramPlan_WriteCreatesFile drives the --write flag end-to-end
-// with the offline StubPlanner. The brief lands at
-// <write-dir>/<program_id>.json via atomic temp+rename; presence of the
-// file is sufficient for the smoke (full schema coverage lives in the
-// internal/program planner_test suite).
+// TestRunProgramPlan_WriteCreatesFile asserts --write with the offline StubPlanner lands a brief at <write-dir>/<program_id>.json via atomic temp+rename.
 func TestRunProgramPlan_WriteCreatesFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HMAC_KEY", "test-key-32-bytes-aaaaaaaaaaaaaaa")
@@ -136,24 +129,7 @@ func TestRunProgramPlan_WriteCreatesFile(t *testing.T) {
 	}
 }
 
-// TestRunProgramPlan_WriteTargetExistsErrors exercises the no-clobber
-// path: the stub planner stamps a fresh produced_at on every call, so
-// re-running with the same args writes a byte-different brief whose
-// program_id collides only when explicitly aimed at the same path.
-// We write the first brief, then plant a sibling file at a known path
-// and re-target the second run at it (via --write-dir + a forced
-// program_id is overkill — instead, just run twice into the same dir
-// and look for the second-run failure mode: every run produces a new
-// program_id, so the test asserts no-clobber by writing a sentinel
-// file at the target path the second call would compute.
-//
-// Simpler shape: write a sentinel at <out>/m-deadbeef.json, then
-// stub the program_id to "m-deadbeef" via a second runProgramPlan
-// invocation using --force=false. Without --force, atomicWriteBrief
-// MUST refuse. We can't pin program_id from the CLI, so we instead
-// place a different brief file in the dir and verify the success
-// path doesn't touch it (basic property); separately the
-// atomicWriteBrief unit test below proves the sentinel.
+// TestRunProgramPlan_WriteTargetExistsErrors exercises the no-clobber path: without --force, atomicWriteBrief MUST refuse to overwrite a sibling brief at the computed target path.
 func TestRunProgramPlan_WriteTargetExistsErrors(t *testing.T) {
 	dir := t.TempDir()
 	outDir := filepath.Join(dir, ".regatta", "programs")
@@ -287,11 +263,7 @@ func TestAtomicWriteBriefReadCap_NotExistAndEqualPaths(t *testing.T) {
 	}
 }
 
-// TestLoadBriefKeyring_HonorsKeyIDEnv pins the sign/verify keyID
-// contract: program plan's -hmac-key-id default ("k1") must match
-// the keyID under which serve verifies. Without this, briefs sign
-// under "k1" and serve rejects them as unknown_key_id — the bug
-// A11's e2e test surfaced.
+// TestLoadBriefKeyring_HonorsKeyIDEnv pins the sign/verify keyID contract: program plan's default keyID ("k1") must match the keyID under which serve verifies, else briefs fail as unknown_key_id.
 func TestLoadBriefKeyring_HonorsKeyIDEnv(t *testing.T) {
 	t.Setenv("REGATTA_HMAC_KEY", "test-key-32-bytes-aaaaaaaaaaaaaaa")
 	t.Setenv("REGATTA_HMAC_KEY_ID", "")
@@ -320,10 +292,7 @@ func keysOf(m map[string][]byte) []string {
 	return out
 }
 
-// TestOutputsSchemaResolverFor pins the scheduler↔BriefLoader bridge: the
-// closure unboxes the program-side schema and reports presence for known
-// features, absence otherwise. Without this, scheduler.Config.OutputsSchemas
-// silently returns nil and predicates evaluate against an empty env.
+// TestOutputsSchemaResolverFor pins the scheduler↔BriefLoader bridge so scheduler.Config.OutputsSchemas reports presence for known features instead of silently returning nil and letting predicates evaluate against an empty env.
 func TestOutputsSchemaResolverFor(t *testing.T) {
 	db, err := state.Open(context.Background(), state.DSN(filepath.Join(t.TempDir(), "rsv.db")))
 	if err != nil {

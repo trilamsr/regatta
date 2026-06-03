@@ -280,9 +280,7 @@ func TestRecoverIsIdempotent(t *testing.T) {
 	}
 }
 
-// TestOrchestratorRecordsEvents pins the audit-trail contract: every
-// spawn and every crash-recovery requeue lands a typed event row so
-// the audit sink writer (future LessonCapture) has something to walk.
+// TestOrchestratorRecordsEvents pins the audit-trail contract so every spawn and every crash-recovery requeue lands a typed event row for the audit sink to walk.
 func TestOrchestratorRecordsEvents(t *testing.T) {
 	ctx := context.Background()
 	o, _, db, _ := newHarness(t, 1)
@@ -312,11 +310,7 @@ func TestOrchestratorRecordsEvents(t *testing.T) {
 	}
 }
 
-// TestPollPropagatesLaneChange pins the orchestrator end-to-end on the
-// lane-drift bug in state.UpsertPending: a markdown item whose `lane:`
-// frontmatter is rewritten must be reflected on the existing agent row
-// by the next PollOnce, not stuck in its original lane (which would
-// defeat per-lane caps).
+// TestPollPropagatesLaneChange pins the orchestrator end-to-end on the lane-drift bug: a markdown item whose `lane:` frontmatter is rewritten must be reflected on the existing agent row by the next PollOnce, else per-lane caps are defeated.
 func TestPollPropagatesLaneChange(t *testing.T) {
 	ctx := context.Background()
 	o, _, db, dir := newHarness(t, 1)

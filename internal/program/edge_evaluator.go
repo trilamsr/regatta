@@ -140,10 +140,8 @@ func (e *EdgeEvaluator) programFor(edge state.EdgeRow) (cel.Program, error) {
 }
 
 // compileCount reports how many cel.Program builds occurred since the
-// evaluator was constructed. Test-only seam exercised by
-// TestEdgeEvaluator_CacheHit / TestEdgeEvaluator_InvalidateProgram to
-// pin the cache-miss vs cache-hit boundary without instrumenting the
-// runtime path.
+// evaluator was constructed; test-only seam to pin the cache-miss vs
+// cache-hit boundary without instrumenting the runtime path.
 func (e *EdgeEvaluator) compileCount() int64 {
 	return e.compiles.Load()
 }
