@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
-# cleanup-merged-branches_test.sh - black-box smoke tests for the
-# second pass of cleanup-merged-branches.sh: the gone-upstream sweep.
+# cleanup-merged-branches_test.sh - black-box smoke tests for
+# cleanup-merged-branches.sh's three passes:
+#   1. batch `gh pr list --state merged` headRefName match
+#   2. per-branch `gh pr list --search head:$b --state all` state probe
+#   3. gone-upstream + ancestry-into-default sweep
+# Each case stands up a throwaway origin + clone, mutates origin and/or
+# the gh stub to simulate a PR scenario, then runs the script (usually
+# with --dry-run) to assert the right branches are flagged or preserved.
 #
-# We can't exercise pass 1 (gh pr list against a real remote) here,
-# so these tests stub `gh` to return empty and focus on pass 2.
-# Each case stands up a throwaway origin + clone, mutates the origin
-# to simulate a merged-and-pruned PR, then runs the script with
-# --dry-run to assert the right branches are flagged.
+# The gh stub reads a per-test fixture file ($tmp/gh-fixture) so a single
+# setup can return different states for `--state merged --json headRefName`
+# (pass 1) vs `--search head:$b --state all --json state` (pass 2).
 
 set -euo pipefail
 
@@ -48,12 +52,40 @@ _run() {
   git branch -M main
   git push -q -u origin main
 
-  # Stub gh so pass 1 is a no-op. Path-shadow the real gh.
+  # Stub gh. Honors `--jq` by emitting the already-extracted value
+  # (the real gh applies the jq filter server-side; recreating jq
+  # parsing in the stub would balloon the test code).
+  #
+  # Pass 1 call: `gh pr list --state merged --json headRefName --jq '.[].headRefName'`
+  #   Stub reads $tmp/gh-merged-headrefs (newline-separated branch names,
+  #   or empty file for no merged PRs).
+  # Pass 2 call: `gh pr list --search head:$b --state all --json state --jq '.[0].state // ""'`
+  #   Stub reads $tmp/gh-pr-state-<branch> (state string like MERGED /
+  #   CLOSED / OPEN; absent => empty string).
   mkdir -p "$tmp/bin"
-  cat > "$tmp/bin/gh" <<'EOF'
+  cat > "$tmp/bin/gh" <<EOF
 #!/usr/bin/env bash
-# Empty JSON array — no merged PRs.
-echo '[]'
+search_branch=""
+for ((i=1; i<=\$#; i++)); do
+  if [ "\${!i}" = "--search" ]; then
+    j=\$((i+1))
+    search_branch="\${!j#head:}"
+    break
+  fi
+done
+if [ -n "\$search_branch" ]; then
+  fixture="$tmp/gh-pr-state-\$search_branch"
+  if [ -f "\$fixture" ]; then
+    cat "\$fixture"
+  fi
+  # Absent fixture => empty stdout, matching --jq '.[0].state // ""' on [].
+else
+  fixture="$tmp/gh-merged-headrefs"
+  if [ -f "\$fixture" ]; then
+    cat "\$fixture"
+  fi
+  # Absent fixture => empty stdout, matching --jq '.[].headRefName' on [].
+fi
 EOF
   chmod +x "$tmp/bin/gh"
 
@@ -276,6 +308,91 @@ _run fetch_failure_default_aborts             'fetch failed' 'would delete branc
 _run fetch_failure_allow_stale_skips_second_pass 'allow-stale' 'would delete branch foo' case_fetch_failure_allow_stale       0 --dry-run --allow-stale
 _run non_main_default_branch                  'would delete branch foo \(upstream gone\)' 'would delete branch keep' case_non_main_default_branch       0 --dry-run
 _run dry_run_second_pass_no_deletion          'would delete branch foo \(upstream gone\)' '' case_dry_run_no_deletion           0 --dry-run
+
+# Squash-merged branch (PR MERGED, origin ref still present).
+# Local branch `squashed` has upstream origin/squashed still alive
+# (origin keeps the ref because squash creates a new commit on main
+# but doesn't auto-delete the head ref). Pass 1 batch wouldn't return
+# it (we leave gh-merged-headrefs empty to force pass 2 to be the
+# detector). Pass 2 per-branch probe returns MERGED — branch deleted.
+case_squash_merged_detected() {
+  git checkout -q -b squashed
+  git commit -q --allow-empty -m squash-work
+  git push -q -u origin squashed
+  git checkout -q main
+  # gh stub: per-branch state probe returns MERGED for `squashed`.
+  echo 'MERGED' > "$tmp/gh-pr-state-squashed"
+}
+
+# CLOSED-state branch — default behavior PRESERVES it (no --include-closed).
+case_closed_default_preserved() {
+  git checkout -q -b abandoned
+  git commit -q --allow-empty -m abandoned-work
+  git push -q -u origin abandoned
+  git checkout -q main
+  echo 'CLOSED' > "$tmp/gh-pr-state-abandoned"
+  verify_branch_still_exists=abandoned
+}
+
+# CLOSED-state branch — with --include-closed it gets deleted.
+case_closed_include_closed_deletes() {
+  git checkout -q -b abandoned
+  git commit -q --allow-empty -m abandoned-work
+  git push -q -u origin abandoned
+  git checkout -q main
+  echo 'CLOSED' > "$tmp/gh-pr-state-abandoned"
+}
+
+# Open-PR branch: state=OPEN. Must be preserved.
+case_open_pr_preserved() {
+  git checkout -q -b in-review
+  git commit -q --allow-empty -m wip
+  git push -q -u origin in-review
+  git checkout -q main
+  echo 'OPEN' > "$tmp/gh-pr-state-in-review"
+  verify_branch_still_exists=in-review
+}
+
+# No-PR branch (gh returns []): preserved.
+case_no_pr_preserved() {
+  git checkout -q -b drafted
+  git commit -q --allow-empty -m draft
+  git checkout -q main
+  # No fixture file -> gh stub returns [] -> state="" -> no delete.
+  verify_branch_still_exists=drafted
+}
+
+# Squash-merged branch with a .claude/worktrees/ worktree pinned to it.
+# Pass 2 must remove the worktree before deleting the branch.
+# We exercise this for-real (no --dry-run) so the worktree+branch
+# actually disappear.
+case_squash_merged_with_worktree() {
+  git checkout -q -b squash-wt
+  git commit -q --allow-empty -m wt-work
+  git push -q -u origin squash-wt
+  git checkout -q main
+  mkdir -p .claude/worktrees
+  git worktree add -q .claude/worktrees/squash-wt squash-wt
+  echo 'MERGED' > "$tmp/gh-pr-state-squash-wt"
+}
+
+# --dry-run with a squash-merge candidate: must NOT actually delete.
+case_squash_merged_dry_run() {
+  git checkout -q -b squashed
+  git commit -q --allow-empty -m squash-work
+  git push -q -u origin squashed
+  git checkout -q main
+  echo 'MERGED' > "$tmp/gh-pr-state-squashed"
+  verify_branch_still_exists=squashed
+}
+
+_run squash_merged_detected                   'would delete branch squashed \(PR merged\)' '' case_squash_merged_detected   0 --dry-run
+_run closed_default_preserved                 ''                                          'would delete branch abandoned' case_closed_default_preserved 0 --dry-run
+_run closed_include_closed_deletes            'would delete branch abandoned \(PR closed' '' case_closed_include_closed_deletes 0 --dry-run --include-closed
+_run open_pr_preserved                        ''                                          'would delete branch in-review' case_open_pr_preserved        0 --dry-run
+_run no_pr_preserved                          ''                                          'would delete branch drafted'  case_no_pr_preserved          0 --dry-run
+_run squash_merged_with_worktree_dry_run      'would remove worktree.*\.claude/worktrees/squash-wt' '' case_squash_merged_with_worktree 0 --dry-run
+_run squash_merged_dry_run_no_deletion        'would delete branch squashed' ''           case_squash_merged_dry_run    0 --dry-run
 
 echo
 echo "summary: $pass passed, $failed failed"
