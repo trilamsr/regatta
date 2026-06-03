@@ -82,7 +82,7 @@ func runApprovalDecide(args []string) int {
 func defaultDBPath(args []string) string {
 	for i, a := range args {
 		switch {
-		case a == "--db" || a == "-db":
+		case a == "--db" || a == "-db": //nolint:goconst // operator-facing flag name; const would obscure the literal at the parse site
 			if i+1 < len(args) {
 				return args[i+1]
 			}
