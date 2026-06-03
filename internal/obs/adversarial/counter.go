@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"sync"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
+
+	"github.com/trilamsr/regatta/internal/obs"
 )
 
 // Finding is one item produced by a reviewer-subagent. Severity/Scope
@@ -23,7 +24,7 @@ type Finding struct {
 }
 
 // Config wires the counter to a meter. Nil Meter resolves through
-// ResolveMeter to otel.Meter("obs/adversarial") at first use so a
+// ResolveMeter to obs.MeterScopeObsAdversarial at first use so a
 // global provider swap (test injection) takes effect on the next
 // call.
 type Config struct {
@@ -33,10 +34,7 @@ type Config struct {
 // ResolveMeter returns the configured meter or the global-scoped
 // fallback. Matches orchestrator.Config.ResolveMeter shape.
 func (c Config) ResolveMeter() metric.Meter {
-	if c.Meter != nil {
-		return c.Meter
-	}
-	return otel.Meter("obs/adversarial")
+	return obs.ResolveMeter(c.Meter, obs.MeterScopeObsAdversarial)
 }
 
 // Recorder owns the counter instrument and the dedupe set that makes

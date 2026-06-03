@@ -16,10 +16,11 @@ import (
 	"context"
 	"sync"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	noopmetric "go.opentelemetry.io/otel/metric/noop"
+
+	"github.com/trilamsr/regatta/internal/obs"
 )
 
 // tagOther is the literal cardinality-bound fallthrough tag value
@@ -128,7 +129,7 @@ func resolveMeter() metric.Meter {
 	if meterOverride != nil {
 		return meterOverride
 	}
-	return otel.Meter("orchestrator/state/substrate")
+	return obs.Meter(obs.MeterScopeSubstrate)
 }
 
 // resolveInstruments builds the three counters once per meter binding.

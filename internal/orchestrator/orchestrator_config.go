@@ -5,10 +5,10 @@ import (
 	"log/slog"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
@@ -83,7 +83,7 @@ type Config struct {
 	Tracer trace.Tracer
 
 	// Meter is the OTel instrument factory for orchestrator
-	// lifecycle telemetry. Nil resolves to otel.Meter("orchestrator")
+	// lifecycle telemetry. Nil resolves to obs.MeterScopeOrchestrator
 	// at the first ResolveMeter() call so the global MeterProvider
 	// Setup wires (or a noop when Setup was skipped) wins by default.
 	// Mirrors the W6 Config.Tracer pattern so callers stay on one DI
@@ -105,8 +105,5 @@ type Config struct {
 // provider swap (e.g. test injection of a noop provider) takes effect
 // on the next call. Matches the W6 Config.Tracer nil-fallback shape.
 func (c Config) ResolveMeter() metric.Meter {
-	if c.Meter != nil {
-		return c.Meter
-	}
-	return otel.Meter("orchestrator")
+	return obs.ResolveMeter(c.Meter, obs.MeterScopeOrchestrator)
 }

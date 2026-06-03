@@ -24,6 +24,7 @@ import (
 	"github.com/trilamsr/regatta/internal/cost/gate"
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/gates/l4"
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/merge"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -178,10 +179,7 @@ type Config struct {
 // global provider swap (e.g. test noop injection) takes effect on the
 // next call.
 func (c Config) ResolveMeter() metric.Meter {
-	if c.Meter != nil {
-		return c.Meter
-	}
-	return otel.Meter("scheduler")
+	return obs.ResolveMeter(c.Meter, obs.MeterScopeScheduler)
 }
 
 // schedulerDB is the seam between Scheduler and state.DB so crash-
@@ -279,11 +277,11 @@ func newScheduler(db schedulerDB, cfg Config) *Scheduler {
 	if err != nil {
 		// Construction failure on a noop or in-process SDK is
 		// unrecoverable here; fall back to noop so Tick stays hot.
-		tickLatency, _ = otel.Meter("scheduler-fallback").Float64Histogram("regatta.scheduler.tick.latency_ms")
+		tickLatency, _ = obs.Meter(obs.MeterScopeSchedulerFallback).Float64Histogram("regatta.scheduler.tick.latency_ms")
 	}
 	stepDuration, err := meter.Float64Histogram("regatta.scheduler.tick.step_duration_ms")
 	if err != nil {
-		stepDuration, _ = otel.Meter("scheduler-fallback").Float64Histogram("regatta.scheduler.tick.step_duration_ms")
+		stepDuration, _ = obs.Meter(obs.MeterScopeSchedulerFallback).Float64Histogram("regatta.scheduler.tick.step_duration_ms")
 	}
 	return &Scheduler{
 		db: db, cfg: cfg, log: log, tracer: tracer,

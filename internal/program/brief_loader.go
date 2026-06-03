@@ -77,10 +77,7 @@ type BriefLoaderConfig struct {
 
 // ResolveMeter returns the configured meter or falls back lazily.
 func (c BriefLoaderConfig) ResolveMeter() metric.Meter {
-	if c.Meter != nil {
-		return c.Meter
-	}
-	return otel.Meter("program")
+	return obs.ResolveMeter(c.Meter, obs.MeterScopeProgram)
 }
 
 // BriefLoader is the recurring sync — construct once at orchestrator

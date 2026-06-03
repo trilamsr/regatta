@@ -5,13 +5,14 @@ import (
 	"os"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 	"gopkg.in/yaml.v3"
+
+	"github.com/trilamsr/regatta/internal/obs"
 )
 
 // MeterConfig wires the gauge instrument to a meter. Nil falls back
-// to otel.Meter("obs/triggers") at first use, matching the meter-DI
+// to obs.MeterScopeObsTriggers at first use, matching the meter-DI
 // pattern used across regatta packages.
 type MeterConfig struct {
 	Meter metric.Meter
@@ -19,10 +20,7 @@ type MeterConfig struct {
 
 // ResolveMeter returns the configured meter or the global fallback.
 func (m MeterConfig) ResolveMeter() metric.Meter {
-	if m.Meter != nil {
-		return m.Meter
-	}
-	return otel.Meter("obs/triggers")
+	return obs.ResolveMeter(m.Meter, obs.MeterScopeObsTriggers)
 }
 
 // TriggerSpec is one entry in slo/triggers.yaml. Operator-editable;
