@@ -25,6 +25,20 @@ type Pass[Scope any] struct {
 // order. Caller pre-checks gate/resolver nil — Apply has no
 // short-circuit so the contract stays total.
 func Apply[Scope any](ctx context.Context, p Pass[Scope], spawnable []state.WorkItem) ([]state.WorkItem, error) {
-	// Stub for failing-test step; real impl lands next commit (#251).
-	return nil, nil
+	kept := make([]state.WorkItem, 0, len(spawnable))
+	for _, wi := range spawnable {
+		scope, gated := p.Resolve(wi)
+		if !gated {
+			kept = append(kept, wi)
+			continue
+		}
+		keep, err := p.Evaluate(ctx, wi, scope)
+		if err != nil {
+			return nil, err
+		}
+		if keep {
+			kept = append(kept, wi)
+		}
+	}
+	return kept, nil
 }
