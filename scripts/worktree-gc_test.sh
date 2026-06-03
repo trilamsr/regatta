@@ -132,7 +132,7 @@ teardown_fixture
 
 # Case 5: detached-HEAD worktree on a merged commit must be skipped, NOT
 # flagged for removal. Operator-explicit detach signals "keep this around"
-# regardless of ancestry. Reviewer finding #2 on PR #716.
+# regardless of ancestry.
 setup_fixture
 cd "$work_dir"
 merged_sha=$(git rev-parse feature-merged)
@@ -147,7 +147,7 @@ out_apply=$(bash "$script" --apply 2>&1) && got_exit=0 || got_exit=$?
 teardown_fixture
 
 # Case 6: --apply --force removes a locked merged worktree via force-twice
-# fallback. Reviewer finding #8 on PR #716.
+# fallback.
 setup_fixture
 cd "$work_dir"
 git worktree lock "$tmp/wt-merged" 2>/dev/null || true
