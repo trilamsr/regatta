@@ -1,8 +1,11 @@
 package digest
 
 import (
+	"math"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // stubSource returns canned metrics so tests assert on rendering, not
@@ -196,5 +199,79 @@ func TestRender_ValidatesDate(t *testing.T) {
 	_, err := Render(Options{Date: "yesterday", Source: stubSource{backendUp: true}})
 	if err == nil {
 		t.Fatal("expected error for malformed date; got nil")
+	}
+}
+
+// TestDigest_RenderProducesValidYAML asserts front-matter YAML parses + all scalars are finite (#513).
+func TestDigest_RenderProducesValidYAML(t *testing.T) {
+	src := stubSource{
+		snap: Snapshot{
+			TickP95Ms:       4321,
+			PRsLandedCount:  11,
+			CostUSDToday:    87.42,
+			CostUSDWeek:     511.30,
+			ChainBreaks:     0,
+			DivergenceCount: 0,
+			AlarmsFired:     2,
+			Triggers: []TriggerCountdown{
+				{Name: "phase_g_gate", DaysRemaining: 27},
+				{Name: "30_day_green", DaysRemaining: 17},
+			},
+		},
+		backendUp: true,
+	}
+	out, err := Render(Options{Date: "2026-06-03", Source: src})
+	if err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+
+	// Front-matter is the bytes between the first two `---` fences.
+	const fence = "---\n"
+	first := strings.Index(out, fence)
+	if first != 0 {
+		t.Fatalf("front-matter does not start at offset 0 (got %d):\n%s", first, out)
+	}
+	rest := out[len(fence):]
+	second := strings.Index(rest, fence)
+	if second < 0 {
+		t.Fatalf("front-matter missing closing fence:\n%s", out)
+	}
+	fm := rest[:second]
+
+	var parsed struct {
+		Date            string         `yaml:"date"`
+		TickP95Ms       float64        `yaml:"tick_p95_ms"`
+		PRsLandedCount  float64        `yaml:"prs_landed_count"`
+		CostUSDToday    float64        `yaml:"cost_usd_today"`
+		CostUSDWeek     float64        `yaml:"cost_usd_week"`
+		ChainBreaks     float64        `yaml:"chain_breaks"`
+		DivergenceCount float64        `yaml:"divergence_count"`
+		AlarmsFired     float64        `yaml:"alarms_fired"`
+		Triggers        map[string]int `yaml:"triggers"`
+	}
+	if err := yaml.Unmarshal([]byte(fm), &parsed); err != nil {
+		t.Fatalf("yaml.Unmarshal front-matter: %v\n---\n%s", err, fm)
+	}
+	if parsed.Date != "2026-06-03" {
+		t.Errorf("date = %q; want 2026-06-03", parsed.Date)
+	}
+	// Every numeric must be finite. A future NaN/Inf leak would either
+	// trip the parse above (strict YAML) or surface here on a permissive
+	// parser path.
+	for name, f := range map[string]float64{
+		"tick_p95_ms":      parsed.TickP95Ms,
+		"prs_landed_count": parsed.PRsLandedCount,
+		"cost_usd_today":   parsed.CostUSDToday,
+		"cost_usd_week":    parsed.CostUSDWeek,
+		"chain_breaks":     parsed.ChainBreaks,
+		"divergence_count": parsed.DivergenceCount,
+		"alarms_fired":     parsed.AlarmsFired,
+	} {
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			t.Errorf("front-matter %s = %v; want finite", name, f)
+		}
+	}
+	if got, want := parsed.Triggers["phase_g_gate"], 27; got != want {
+		t.Errorf("triggers.phase_g_gate = %d; want %d", got, want)
 	}
 }

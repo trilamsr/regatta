@@ -30,8 +30,10 @@ Per Grafana v10 import flow
    (each panel reads `${datasource}` so the choice cascades to every query).
 4. Save.
 
-Automated path (lands with Wave-A): `make provision-dashboards` calls the
-Grafana HTTP API (`POST /api/dashboards/db`) to upsert each JSON.
+Automated path: `make provision-dashboards` upserts every JSON in this
+directory via the Grafana HTTP API (`POST /api/dashboards/db`) using
+`GRAFANA_URL` + `GRAFANA_API_TOKEN` env vars. See
+[`docs/operator/observability-metrics.md`](../observability-metrics.md) §3.
 
 ## Wire-name note
 

@@ -237,6 +237,48 @@ func TestReloader_ConcurrentSighupAndFsnotifyStoreConsistent(t *testing.T) {
 	wg.Wait()
 }
 
+// HR8 restore-after-removal recovery (issue #365 / spec §3.7): operator
+// `rm -rf <policy_dir>` then recreate + write must resume hot-reload via
+// the watchLoop retry ticker. RetryInterval is shrunk from 5 s default so
+// the test runs in ~1 s instead of the 12-s production envelope.
+func TestReloader_PolicyDirRemovedThenRestored_ResumesWatching(t *testing.T) {
+	t.Parallel()
+	dir, az := setupAuthz(t)
+	r := &reload.Reloader{
+		Authorizer:    az,
+		Loader:        &disk.Loader{Dir: dir, Fallback: embeddedFallback()},
+		Tenant:        authz.DefaultTenant,
+		Debounce:      25 * time.Millisecond,
+		RetryInterval: 100 * time.Millisecond,
+		Logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		DisableSighup: true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	startReloader(t, r, ctx)
+
+	policyDir := filepath.Join(dir, "regatta", "v1", authz.DefaultTenant)
+	if err := os.RemoveAll(policyDir); err != nil {
+		t.Fatalf("rm -rf policy_dir: %v", err)
+	}
+	// Give the watcher time to observe the removal + tick at least once.
+	time.Sleep(300 * time.Millisecond)
+	if err := os.MkdirAll(policyDir, 0o755); err != nil {
+		t.Fatalf("recreate policy_dir: %v", err)
+	}
+	// Two retry ticks (~200 ms) so the watcher re-Adds the recreated root
+	// before the .rego write lands; otherwise the write hits a no-watch
+	// gap and only the SHA-driven reload (no fsnotify) would catch it.
+	time.Sleep(300 * time.Millisecond)
+
+	revBefore := az.CurrentRevision(authz.DefaultTenant)
+	writeRego(t, dir, "approval.rego", "package regatta.v1.approval.view\n\ndefault decision := {\"allow\": true, \"reason\": \"hr8-restored\"}\n")
+
+	// 2 s upper bound — covers (debounce 25 ms + retry-tick 100 ms + reload
+	// ~10 ms) ×N retries on slow CI without slipping past meaningful failure.
+	waitForRevisionChange(t, az, revBefore, 2*time.Second)
+}
+
 // ctx cancel cleanly shuts down the watcher goroutine.
 func TestReloader_RunReturnsOnContextCancel(t *testing.T) {
 	t.Parallel()
