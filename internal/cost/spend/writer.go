@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -15,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/trilamsr/regatta/internal/canon"
 	"github.com/trilamsr/regatta/internal/cost/pricing"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
@@ -94,7 +94,11 @@ func RecordCall(ctx context.Context, tx *sql.Tx, r CallRecord, opt WriteOptions)
 		PricingRev:          pricingRev(),
 		CallID:              r.CallID,
 	}
-	payloadJSON, err := json.Marshal(payload)
+	// token_spend is a #216 F1 hot-path writer: every LLM call lands one
+	// substrate row. canon.Marshal pre-canonicalises once so
+	// AppendEventCanonicalized below skips the signedPayload map alloc
+	// + round-trip on the substrate side (spec §7 + §12 F1).
+	payloadJSON, err := canon.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("spend: marshal payload: %w", err)
 	}
@@ -120,7 +124,7 @@ func RecordCall(ctx context.Context, tx *sql.Tx, r CallRecord, opt WriteOptions)
 		SchemaVersion: 1,
 		Nonce:         nonceFor(r.CallID, r.RetrySeq),
 	}
-	if err := substrate.AppendEvent(ctx, tx, ev, opt.Key, opt.KeyID); err != nil {
+	if err := substrate.AppendEventCanonicalized(ctx, tx, ev, payloadJSON, opt.Key, opt.KeyID); err != nil {
 		return fmt.Errorf("spend: append token_spend: %w", err)
 	}
 	emitMetrics(ctx, opt.Cfg, r, usdMicro.USD())

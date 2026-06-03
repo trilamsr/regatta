@@ -3,10 +3,16 @@ package substrate
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
+	"strconv"
+	"sync"
+	"unsafe"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
@@ -135,6 +141,188 @@ func Verify(e Event, keyring map[string][]byte) error {
 	}
 	return nil
 }
+
+// fastScratch holds the per-call buffers SignCanonicalized reuses so
+// the F1 hot path (#216) avoids per-row heap churn on the envelope
+// build + hex-encoded MAC + HMAC state. One Get/Put per row.
+type fastScratch struct {
+	canon  []byte    // envelope buffer (grown as needed)
+	macOut [32]byte  // HMAC-SHA256 raw output (pre-hex)
+	lp     [4]byte   // keyID length-prefix scratch
+	h      hash.Hash // HMAC-SHA256, lazily bound to a (key, keyID) pair
+	hKey   string    // cached keyID the HMAC state was initialised with
+	hKeyPP uintptr   // cached first-byte ptr of key for identity check
+}
+
+var fastScratchPool = sync.Pool{
+	New: func() any { return &fastScratch{canon: make([]byte, 0, 512)} },
+}
+
+// SignCanonicalized is the F1 fast path: skips signedPayload's
+// map[string]any round-trip and emits canonical envelope bytes directly,
+// inlining the pre-canonicalised payload bytes as a JSON value. Same
+// HMAC primitive as Sign — MAC bytes are byte-identical when preCanon
+// == canon.Marshal(e.PayloadJSON) (TestSubstrate_AppendEventCanonicalizedMatchesSlowPath).
+//
+// preCanon MUST be the result of canon.CanonicaliseJSON(e.PayloadJSON);
+// the contract is caller-trusted (cheap sanity below — NOT a re-canon).
+// Use Sign for cold paths; reserve this for hot writers (#216).
+func SignCanonicalized(e *Event, preCanon []byte, key []byte, keyID string) error {
+	if len(key) < schemas.MinKeyLen {
+		return fmt.Errorf("%w: got %d bytes, want >= %d",
+			schemas.ErrWeakKey, len(key), schemas.MinKeyLen)
+	}
+	// Cheap caller-contract sanity. A full byte-compare with
+	// canon.Marshal(e.PayloadJSON) is the slow path the fast path
+	// exists to avoid; instead bound the trust surface to "looks like a
+	// canonical JSON object" + per-kind metadata. Verify() catches MAC
+	// drift downstream when a caller violates the contract.
+	if len(preCanon) < 2 || preCanon[0] != '{' || preCanon[len(preCanon)-1] != '}' {
+		return fmt.Errorf("substrate: SignCanonicalized: preCanon not a JSON object")
+	}
+	if e.Kind == "" || e.SchemaVersion <= 0 {
+		return fmt.Errorf("substrate: SignCanonicalized: kind/schema_version unset")
+	}
+
+	s, ok := fastScratchPool.Get().(*fastScratch)
+	if !ok {
+		s = &fastScratch{canon: make([]byte, 0, 512)}
+	}
+	defer fastScratchPool.Put(s)
+	s.canon = appendCanonicalEnvelope(s.canon[:0], e, preCanon)
+
+	if len(keyID) > maxKeyIDLenFast {
+		return fmt.Errorf("substrate: keyID too long: %d bytes", len(keyID))
+	}
+	// Pool-bound HMAC reuse: keep one HMAC state per scratch entry,
+	// re-initialise only when the (key, keyID) identity changes. Pre-W9
+	// is single-writer + single key (#216 scope); cache miss is the
+	// rotation path.
+	var keyPP uintptr
+	if len(key) > 0 {
+		// #nosec G103 — pointer is used as a stable identity tag, never
+		// dereferenced; caller-owns-key contract is documented above.
+		keyPP = uintptr(unsafe.Pointer(&key[0]))
+	}
+	if s.h == nil || s.hKey != keyID || s.hKeyPP != keyPP {
+		s.h = hmac.New(sha256.New, key)
+		s.hKey = keyID
+		s.hKeyPP = keyPP
+	} else {
+		s.h.Reset()
+	}
+	binary.BigEndian.PutUint32(s.lp[:], uint32(len(keyID))) // #nosec G115 — bounded above
+	_, _ = s.h.Write(s.lp[:])
+	// hash.Hash.Write only reads its argument; the []byte view of keyID
+	// is safe even though we do not retain it.
+	_, _ = s.h.Write(unsafeStringBytes(keyID))
+	_, _ = s.h.Write(s.canon)
+	mac := s.h.Sum(s.macOut[:0])
+	// Hex-encode into a fresh 64-byte slice we hand to the string
+	// header — saves the [64]byte → string copy that doubles the
+	// allocation budget. The slice is uniquely owned (just allocated)
+	// so the unsafe.String view is safe.
+	hexBuf := make([]byte, 64)
+	hex.Encode(hexBuf, mac)
+	e.SigAlg = SigAlg
+	e.SigKeyID = keyID
+	// #nosec G103 — hexBuf is a fresh, uniquely-owned 64-byte slice; the
+	// string view aliases bytes we never mutate again, saving the copy.
+	e.SigMAC = unsafe.String(unsafe.SliceData(hexBuf), 64)
+	return nil
+}
+
+// unsafeStringBytes returns a []byte view of s without copying. Caller
+// MUST treat the result as read-only and MUST NOT retain it past the
+// call — used here only as a hash.Hash.Write argument, which is a pure
+// reader. Eliminates the []byte(keyID) heap allocation on the F1 path.
+func unsafeStringBytes(s string) []byte {
+	if len(s) == 0 {
+		return nil
+	}
+	// #nosec G103 — read-only []byte view of s; result is consumed by
+	// hash.Hash.Write in the same statement and never retained.
+	return unsafe.Slice(unsafe.StringData(s), len(s))
+}
+
+// appendCanonicalEnvelope emits the canonical JSON object the slow path
+// produces via signedPayload → CanonicalJSON, but writes bytes directly
+// instead of materialising map[string]any → encoder → decoder → sort.
+// Field order is the alphabetical sort the canonicaliser would produce,
+// pinned at compile time. preCanon is inlined as the payload_json value
+// (already canonical by caller contract).
+//
+// Strings emitted here are constrained to ASCII printables in practice
+// (ULIDs, run-ids, hex nonces, etc.); appendJSONStringASCII handles the
+// JSON-string escape minimum needed (RFC 8259 §7) so we do not link the
+// general-purpose stdlib encoder on the hot path.
+func appendCanonicalEnvelope(dst []byte, e *Event, preCanon []byte) []byte {
+	dst = append(dst, '{')
+	dst = appendKV(dst, "blob_digest", e.BlobDigest)
+	dst = append(dst, ',')
+	dst = appendKV(dst, "id", e.ID)
+	dst = append(dst, ',')
+	dst = appendKV(dst, "key", e.Key)
+	dst = append(dst, ',')
+	dst = appendKV(dst, "kind", string(e.Kind))
+	dst = append(dst, ',')
+	dst = appendKV(dst, "nonce", e.Nonce)
+	dst = append(dst, `,"payload_json":`...)
+	dst = append(dst, preCanon...)
+	dst = append(dst, ',')
+	dst = appendKV(dst, "run_id", e.RunID)
+	dst = append(dst, `,"schema_version":`...)
+	dst = strconv.AppendInt(dst, int64(e.SchemaVersion), 10)
+	dst = append(dst, ',')
+	dst = appendKV(dst, "span_id", e.SpanID)
+	dst = append(dst, ',')
+	dst = appendKV(dst, "supersedes", e.Supersedes)
+	dst = append(dst, ',')
+	dst = appendKV(dst, "tenant_id", e.TenantID)
+	dst = append(dst, ',')
+	dst = appendKV(dst, "trace_id", e.TraceID)
+	dst = append(dst, ',')
+	dst = appendKV(dst, "work_item_id", e.WorkItemID)
+	dst = append(dst, `,"written_at":`...)
+	dst = strconv.AppendInt(dst, e.WrittenAt, 10)
+	dst = append(dst, ',')
+	dst = appendKV(dst, "written_by", e.WrittenBy)
+	dst = append(dst, '}')
+	return dst
+}
+
+func appendKV(dst []byte, key, val string) []byte {
+	dst = append(dst, '"')
+	dst = append(dst, key...)
+	dst = append(dst, '"', ':')
+	return appendJSONStringASCII(dst, val)
+}
+
+// appendJSONStringASCII emits a JSON-quoted string for ASCII inputs.
+// Falls back to encoding/json for any byte outside printable ASCII —
+// the slow-path equivalence test catches drift if a non-ASCII byte ever
+// reaches the fast path (run-ids, ULIDs, hex nonces don't).
+func appendJSONStringASCII(dst []byte, s string) []byte {
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c < 0x20 || c == '"' || c == '\\' || c >= 0x7f {
+			// Cold path: delegate to stdlib so escape rules match exactly.
+			esc, err := json.Marshal(s)
+			if err != nil {
+				return append(dst, '"', '"')
+			}
+			return append(dst, esc...)
+		}
+	}
+	dst = append(dst, '"')
+	dst = append(dst, s...)
+	dst = append(dst, '"')
+	return dst
+}
+
+// maxKeyIDLenFast mirrors contracts/schemas.maxKeyIDLen — local copy
+// avoids importing schemas for one int constant.
+const maxKeyIDLenFast = 1 << 20
 
 // IsUnverifiable lets callers errors.Is across the substrate /
 // contracts/schemas package boundary. Both sentinels wrap the same
