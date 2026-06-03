@@ -45,7 +45,7 @@ AWS's envelope-encryption reference SDK. Per-message DEK, KEK in KMS, structured
 
 ### Candidate 3 — libsodium / `crypto_secretbox` (ISC license)
 
-Battle-tested[1] (replaced by "well-audited" per `feedback_doc_check_banned_phrases`) NaCl-derived primitives. XSalsa20-Poly1305 AEAD; tiny API surface; Frank-Denis maintained.
+Well-audited NaCl-derived primitives. XSalsa20-Poly1305 AEAD; tiny API surface; Frank-Denis maintained.
 
 - **(a) payload fit — partial:** `crypto_secretbox` is symmetric AEAD but ChaCha20-Poly1305 variant (`crypto_aead_chacha20poly1305_ietf`) matches the RFC 8439 wire format. Strong alternative to AES-GCM on CPUs without AES-NI (ARM64 servers, older x86 without AES-NI).
 - **(b) self-host fit — adopt as fallback:** `golang.org/x/crypto/chacha20poly1305` is std-lib-adjacent, zero-CGO, ships with Go releases.
@@ -655,6 +655,5 @@ What didn't get smaller?
 none (internal — design spec for crypto-shredding PII erasure)
 ```
 
-[1]: original wording "battle-tested" replaced with "well-audited" per `feedback_doc_check_banned_phrases` 11-token list.
 
 _End of spec. Spec freezes the crypto-shredding pattern per `feedback_spec_pattern_authority`; implementer-subagent deviations require re-spawning this subagent. Issue [#548](https://github.com/trilamsr/regatta/issues/548) remains open until impl ships._
