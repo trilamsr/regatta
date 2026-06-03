@@ -128,10 +128,7 @@ func recordEvent(ctx context.Context, o recordEventOpts) error {
 	return nil
 }
 
-// sortedKeys returns map keys in lex order. Shared by canonicalisePayload
-// (deterministic JSON bytes) and recordEvent's slog-attr fan-out so the
-// per-key emission order stays stable across runs — non-deterministic
-// slog emission would otherwise be a needless source of test flake.
+// sortedKeys returns map keys in lex order so recordEvent's slog-attr fan-out emits keys deterministically across runs.
 func sortedKeys(m map[string]any) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
