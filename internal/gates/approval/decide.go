@@ -88,99 +88,89 @@ func DecideTx(ctx context.Context, db *state.DB, payload canon.TokenPayload, rev
 		}
 	}
 
-	tx, err := db.SQL().BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return DecideTxResult{}, "", fmt.Errorf("begin tx: %w", err)
-	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
+	var (
+		folded DecideTxResult
+		status = state.ApprovalStatusPending
+	)
+	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		// Issue #206: re-read the event log INSIDE the tx so a reaper sweep
+		// that committed a terminal event between the pre-tx GetApproval
+		// above and this BEGIN is observed. sqlite's single-writer pool
+		// serialises BeginTx behind the reaper's COMMIT — the in-tx list
+		// sees the winning terminal row and we exit clean rather than
+		// silently overwriting it with decided+approved (the bug in #206,
+		// sibling to the reaper-side guard in reaper.go::sweepOne). Reuse
+		// state.ErrTokenReplay rather than minting a fresh sentinel: the
+		// CLI / HTTP layers already map it to the canonical "this approval
+		// is no longer decidable" exit code (notify_http.go::110).
+		priorInTx, err := decideListEventsTx(ctx, tx, payload.AID)
+		if err != nil {
+			return err
 		}
-	}()
+		if isTerminal(priorInTx) {
+			return state.ErrTokenReplay
+		}
+		now := clock().UTC()
 
-	// Issue #206: re-read the event log INSIDE the tx so a reaper sweep
-	// that committed a terminal event between the pre-tx GetApproval
-	// above and this BEGIN is observed. sqlite's single-writer pool
-	// serialises BeginTx behind the reaper's COMMIT — the in-tx list
-	// sees the winning terminal row and we exit clean rather than
-	// silently overwriting it with decided+approved (the bug in #206,
-	// sibling to the reaper-side guard in reaper.go::sweepOne). Reuse
-	// state.ErrTokenReplay rather than minting a fresh sentinel: the
-	// CLI / HTTP layers already map it to the canonical "this approval
-	// is no longer decidable" exit code (notify_http.go::110).
-	priorInTx, err := decideListEventsTx(ctx, tx, payload.AID)
-	if err != nil {
-		return DecideTxResult{}, "", err
-	}
-	if isTerminal(priorInTx) {
-		return DecideTxResult{}, "", state.ErrTokenReplay
-	}
+		// (1) token_consumed first: the UNIQUE(approval_id,kind,token_jti)
+		// index turns a replayed token into a transactional abort BEFORE
+		// any 'decided' row materialises.
+		if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
+			ApprovalID: payload.AID,
+			Ts:         now,
+			Kind:       "token_consumed",
+			Actor:      reviewerID,
+			TokenJTI:   payload.JTI,
+		}); err != nil {
+			return err
+		}
 
-	now := clock().UTC()
+		// (2) decided event carries the vote.
+		decidedPayload, _ := json.Marshal(struct {
+			Decision string `json:"decision"`
+			Reason   string `json:"reason,omitempty"`
+		}{Decision: decision, Reason: reason})
+		if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
+			ApprovalID: payload.AID,
+			Ts:         now,
+			Kind:       EventKindDecided,
+			Actor:      reviewerID,
+			Payload:    decidedPayload,
+		}); err != nil {
+			return err
+		}
 
-	// (1) token_consumed first: the UNIQUE(approval_id,kind,token_jti)
-	// index turns a replayed token into a transactional abort BEFORE
-	// any 'decided' row materialises.
-	if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
-		ApprovalID: payload.AID,
-		Ts:         now,
-		Kind:       "token_consumed",
-		Actor:      reviewerID,
-		TokenJTI:   payload.JTI,
+		// (3) Re-list events inside the tx so the fold sees the just-inserted
+		// vote. sqlite's single-writer guarantee makes this consistent.
+		events, err := decideListEventsTx(ctx, tx, payload.AID)
+		if err != nil {
+			return err
+		}
+		folded = foldDecisions(events, a.Quorum, len(a.ReviewerSetSnapshot.Reviewers))
+		if folded.Terminal {
+			if folded.TerminalAllow {
+				status = state.ApprovalStatusApproved
+				if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
+					ApprovalID: payload.AID, Ts: now, Kind: EventKindApproved, Actor: systemActor,
+				}); err != nil {
+					return err
+				}
+			} else {
+				status = state.ApprovalStatusRejected
+				if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
+					ApprovalID: payload.AID, Ts: now, Kind: EventKindRejected, Actor: systemActor,
+				}); err != nil {
+					return err
+				}
+			}
+			if err := markApprovalDecidedTx(ctx, tx, payload.AID, status, folded.DecidedBy, now); err != nil {
+				return err
+			}
+		}
+		return nil
 	}); err != nil {
 		return DecideTxResult{}, "", err
 	}
-
-	// (2) decided event carries the vote.
-	decidedPayload, _ := json.Marshal(struct {
-		Decision string `json:"decision"`
-		Reason   string `json:"reason,omitempty"`
-	}{Decision: decision, Reason: reason})
-	if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
-		ApprovalID: payload.AID,
-		Ts:         now,
-		Kind:       EventKindDecided,
-		Actor:      reviewerID,
-		Payload:    decidedPayload,
-	}); err != nil {
-		return DecideTxResult{}, "", err
-	}
-
-	// (3) Re-list events inside the tx so the fold sees the just-inserted
-	// vote. sqlite's single-writer guarantee makes this consistent.
-	events, err := decideListEventsTx(ctx, tx, payload.AID)
-	if err != nil {
-		return DecideTxResult{}, "", err
-	}
-	folded := foldDecisions(events, a.Quorum, len(a.ReviewerSetSnapshot.Reviewers))
-
-	status := state.ApprovalStatusPending
-	if folded.Terminal {
-		if folded.TerminalAllow {
-			status = state.ApprovalStatusApproved
-			if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
-				ApprovalID: payload.AID, Ts: now, Kind: EventKindApproved, Actor: systemActor,
-			}); err != nil {
-				return DecideTxResult{}, "", err
-			}
-		} else {
-			status = state.ApprovalStatusRejected
-			if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
-				ApprovalID: payload.AID, Ts: now, Kind: EventKindRejected, Actor: systemActor,
-			}); err != nil {
-				return DecideTxResult{}, "", err
-			}
-		}
-		if err := markApprovalDecidedTx(ctx, tx, payload.AID, status, folded.DecidedBy, now); err != nil {
-			return DecideTxResult{}, "", err
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return DecideTxResult{}, "", fmt.Errorf("commit: %w", err)
-	}
-	committed = true
 	return folded, status, nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/trilamsr/regatta/internal/dbutil"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
@@ -37,18 +38,9 @@ func (s *substrateImpl) Append(ctx context.Context, runID string, ev substrate.E
 	}
 	ev.RunID = runID
 
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("history: begin tx: %w", err)
-	}
-	if err := substrate.AppendEvent(ctx, tx, ev, s.key, s.keyID); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("history: commit: %w", err)
-	}
-	return nil
+	return dbutil.WithTx(ctx, s.db, func(tx *sql.Tx) error {
+		return substrate.AppendEvent(ctx, tx, ev, s.key, s.keyID)
+	})
 }
 
 // Tail is Phase X (spec §1 OUT). v1 surfaces ErrUnsupported so callers

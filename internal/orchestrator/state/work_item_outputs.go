@@ -63,35 +63,33 @@ func (d *DB) AppendOutputAt(ctx context.Context, workItemID string, payload json
 	sha := hex.EncodeToString(sum[:])
 	produced := at.UTC().Unix()
 
-	tx, err := d.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return OutputJournalEntry{}, fmt.Errorf("state: begin journal tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	var nextAttempt int
-	if err := tx.QueryRowContext(ctx,
-		`SELECT COALESCE(MAX(attempt_no), 0) + 1
-		 FROM work_item_outputs WHERE work_item_id = ?`, workItemID,
-	).Scan(&nextAttempt); err != nil {
-		return OutputJournalEntry{}, fmt.Errorf("state: next attempt_no for %s: %w", workItemID, err)
-	}
-
-	res, err := tx.ExecContext(ctx,
-		`INSERT INTO work_item_outputs
-		 (work_item_id, attempt_no, content_sha, output_json, produced_at)
-		 VALUES (?, ?, ?, ?, ?)`,
-		workItemID, nextAttempt, sha, string(canonBytes), produced,
+	var (
+		nextAttempt int
+		id          int64
 	)
-	if err != nil {
-		return OutputJournalEntry{}, fmt.Errorf("state: insert journal row for %s: %w", workItemID, err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return OutputJournalEntry{}, fmt.Errorf("state: journal last id: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return OutputJournalEntry{}, fmt.Errorf("state: commit journal: %w", err)
+	if err := d.WithTx(ctx, func(tx *sql.Tx) error {
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COALESCE(MAX(attempt_no), 0) + 1
+			 FROM work_item_outputs WHERE work_item_id = ?`, workItemID,
+		).Scan(&nextAttempt); err != nil {
+			return fmt.Errorf("state: next attempt_no for %s: %w", workItemID, err)
+		}
+		res, err := tx.ExecContext(ctx,
+			`INSERT INTO work_item_outputs
+			 (work_item_id, attempt_no, content_sha, output_json, produced_at)
+			 VALUES (?, ?, ?, ?, ?)`,
+			workItemID, nextAttempt, sha, string(canonBytes), produced,
+		)
+		if err != nil {
+			return fmt.Errorf("state: insert journal row for %s: %w", workItemID, err)
+		}
+		id, err = res.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("state: journal last id: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return OutputJournalEntry{}, err
 	}
 	return OutputJournalEntry{
 		ID:         id,

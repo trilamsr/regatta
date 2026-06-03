@@ -7,6 +7,25 @@ import (
 	"testing"
 )
 
+// TestWithTx_BeginTxFails_ReturnsError pins begin-failure path: closed DB → wrapped error, fn never invoked.
+func TestWithTx_BeginTxFails_ReturnsError(t *testing.T) {
+	db := newTestDB(t)
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	called := false
+	err := db.WithTx(context.Background(), func(*sql.Tx) error {
+		called = true
+		return nil
+	})
+	if err == nil {
+		t.Fatalf("WithTx on closed db: want error, got nil")
+	}
+	if called {
+		t.Fatalf("fn must not run when BeginTx fails")
+	}
+}
+
 // TestWithTx_CommitsOnNilError pins the happy-path commit contract.
 func TestWithTx_CommitsOnNilError(t *testing.T) {
 	db := newTestDB(t)

@@ -27,48 +27,44 @@ func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemS
 	}
 	now := at.UTC().Unix()
 
-	tx, err := d.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("state: begin upsert tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	var existingCreated int64
-	row := tx.QueryRowContext(ctx, `SELECT created_at FROM work_items WHERE id = ?`, item.ID)
-	switch err := row.Scan(&existingCreated); {
-	case err == nil:
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE work_items SET
-				kind = ?, title = ?, lane = ?, status = ?,
-				parent_program_id = ?, depends_on_features = ?,
-				acceptance_json = ?, source = ?, last_seen_at = ?,
-				updated_at = ?
-			WHERE id = ?`,
-			string(item.Kind), item.Title, item.Lane, string(item.Status),
-			nullable(item.ParentProgramID), depsJSON, accept,
-			string(source), now, now, item.ID,
-		); err != nil {
-			return fmt.Errorf("state: update work_item: %w", err)
+	return d.WithTx(ctx, func(tx *sql.Tx) error {
+		var existingCreated int64
+		row := tx.QueryRowContext(ctx, `SELECT created_at FROM work_items WHERE id = ?`, item.ID)
+		switch err := row.Scan(&existingCreated); {
+		case err == nil:
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE work_items SET
+					kind = ?, title = ?, lane = ?, status = ?,
+					parent_program_id = ?, depends_on_features = ?,
+					acceptance_json = ?, source = ?, last_seen_at = ?,
+					updated_at = ?
+				WHERE id = ?`,
+				string(item.Kind), item.Title, item.Lane, string(item.Status),
+				nullable(item.ParentProgramID), depsJSON, accept,
+				string(source), now, now, item.ID,
+			); err != nil {
+				return fmt.Errorf("state: update work_item: %w", err)
+			}
+		case errors.Is(err, sql.ErrNoRows):
+			var traceID string
+			PersistTraceIDFromContext(ctx, &traceID)
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO work_items (
+					id, kind, title, lane, status,
+					parent_program_id, depends_on_features, acceptance_json,
+					source, last_seen_at, created_at, updated_at, trace_id
+				) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				item.ID, string(item.Kind), item.Title, item.Lane, string(item.Status),
+				nullable(item.ParentProgramID), depsJSON, accept,
+				string(source), now, now, now, traceID,
+			); err != nil {
+				return fmt.Errorf("state: insert work_item: %w", err)
+			}
+		default:
+			return fmt.Errorf("state: probe existing work_item: %w", err)
 		}
-	case errors.Is(err, sql.ErrNoRows):
-		var traceID string
-		PersistTraceIDFromContext(ctx, &traceID)
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO work_items (
-				id, kind, title, lane, status,
-				parent_program_id, depends_on_features, acceptance_json,
-				source, last_seen_at, created_at, updated_at, trace_id
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			item.ID, string(item.Kind), item.Title, item.Lane, string(item.Status),
-			nullable(item.ParentProgramID), depsJSON, accept,
-			string(source), now, now, now, traceID,
-		); err != nil {
-			return fmt.Errorf("state: insert work_item: %w", err)
-		}
-	default:
-		return fmt.Errorf("state: probe existing work_item: %w", err)
-	}
-	return tx.Commit()
+		return nil
+	})
 }
 
 // TombstoneBySource archives rows whose source matches and
