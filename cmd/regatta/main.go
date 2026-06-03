@@ -68,6 +68,7 @@ var subcommands = []subcommand{
 	{subcmdResume, runResume},
 	{subcmdSelfImprove, runSelfImprove},
 	{subcmdMerge, runMerge},
+	{subcmdReview, runReview},
 }
 
 func main() {
@@ -119,6 +120,8 @@ func usage(w io.Writer) {
   regatta resume [--actor <id>] [--db <path>]         Lift the W5 cost-cap throttle until the next day rollover (operator override audit event)
   regatta self-improve scan [--since=7d] [--apply]    Run rule scan over substrate; --apply files GH issues (default dry-run)
   regatta self-improve rules                          List registered self-improvement rules
+  regatta review status [--since=7d] [--limit=50]     List recent L4 verdicts from substrate (audit view)
+  regatta review setup-codeowners [--repo-root D]     Idempotent CODEOWNERS catch-all wiring reviewer-bot on every PR
   regatta version                                     Print build info
   regatta help                                        This message
 

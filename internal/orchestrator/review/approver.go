@@ -8,6 +8,8 @@ package review
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,17 +30,26 @@ const defaultGHBase = "https://api.github.com"
 // stays narrower than schemas.GateResult so callers can synthesize
 // review verdicts from gates other than L4 (the spec defers that to
 // Phase X but the seam is here).
+//
+// Sig + KeyID carry an HMAC over the canonical (Outcome|PR|HeadSHA|Model|Reason)
+// tuple minted at scoring time; Reconcile re-verifies before POST so
+// a verdict mutated between L4 and the GH call fails closed (#658,
+// mirrors the #550 tamper-evident pattern).
 type Verdict struct {
 	Outcome  schemas.Verdict
 	PRNumber int
 	HeadSHA  string
 	Model    string
 	Reason   string
+	Sig      []byte
+	KeyID    string
 }
 
 // Config wires the Approver's deps. Required: Owner, Repo,
 // ReviewerToken, ReviewerLogin, AuthorBotLogin. BaseURL defaults to
-// defaultGHBase; HTTPClient defaults to http.DefaultClient.
+// defaultGHBase; HTTPClient defaults to http.DefaultClient. Keyring
+// is optional — when nil the verdict-HMAC verify (#658) skips with a
+// WARN log; populated keyrings fail closed on signature mismatch.
 type Config struct {
 	BaseURL        string
 	Owner          string
@@ -49,6 +60,7 @@ type Config struct {
 	HTTPClient     *http.Client
 	Logger         *slog.Logger
 	Meter          metric.Meter
+	Keyring        map[string][]byte
 }
 
 // Approver posts review verdicts under the reviewer-bot identity.
@@ -63,6 +75,7 @@ type Approver struct {
 	http           *http.Client
 	log            *slog.Logger
 	metrics        *instruments
+	keyring        map[string][]byte
 }
 
 // instruments holds the OTEL counters; one struct so the approver
@@ -72,6 +85,7 @@ type instruments struct {
 	postsAttempted metric.Int64Counter
 	postsFailed    metric.Int64Counter
 	dismissals     metric.Int64Counter
+	hmacMismatches metric.Int64Counter
 }
 
 // scopeName is the OTEL meter scope; matches the gate-side `regatta.l4.*` shape.
@@ -115,6 +129,7 @@ func New(cfg Config) (*Approver, error) {
 		http:           httpc,
 		log:            log,
 		metrics:        newInstruments(meter),
+		keyring:        cfg.Keyring,
 	}, nil
 }
 
@@ -122,7 +137,8 @@ func newInstruments(m metric.Meter) *instruments {
 	att, _ := m.Int64Counter("regatta.review.posts.attempted")
 	fail, _ := m.Int64Counter("regatta.review.posts.failed")
 	dis, _ := m.Int64Counter("regatta.review.dismissals")
-	return &instruments{postsAttempted: att, postsFailed: fail, dismissals: dis}
+	mm, _ := m.Int64Counter("regatta.review.hmac_mismatches")
+	return &instruments{postsAttempted: att, postsFailed: fail, dismissals: dis, hmacMismatches: mm}
 }
 
 // prResp is the narrow PR shape the author-scope guard reads; live GH
@@ -151,7 +167,16 @@ type reviewResp struct {
 // bot identity, find any prior approving review by the reviewer bot,
 // dismiss + post per verdict transition. Soft-success on 404 (PR
 // closed) per spec §7 R12.
+//
+// Verdict-HMAC verify gate (#658): when the Approver was constructed
+// with a non-nil keyring, the verdict's signature MUST verify before
+// any GH call. Fail-closed: mismatch returns ErrVerdictHMACMismatch
+// + bumps regatta.review.hmac_mismatches WITHOUT posting. nil keyring
+// preserves legacy callers (W7 ships default-off pending key-rotation).
 func (a *Approver) Reconcile(ctx context.Context, v Verdict) error {
+	if err := a.verifyVerdict(ctx, v); err != nil {
+		return err
+	}
 	pr, status, err := a.getPR(ctx, v.PRNumber)
 	if err != nil {
 		return err
@@ -249,37 +274,76 @@ func (a *Approver) getPR(ctx context.Context, n int) (prResp, int, error) {
 	return pr, resp.StatusCode, nil
 }
 
+// maxReviewPages bounds the Link-header walk in lookupApprovingReview.
+// 500 reviews / 100 per page = 5; the cap protects against pathological
+// PRs (CI bots that spam reviews) AND a runaway Link-header loop.
+const maxReviewPages = 5
+
 // lookupApprovingReview returns the most recent APPROVED review by the
-// reviewer-bot. Single-page (GH default 30) — pagination defers to
-// Phase X; PRs with >30 reviews are vanishingly rare in the auto-loop.
+// reviewer-bot. Walks Link-header pagination up to maxReviewPages (#627)
+// so PRs with >30 reviews (the GH default page size) no longer miss the
+// reviewer-bot's approval. Returns the last-seen approval across pages.
 func (a *Approver) lookupApprovingReview(ctx context.Context, n int) (*reviewResp, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/reviews", a.baseURL, a.owner, a.repo, n)
+	url := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/reviews?per_page=100", a.baseURL, a.owner, a.repo, n)
+	var found *reviewResp
+	for page := 0; page < maxReviewPages && url != ""; page++ {
+		rows, next, err := a.fetchReviewPage(ctx, url)
+		if err != nil {
+			return nil, err
+		}
+		for i := len(rows) - 1; i >= 0; i-- {
+			r := rows[i]
+			if r.User.Login == a.reviewerLogin && r.State == "APPROVED" {
+				rr := r
+				found = &rr
+			}
+		}
+		url = next
+	}
+	return found, nil
+}
+
+// fetchReviewPage requests one /reviews page and parses the Link header
+// for the next-page URL. Returns ("", nil) when no rel="next" exists —
+// that is the natural pagination terminator.
+func (a *Approver) fetchReviewPage(ctx context.Context, url string) ([]reviewResp, string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	a.authorize(req)
 	resp, err := a.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("review: list reviews: %w", err)
+		return nil, "", fmt.Errorf("review: list reviews: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("review: list reviews: %d", resp.StatusCode)
+		return nil, "", fmt.Errorf("review: list reviews: %d", resp.StatusCode)
 	}
 	var rows []reviewResp
 	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil {
-		return nil, fmt.Errorf("review: decode reviews: %w", err)
+		return nil, "", fmt.Errorf("review: decode reviews: %w", err)
 	}
-	// Walk in reverse — GitHub returns chronological; last-write-wins
-	// matches what a human reviewer would see in the UI.
-	for i := len(rows) - 1; i >= 0; i-- {
-		r := rows[i]
-		if r.User.Login == a.reviewerLogin && r.State == "APPROVED" {
-			return &r, nil
+	return rows, parseNextLink(resp.Header.Get("Link")), nil
+}
+
+// parseNextLink extracts the rel="next" URL from a GH Link header.
+// Returns "" when the header is missing or has no next link — the
+// natural terminator for the pagination loop.
+func parseNextLink(h string) string {
+	for _, part := range strings.Split(h, ",") {
+		seg := strings.TrimSpace(part)
+		if !strings.HasSuffix(seg, `rel="next"`) {
+			continue
 		}
+		lt := strings.IndexByte(seg, '<')
+		gt := strings.IndexByte(seg, '>')
+		if lt < 0 || gt <= lt {
+			continue
+		}
+		return seg[lt+1 : gt]
 	}
-	return nil, nil
+	return ""
 }
 
 // dismiss issues PUT /reviews/{id}/dismissals. Returns the GH error
@@ -362,6 +426,89 @@ func (a *Approver) authorize(req *http.Request) {
 	req.Header.Set("Authorization", "Bearer "+a.token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+}
+
+// ErrVerdictHMACMismatch is returned by Reconcile when the verdict's
+// embedded HMAC fails to verify against the configured keyring. Distinct
+// sentinel so callers (the substrate reconciler, future audit-verify
+// CLI) can route mismatches to alerting without string-matching.
+var ErrVerdictHMACMismatch = fmt.Errorf("review: verdict HMAC mismatch")
+
+// verdictCanonicalBody returns the byte-stable canonical encoding of
+// the Verdict tuple HMAC'd by SignVerdict. Pipe-delimited fixed-order
+// fields keep the format trivially auditable; mirrors approvaltoken
+// canonicalisation in spirit but specialises to the Verdict shape.
+func verdictCanonicalBody(v Verdict) []byte {
+	return []byte(fmt.Sprintf("v1|%s|%d|%s|%s|%s",
+		v.Outcome, v.PRNumber, v.HeadSHA, v.Model, v.Reason))
+}
+
+// SignVerdict mints the HMAC over a Verdict using the named keyring
+// entry. Returns the verdict mutated in place (Sig + KeyID populated)
+// — the L4 scorer calls this immediately after deciding so the bytes
+// the reviewer eventually POSTs are pinned to the scorer's view.
+func SignVerdict(keyring map[string][]byte, keyID string, v Verdict) (Verdict, error) {
+	if keyring == nil {
+		return v, fmt.Errorf("review: sign: keyring nil")
+	}
+	key, ok := keyring[keyID]
+	if !ok {
+		return v, fmt.Errorf("review: sign: unknown key_id %q", keyID)
+	}
+	mac, err := schemas.MacSum(key, keyID, verdictCanonicalBody(v))
+	if err != nil {
+		return v, fmt.Errorf("review: sign: %w", err)
+	}
+	v.Sig = mac
+	v.KeyID = keyID
+	return v, nil
+}
+
+// verifyVerdict re-computes the HMAC over the verdict and compares
+// against v.Sig. nil-keyring callers (legacy + default-off W7) bypass
+// with a single WARN log per Reconcile so the boot scrip's "not yet
+// configured" mode stays observable without lying about coverage.
+func (a *Approver) verifyVerdict(ctx context.Context, v Verdict) error {
+	// Empty keyring is treated identically to nil: an operator who has
+	// not yet rotated keys into place should land in WARN-only mode,
+	// not hit a hard fail on every verdict.
+	if len(a.keyring) == 0 {
+		a.log.Warn("review.hmac_unverified", "pr", v.PRNumber,
+			"reason", "approver constructed without keyring; see #658")
+		return nil
+	}
+	if len(v.Sig) == 0 || v.KeyID == "" {
+		a.bumpMismatch(ctx, v, "missing_sig")
+		return fmt.Errorf("%w: pr=%d missing sig/key_id", ErrVerdictHMACMismatch, v.PRNumber)
+	}
+	key, ok := a.keyring[v.KeyID]
+	if !ok {
+		a.bumpMismatch(ctx, v, "unknown_kid")
+		return fmt.Errorf("%w: pr=%d unknown key_id %q", ErrVerdictHMACMismatch, v.PRNumber, v.KeyID)
+	}
+	want, err := schemas.MacSum(key, v.KeyID, verdictCanonicalBody(v))
+	if err != nil {
+		return fmt.Errorf("review: verify macsum: %w", err)
+	}
+	if !hmac.Equal(want, v.Sig) {
+		a.bumpMismatch(ctx, v, "mac_mismatch")
+		return fmt.Errorf("%w: pr=%d sig=%s", ErrVerdictHMACMismatch, v.PRNumber, hex.EncodeToString(v.Sig))
+	}
+	return nil
+}
+
+// bumpMismatch records the HMAC-mismatch metric + a structured log line
+// so an operator inspecting `regatta review status` sees the row turn
+// red without inferring from absence of a successful POST.
+func (a *Approver) bumpMismatch(ctx context.Context, v Verdict, reason string) {
+	if a.metrics.hmacMismatches != nil {
+		a.metrics.hmacMismatches.Add(ctx, 1)
+	}
+	a.log.Error("review.verdict_hmac_mismatch",
+		"pr", v.PRNumber,
+		"key_id", v.KeyID,
+		"reason", reason,
+	)
 }
 
 // pathRE matches Go-source-file-shaped tokens; conservative — only

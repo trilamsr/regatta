@@ -405,7 +405,17 @@ func runServe(args []string) int {
 		slogger.Info("review.approver_ready",
 			"reviewer", os.Getenv("GH_USER_REVIEWER"),
 			"author_bot", os.Getenv("GH_USER_BOT"))
-		_ = rev // verdict-subscribe wired when the substrate event stream lands; see spec §12 followup.
+		// #623: spin the in-process Reconciler. L4-side producers Enqueue
+		// signed Verdicts; Run serializes the Approver's GH calls. The
+		// substrate-bound subscriber is a follow-on once the gate_verdict
+		// payload extends to carry PR + HeadSHA.
+		rec, err := review.NewReconciler(review.ReconcilerConfig{Approver: rev, Logger: slogger})
+		if err != nil {
+			logger.Printf("review reconciler: %v", err)
+			return 2
+		}
+		go rec.Run(ctx)
+		_ = rec // verdict-producer plumbing lands when L4 emits PR-bound verdicts; see #623.
 	}
 
 	if err := o.Recover(ctx); err != nil {
@@ -993,6 +1003,9 @@ func buildReviewApprover(logger *slog.Logger) (*review.Approver, error) {
 	if !ok || owner == "" || name == "" {
 		return nil, fmt.Errorf("REGATTA_REVIEW_REPO=%q: want owner/name", repo)
 	}
+	// #658: reuse the brief HMAC keyring for verdict-sig verify. Empty
+	// keyring leaves the Approver in legacy WARN-only mode so the gate
+	// stays default-off until operators have rotated keys into place.
 	return review.New(review.Config{
 		Owner:          owner,
 		Repo:           name,
@@ -1000,6 +1013,7 @@ func buildReviewApprover(logger *slog.Logger) (*review.Approver, error) {
 		ReviewerLogin:  reviewer,
 		AuthorBotLogin: authorBot,
 		Logger:         logger,
+		Keyring:        loadBriefKeyring(),
 	})
 }
 
