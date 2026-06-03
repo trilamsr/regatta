@@ -49,14 +49,13 @@ curl -s localhost:29317/metrics | grep regatta_
 ## 2. Sample `/metrics` scrape (Prometheus exporter)
 
 The OTel Prometheus exporter renders dotted meter names with
-underscores and appends a unit suffix (`_total` on counters,
-`_bucket`/`_count`/`_sum` on histograms). This produces a deliberate
-double-render for metrics whose in-code name already carries a unit
-suffix — e.g. `regatta.scheduler.tick.latency_ms` declared with
-`unit="ms"` renders as `regatta_scheduler_tick_latency_ms_milliseconds`
-on the wire. The spec (§2.1) accepts this wire string verbatim because
-every dashboard JSON and Sloth SLI in `dashboards/prometheus/rules/`
-already references the suffixed name.
+underscores and appends `_total` on counters or
+`_bucket`/`_count`/`_sum` on histograms. Today the in-code instruments
+are constructed WITHOUT `metric.WithUnit(...)`, so the unit-suffix
+double-render path is dormant — `regatta.scheduler.tick.latency_ms`
+renders as `regatta_scheduler_tick_latency_ms_bucket` (single suffix).
+Every dashboard JSON and Sloth SLI in `dashboards/prometheus/rules/`
+references this single-suffix shape verbatim.
 
 Captured by A-T0a against `OTEL_METRICS_PROMETHEUS_PORT=29317` with
 one `regatta.cost.usd` counter increment:
@@ -100,7 +99,7 @@ Upload JSON. Pick a Prometheus datasource when prompted. The OTLP-side
 equivalent is to point the OTel Collector's Prometheus exporter at the
 same Grafana datasource and use the same JSONs unchanged.
 
-Automated import path: `make provision-dashboards` posts each JSON
+Automated import path: `make provision-dashboards` (future target — see #523) posts each JSON
 under `docs/operator/dashboards/` to the Grafana HTTP API
 (`POST /api/dashboards/db`). Two env vars:
 
@@ -120,7 +119,7 @@ metrics).
 Verify by running:
 
 ```sh
-GRAFANA_URL=http://localhost:3000 GRAFANA_API_TOKEN=... make provision-dashboards
+GRAFANA_URL=http://localhost:3000 GRAFANA_API_TOKEN=... make provision-dashboards  # NOT YET WIRED — manual import for now; see #523
 ```
 
 ## 4. SLOs and alert runbooks
@@ -131,15 +130,16 @@ YAML via Sloth to Prometheus recording + alert rules.
 
 | SLO | Objective | Window | Error budget | SLI | Runbook |
 |---|---|---|---|---|---|
-| SLO-1 — Scheduler tick latency | p95 ≤ 5 s | 7d rolling | 5% of ticks | `histogram_quantile(0.95, rate(regatta_scheduler_tick_latency_ms_bucket[5m])) <= 5000` | `docs/operator/runbooks/scheduler-tick.md` (lands with A-T5 PR #503) |
-| SLO-2 — L4 gate latency | p95 ≤ 30 s | 7d rolling | 1% of L4 invocations | `histogram_quantile(0.95, rate(regatta_l4_latency_ms_bucket[5m]))` | `docs/operator/runbooks/l4-latency.md` (lands with A-T5 PR #503) |
+| SLO-1 — Scheduler tick latency | p95 ≤ 5 s | 7d rolling | 5% of ticks | `histogram_quantile(0.95, rate(regatta_scheduler_tick_latency_ms_bucket[5m])) <= 5000` | [scheduler-tick runbook](runbooks/scheduler-tick.md) |
+| SLO-2 — L4 gate latency | p95 ≤ 30 s | 7d rolling | 1% of L4 invocations | `histogram_quantile(0.95, rate(regatta_l4_latency_ms_bucket[5m]))` | [l4-latency runbook](runbooks/l4-latency.md) |
 
-**Multi-burn-rate alerting.** Both SLOs page critical when the error
-budget burn-rate exceeds 14.4× over a 1-hour window (fast burn) OR 6×
-over a 6-hour window (slow burn). This follows the Google SRE
-workbook's two-window pattern: the fast window catches outages within
-an hour; the slow window catches partial-degradation patterns that
-would otherwise drain the budget over a day before paging.
+**Multi-burn-rate alerting.** The compiled Sloth output at
+`dashboards/prometheus/rules/{scheduler-tick,l4-latency}.yaml`
+generates 4 burn-rate tiers per `tools/sloth/windows/7d.yaml`:
+13.44× (1h window, page), 3.5× (6h window, page), 1.4× (1d window,
+ticket), 0.98× (3d window, ticket). The two-page-tier pattern catches
+fast outages within an hour and partial-degradation patterns that
+would otherwise drain the budget over a day.
 
 **Sloth version pin.** Spec §9 R3: Sloth major bumps rewrite burn-rate
 window arithmetic, which would change the alert semantics silently. The
