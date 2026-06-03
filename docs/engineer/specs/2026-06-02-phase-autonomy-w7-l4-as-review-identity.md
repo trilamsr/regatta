@@ -1,3 +1,9 @@
+---
+title: "PHASE-AUTONOMY W7 — L4-as-review identity"
+status: active
+summary: "PHASE-AUTONOMY W7: L4 gate verdict POSTs a GitHub PR review under a dedicated `regatta-reviewer-bot` service-account identity, closing the last operator-in-the-loop click on the autonomous-merge path. Two-identity model (author bot != reviewer bot) to avoid GH's self-approval 422; re-review on `agent_pr_head_changed` with prior-approval dismissal; verdict-body redaction; setup-check refuses catch-all CODEOWNERS. Depends on W2 (auto-merge) + W6 (credential fetch)."
+---
+
 # PHASE-AUTONOMY W7 — PR-merge L4-as-review identity
 
 Locked design. Source: [`../briefs/2026-06-02-phase-autonomy-amendment.md`](../briefs/2026-06-02-phase-autonomy-amendment.md) §11 W7. Item: [`../../../.regatta/items/phase-autonomy-w7-pr-merge-l4-as-review-identity.md`](../../../.regatta/items/phase-autonomy-w7-pr-merge-l4-as-review-identity.md).

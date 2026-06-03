@@ -1,3 +1,9 @@
+---
+title: "MVP-3 W7 operator web UI v2"
+status: active
+summary: "W7 operator web UI v2: server-rendered approval flow + read-only DAG + cost panel; Go embed.FS + htmx + Tailwind CDN. 14 tasks across 4 waves (W7.0 listener prereq + 3 build waves). Authorizer interface seam designed pre-W8."
+---
+
 # MVP-3 W7 — Operator Web UI (design spec, v2)
 
 _Author: design subagent, 2026-06-01. Scope umbrella: [#183](https://github.com/trilamsr/regatta/issues/183). Source-of-truth: `docs/superpowers/briefs/2026-05-31-mvp-3-next-level.md` §4 W7 + §6 red-team #2 (web UI tar-pit risk). **v2 rev** addresses all 7 Risk + 6 Important findings from `docs/superpowers/reviews/2026-06-01-w7-operator-ui-review.md`._

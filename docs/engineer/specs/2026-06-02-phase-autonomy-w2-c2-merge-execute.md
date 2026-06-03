@@ -1,3 +1,9 @@
+---
+title: "PHASE AUTONOMY W2 c2 — merge-execute"
+status: active
+summary: "PHASE AUTONOMY §11 W2 c2: wire `gh pr merge --squash --auto --delete-branch` between c0's atomic `PrepareMerge` and the `merge_completed` event. New `merge.Coordinator.ExecuteMerge` + `merge/executor` package + dedicated `mergeWorker` goroutine + `merge_executed` audit event + `regatta merge status` CLI. 11+ risks pre-addressed; no schema migration (rides c0's 0013 unique-event index)."
+---
+
 # PHASE AUTONOMY §11 W2 c2 — merge-execute (`gh pr merge`) wired on top of c0
 
 Status: ready for review

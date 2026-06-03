@@ -271,3 +271,24 @@ flush()
   fi
   echo "doc-check: test-godoc length gate clean (vs $base_ref)"
 fi
+
+# Specs-index freshness gate.
+# Drift pattern this gate closes: docs/engineer/specs/README.md is now
+# auto-generated from each spec's frontmatter (title/status/summary).
+# A contributor who edits or adds a spec but forgets `make specs-index`
+# leaves the index stale. The cascade-rebase storm this index used to
+# cause (8+ DIRTY PRs in one wave, 2026-06-02) is gone only as long as
+# the generated artifact stays in sync with its inputs.
+#
+# Skip when the generator is missing (older trees) or when the specs dir
+# isn't present (orphan checkouts); otherwise --check fails closed.
+specs_gen="scripts/gen-specs-readme.sh"
+if [ -f "$specs_gen" ] && [ -d "docs/engineer/specs" ]; then
+  if ! bash "$specs_gen" --check >/dev/null 2>&1; then
+    echo "doc-check: docs/engineer/specs/README.md is stale."
+    echo "Run: make specs-index"
+    bash "$specs_gen" --check || true
+    exit 1
+  fi
+  echo "doc-check: specs-index freshness gate clean"
+fi

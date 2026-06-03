@@ -1,3 +1,9 @@
+---
+title: "Orchestrator PR watcher"
+status: active
+summary: "Orchestrator PR-watch wedge: drives `running → pr_open` by polling GitHub head SHA via `gh pr list --head regatta/agent-{id}`. New `internal/orchestrator/prwatch` package; tick-driven Sweep; emits `agent_pr_opened` + `agent_pr_head_changed` substrate events so gate runner (#33) and rejection router (#16) consume via the existing event seam. Supersedes issue #15."
+---
+
 # Orchestrator PR Watcher — Design Spec
 
 Status: ready for review

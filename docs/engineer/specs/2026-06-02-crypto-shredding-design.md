@@ -1,3 +1,9 @@
+---
+title: "Crypto-shredding for PII"
+status: active
+summary: "GDPR/CCPA crypto-shredding for PII in the immutable signed event log. Envelope encryption (AES-256-GCM default, ChaCha20-Poly1305 fallback); per-subject DEK wrapped under operator-managed KEK; erasure = destroy wrapped DEK (O(1) UPDATE). Chain + HMAC signatures stay valid because ciphertext bytes are stable. New `internal/crypto/{envelope,kek,dekcache}/` packages + `data_keys` table + `regatta shred` / `regatta kek rotate` CLIs. Addresses #548; ships ahead of first regulated/EU customer LOI (MVR-2 trigger)."
+---
+
 # Crypto-shredding for PII in immutable signed event log — design spec
 
 Status: ready for review
