@@ -38,6 +38,34 @@ NO SIGNATURES
 MEMORY CITES
 - Cite `<MEMORY-RULES>` in PR body footer (path-relative, e.g. `memory/feedback_root_cause`). Reviewer checks citations resolve.
 
+CI-CHECK OUTPUT COMPRESSION
+- Report `make ci-check` via grep-then-tail (`feedback_subagent_cicheck_compress`):
+  ```
+  make ci-check 2>&1 | tee /tmp/cicheck.log | grep -E "^(FAIL|ok|---|Error|error:|PASS)" | tail -40
+  echo "exit=$?"
+  ```
+  If grep empty AND exit≠0 → fallback `tail -50 /tmp/cicheck.log`. Main thread re-runs full (~10% lie rate per `feedback_subagent_verification`).
+
+SHARED-PRIMITIVE OWNERSHIP
+- Before edit, scan composition roots (`cmd/regatta/serve.go`, `internal/orchestrator/state/machine.go`, `Makefile`, `docs/engineer/specs/README.md`) for sibling-touch. Defer to named OWNER if assigned. (`feedback_parallel_safety`, `feedback_conflict_anticipation`)
+
+WINDOWS PATH TESTS
+- When asserting paths against error messages or production output, canonicalize BOTH sides the same way production code does — OR platform-branch the test inputs. 8.3 short-names + `/etc`-literal paths break Windows CI silently post-merge. (`feedback_windows_path_tests`)
+
+COMMENT BUDGET (recurring offender)
+- Drop single-line WHAT-narration. Default to no comment. Long-term-benefit gate: keep only if removing leaves future reader confused about WHY. (`feedback_comments_discipline`, `feedback_comment_budget_enforcement`)
+- Exported godoc: 1-line WHY-form opening with symbol name (`feedback_comments_lint_reconcile`). `// Foo is the bound enforced by gate X.` not `// Foo returns the bound.`
+
+REVIEWER-SKIP CONDITIONS (proportional)
+- Auto-skip when `git diff --name-only origin/main...HEAD | grep -vE '^(docs/|\.github/|scripts/|.*\.md$)'` is empty (docs/CI/scripts-only).
+- Skip on: dep bumps with CI green + <20 LoC + no API change; body-edit-only; trivial doc strips. (`feedback_review_proportional`)
+
+LOAD-BEARING LEFTOVERS → ISSUES
+- Any finding NOT fixed inline → file tracking issue + cite # in PR body. Never leave load-bearing items in PR-body prose only. (`feedback_unaddressed_load_bearing`, `feedback_agent_load_bearing_to_issues`)
+
+INDEPENDENT REVIEW MEASURES vs A+ RUBRIC
+- Solo implementers ship at B-tier by default. Spawn reviewer to pull up to A. (`feedback_agent_pr_review`)
+
 ## Per-dispatch payload
 - Task: `<TASK-ID>`
 - Spec: `<SPEC-PATH>` (canonical; deviations require design-subagent re-spawn per `feedback_spec_pattern_authority`)
