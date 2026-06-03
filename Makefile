@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full crash-recovery-property-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups mutation-test mutation-test-install agent-status agent-status-test ci-flake-report ci-flake-report-test slo-compile slo-compile-test
+.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full crash-recovery-property-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups mutation-test mutation-test-install agent-status agent-status-test ci-flake-report ci-flake-report-test slo-compile slo-compile-test build
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -77,6 +77,13 @@ slo-compile:  ## Compile every slo/*.yaml -> dashboards/prometheus/rules/ via pi
 
 slo-compile-test:  ## Assert pin file exists, every slo/*.yaml has a rendered rule, and re-compile is byte-deterministic.
 	bash scripts/slo-compile_test.sh
+
+build:  ## Build cmd/regatta with engine-version + dirty flag pinned from git (#549). Replay-skew detection relies on this binary having a real SHA stamp.
+	@SHA=$$(git rev-parse HEAD 2>/dev/null || echo unknown); \
+	DIRTY=$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo true || echo false); \
+	go build -buildvcs=true \
+		-ldflags "-X github.com/trilamsr/regatta/internal/program.compileEngineVersion=$$SHA -X github.com/trilamsr/regatta/internal/program.compileEngineDirty=$$DIRTY" \
+		-o ./bin/regatta ./cmd/regatta
 
 cover:  ## Print cross-package coverage; useful before declaring "done".
 	go test -coverpkg=./... -coverprofile=/tmp/regatta.cover ./...

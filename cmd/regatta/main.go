@@ -10,6 +10,8 @@
 //	regatta serve                   Run the orchestrator daemon (skeleton).
 //	regatta program plan            One-shot decompose a parent WorkItem (kind: program) into a signed ProgramBrief.
 //	regatta program verify-handoff  Structurally validate (+ optionally verify HMAC of) a handoff.json.
+//	regatta program show            Print brief metadata (incl engine_version + dirty flag) as JSON.
+//	regatta program replay-skew-check  Compare brief.engine_version against current binary; --strict refuses on skew.
 //	regatta digest                  Generate docs/digests/<date>.md from Prom metrics + degraded placeholders.
 //	regatta version                 Print build info.
 //
@@ -90,6 +92,8 @@ func usage(w io.Writer) {
   regatta serve                                       Run the orchestrator daemon (skeleton)
   regatta program plan <work-item.json>               One-shot decompose into signed ProgramBrief
   regatta program verify-handoff <path>               Validate a handoff.json (schema + optional HMAC)
+  regatta program show <brief.json>                   Print brief metadata (engine_version + dirty + counts) as JSON
+  regatta program replay-skew-check [--strict] <p>    Compare brief engine_version to current binary (WARN | STRICT)
   regatta approval decide --token T --decision D ...  Record an approval-gate decision from a signed token
   regatta approval list [--mine ID] [--format F]      List pending approvals (table | json)
   regatta init                                        Scaffold regatta.yaml + run L0 demo

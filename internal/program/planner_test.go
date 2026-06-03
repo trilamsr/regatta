@@ -187,6 +187,74 @@ func TestRun_NoKey(t *testing.T) {
 	}
 }
 
+// TestProgram_RecordsEngineVersion asserts Run() stamps engine identity onto the brief for audit-pipeline replay.
+func TestProgram_RecordsEngineVersion(t *testing.T) {
+	plan, err := Run(context.Background(), PlannerOptions{
+		Client:    &stubClient{plan: goodModelPlan()},
+		HMACKey:   []byte("planner-test-key-32-bytes-padding"),
+		HMACKeyID: "k1",
+		engineInfoFn: func() EngineRef {
+			return EngineRef{Version: "abc123def456abc123def456abc123def456abc1", Dirty: false}
+		},
+	}, sampleParent())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if plan.EngineVersion != "abc123def456abc123def456abc123def456abc1" {
+		t.Fatalf("engine_version: got %q want SHA", plan.EngineVersion)
+	}
+	if plan.EngineBuildDirty {
+		t.Fatalf("engine_build_dirty: got true want false")
+	}
+}
+
+// TestProgram_EngineDirty_BoolPersisted asserts dirty bool round-trips through Sign() so audit cannot false-green a dirty build.
+func TestProgram_EngineDirty_BoolPersisted(t *testing.T) {
+	plan, err := Run(context.Background(), PlannerOptions{
+		Client:    &stubClient{plan: goodModelPlan()},
+		HMACKey:   []byte("planner-test-key-32-bytes-padding"),
+		HMACKeyID: "k1",
+		engineInfoFn: func() EngineRef {
+			return EngineRef{Version: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", Dirty: true}
+		},
+	}, sampleParent())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !plan.EngineBuildDirty {
+		t.Fatalf("engine_build_dirty: got false want true")
+	}
+	if ref := plan.EngineRef(); ref.Version == "" || !ref.Dirty {
+		t.Fatalf("EngineRef helper lost data: %+v", ref)
+	}
+	// Signature verification must succeed — engine fields are inside
+	// the signed payload so a tampered SHA fails verify.
+	keyring := map[string][]byte{"k1": []byte("planner-test-key-32-bytes-padding")}
+	if err := plan.VerifySignature(keyring); err != nil {
+		t.Fatalf("verify with engine fields: %v", err)
+	}
+}
+
+// TestProgram_EngineVersion_UnsignedTamperRejected proves engine fields live inside the signed payload, not appended.
+func TestProgram_EngineVersion_UnsignedTamperRejected(t *testing.T) {
+	plan, err := Run(context.Background(), PlannerOptions{
+		Client:    &stubClient{plan: goodModelPlan()},
+		HMACKey:   []byte("planner-test-key-32-bytes-padding"),
+		HMACKeyID: "k1",
+		engineInfoFn: func() EngineRef {
+			return EngineRef{Version: "abc123def456abc123def456abc123def456abc1"}
+		},
+	}, sampleParent())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	keyring := map[string][]byte{"k1": []byte("planner-test-key-32-bytes-padding")}
+	plan.EngineVersion = "tamperedshaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := plan.VerifySignature(keyring); err == nil {
+		t.Fatal("expected signature verify to fail after engine_version tamper")
+	}
+}
+
 func TestSignedPlanVerifies(t *testing.T) {
 	plan, err := Run(context.Background(), PlannerOptions{
 		Client:    &stubClient{plan: goodModelPlan()},

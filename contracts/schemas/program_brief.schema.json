@@ -81,6 +81,14 @@
       }
     },
     "produced_at": { "type": "string", "format": "date-time" },
+    "engine_version": {
+      "type": "string",
+      "description": "Git-SHA of the regatta binary that produced this brief (#549). The replay-skew check refuses or warns when the current binary's SHA does not match this one. The literal 'unknown' is allowed for buildvcs=false builds and is itself treated as a skew (refused rather than silently green)."
+    },
+    "engine_build_dirty": {
+      "type": "boolean",
+      "description": "True when the producer binary was built from a source tree with uncommitted changes (go's vcs.modified). A dirty record-time build is inherently non-reproducible: even SHA match cannot prove source-tree equivalence."
+    },
     "signature": {
       "type": "object",
       "required": ["alg", "key_id", "mac"],
