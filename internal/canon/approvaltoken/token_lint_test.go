@@ -2,14 +2,18 @@ package approvaltoken
 
 import (
 	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"testing"
 )
 
 // TestNoMathRandImport guards: token.go MUST NOT import math/rand.
 func TestNoMathRandImport(t *testing.T) {
 	t.Parallel()
-	src, err := os.ReadFile("token.go")
+	_, filename, _, _ := runtime.Caller(0)
+	tokenPath := filepath.Join(filepath.Dir(filename), "token.go")
+	src, err := os.ReadFile(tokenPath)
 	if err != nil {
 		t.Fatalf("read source: %v", err)
 	}
