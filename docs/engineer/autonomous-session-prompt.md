@@ -29,10 +29,10 @@ PHASE OBS-B/C/D — Substrate health + agent-loop telemetry + operator surface [
 
 PHASE AUTONOMY — 7 wedges closing the autonomous-loop gaps [BLOCKED on OBS-A green]
   Per #458 spec. 7 items in .regatta/items/phase-autonomy-w{1..7}-*.md. Sequenced by layer:
-    Layer 1 [obs→issue→merge]: W1 alarm-webhook · W2 auto-merge-on-gate-pass
+    Layer 1 [obs→issue→merge]: W1 alarm-webhook · W2 auto-merge-on-gate-pass (c0 BLOCKS c2: ship intent/outbox + awaiting_merge recovery re-probe before any real `gh pr merge` — see #552, #551)
     Layer 2 [bootstrap]: W3 service-supervisor · W6 secret-credential-fetch
     Layer 3 [self-improvement]: W4 self-improvement-detector · W5 cost-cap-autonomic-enforcement · W7 PR-merge L4-as-review identity
-  Total ~980 LoC, ~10-14 days subagent-time. Acceptance: regatta serve runs unattended for 7 days dispatching + auto-merging without operator click.
+  Total ~1100 LoC (+120 for W2 c0), ~10-14 days subagent-time. Acceptance: regatta serve runs unattended for 7 days dispatching + auto-merging without operator click.
 
 PHASE DEPLOY — Production deploy of regatta-the-binary [READY]
   Container Stage 1+2+3 SHIPPED (#518 #534 #533 #536). Operator action required:
@@ -83,6 +83,7 @@ OPEN FOLLOWUPS (sweep when between phase items, ≤5 trivial PRs/session cap)
 - OBS followups inline in `docs/engineer/specs/2026-06-02-observability-roadmap.md` (cost-per-agent integration + Wave-C rollup-shape)
 - Open issue #15 superseded by #463 PR-watcher locked design (close on merge)
 - Late-arriving open PRs to triage: #435 (FuzzToken_Verify) · #449 (cost-gov runbook) · #458 (PHASE AUTONOMY spec) · #463 (PR-watcher locked design) · #464 #465 (otel/bridge property test + bench)
+- Architecture-review followups (filed 2026-06-02, boundary-gap + consistency set) — #553 canonical-JSON fork unify (HIGH, signing correctness) · #554 integer micro-USD money (HIGH, budget exactness) · #551 generalize external-side-effect intent/outbox · #550 gate-determinism reframe · #549 replay engine-version journal · #548 GDPR crypto-shred. #553+#554 are the two highest-value next PRs (real correctness bugs, well-bounded).
 - Recurring A+ rubric checkboxes — fuzz, mutation testing extensions, key-rotation drill extensions
 
 Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -120`. Per feedback_boot_prompt_per_wave_refresh, entries >2 waves old are pruned; older shipped wedges live in git history only.

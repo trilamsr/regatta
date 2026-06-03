@@ -70,13 +70,24 @@ LoC budget across the phase: ~980. Effort-band: ~10-14 days subagent-time at cur
 
 **Adopt vs build.** Adopt `gh pr merge --auto` as the leaf call. Build the policy engine that decides when to make the call (≈150 LoC inside `cmd/regatta` serve). Bors + Mergify are heavier than persona-A wants; the operator IS the persona, and they want one binary.
 
-**LoC estimate.** ~150, extends existing `cmd/regatta` serve subcommand. Two config knobs: `ci.automerge_on_pass: true` + a per-issue label `[auto-merge-ok]` override.
+**LoC estimate.** ~150 for the policy engine, extends existing `cmd/regatta` serve subcommand (two config knobs: `ci.automerge_on_pass: true` + per-issue label `[auto-merge-ok]` override) + **~120 for c0** (intent/outbox merge wrapper + `awaiting_merge` recovery re-probe, in `internal/orchestrator`). c0 is the harder, load-bearing half — it is correctness, not policy.
 
 **Dependency.** W1 lands first (an `obs-alert` issue may want auto-merge blocked while incident open — wire that interlock).
 
+**Prerequisite (c0 — load-bearing, blocks c2).** W2 introduces the *first external, non-idempotent side-effect* in the loop (`gh pr merge`). Today the merge path is a DB status-flip with idempotent journal reconciliation (`spawner.go Complete` → `reconcile.go reconcileOne`); a real `gh pr merge` is a GitHub-side mutation that the substrate cannot undo or dedup. Two existing holes make naive wiring unsafe:
+1. **`awaiting_merge` is excluded from crash recovery.** `Recover` and `Heartbeat` enumerate only `{spawning, running, pr_open, gates_running}` (`internal/orchestrator/orchestrator.go:209-214`, `:390`). An agent that crashes in `awaiting_merge` — exactly the state straddling the external merge call — is invisible to recovery: never re-probed, never requeued.
+2. **No intent/outbox.** A crash between the external `gh pr merge` and the completion event re-drives the merge on the next tick. Idempotent branch names do not save us — post-merge the branch may be deleted, so the re-merge errors and recovery misreads work-already-in-`main` as a failure to escalate or rerun.
+
+c0 closes both before c2 may ship:
+- **(i)** Add `AgentAwaitingMerge` to the `nonTerminal` recovery set in `Recover` + `Heartbeat`; on recovery of an `awaiting_merge` agent, **re-probe GitHub PR state** (merged? open? branch gone?) rather than blind-flip the FSM.
+- **(ii)** Intent/outbox around the merge: append `merge_intended` (carrying an idempotency key = head-SHA) **before** the `gh pr merge` call; make the call idempotent against that key (query PR `merged` state first, treat already-merged as success); append `merge_executed` **after**. Recovery reconciles dangling `merge_intended` by querying actual PR state, never by blind retry.
+- **(iii)** Reuse the existing dedup primitive: the `merge_intended`/`merge_executed` pair rides the substrate `UNIQUE(run_id, written_by, nonce)` guard (`substrate/event.go`), nonce = head-SHA, same pattern token-spend already uses (`spend/writer.go nonceFor`). No new mechanism — generalize the one that works.
+- Cross-ref open issues #273 (spawner reconciliation outbox on SIGKILL) and #219 (archive_audit_outbox); c0 is the general external-side-effect case those two narrow.
+
 **Acceptance criteria.**
+- c0: Intent/outbox + `awaiting_merge` recovery re-probe land and are tested (crash-injected E2E: kill between `merge_intended` and `merge_executed`, assert no double-merge, assert recovery reconciles from real PR state). **Blocks c2.**
 - c1: Config `ci.automerge_on_pass: true` enables; default-off.
-- c2: After PR closes-review + all required checks green + L4 ADOPT + cost-cap OK + adversarial reviewer cleared → `gh pr merge --squash --auto` fires.
+- c2: After PR closes-review + all required checks green + L4 ADOPT + cost-cap OK + adversarial reviewer cleared → `gh pr merge --squash --auto` fires (guarded by c0's idempotency path).
 - c3: Label `[needs-human-review]` blocks (escape hatch).
 - c4: Label `[auto-merge-ok]` bypasses the L4-ADOPT requirement for trivial doc PRs (per `feedback_review_proportional`).
 - c5: Open `obs-alert` issue with severity `critical` blocks all auto-merges substrate-wide until closed.
@@ -85,7 +96,7 @@ LoC budget across the phase: ~980. Effort-band: ~10-14 days subagent-time at cur
 
 | Tier | Criteria |
 |---|---|
-| B (floor) | (a) c1+c2+c3 ship. (b) Default-off; explicit opt-in. (c) Release-notes fence in PR body. |
+| B (floor) | (a) **c0** + c1+c2+c3 ship (c0 is non-negotiable: no external merge without the intent/outbox + `awaiting_merge` recovery). (b) Default-off; explicit opt-in. (c) Release-notes fence in PR body. |
 | A (target) | B + (d) c4+c5. (e) Substrate event `auto_merge_fired` emitted with the gate-decision summary. (f) Adversarial reviewer subagent posts on the PR. (g) E2E test: spin a fake GH server (`gock` or similar), assert merge-call shape. |
 | A+ (stretch) | A + (h) Per-`obs-alert` severity interlock (only `critical` halts; `warning` allows). (i) Replay harness shows the gate-decision deterministic across 100 random PR states. (j) Cost-cap reset action (W5) auto-unblocks queued merges atomically. |
 
@@ -263,11 +274,11 @@ LoC budget across the phase: ~980. Effort-band: ~10-14 days subagent-time at cur
 
 | Landing | Wedges | LoC | What closes |
 |---|---|---|---|
-| 1 | W1 + W2 | ~350 | obs → issue → merge loop |
+| 1 | W1 + W2 (incl. c0) | ~470 | obs → issue → merge loop, on a crash-safe external-merge primitive |
 | 2 | W3 + W6 | ~250 | bootstrap stability (reboot + secret unlock) |
 | 3 | W4 + W5 + W7 | ~380 | self-improvement + cost autonomic + identity |
 
-Phase total: ~980 LoC across 7 wedges. Effort-band: ~10-14 days subagent-time. Abandon-criterion: if Landing 2 takes longer than 6 days subagent-time, slim W3 to Linux-only (drop macOS launchd) and treat macOS supervisor as Phase X scope.
+Phase total: ~1100 LoC across 7 wedges (was ~980; +120 for W2 c0 intent/outbox — the cost of making the loop's one irreversible external action crash-safe before it ships). Effort-band: ~10-14 days subagent-time. Abandon-criterion: if Landing 2 takes longer than 6 days subagent-time, slim W3 to Linux-only (drop macOS launchd) and treat macOS supervisor as Phase X scope.
 
 ## §11 cites
 
