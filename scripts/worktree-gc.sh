@@ -49,26 +49,29 @@ git fetch -q origin "$default_branch" 2>/dev/null || true
 cwd=$(pwd -P 2>/dev/null || pwd)
 
 # Parse `git worktree list --porcelain` into newline-separated
-# "<path>\t<branch>\t<head>" records. Empty branch = detached HEAD.
+# "<path>|<branch>|<head>" records. Empty branch = detached HEAD or bare.
+# `|` (non-whitespace) delimiter is load-bearing: bash `read` with IFS=$'\t'
+# collapses adjacent tabs, dropping the empty branch field and shifting head
+# into branch's slot for detached worktrees.
 records=$(git worktree list --porcelain | awk '
-  /^worktree / { wt=$2; head=""; branch=""; next }
-  /^HEAD /     { head=$2; next }
-  /^branch /   { branch=$2; next }
-  /^bare$/     { next }
-  /^detached$/ { next }
-  /^$/         { if (wt != "") print wt "\t" branch "\t" head; wt=""; head=""; branch="" }
-  END          { if (wt != "") print wt "\t" branch "\t" head }
+  /^worktree /  { wt=$2; head=""; branch=""; next }
+  /^HEAD /      { head=$2; next }
+  /^branch /    { branch=$2; next }
+  /^bare$/      { wt=""; head=""; branch=""; next }
+  /^detached$/  { next }
+  /^$/          { if (wt != "") print wt "|" branch "|" head; wt=""; head=""; branch="" }
+  END           { if (wt != "") print wt "|" branch "|" head }
 ')
 
 # Primary = first worktree in the porcelain output. Skip unconditionally.
-primary=$(echo "$records" | head -n1 | cut -f1)
+primary=$(echo "$records" | head -n1 | cut -d'|' -f1)
 
 kept=0
 removed=0
 errored=0
 candidates=()
 
-while IFS=$'\t' read -r wt branch head; do
+while IFS='|' read -r wt branch head; do
   [ -z "$wt" ] && continue
 
   reason=""
@@ -78,6 +81,10 @@ while IFS=$'\t' read -r wt branch head; do
     reason="cwd"
   elif [ "$branch" = "refs/heads/$default_branch" ]; then
     reason="on $default_branch"
+  elif [ -z "$branch" ]; then
+    # Detached HEAD: operator-explicit detach signals "keep this around"
+    # even if the commit is an ancestor of origin/main.
+    reason="detached"
   elif [ -z "$head" ]; then
     reason="no HEAD resolved"
   else

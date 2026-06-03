@@ -130,6 +130,35 @@ ok=1
 [ "$ok" = "1" ] && { echo "PASS: --apply preserves main worktree"; pass=$((pass+1)); }
 teardown_fixture
 
+# Case 5: detached-HEAD worktree on a merged commit must be skipped, NOT
+# flagged for removal. Operator-explicit detach signals "keep this around"
+# regardless of ancestry. Reviewer finding #2 on PR #716.
+setup_fixture
+cd "$work_dir"
+merged_sha=$(git rev-parse feature-merged)
+git worktree add -q --detach "$tmp/wt-detached" "$merged_sha"
+out=$(bash "$script" 2>&1) && got_exit=0 || got_exit=$?
+ok=1
+assert_absent "$out" "wt-detached.*remove" "dry-run does not flag detached worktree" || ok=0
+assert_contains "$out" "kept.*wt-detached.*\(detached\)" "dry-run reports detached worktree with reason=detached" || ok=0
+out_apply=$(bash "$script" --apply 2>&1) && got_exit=0 || got_exit=$?
+[ -d "$tmp/wt-detached" ] || { echo "FAIL: --apply removed detached worktree"; failed=$((failed+1)); ok=0; }
+[ "$ok" = "1" ] && { echo "PASS: detached-HEAD worktree on merged commit is skipped"; pass=$((pass+1)); }
+teardown_fixture
+
+# Case 6: --apply --force removes a locked merged worktree via force-twice
+# fallback. Reviewer finding #8 on PR #716.
+setup_fixture
+cd "$work_dir"
+git worktree lock "$tmp/wt-merged" 2>/dev/null || true
+out=$(bash "$script" --apply --force 2>&1) && got_exit=0 || got_exit=$?
+ok=1
+[ "$got_exit" = "0" ] || { echo "FAIL: --apply --force exit=$got_exit want 0"; echo "$out"; failed=$((failed+1)); ok=0; }
+[ ! -d "$tmp/wt-merged" ] || { echo "FAIL: --apply --force did not remove locked merged worktree"; failed=$((failed+1)); ok=0; }
+assert_contains "$out" "wt-merged.*force-twice" "locked removal uses force-twice path" || ok=0
+[ "$ok" = "1" ] && { echo "PASS: --apply --force removes locked merged worktree"; pass=$((pass+1)); }
+teardown_fixture
+
 echo
 echo "worktree-gc_test.sh: $pass passed, $failed failed"
 [ "$failed" -eq 0 ]
