@@ -2,16 +2,17 @@
 id: S1-T1
 title: regatta.yaml for THIS repo
 lane: self-host
-status: planned
-linked_artifact: docs/engineer/autonomous-session-prompt.md#L24
+status: done
+closing_pr: 334
+linked_artifact: docs/engineer/autonomous-session-prompt.md#L26
 ---
 
-Source: docs/engineer/autonomous-session-prompt.md#L24
+Source: docs/engineer/autonomous-session-prompt.md#L26
 
-design subagent picks markdown adapter (against `docs/engineer/briefs/*.md`) vs GH-issue adapter (against `[autonomous]` label). Default markdown per brief §8. NEW.
+SHIPPED #334. Markdown adapter + `.regatta/items/` scaffold; default markdown per brief §8.
 
-<!-- source-sha256: cd1ff16ba250071eee36d20dd360e47e1b3d8aac6acd572800e4aac26bc8d9c0 -->
+<!-- source-sha256: e962690f84d2e6d9ac039c9dce6237bb7b29fe0bcc2022d3baf4d7938e579e76 -->
 
 ## Acceptance criteria
 
-- [planned] c1: Land the PRIORITY entry "S1-T1 regatta.yaml for THIS repo" per the boot prompt; see source line 24.
+- [done] c1: Land the PRIORITY entry "S1-T1 regatta.yaml for THIS repo" per the boot prompt; see source line 26.

@@ -2,16 +2,17 @@
 id: S3-T1
 title: W8 T-remaining slim
 lane: self-host
-status: planned
-linked_artifact: docs/engineer/autonomous-session-prompt.md#L35
+status: done
+closing_pr: 367
+linked_artifact: docs/engineer/autonomous-session-prompt.md#L37
 ---
 
-Source: docs/engineer/autonomous-session-prompt.md#L35
+Source: docs/engineer/autonomous-session-prompt.md#L37
 
-OPA Authorizer impl + policy hot-reload. SKIP multi-tenant `tenant_id` propagation (Phase X). Slim W8 by ~60%. Spec #266 stays valid; subset only.
+SHIPPED #367 (OPA hot-reload) + #448 (wire OPAAuthorizer into serve). Multi-tenant `tenant_id` propagation deferred to Phase X.
 
-<!-- source-sha256: 32c4eb37010515f757630028ad5dd1235c4936f3c1ba4d2e702c062b7f9fb311 -->
+<!-- source-sha256: d90e559b28bd69763361bec3070147ca6bc0402916f7aa9c52c80afa0f62a4cb -->
 
 ## Acceptance criteria
 
-- [planned] c1: Land the PRIORITY entry "S3-T1 W8 T-remaining slim" per the boot prompt; see source line 35.
+- [done] c1: Land the PRIORITY entry "S3-T1 W8 T-remaining slim" per the boot prompt; see source line 37.

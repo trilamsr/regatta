@@ -2,16 +2,17 @@
 id: S2-T4
 title: mutation testing on cost-governor + scheduler
 lane: self-host
-status: planned
-linked_artifact: docs/engineer/autonomous-session-prompt.md#L32
+status: done
+closing_pr: 372
+linked_artifact: docs/engineer/autonomous-session-prompt.md#L34
 ---
 
-Source: docs/engineer/autonomous-session-prompt.md#L32
+Source: docs/engineer/autonomous-session-prompt.md#L34
 
-top 2 A+ rubric items from prior waves. FILED.
+SHIPPED #372 (infra) + #454 (reaper tier-comparison helpers).
 
-<!-- source-sha256: 13541bb7ab1a1504f467cb3b4b219acbac336c6b28a19367d3f55ca6dbf7bb26 -->
+<!-- source-sha256: a1fb93f7f854ddb58468c1288347298efb63cea2f12ad3f7735e9d83d9ba97c6 -->
 
 ## Acceptance criteria
 
-- [planned] c1: Land the PRIORITY entry "S2-T4 mutation testing on cost-governor + scheduler" per the boot prompt; see source line 32.
+- [done] c1: Land the PRIORITY entry "S2-T4 mutation testing on cost-governor + scheduler" per the boot prompt; see source line 34.

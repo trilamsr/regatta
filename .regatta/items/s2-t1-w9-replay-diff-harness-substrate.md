@@ -2,16 +2,17 @@
 id: S2-T1
 title: W9 replay+diff harness, substrate-default `DurableHistory` impl ONLY
 lane: self-host
-status: planned
-linked_artifact: docs/engineer/autonomous-session-prompt.md#L29
+status: done
+closing_pr: 350
+linked_artifact: docs/engineer/autonomous-session-prompt.md#L31
 ---
 
-Source: docs/engineer/autonomous-session-prompt.md#L29
+Source: docs/engineer/autonomous-session-prompt.md#L31
 
-. Promoted from MVP-3 rank #4 to S2 rank #1 for self-host. Skip Temporal-backed variant (Phase X). Spec `docs/engineer/specs/2026-06-01-w9-temporal-vs-bespoke-redteam.md` option C, substrate path only.
+SHIPPED #350. Per spec `docs/engineer/specs/2026-06-01-w9-temporal-vs-bespoke-redteam.md` option C, substrate path only.
 
-<!-- source-sha256: fe19dffb94f19a6a13589cd964d49655d52f9abd833bdec9fe16e34a3b6f0bfc -->
+<!-- source-sha256: d876e1e31ed3bbb7f2a8c047971f4b5788347283d91fee8811e4a887e432d34f -->
 
 ## Acceptance criteria
 
-- [planned] c1: Land the PRIORITY entry "S2-T1 W9 replay+diff harness, substrate-default `DurableHistory` impl ONLY" per the boot prompt; see source line 29.
+- [done] c1: Land the PRIORITY entry "S2-T1 W9 replay+diff harness, substrate-default `DurableHistory` impl ONLY" per the boot prompt; see source line 31.

@@ -2,16 +2,17 @@
 id: S3-T3
 title: key-rotation drill + recovery doc
 lane: self-host
-status: planned
-linked_artifact: docs/engineer/autonomous-session-prompt.md#L37
+status: done
+closing_pr: 379
+linked_artifact: docs/engineer/autonomous-session-prompt.md#L39
 ---
 
-Source: docs/engineer/autonomous-session-prompt.md#L37
+Source: docs/engineer/autonomous-session-prompt.md#L39
 
-. FILED.
+SHIPPED #379+#389+#393+#395 (multi-key + rotate-CLI + brief re-sign + recovery).
 
-<!-- source-sha256: 337574c7c2d9c6ad2921bd7eb71df947189b72bf1e93e2aafb0d48f8726a03e9 -->
+<!-- source-sha256: 95cb104bc86b85195554ece48a4f303a62aa5107e7b5e70703b5a2e8f982d128 -->
 
 ## Acceptance criteria
 
-- [planned] c1: Land the PRIORITY entry "S3-T3 key-rotation drill + recovery doc" per the boot prompt; see source line 37.
+- [done] c1: Land the PRIORITY entry "S3-T3 key-rotation drill + recovery doc" per the boot prompt; see source line 39.
