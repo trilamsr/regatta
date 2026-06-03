@@ -180,6 +180,15 @@ func runServe(args []string) int {
 	}
 	slogger := slog.New(handler)
 
+	// clock is the single composition-root wall-clock source. Threading
+	// one source through every subsystem Config (scheduler, orchestrator,
+	// reaper, listener) means a future --clock-source flag or a test
+	// harness that swaps serve.New can fix one fake clock and have
+	// latency metrics, brief.produced_at, and gate audit timestamps all
+	// move together. Each subsystem already nil-defaults to time.Now;
+	// the explicit wiring exists to remove the silent-default footgun.
+	clock := time.Now
+
 	// Loud-at-boot before any DB open (spec §1.3 open-q 9.8): refuse to
 	// start the listener when its HMAC key dependency is missing.
 	if err := preflightUIBoot(*ui); err != nil {
@@ -246,7 +255,7 @@ func runServe(args []string) int {
 		logger.Printf("brief loader: %v", err)
 		return 2
 	}
-	gate, gateResolver, err := buildApprovalGate(db, *repoRoot, slogger)
+	gate, gateResolver, err := buildApprovalGate(db, *repoRoot, clock, slogger)
 	if err != nil {
 		logger.Printf("approval gates: %v", err)
 		return 2
@@ -258,6 +267,7 @@ func runServe(args []string) int {
 		OutputsSchemas: outputsSchemaResolverFor(loader),
 		Gate:           gate,
 		GateResolver:   gateResolver,
+		Clock:          clock,
 	})
 
 	o := orchestrator.New(orchestrator.Config{
@@ -272,6 +282,7 @@ func runServe(args []string) int {
 		HeartbeatInterval: *heartDur,
 		LockTTL:           *lockTTL,
 		Logger:            slogger,
+		Clock:             clock,
 	})
 	if set.Worktrees != nil {
 		o.SetReaper(reaper.New(reaper.Config{
@@ -279,6 +290,7 @@ func runServe(args []string) int {
 			WM:     set.Worktrees,
 			Killer: set.Killer,
 			Logger: slogger,
+			Clock:  clock,
 		}))
 	}
 	// RejectionRouter wakes agents on AI-gate rejections and labels the
@@ -310,7 +322,7 @@ func runServe(args []string) int {
 		Addr:       *addr,
 		DB:         db,
 		Keyring:    approvaltoken.MapKeyring(loadBriefKeyring()),
-		Clock:      time.Now,
+		Clock:      clock,
 		Authorizer: authzr,
 	})
 	if err != nil {
@@ -579,7 +591,7 @@ func buildRejectionRouter(db *state.DB, labeler rejectionrouter.PRLabeler, logge
 // channel-adapter PR lands. Keyring + kid are shared with the brief
 // loader so an operator who configured REGATTA_HMAC_KEY for briefs
 // gets approval-token signing for free.
-func buildApprovalGate(db *state.DB, repoRoot string, logger *slog.Logger) (scheduler.ApprovalGate, scheduler.GateResolver, error) {
+func buildApprovalGate(db *state.DB, repoRoot string, clock func() time.Time, logger *slog.Logger) (scheduler.ApprovalGate, scheduler.GateResolver, error) {
 	cfgPath := filepath.Join(repoRoot, "regatta.yaml")
 	data, err := os.ReadFile(cfgPath) // #nosec G304 -- repoRoot is an operator-supplied trust boundary; the path is fixed to regatta.yaml under it.
 	if err != nil {
@@ -602,7 +614,7 @@ func buildApprovalGate(db *state.DB, repoRoot string, logger *slog.Logger) (sche
 	}
 
 	keyring, kid := approvalKeyring()
-	g := approval.NewGate(db, approval.NewStubNotifier(logger), keyring, kid, time.Now, logger)
+	g := approval.NewGate(db, approval.NewStubNotifier(logger), keyring, kid, clock, logger)
 	resolver := scheduler.GateResolver(func(wi state.WorkItem) (approval.Config, bool) {
 		c, ok := byName[wi.Lane]
 		return c, ok

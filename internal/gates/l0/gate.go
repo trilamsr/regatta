@@ -23,6 +23,11 @@ type Config struct {
 	// Nil falls back to slog.Default() so embedded callers still get
 	// output without panicking (spec §4.1, §5.5).
 	Logger *slog.Logger
+
+	// Clock is the wall-clock source for telemetry stamps. Nil falls
+	// back to time.Now. Same shape as the rest of the regatta clock
+	// seam so tests pin one fake clock across gate + state.
+	Clock func() time.Time
 }
 
 // Default returns a Config that treats any markdown file as a spec source.
@@ -32,7 +37,11 @@ func Default() Config {
 
 // Check runs L0 against a parsed diff and returns a GateResult.
 func Check(cfg Config, changes []FileChange) schemas.GateResult {
-	start := time.Now()
+	clock := cfg.Clock
+	if clock == nil {
+		clock = time.Now
+	}
+	start := clock()
 	out := schemas.GateResult{
 		SchemaVersion: 1,
 		GateID:        "l0_spec_immutability",
@@ -51,12 +60,13 @@ func Check(cfg Config, changes []FileChange) schemas.GateResult {
 		out.Blocking = true
 		out.Severity = schemas.SeverityCritical
 	}
+	finishedAt := clock()
 	out.Telemetry = schemas.Telemetry{
-		DurationMs: time.Since(start).Milliseconds(),
+		DurationMs: finishedAt.Sub(start).Milliseconds(),
 	}
 	out.Heartbeat = schemas.TelemetryHeartbeat{
 		StartedAt:  start,
-		FinishedAt: time.Now(),
+		FinishedAt: finishedAt,
 	}
 
 	emitVerdict(cfg.Logger, out)

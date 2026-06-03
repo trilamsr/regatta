@@ -296,6 +296,13 @@ type PlannerOptions struct {
 	// because production callers MUST use the real EngineInfo() — a
 	// brief stamped with a fake SHA would lie to the audit replay.
 	engineInfoFn func() EngineRef
+
+	// Clock is the wall-clock source stamped into plan.ProducedAt.
+	// Nil falls back to time.Now (production wiring). Same shape as
+	// the rest of the regatta clock seam so tests fix one fake clock
+	// and the planner audit trail aligns with substrate event
+	// timestamps.
+	Clock func() time.Time
 }
 
 // Run executes the one-shot planner pipeline:
@@ -330,7 +337,11 @@ func Run(ctx context.Context, opts PlannerOptions, parent schemas.WorkItem) (*Pr
 	plan.ParentWorkItemID = string(parent.ID)
 	plan.ParentCriteria = copyCriteria(parent.AcceptanceCriteria)
 	plan.PlannerModelID = opts.Client.ModelID()
-	plan.ProducedAt = time.Now().UTC()
+	clock := opts.Clock
+	if clock == nil {
+		clock = time.Now
+	}
+	plan.ProducedAt = clock().UTC()
 	// Stamp engine identity (#549). The brief is the natural anchor
 	// row for engine_version because it is the row that begins a
 	// program execution; downstream events (handoff, gate verdict)

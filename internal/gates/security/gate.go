@@ -39,6 +39,12 @@ type Config struct {
 	// Nil falls back to slog.Default() so embedded callers still get
 	// output without panicking (spec §4.1, §5.5).
 	Logger *slog.Logger
+
+	// Clock is the wall-clock source for telemetry stamps (duration_ms,
+	// heartbeat finished_at). Nil falls back to time.Now. Same shape as
+	// state.OpenWithClock + spawner.Config.Clock; tests pin one fake
+	// clock across the gate-and-state pair without coupling.
+	Clock func() time.Time
 }
 
 // FloorConfig configures which deterministic-floor tools the gate
@@ -83,7 +89,11 @@ type Input struct {
 // floor-pass. This is P1 ("deterministic before AI on destructive
 // ops") applied at gate level.
 func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) {
-	started := time.Now()
+	clock := cfg.Clock
+	if clock == nil {
+		clock = time.Now
+	}
+	started := clock()
 	gr := schemas.GateResult{
 		SchemaVersion: 1,
 		GateID:        cfg.GateID,
@@ -105,7 +115,7 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 			Severity: schemas.FindingHigh,
 			Claim:    fmt.Sprintf("deterministic floor errored: %v", err),
 		})
-		finalize(&gr, started)
+		finalize(&gr, started, clock)
 		emitVerdict(cfg.Logger, gr)
 		return gr, err
 	}
@@ -113,7 +123,7 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 	if blocking {
 		gr.Verdict = schemas.VerdictFail
 		gr.Blocking = true
-		finalize(&gr, started)
+		finalize(&gr, started, clock)
 		emitVerdict(cfg.Logger, gr)
 		return gr, nil // floor failure short-circuits; no AI spend
 	}
@@ -136,14 +146,15 @@ func Run(ctx context.Context, cfg Config, in Input) (schemas.GateResult, error) 
 		}
 	}
 
-	finalize(&gr, started)
+	finalize(&gr, started, clock)
 	emitVerdict(cfg.Logger, gr)
 	return gr, nil
 }
 
-func finalize(gr *schemas.GateResult, started time.Time) {
-	gr.Telemetry.DurationMs = time.Since(started).Milliseconds()
-	gr.Heartbeat.FinishedAt = time.Now()
+func finalize(gr *schemas.GateResult, started time.Time, clock func() time.Time) {
+	now := clock()
+	gr.Telemetry.DurationMs = now.Sub(started).Milliseconds()
+	gr.Heartbeat.FinishedAt = now
 }
 
 // emitVerdict logs a single structured gate.verdict event per Run

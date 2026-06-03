@@ -11,6 +11,7 @@ package l4
 
 import (
 	"os"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
@@ -95,6 +96,11 @@ type Config struct {
 	// Setup was skipped) wins by default. Matches the W6 Config.Tracer
 	// pattern so callers stay on one DI seam across trace + metric.
 	Meter metric.Meter
+
+	// Clock is the wall-clock source for telemetry stamps. Nil falls
+	// back to time.Now. Same shape as state.OpenWithClock + spawner
+	// Config.Clock so tests share one injection seam.
+	Clock func() time.Time
 }
 
 // ResolveMeter returns the configured meter or falls back to the

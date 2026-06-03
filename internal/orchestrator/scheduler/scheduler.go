@@ -150,6 +150,15 @@ type Config struct {
 
 	// L4GateResolver maps wi to L4 config + Input; nil disables the pass.
 	L4GateResolver L4GateResolver
+
+	// Clock is the time source for tick + step latency measurement;
+	// nil falls back to time.Now (production wiring). Injection seam
+	// is the same shape as the rest of regatta (state.OpenWithClock,
+	// spawner.Config.Clock, web.Dependencies.Clock) so tests that
+	// already fix the state-layer clock can pin the scheduler's loop
+	// clock to the same instant for fully deterministic latency
+	// histograms.
+	Clock func() time.Time
 }
 
 // ResolveMeter returns the configured meter or falls back lazily so a
@@ -241,6 +250,9 @@ func newScheduler(db schedulerDB, cfg Config) *Scheduler {
 	if cfg.LockTTL <= 0 {
 		cfg.LockTTL = 15 * time.Minute
 	}
+	if cfg.Clock == nil {
+		cfg.Clock = time.Now
+	}
 	log := cfg.Logger
 	if log == nil {
 		log = slog.Default()
@@ -290,9 +302,9 @@ var activeStates = []state.AgentState{
 // re-emitting, and ListAgentsByState(AgentPending) re-discovers any
 // agent upserted but not transitioned (lane-capped, hotspot-blocked).
 func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
-	tickStart := time.Now()
+	tickStart := s.cfg.Clock()
 	defer func() {
-		s.tickLatency.Record(ctx, float64(time.Since(tickStart).Microseconds())/1000.0)
+		s.tickLatency.Record(ctx, float64(s.cfg.Clock().Sub(tickStart).Microseconds())/1000.0)
 	}()
 
 	tc := &tickCtx{}
@@ -383,10 +395,10 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 	defer loopSpan.End()
 
 	for _, step := range steps {
-		stepStart := time.Now()
+		stepStart := s.cfg.Clock()
 		stepErr := step.fn()
 		s.stepDuration.Record(loopCtx,
-			float64(time.Since(stepStart).Microseconds())/1000.0,
+			float64(s.cfg.Clock().Sub(stepStart).Microseconds())/1000.0,
 			metric.WithAttributes(attribute.String("step", step.name)))
 		if stepErr != nil {
 			return reserved, stepErr

@@ -62,6 +62,12 @@ type Config struct {
 	// Setup was skipped) wins by default. Mirrors the W6 Config.Tracer
 	// pattern so callers stay on one DI seam across trace + metric.
 	Meter metric.Meter
+
+	// Clock is the wall-clock source for kill-duration telemetry.
+	// Nil falls back to time.Now (production wiring). Same shape as
+	// state.OpenWithClock + spawner.Config.Clock so tests share one
+	// injection seam across the orchestrator subsystem.
+	Clock func() time.Time
 }
 
 // ResolveMeter returns the configured meter or falls back to the
@@ -82,6 +88,7 @@ type Reaper struct {
 	killer   ChildKiller
 	log      *slog.Logger
 	tracer   trace.Tracer
+	clock    func() time.Time
 	terminal []state.AgentState
 }
 
@@ -97,12 +104,17 @@ func New(cfg Config) *Reaper {
 	if tracer == nil {
 		tracer = otel.Tracer("reaper")
 	}
+	clock := cfg.Clock
+	if clock == nil {
+		clock = time.Now
+	}
 	return &Reaper{
 		db:     cfg.DB,
 		wm:     cfg.WM,
 		killer: cfg.Killer,
 		log:    log,
 		tracer: tracer,
+		clock:  clock,
 		terminal: []state.AgentState{
 			state.AgentDone,
 			state.AgentWithdrawn,
@@ -123,7 +135,7 @@ func New(cfg Config) *Reaper {
 // Returns nil if the agent has no leftover state (the common case
 // for already-reaped agents).
 func (r *Reaper) Reap(ctx context.Context, agentID int64) error {
-	detectedAt := time.Now()
+	detectedAt := r.clock()
 	agent, err := r.db.GetAgent(ctx, agentID)
 	if err != nil {
 		return fmt.Errorf("reaper: load agent %d: %w", agentID, err)
@@ -147,7 +159,7 @@ func (r *Reaper) Reap(ctx context.Context, agentID int64) error {
 		if signaled {
 			r.log.Info(string(obs.EventReapKilled),
 				string(obs.KeyAgentID), agentID,
-				string(obs.KeyDurationMs), time.Since(detectedAt).Milliseconds(),
+				string(obs.KeyDurationMs), r.clock().Sub(detectedAt).Milliseconds(),
 			)
 		}
 	}

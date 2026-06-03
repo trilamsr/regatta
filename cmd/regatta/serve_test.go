@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -52,7 +53,7 @@ func TestBuildApprovalGate_LoadsAndResolvesByLane(t *testing.T) {
 	db := openSchedulerTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	gate, resolver, err := buildApprovalGate(db, repoRoot, logger)
+	gate, resolver, err := buildApprovalGate(db, repoRoot, time.Now, logger)
 	if err != nil {
 		t.Fatalf("buildApprovalGate: %v", err)
 	}
@@ -85,7 +86,7 @@ func TestBuildApprovalGate_NoConfigFileDisabled(t *testing.T) {
 	db := openSchedulerTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	gate, resolver, err := buildApprovalGate(db, repoRoot, logger)
+	gate, resolver, err := buildApprovalGate(db, repoRoot, time.Now, logger)
 	if err != nil {
 		t.Fatalf("buildApprovalGate: %v", err)
 	}
@@ -121,7 +122,7 @@ safety:
 	db := openSchedulerTestDB(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	gate, resolver, err := buildApprovalGate(db, repoRoot, logger)
+	gate, resolver, err := buildApprovalGate(db, repoRoot, time.Now, logger)
 	if err != nil {
 		t.Fatalf("buildApprovalGate: %v", err)
 	}
