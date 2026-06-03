@@ -25,7 +25,7 @@ import (
 // runProgram dispatches the `program ...` subcommand tree.
 func runProgram(args []string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "regatta program: expected sub-subcommand (verify-handoff)")
+		fmt.Fprintln(os.Stderr, "regatta program: expected sub-subcommand (plan|verify-handoff|show|replay-skew-check)")
 		return 2
 	}
 	switch args[0] {
@@ -33,6 +33,10 @@ func runProgram(args []string) int {
 		return runProgramPlan(args[1:])
 	case "verify-handoff":
 		return runProgramVerifyHandoff(args[1:])
+	case "show":
+		return runProgramShow(args[1:])
+	case "replay-skew-check":
+		return runProgramReplaySkewCheck(args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "regatta program: unknown subcommand %q\n", args[0])
 		return 2

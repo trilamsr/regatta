@@ -187,6 +187,82 @@ func TestRun_NoKey(t *testing.T) {
 	}
 }
 
+// TestProgram_RecordsEngineVersion asserts Run() stamps the current
+// binary's engine identity onto the brief. Without this the audit
+// pipeline (#549) cannot tell which engine produced a months-old
+// verdict.
+func TestProgram_RecordsEngineVersion(t *testing.T) {
+	plan, err := Run(context.Background(), PlannerOptions{
+		Client:    &stubClient{plan: goodModelPlan()},
+		HMACKey:   []byte("planner-test-key-32-bytes-padding"),
+		HMACKeyID: "k1",
+		engineInfoFn: func() EngineRef {
+			return EngineRef{Version: "abc123def456abc123def456abc123def456abc1", Dirty: false}
+		},
+	}, sampleParent())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if plan.EngineVersion != "abc123def456abc123def456abc123def456abc1" {
+		t.Fatalf("engine_version: got %q want SHA", plan.EngineVersion)
+	}
+	if plan.EngineBuildDirty {
+		t.Fatalf("engine_build_dirty: got true want false")
+	}
+}
+
+// TestProgram_EngineDirty_BoolPersisted asserts the dirty bool round-
+// trips through Sign() and the EngineRef helper. A clean SHA on a
+// dirty binary is the false-green the audit replay must refuse.
+func TestProgram_EngineDirty_BoolPersisted(t *testing.T) {
+	plan, err := Run(context.Background(), PlannerOptions{
+		Client:    &stubClient{plan: goodModelPlan()},
+		HMACKey:   []byte("planner-test-key-32-bytes-padding"),
+		HMACKeyID: "k1",
+		engineInfoFn: func() EngineRef {
+			return EngineRef{Version: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", Dirty: true}
+		},
+	}, sampleParent())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if !plan.EngineBuildDirty {
+		t.Fatalf("engine_build_dirty: got false want true")
+	}
+	if ref := plan.EngineRef(); ref.Version == "" || !ref.Dirty {
+		t.Fatalf("EngineRef helper lost data: %+v", ref)
+	}
+	// Signature verification must succeed — engine fields are inside
+	// the signed payload so a tampered SHA fails verify.
+	keyring := map[string][]byte{"k1": []byte("planner-test-key-32-bytes-padding")}
+	if err := plan.VerifySignature(keyring); err != nil {
+		t.Fatalf("verify with engine fields: %v", err)
+	}
+}
+
+// TestProgram_EngineVersion_UnsignedTamperRejected closes the
+// adversarial branch: an operator who edits engine_version after
+// signing must fail signature verification. This proves the engine
+// fields are inside the signed payload, not appended afterward.
+func TestProgram_EngineVersion_UnsignedTamperRejected(t *testing.T) {
+	plan, err := Run(context.Background(), PlannerOptions{
+		Client:    &stubClient{plan: goodModelPlan()},
+		HMACKey:   []byte("planner-test-key-32-bytes-padding"),
+		HMACKeyID: "k1",
+		engineInfoFn: func() EngineRef {
+			return EngineRef{Version: "abc123def456abc123def456abc123def456abc1"}
+		},
+	}, sampleParent())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	keyring := map[string][]byte{"k1": []byte("planner-test-key-32-bytes-padding")}
+	plan.EngineVersion = "tamperedshaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := plan.VerifySignature(keyring); err == nil {
+		t.Fatal("expected signature verify to fail after engine_version tamper")
+	}
+}
+
 func TestSignedPlanVerifies(t *testing.T) {
 	plan, err := Run(context.Background(), PlannerOptions{
 		Client:    &stubClient{plan: goodModelPlan()},

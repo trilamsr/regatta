@@ -30,6 +30,14 @@ import (
 )
 
 // ProgramBrief is the Go form of schemas/features.schema.json.
+//
+// EngineVersion + EngineBuildDirty close the audit-claim gap (#549).
+// Replay months later runs the engine that ships TODAY, not the
+// engine that produced the brief; without journaling the engine's
+// git-SHA, a quietly-tweaked routing rule or CEL helper silently
+// flips a historical verdict. The brief is the natural anchor row:
+// it is the row that begins a program execution, and it already
+// carries planner_model_id / produced_at provenance.
 type ProgramBrief struct {
 	SchemaVersion    int                    `json:"schema_version"`
 	ProgramID        string                 `json:"program_id"`
@@ -38,7 +46,28 @@ type ProgramBrief struct {
 	PlannerModelID   string                 `json:"planner_model_id"`
 	Features         []PlannedFeature       `json:"features"`
 	ProducedAt       time.Time              `json:"produced_at"`
+	// EngineVersion is the git-SHA of the regatta binary that produced
+	// this brief. Stamped by Run() from EngineInfo(); replay refuses or
+	// warns (per --strict) when the current binary's SHA does not
+	// match. The literal string "unknown" is allowed (and treated as
+	// a skew) so a brief produced by a buildvcs=false binary still
+	// round-trips through the audit pipeline rather than failing
+	// validate.
+	EngineVersion string `json:"engine_version,omitempty"`
+	// EngineBuildDirty is true when the binary that produced this
+	// brief was built from a source tree with uncommitted changes
+	// (go's vcs.modified). Replay treats dirty=true as inherently
+	// non-reproducible: even a SHA match cannot prove the binary
+	// was identical.
+	EngineBuildDirty bool                   `json:"engine_build_dirty,omitempty"`
 	Signature        schemas.SignatureBlock `json:"signature"`
+}
+
+// EngineRef returns the engine identity stamped on the brief at
+// produced_at time. Helper for replay-skew checks so callers do not
+// re-thread the field names.
+func (p *ProgramBrief) EngineRef() EngineRef {
+	return EngineRef{Version: p.EngineVersion, Dirty: p.EngineBuildDirty}
 }
 
 // PlanCriterion is one verbatim copy of the parent WorkItem's
@@ -261,6 +290,12 @@ type PlannerOptions struct {
 	Client    ModelClient
 	HMACKey   []byte
 	HMACKeyID string
+
+	// engineInfoFn lets tests inject a deterministic engine identity
+	// without monkey-patching the package-level ldflags vars. Unexported
+	// because production callers MUST use the real EngineInfo() — a
+	// brief stamped with a fake SHA would lie to the audit replay.
+	engineInfoFn func() EngineRef
 }
 
 // Run executes the one-shot planner pipeline:
@@ -296,6 +331,18 @@ func Run(ctx context.Context, opts PlannerOptions, parent schemas.WorkItem) (*Pr
 	plan.ParentCriteria = copyCriteria(parent.AcceptanceCriteria)
 	plan.PlannerModelID = opts.Client.ModelID()
 	plan.ProducedAt = time.Now().UTC()
+	// Stamp engine identity (#549). The brief is the natural anchor
+	// row for engine_version because it is the row that begins a
+	// program execution; downstream events (handoff, gate verdict)
+	// reference program_id, so a single stamped row is sufficient
+	// for replay-skew detection.
+	eng := opts.engineInfoFn
+	if eng == nil {
+		eng = EngineInfo
+	}
+	er := eng()
+	plan.EngineVersion = er.Version
+	plan.EngineBuildDirty = er.Dirty
 
 	signed, err := plan.Sign(opts.HMACKey, opts.HMACKeyID)
 	if err != nil {

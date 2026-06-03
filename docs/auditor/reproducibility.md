@@ -43,6 +43,23 @@ log. Reproducibility breakage is a P0 bug.
 - Map serialization sorts keys.
 - Filesystem walks sorted by name.
 
+### Engine-version journaling
+
+- Every `ProgramBrief` carries `engine_version` (git-SHA of the
+  binary that produced it) and `engine_build_dirty` (true when the
+  source tree had uncommitted changes at build time).
+- `regatta program show <brief.json>` surfaces both fields so an
+  auditor can inspect which engine produced a months-old program
+  without parsing JSON by hand.
+- `regatta program replay-skew-check <brief.json>` compares the
+  brief's record-time engine to the current binary. Default mode is
+  WARN (tag the digest, keep the loop unblocked); pass `--strict`
+  for audit-grade runs that must fail closed on any divergence
+  (different SHA, missing SHA on either side, or either build dirty).
+- A brief whose `engine_version` is `unknown` (built with
+  `-buildvcs=false` and no `-ldflags` pin) is treated as skew even
+  against another `unknown` binary — refusal beats silent green.
+
 ### Audit-log visibility
 
 - Genuine non-determinism (LLM sampling) is logged with the
