@@ -26,8 +26,8 @@ LENSES (apply in order)
 4. Spec fidelity — measure target against `<SPEC-PATH>` rubric; flag implementer deviations (re-spawn design subagent per `feedback_spec_pattern_authority`).
 5. TDD trace — verify failing-test-first commit ordering per `feedback_tdd_discipline`.
 6. Doc-check + release-notes — banned phrases (`scripts/doc-check.sh` 11-token list), release-notes fence present.
-7. Subagent verification — re-run `make pre-push-check`; ~10% lie rate on "make check clean" per `feedback_subagent_verification`.
-8. Load-bearing leftovers — every unaddressed load-bearing item → tracking issue filed + cited in PR body per `feedback_unaddressed_load_bearing`. PHASE-S-RELAX: Risk-tier+ only during self-host window.
+7. Subagent verification — re-run `make pre-push-check` AND `bash scripts/doc-check.sh` against the PR branch yourself; do NOT trust the author's "lints passed" claim. ~10% lie rate. Per `feedback_subagent_verification` + `feedback_reviewer_run_local_lints`.
+8. Load-bearing leftovers — every unaddressed load-bearing item → tracking issue filed + cited in PR body per `feedback_unaddressed_load_bearing`. PHASE-S-RELAX: Risk-tier+ only during self-host window. If the agent surfaced a finding but did not address it, hand the issue-filing responsibility back to the main thread; never let it stay only as a PR comment per `feedback_agent_load_bearing_to_issues`.
 9. **Comment sweep** — inspect every added/modified comment per `feedback_reviewer_comment_trim`. Flag each: version-ref (`// added in v2.3`, `// PR #N`), what-not-why (`// loops over items`), banner (`// --- Section ---`), untagged deferred-debt marker without bug-link (per `scripts/stale-todo.sh`), commented-out code, AI signatures (`Co-Authored-By`, `Generated with`). Output `## Comment sweep` section listing offenders by `path:line`; if zero, state `## Comment sweep: clean` explicitly (silence = failure).
 
 OUTPUT FORMAT

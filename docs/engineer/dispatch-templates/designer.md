@@ -13,7 +13,13 @@ Design-doc subagent. Output: spec under `docs/engineer/specs/YYYY-MM-DD-<slug>.m
 ## Preamble blocks (paste verbatim)
 
 WORKTREE
-- `git worktree add ../regatta-spec-<SPEC-SLUG> -b spec/<SPEC-SLUG> origin/main && cd ../regatta-spec-<SPEC-SLUG>`. Spec lives at `docs/engineer/specs/<SPEC-SLUG>.md`.
+- `git worktree add ../regatta-spec-<SPEC-SLUG> -b spec/<SPEC-SLUG> origin/main && cd ../regatta-spec-<SPEC-SLUG>`. Spec lives at `docs/engineer/specs/<SPEC-SLUG>.md` — the EXACT path is locked in this dispatch, never invent a sibling slug per `feedback_plan_subagent_dup_files`.
+
+ITERATE LOCAL
+- Strategic design + adversarial-review iterations stay LOCAL. Edit-in-place across review rounds. Push only the FINAL converged chain as ONE PR. Per `feedback_design_iteration_local`.
+
+CROSS-DOC LINKS
+- Sibling specs that cross-link each other fail the doc-check link gate per-PR. Either co-locate the sibling docs in ONE PR, OR phase-land with strip-then-restore (land doc A with link to B stripped, then PR B that restores both links). Per `feedback_cross_doc_link_phasing`.
 
 RESEARCH + DESIGN
 - Prefer adopting proven OSS over reimplementation. Study `<REFERENCES>` first; cite version + commit-sha + license. Priority: UX > quality bar matching reference systems > ecosystem conventions > long-term repo+user benefit. Per `feedback_research_design_principles`.

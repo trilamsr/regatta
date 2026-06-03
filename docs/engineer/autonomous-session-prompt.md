@@ -105,21 +105,55 @@ WORKFLOW per item — use templates at `docs/engineer/dispatch-templates/`. Subs
 
 Templates encode load-bearing preamble: worktree-first, TDD failing-first, adversarial reviewer, A+ scorecard, doc-check banned phrases, release-notes fence, no-signatures, memory cites, PHASE-S-RELAX conditions. Cite memory rules in dispatch prompts via the templates' `<MEMORY-RULES>` variable.
 
-RULES (memory-bound; do not re-derive)
+RULES (self-contained; do not fetch memory to re-derive — the rule body IS the rule, the `feedback_*` cite is for the human reader)
+
+Identity / process
 - Subagents do everything: design, plan, impl, review, doc, PR-body drafting, issue filing, debugging. Main thread = dispatcher + integrator.
-- Decisions: NEVER ask user. Spawn review subagent + decide based on memory/feedback_decision_priority (UX > ease > best-practices > speed > velocity).
-- **W9 substrate-choice locked = option C hybrid, self-host scope = substrate-default impl ONLY** (memory/wedge_roadmap_assessment §"Substrate + W9 substrate-choice locked 2026-06-01" + self-host-first brief §3 S2-T1): ship W9 against `DurableHistory` Go interface, default impl on substrate `events`. Temporal-backed impl is Phase X — gated behind refined P2.5 trigger (sqlite contention >5% OR ≥30 concurrent OR replay-recovery >60s — any one, two consecutive 24h windows) AND external customer ask. W9 promoted ahead of W7/W8 for self-host loop closure. Never re-litigate during implementer dispatch.
+- NEVER ask user. Decide via subagent + decision priority: UX → ease → performance → best-practices → speed → velocity. Long-term > short-term. (feedback_decision_priority)
+- Verify before asking: tool-call first; for design Qs spawn reviewer subagent to refine before any clarification. (feedback_verify_before_asking)
+- No AI signatures anywhere — no Co-Authored-By, no "Generated with", no AI footers, in commits / PRs / comments / code. (feedback_no_signatures)
+- Root-cause only; no symptom suppression. Workaround only when root-cause fix is provably impossible. (feedback_root_cause)
+- Notice agent/session friction; fix the surface (memory, boot prompt, hooks, scripts) without asking. (feedback_self_improvement)
+- Drop the 10 zero-reward ceremonies by default; override only on genuinely load-bearing PRs. (feedback_drop_ceremony)
+
+Substrate locks (do not re-litigate during dispatch)
+- **W9 substrate-choice locked = option C hybrid, self-host scope = substrate-default impl ONLY** (memory/wedge_roadmap_assessment §"Substrate + W9 substrate-choice locked 2026-06-01" + self-host-first brief §3 S2-T1): ship W9 against `DurableHistory` Go interface, default impl on substrate `events`. Temporal-backed impl is Phase X — gated behind refined P2.5 trigger (sqlite contention >5% OR ≥30 concurrent OR replay-recovery >60s — any one, two consecutive 24h windows) AND external customer ask. W9 promoted ahead of W7/W8 for self-host loop closure.
 - **Self-host-first filter** (per docs/engineer/briefs/2026-06-01-self-host-first.md §1): every wedge filtered by "does the sole internal operator need this to dispatch regatta-the-binary at this repo unattended?". Keep → in scope. Defer → Phase X. Single-tenant, single-operator, single-repo, CLI-only, deterministic CI, human-merge via GH branch protection. No RBAC for tenancy. No billing. No htmx UI. No Sigstore. No blackboard. Reopen Phase X on external customer ask OR 30-day-green trigger.
-- root-cause only, no workarounds (memory/feedback_root_cause)
-- max parallel fan-out (memory/feedback_parallel_dispatch)
-- Cap parallel implementer subagents at 3-4 per feedback_session_limit_dispatch; shared API quota dies at 5+. Heavy-context sessions reduce cap to 2-3.
-- make pre-push-check before every push
-- Pre-fetch next-horizon brief when current wave drains (≤2 unblocked items remaining) per feedback_roadmap_pre_fetch
-- Audit dep-graph before parallel dispatch; sequence chained-output work; parallelize file-disjoint only per feedback_sequence_dependent_work
-- Default to deletion over addition; every PR answers "what got smaller?"; adversarial reviewer enforces ≥1 deletion proposal per feedback_deletion_default
-- PHASE-S-RELAX active on reviewer + scorecard + load-bearing gates — template files encode current conditions; restore at 30-day-green OR external-customer trigger per memory/feedback_gate_relaxation_phase_s.
-- **Test/Fuzz/Benchmark godocs 1 line max** per `feedback_test_godoc_one_line`. `scripts/doc-check.sh` test-godoc gate rejects multi-line. Recurring agent-failure 2026-06-02.
-- **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `feedback_pr_body_file_only`. HEREDOC bodies escape backticks and silently break the release-notes fence. Recurring agent-failure 2026-06-02.
+
+Code quality / comments
+- Default to deletion over addition; every PR answers "what got smaller?"; adversarial reviewer enforces ≥1 deletion proposal. (feedback_deletion_default)
+- Comments earn their place: WHY not WHAT, ≤1 sentence each, load-bearing only; sweep before every push. (feedback_comments_discipline + feedback_comment_budget_enforcement)
+- Exported godocs: 1-line WHY-form opening with the symbol name (revive `exported` lint). Comment-sweep MUST run `golangci-lint` after trimming. (feedback_comments_lint_reconcile)
+- Test/Fuzz/Benchmark godocs 1 line max. `scripts/doc-check.sh` test-godoc gate rejects multi-line. (feedback_test_godoc_one_line)
+
+Review / scorecard
+- Every design / roadmap / plan / impl step gets adversarial review BEFORE adoption. Address findings. Re-review until ADOPT. Then merge. (feedback_review_every_step)
+- Every implementer dispatch spawns an independent reviewer subagent against its own PR + applies an explicit B/A/A+ rubric — reviewer-APPROVE alone is insufficient. (feedback_agent_pr_review + feedback_grade_rubric)
+- Adversarial review is the default frame — 5 lenses: edge case, refactor, risk, simplification (Risk-tier), comment-trim. Never auto-approve. (feedback_adversarial_review)
+- Match review ceremony to diff risk — skip reviewer for dep bumps + body-only edits + trivial doc strips; reserve adversarial subagent for behavior changes. (feedback_review_proportional)
+- Automerge fires only after reviewer cleared AND every Risk-tier+ finding addressed — inline-fix OR `[followup]` issue cited in PR body. (feedback_review_before_automerge + feedback_unaddressed_load_bearing)
+- Main thread auto-files agent-surfaced load-bearing findings as tracking issues; never let one stay only as a PR comment. (feedback_agent_load_bearing_to_issues)
+- When implementer wants to deviate from spec, re-spawn the design subagent to revise the spec — implementer never picks. (feedback_spec_pattern_authority)
+- TDD: failing test FIRST, capture failing output in PR body, then impl, then green. Skip only on mechanical/doc/rename PRs per drop_ceremony. (feedback_tdd_discipline)
+- Subagent "make check clean" reports lie ~10% — main thread re-runs `make pre-push-check` before merge. (feedback_subagent_verification)
+
+Dispatch / parallelism
+- Cap parallel implementer subagents at 3-4; shared API quota dies at 5+. Heavy-context sessions reduce cap to 2-3. Status cadence: wave-dispatch + every ~3 completions + wave-drain (N/max + work + health + dispatch-more). (feedback_dispatch_discipline + feedback_status_report_cadence)
+- Audit dep-graph + map shared anchors BEFORE parallel dispatch. Parallelize only file-disjoint surfaces; serialize on 2+ collisions. (feedback_conflict_anticipation + feedback_parallel_safety)
+- Shared-primitive owner named pre-dispatch; pre-file shared followups; rebase on pre-merge collision. (feedback_parallel_safety)
+- Pin migration numbers in implementer dispatch prompt; never let the implementer "pick next available". (feedback_migration_number_lock)
+- Pre-fetch next-horizon brief when current wave drains (≤2 unblocked items remaining). Preemptively fill idle lanes with reviews / specs / audits — CI settling does not consume lanes. (feedback_roadmap_pre_fetch + feedback_anticipate_starvation)
+
+CI / merge / worktree
+- `make pre-push-check` before every push.
+- `gh pr create` / `gh pr edit` MUST use `--body-file` — HEREDOC bodies escape backticks and silently break the release-notes fence. PR body MUST contain a literal ```release-notes fence (one line user-visible OR `none (internal)`). Pre-push grep to verify. (feedback_pr_body_hygiene)
+- PR-lint gates beyond `make check`: doc-check banned-phrase list (11 tokens in `scripts/doc-check.sh`), check-tdd opt-out via `[DOCS]`/`[CI]`/`[CHORE]` release-notes prefix, release-notes fence + body-file gate. (feedback_ci_gates)
+- main branch protection has `required_status_checks.strict=false` — PRs auto-merge with stale base if their own CI passes; only DIRTY (textual conflict) blocks. (feedback_branch_protection_strict)
+- After setting automerge: monitor CI + DIRTY after window. automerge-set ≠ merged. Status must split MERGED / PASSING / FAILING / DIRTY. (feedback_post_automerge_ci_monitor)
+- Agents always work in worktrees; per-merge cleanup; force-twice clears locks; never push from primary. (feedback_worktree_discipline)
+- PHASE-S-RELAX active on reviewer + scorecard + load-bearing gates — template files encode current conditions; restore at 30-day-green OR external-customer trigger.
+
+Recurring agent traps (active 2026-06-02)
 - **Comment-noise gate trip-traps** per #333 followup — reviewer-tag regex over-matches reviewer-Request / reviewer-JSON prose; banner-comment regex rejects `# --- Section ---`. Dodge: hyphenate or lowercase, replace banners with plain `# Section.`.
 
 WHEN BLOCKED

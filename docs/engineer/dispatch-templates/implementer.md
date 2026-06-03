@@ -29,6 +29,13 @@ A+ SCORECARD
 DOC-CHECK
 - Pre-push grep banned phrases — token list (11 entries) lives in `scripts/doc-check.sh` (`banned_tokens` array). Reword hits to falsifiable claims (version pin, benchmark, named reference). Per `feedback_doc_check_banned_phrases`.
 
+COMMENT BUDGET (boot-prompt RULES expansion)
+- Every added/modified comment must (a) explain WHY not WHAT, (b) fit ≤1 sentence, (c) be load-bearing (a 6-month-cold reader would be materially worse off without it), (d) not restate adjacent code or symbol names. Sweep before every push. Per `feedback_comments_discipline` + `feedback_comment_budget_enforcement`.
+- Exported Go symbols: 1-line WHY-form godoc opening with the symbol name (revive `exported` lint). Run `golangci-lint run` after the sweep to catch the lint/style collision. Per `feedback_comments_lint_reconcile`.
+
+PATH ASSERTIONS (cross-platform)
+- Tests that assert on path strings MUST canonicalize both sides through the same resolver production uses, or platform-branch the assertion. Windows 8.3 short-path + `/etc`-literal break CI silently. Per `feedback_windows_path_tests`.
+
 RELEASE NOTES
 - PR body MUST contain a ```release-notes ... ``` fence (one line: user-visible change OR `none (internal)`). Body-edit alone won't retrigger pr-lint — needs a new commit. Per `feedback_pr_body_release_notes_fence`.
 
