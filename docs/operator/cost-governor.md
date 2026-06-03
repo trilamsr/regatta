@@ -97,6 +97,13 @@ present, the legacy field is treated as an additional implicit
 `per_work_item_usd` cap. Pin: precedence is syntactically explicit at
 the schema level — no silent inheritance, no LiteLLM-#12905 footgun.
 
+**Migration path.** New deployments use `safety.cost.per_work_item_usd`
+directly; the legacy `safety.spend_cap_usd: 50` shape maps 1:1 to
+`safety.cost.per_work_item_usd: 50`. The legacy field stays accepted
+across MVP-3/MVP-4 — schema-v2 deprecation lands when adoption
+telemetry confirms <5% of deployments still set the bare field
+(tracked in `examples/*/regatta.yaml` + `cmd/regatta/init_assets/`).
+
 ## Reading drift alerts
 
 `obs.EventCostDriftAlert` fires when `abs(actual_usd - recorded_usd) /
