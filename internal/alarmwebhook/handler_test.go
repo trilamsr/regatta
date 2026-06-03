@@ -215,8 +215,8 @@ func TestAlarmWebhook_RejectsMalformedJSON(t *testing.T) {
 	}
 }
 
-// TestAlarmWebhook_CapsBodySize asserts an oversized body is rejected before decoding instead of OOMing the receiver.
-func TestAlarmWebhook_CapsBodySize(t *testing.T) {
+// TestHandler_PayloadTooLarge_Returns500_NotFromMaxBytes asserts oversize body yields 500 so AlertManager retries instead of dropping silently.
+func TestHandler_PayloadTooLarge_Returns500_NotFromMaxBytes(t *testing.T) {
 	fake := &fakeGitHub{}
 	h := &Handler{Client: fake}
 	big := make([]byte, MaxBodyBytes+1024)
@@ -224,8 +224,47 @@ func TestAlarmWebhook_CapsBodySize(t *testing.T) {
 		big[i] = 'a'
 	}
 	rr := post(t, h, big)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status: got %d want 500; AM treats 4xx as permanent and would drop the alert", rr.Code)
+	}
+}
+
+// TestHandler_MalformedJSON_Returns400 asserts an invalid JSON body within the size cap returns 400 (truly malformed; retry would not help).
+func TestHandler_MalformedJSON_Returns400(t *testing.T) {
+	fake := &fakeGitHub{}
+	h := &Handler{Client: fake}
+	rr := post(t, h, []byte("{not-json-but-within-cap}"))
 	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("status: got %d want 400; oversized body must fail", rr.Code)
+		t.Fatalf("status: got %d want 400", rr.Code)
+	}
+}
+
+// TestHandler_4MiBExactBoundary_Succeeds asserts a body exactly at MaxBodyBytes parses to 2xx (boundary check after limit raise).
+func TestHandler_4MiBExactBoundary_Succeeds(t *testing.T) {
+	if MaxBodyBytes != 4<<20 {
+		t.Fatalf("MaxBodyBytes: got %d want %d (4 MiB)", MaxBodyBytes, 4<<20)
+	}
+	fake := &fakeGitHub{}
+	h := &Handler{Client: fake}
+	// Build a valid AlertManager payload, then pad annotations to exact 4 MiB.
+	prefix := `{"status":"firing","alerts":[{"status":"firing","labels":{"alertname":"X","severity":"critical"},"annotations":{"summary":"`
+	suffix := `"}}]}`
+	pad := MaxBodyBytes - len(prefix) - len(suffix)
+	if pad <= 0 {
+		t.Fatalf("payload skeleton too large: %d > %d", len(prefix)+len(suffix), MaxBodyBytes)
+	}
+	body := make([]byte, 0, MaxBodyBytes)
+	body = append(body, prefix...)
+	for i := 0; i < pad; i++ {
+		body = append(body, 'a')
+	}
+	body = append(body, suffix...)
+	if len(body) != MaxBodyBytes {
+		t.Fatalf("body length: got %d want %d", len(body), MaxBodyBytes)
+	}
+	rr := post(t, h, body)
+	if rr.Code >= 400 {
+		t.Fatalf("status: got %d want 2xx for body == MaxBodyBytes; body=%s", rr.Code, rr.Body.String())
 	}
 }
 

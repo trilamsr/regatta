@@ -19,11 +19,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// MaxBodyBytes caps an incoming webhook body. 1 MiB is well above any
-// realistic AlertManager group (the upstream default group_by produces
-// payloads under 100 KiB even with verbose annotations) and well below
-// anything an attacker could use to OOM the receiver.
-const MaxBodyBytes = 1 << 20
+// MaxBodyBytes caps an incoming webhook body. 4 MiB covers any realistic
+// AlertManager batch (the upstream default group_by produces payloads
+// under 100 KiB; a large grouping with 10K alerts + annotations still
+// fits comfortably) while staying well below anything an attacker could
+// use to OOM the receiver. Oversize bodies surface as 500 so AlertManager
+// retries — a 4xx would be treated as permanent and the alert dropped.
+const MaxBodyBytes = 4 << 20
 
 // mutexReapInterval and mutexReapTTL bound how aggressively idle alertname
 // mutexes are evicted. The TTL is comfortably longer than any realistic
@@ -252,6 +254,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {
+		// MaxBytesError surfaces as 500 (not 400) so AlertManager retries.
+		// AM treats 4xx as permanent — a 1 MiB cap historically caused
+		// large batches to silently drop. The cap should not be hit at
+		// 4 MiB in practice, but if it is, the operator needs the alert
+		// re-delivered, not swallowed.
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			h.resolveLogger().ErrorContext(ctx, "alarmwebhook.payload_too_large",
+				"limit_bytes", MaxBodyBytes, "err", err)
+			http.Error(w, "payload exceeds "+fmt.Sprintf("%d", MaxBodyBytes)+" bytes; retry advised", http.StatusInternalServerError)
+			return
+		}
 		h.resolveLogger().WarnContext(ctx, "alarmwebhook.read_body_failed", "err", err)
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return

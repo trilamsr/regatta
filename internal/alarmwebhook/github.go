@@ -51,6 +51,12 @@ type httpGitHubClient struct {
 	repo    string
 	http    *http.Client
 	baseURL string
+	// searchRetrier wraps the /search/issues call with 429-aware backoff
+	// and a consecutive-429 circuit breaker. Only the search endpoint is
+	// wrapped — create/comment are mutations that AlertManager will retry
+	// via the handler's 502, and double-mutation under retry is the
+	// classic duplicate-issue hazard the dedup cache is built to prevent.
+	searchRetrier *retrier
 }
 
 // NewHTTPGitHubClient is the production constructor. baseURL defaults to
@@ -65,10 +71,21 @@ func NewHTTPGitHubClient(token, owner, repo, baseURL string) GitHubClient {
 		repo:    repo,
 		baseURL: baseURL,
 		http:    &http.Client{Timeout: 15 * time.Second},
+		searchRetrier: newRetrier(retryOpts{
+			MaxAttempts:      5,
+			BaseDelay:        500 * time.Millisecond,
+			MaxDelay:         30 * time.Second,
+			Jitter:           0.25,
+			CircuitThreshold: 10,
+			CircuitWindow:    1 * time.Minute,
+			CircuitOpenFor:   5 * time.Minute,
+		}),
 	}
 }
 
-func (c *httpGitHubClient) do(ctx context.Context, method, path string, body any) (*http.Response, error) {
+// doRaw issues a single HTTP attempt without retry. Callers that want
+// backoff wrap this in retrier.Do; mutation endpoints call doRaw directly.
+func (c *httpGitHubClient) doRaw(ctx context.Context, method, path string, body any) (*http.Response, error) {
 	var reader io.Reader
 	if body != nil {
 		buf, err := json.Marshal(body)
@@ -87,7 +104,13 @@ func (c *httpGitHubClient) do(ctx context.Context, method, path string, body any
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.http.Do(req)
+	return c.http.Do(req)
+}
+
+// do is the non-retrying wrapper that surfaces 4xx/5xx as ErrGitHub.
+// Mutation endpoints (create/comment) use it directly.
+func (c *httpGitHubClient) do(ctx context.Context, method, path string, body any) (*http.Response, error) {
+	resp, err := c.doRaw(ctx, method, path, body)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrGitHub, err)
 	}
@@ -106,11 +129,19 @@ func (c *httpGitHubClient) do(ctx context.Context, method, path string, body any
 func (c *httpGitHubClient) ListOpenIssuesByLabel(ctx context.Context, label, alertnameSubstr string) ([]Issue, error) {
 	q := fmt.Sprintf("repo:%s/%s is:issue is:open label:%s in:title %q",
 		c.owner, c.repo, label, alertnameSubstr)
-	resp, err := c.do(ctx, http.MethodGet, "/search/issues?q="+url.QueryEscape(q), nil)
+	path := "/search/issues?q=" + url.QueryEscape(q)
+	resp, err := c.searchRetrier.Do(ctx, func() (*http.Response, error) {
+		return c.doRaw(ctx, http.MethodGet, path, nil)
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %w", ErrGitHub, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode >= 400 {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		return nil, fmt.Errorf("%w: GET %s -> %d: %s",
+			ErrGitHub, path, resp.StatusCode, strings.TrimSpace(string(snippet)))
+	}
 	var page struct {
 		Items []Issue `json:"items"`
 	}
