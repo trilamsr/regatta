@@ -207,6 +207,10 @@ type replayedVote struct {
 // forward iff the reviewer is also a member of the new tier; the
 // payload still records discarded votes so the audit trail tells the
 // full story (§3.3.1.1).
+//
+// The payload key MUST match decide.go's emit (`"decision"`) — issue
+// #508 fixed the drift where this reader expected `"vote"` and
+// silently produced empty-string votes against real production events.
 func replayVotes(events []state.ApprovalEvent, newReviewers []string) []replayedVote {
 	in := make(map[string]struct{}, len(newReviewers))
 	for _, r := range newReviewers {
@@ -218,13 +222,13 @@ func replayVotes(events []state.ApprovalEvent, newReviewers []string) []replayed
 			continue
 		}
 		var p struct {
-			Vote string `json:"vote"`
+			Decision string `json:"decision"`
 		}
 		_ = json.Unmarshal(e.Payload, &p)
 		_, present := in[e.Actor]
 		out = append(out, replayedVote{
 			Actor:     e.Actor,
-			Vote:      p.Vote,
+			Vote:      p.Decision,
 			Discarded: !present,
 		})
 	}

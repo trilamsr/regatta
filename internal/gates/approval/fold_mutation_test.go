@@ -143,9 +143,9 @@ func TestReaperMutation_NextChainTier(t *testing.T) {
 	}
 }
 
-// evReplayDecided builds a decided event using the "vote" payload key — the shape replayVotes reads (matches reaper_test.go fixtures).
-func evReplayDecided(actor, vote string) state.ApprovalEvent {
-	payload, _ := json.Marshal(map[string]string{"vote": vote})
+// evReplayDecided builds a decided event using the canonical "decision" payload key — matches decide.go's emit (issue #508 fix).
+func evReplayDecided(actor, decision string) state.ApprovalEvent {
+	payload, _ := json.Marshal(map[string]string{"decision": decision})
 	return state.ApprovalEvent{Kind: EventKindDecided, Actor: actor, Payload: payload}
 }
 
@@ -281,11 +281,8 @@ func TestReaperMutation_PipelineProperty(t *testing.T) {
 		for i := 0; i < nVotes; i++ {
 			actor := rapid.SampledFrom(votersPool).Draw(rt, "vote_actor_"+itoa(i))
 			dec := rapid.SampledFrom([]string{DecisionAllow, DecisionDeny}).Draw(rt, "vote_dec_"+itoa(i))
-			// "vote" key matches what replayVotes reads (and what
-			// reaper_test.go writes); decide.go writes "decision",
-			// but production reality is governed by what the function
-			// actually unmarshals — the test sticks with that.
-			payload, _ := json.Marshal(map[string]string{"vote": dec})
+			// Canonical "decision" key — matches decide.go's emit (issue #508).
+			payload, _ := json.Marshal(map[string]string{"decision": dec})
 			events = append(events, state.ApprovalEvent{Kind: EventKindDecided, Actor: actor, Payload: payload})
 		}
 

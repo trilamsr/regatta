@@ -227,13 +227,13 @@ func TestReaper_EscalatePolicy_NoOverlap(t *testing.T) {
 	appendEvent(t, db, state.ApprovalEvent{
 		ApprovalID: "a-003", Ts: t0.Add(-30 * time.Minute), Kind: "decided",
 		Actor:    "alice",
-		Payload:  mustMarshal(t, map[string]string{"vote": "allow"}),
+		Payload:  mustMarshal(t, map[string]string{"decision": "allow"}),
 		TokenJTI: "jti-alice",
 	})
 	appendEvent(t, db, state.ApprovalEvent{
 		ApprovalID: "a-003", Ts: t0.Add(-20 * time.Minute), Kind: "decided",
 		Actor:    "bob",
-		Payload:  mustMarshal(t, map[string]string{"vote": "deny"}),
+		Payload:  mustMarshal(t, map[string]string{"decision": "deny"}),
 		TokenJTI: "jti-bob",
 	})
 	// Token mints for tier-0 reviewers (records reaper revokes).
@@ -347,7 +347,7 @@ func TestReaper_EscalatePolicy_OverlapReplaysVote(t *testing.T) {
 	appendEvent(t, db, state.ApprovalEvent{
 		ApprovalID: "a-004", Ts: t0.Add(-30 * time.Minute), Kind: "decided",
 		Actor:    "alice",
-		Payload:  mustMarshal(t, map[string]string{"vote": "allow"}),
+		Payload:  mustMarshal(t, map[string]string{"decision": "allow"}),
 		TokenJTI: "jti-alice-0",
 	})
 	appendEvent(t, db, state.ApprovalEvent{
@@ -415,7 +415,7 @@ func TestReaper_EscalatePolicy_OverlapImmediateTerminal(t *testing.T) {
 	appendEvent(t, db, state.ApprovalEvent{
 		ApprovalID: "a-004b", Ts: t0.Add(-30 * time.Minute), Kind: "decided",
 		Actor:    "alice",
-		Payload:  mustMarshal(t, map[string]string{"vote": "allow"}),
+		Payload:  mustMarshal(t, map[string]string{"decision": "allow"}),
 		TokenJTI: "jti-alice-0",
 	})
 
