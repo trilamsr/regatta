@@ -11,7 +11,14 @@ import (
 
 // TestUnifiedClient_AlarmwebhookHTTPSatisfiesGHClient asserts the prod alarmwebhook HTTP constructor returns ghclient.Client (#710 B3).
 func TestUnifiedClient_AlarmwebhookHTTPSatisfiesGHClient(t *testing.T) {
-	var _ ghclient.Client = alarmwebhook.NewHTTPGitHubClient("t", "o", "r", "")
+	requireClient(t, alarmwebhook.NewHTTPGitHubClient("t", "o", "r", ""))
+}
+
+func requireClient(t *testing.T, c ghclient.Client) {
+	t.Helper()
+	if c == nil {
+		t.Fatal("nil ghclient.Client")
+	}
 }
 
 // TestUnifiedClient_SelfimproveDetectorAcceptsGHClient asserts NewDetector consumes ghclient.Client, not a package-local seam (#710 B3).

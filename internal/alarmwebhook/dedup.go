@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/ghclient"
 )
 
 // dedupLabel is the constant GitHub label every receiver-managed issue
@@ -72,7 +74,7 @@ func (d *dedupCache) put(alertname string, number int, hasIssue bool) {
 // match wins (oldest open issue) — `is:open` already filters by state
 // and Search/Issues returns results ranked best-match-first; the
 // receiver explicitly takes index 0 to make the rule one line.
-func findExistingIssue(ctx context.Context, client GitHubClient, cache *dedupCache, alertname string) (int, bool, error) {
+func findExistingIssue(ctx context.Context, client ghclient.Client, cache *dedupCache, alertname string) (int, bool, error) {
 	if cache != nil {
 		if num, has, ok := cache.get(alertname); ok {
 			return num, has, nil

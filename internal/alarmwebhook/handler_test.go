@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/ghclient"
 )
 
 // fakeGitHub records every call and serves canned ListOpenIssuesByLabel
@@ -19,7 +21,7 @@ import (
 // it under the mu lock.
 type fakeGitHub struct {
 	mu          sync.Mutex
-	Existing    map[string][]Issue
+	Existing    map[string][]ghclient.Issue
 	Created     []createCall
 	Comments    []commentCall
 	ListErr     error
@@ -40,7 +42,7 @@ type commentCall struct {
 	Body   string
 }
 
-func (f *fakeGitHub) ListOpenIssuesByLabel(_ context.Context, label, alertname string) ([]Issue, error) {
+func (f *fakeGitHub) ListOpenIssuesByLabel(_ context.Context, label, alertname string) ([]ghclient.Issue, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.ListCalls++
@@ -141,8 +143,8 @@ func TestAlarmWebhook_FirstFiring_CreatesIssue(t *testing.T) {
 // TestAlarmWebhook_SecondFiringSameAlertname_CommentsOnExistingIssue asserts a refiring routes to CommentOnIssue and never re-creates.
 func TestAlarmWebhook_SecondFiringSameAlertname_CommentsOnExistingIssue(t *testing.T) {
 	fake := &fakeGitHub{
-		Existing: map[string][]Issue{
-			"HighErrorRate": {{Number: 42, Title: "[obs-alert] HighErrorRate firing (critical)", State: "open"}},
+		Existing: map[string][]ghclient.Issue{
+			"HighErrorRate": {{Number: 42, Title: "[obs-alert] HighErrorRate firing (critical)"}},
 		},
 	}
 	h := &Handler{Client: fake}
@@ -342,8 +344,8 @@ func TestAlarmWebhook_ConcurrentStormProducesOneIssue(t *testing.T) {
 // TestAlarmWebhook_DedupCacheShortCircuits asserts back-to-back firings of the same alertname only hit the GH search API once thanks to the 60s cache.
 func TestAlarmWebhook_DedupCacheShortCircuits(t *testing.T) {
 	fake := &fakeGitHub{
-		Existing: map[string][]Issue{
-			"HighErrorRate": {{Number: 7, Title: "[obs-alert] HighErrorRate firing (critical)", State: "open"}},
+		Existing: map[string][]ghclient.Issue{
+			"HighErrorRate": {{Number: 7, Title: "[obs-alert] HighErrorRate firing (critical)"}},
 		},
 	}
 	h := &Handler{Client: fake}
