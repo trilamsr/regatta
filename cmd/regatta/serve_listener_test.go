@@ -42,7 +42,7 @@ func newListenerHarness(t *testing.T, ui bool, addr string) *listenerHarness {
 	}
 }
 
-// B1: --ui=true binds the listener; /healthz returns 200 + body "ok".
+// B1: --ui=true binds the listener; /healthz returns 200 + JSON readiness envelope.
 func TestServe_UITrue_BindsListener(t *testing.T) {
 	t.Setenv("REGATTA_HMAC_KEY", "test-key")
 	h := newListenerHarness(t, true, "127.0.0.1:0")
@@ -68,8 +68,8 @@ func TestServe_UITrue_BindsListener(t *testing.T) {
 		t.Errorf("status=%d want 200", resp.StatusCode)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	if got := strings.TrimSpace(string(body)); got != "ok" {
-		t.Errorf("body=%q want %q", got, "ok")
+	if !strings.Contains(string(body), `"status"`) {
+		t.Errorf("body=%q missing JSON status field", string(body))
 	}
 }
 

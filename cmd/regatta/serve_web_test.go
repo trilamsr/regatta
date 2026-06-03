@@ -33,8 +33,8 @@ func TestServe_RootHandlerWiredIntoBootListener(t *testing.T) {
 	}{
 		{path: "/ui/static/htmx-config.js", wantStatus: http.StatusOK, wantBody: "allowEval"},
 		{path: "/", wantStatus: http.StatusOK, wantBody: "<title>"},
-		// W7.0 registrations win because http.ServeMux picks the longest prefix.
-		{path: "/healthz", wantStatus: http.StatusOK, wantBody: "ok"},
+		// W7.0 registrations win because http.ServeMux picks the longest prefix; /healthz now returns the JSON readiness envelope.
+		{path: "/healthz", wantStatus: http.StatusOK, wantBody: `"status"`},
 	} {
 		resp, err := http.Get("http://" + addr + c.path)
 		if err != nil {
