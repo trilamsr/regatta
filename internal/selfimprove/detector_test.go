@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/ghclient"
 )
 
 type fakeSource struct{ events []Event }
@@ -15,23 +17,23 @@ func (f *fakeSource) Fetch(_ context.Context, _ time.Time, _ []string) ([]Event,
 }
 
 type fakeGH struct {
-	open      []GHIssue
-	filed     []GHIssue
+	open      []ghclient.Issue
+	filed     []ghclient.Issue
 	commented map[int][]string
 }
 
-func newFakeGH(open []GHIssue) *fakeGH {
+func newFakeGH(open []ghclient.Issue) *fakeGH {
 	return &fakeGH{open: open, commented: map[int][]string{}}
 }
 
-func (g *fakeGH) ListOpenIssuesByLabel(_ context.Context, _, _ string) ([]GHIssue, error) {
+func (g *fakeGH) ListOpenIssuesByLabel(_ context.Context, _, _ string) ([]ghclient.Issue, error) {
 	return g.open, nil
 }
 
 func (g *fakeGH) CreateIssue(_ context.Context, title, body string, _ []string) (int, error) {
 	n := 100 + len(g.filed)
-	g.filed = append(g.filed, GHIssue{Number: n, Title: title, Body: body})
-	g.open = append(g.open, GHIssue{Number: n, Title: title, Body: body})
+	g.filed = append(g.filed, ghclient.Issue{Number: n, Title: title, Body: body})
+	g.open = append(g.open, ghclient.Issue{Number: n, Title: title, Body: body})
 	return n, nil
 }
 

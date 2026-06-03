@@ -6,28 +6,9 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/ghclient"
 )
-
-// GHClient is the seam the detector requires from any GitHub adapter —
-// shape lifted intentionally from `internal/alarmwebhook.GitHubClient`
-// (W1 spec dep). The interface is local so this package does not
-// import alarmwebhook just to borrow a type; production wiring in
-// `cmd/regatta/selfimprove.go` passes the alarmwebhook adapter as the
-// GHClient implementation. Reuse mandated by spec §6.2 + memory
-// `feedback_research_design_principles` (proven OSS > rebuild).
-type GHClient interface {
-	ListOpenIssuesByLabel(ctx context.Context, label, titleSubstr string) ([]GHIssue, error)
-	CreateIssue(ctx context.Context, title, body string, labels []string) (int, error)
-	CommentOnIssue(ctx context.Context, number int, body string) error
-}
-
-// GHIssue is the trimmed view the detector reads — Number + Body is
-// enough to scan for the `dedup-key:<hash>` marker on the dedup path.
-type GHIssue struct {
-	Number int
-	Title  string
-	Body   string
-}
 
 // EventSource yields the substrate events the detector scans. Tests
 // fake it with in-memory slices; production wires a SQLite reader
@@ -45,7 +26,7 @@ type EventSource interface {
 type Detector struct {
 	Rules   []Rule
 	Source  EventSource
-	GH      GHClient
+	GH      ghclient.Client
 	Clock   func() time.Time
 	Label   string
 	Apply   bool
@@ -54,7 +35,7 @@ type Detector struct {
 // NewDetector returns a detector wired with the five MVP rules and
 // the operator's GH adapter. Clock defaults to time.Now; tests inject
 // a fixed clock so window math is deterministic.
-func NewDetector(src EventSource, gh GHClient, apply bool) *Detector {
+func NewDetector(src EventSource, gh ghclient.Client, apply bool) *Detector {
 	return &Detector{
 		Rules:  DefaultRules(),
 		Source: src,
@@ -141,7 +122,7 @@ func unionKinds(rules []Rule) []string {
 	return out
 }
 
-func indexByDedup(issues []GHIssue) map[string]int {
+func indexByDedup(issues []ghclient.Issue) map[string]int {
 	out := make(map[string]int, len(issues))
 	for _, iss := range issues {
 		key := extractDedupKey(iss.Body)

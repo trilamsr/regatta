@@ -10,30 +10,9 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/ghclient"
 )
-
-// GitHubClient is the seam between the handler and the GitHub REST API.
-// Tests fake it; production wires httpGitHubClient. The three methods
-// cover exactly what the dedup-or-create rule needs — no surface
-// beyond that.
-type GitHubClient interface {
-	// ListOpenIssuesByLabel returns open issues with the given label
-	// whose title contains alertname. Caller treats first match as the
-	// dedup target (oldest wins).
-	ListOpenIssuesByLabel(ctx context.Context, label, alertnameSubstr string) ([]Issue, error)
-	// CreateIssue posts a new issue and returns the created number.
-	CreateIssue(ctx context.Context, title, body string, labels []string) (int, error)
-	// CommentOnIssue appends body to the issue's comment thread.
-	CommentOnIssue(ctx context.Context, number int, body string) error
-}
-
-// Issue is the trimmed view of the GitHub issue payload the dedup path
-// needs. Adding fields is cheap; trim back if any goes unused.
-type Issue struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	State  string `json:"state"`
-}
 
 // ErrGitHub wraps every transport-layer or HTTP-status failure from the
 // GitHub REST API. Callers branch on the boundary without coupling to
@@ -61,7 +40,7 @@ type httpGitHubClient struct {
 
 // NewHTTPGitHubClient is the production constructor. baseURL defaults to
 // https://api.github.com when empty; tests override it.
-func NewHTTPGitHubClient(token, owner, repo, baseURL string) GitHubClient {
+func NewHTTPGitHubClient(token, owner, repo, baseURL string) ghclient.Client {
 	if baseURL == "" {
 		baseURL = "https://api.github.com"
 	}
@@ -126,7 +105,7 @@ func (c *httpGitHubClient) do(ctx context.Context, method, path string, body any
 // ListOpenIssuesByLabel queries the search/issues endpoint. The query
 // string is built with url.QueryEscape on alertnameSubstr so a hostile
 // alertname (`" OR is:closed`) cannot break out of the in:title term.
-func (c *httpGitHubClient) ListOpenIssuesByLabel(ctx context.Context, label, alertnameSubstr string) ([]Issue, error) {
+func (c *httpGitHubClient) ListOpenIssuesByLabel(ctx context.Context, label, alertnameSubstr string) ([]ghclient.Issue, error) {
 	q := fmt.Sprintf("repo:%s/%s is:issue is:open label:%s in:title %q",
 		c.owner, c.repo, label, alertnameSubstr)
 	path := "/search/issues?q=" + url.QueryEscape(q)
@@ -143,7 +122,7 @@ func (c *httpGitHubClient) ListOpenIssuesByLabel(ctx context.Context, label, ale
 			ErrGitHub, path, resp.StatusCode, strings.TrimSpace(string(snippet)))
 	}
 	var page struct {
-		Items []Issue `json:"items"`
+		Items []ghclient.Issue `json:"items"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&page); err != nil {
 		return nil, fmt.Errorf("%w: decode search: %w", ErrGitHub, err)

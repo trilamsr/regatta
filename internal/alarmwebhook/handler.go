@@ -18,6 +18,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/trilamsr/regatta/internal/ghclient"
 	"github.com/trilamsr/regatta/internal/obs"
 )
 
@@ -53,7 +54,7 @@ type alertnameLock struct {
 // share state.
 type Handler struct {
 	// Client is the GitHub seam. Required; the constructor enforces it.
-	Client GitHubClient
+	Client ghclient.Client
 	// Logger is the slog drain. Nil falls back to slog.Default().
 	Logger *slog.Logger
 	// Meter is the OTel instrument factory. Nil resolves lazily at
