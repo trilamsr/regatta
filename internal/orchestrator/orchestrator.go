@@ -9,9 +9,9 @@
 //  3. AgentSpawner (called from ScheduleOnce)
 //
 // Plus crash recovery (Recover) and lock heartbeating (Heartbeat).
-// PRWatcher, CanaryInjector, SupervisorLimits, and LessonCapture
-// land in follow-up commits. Reaper + RejectionRouter are wired in
-// via SetReaper / SetRejectionRouter.
+// CanaryInjector, SupervisorLimits, and LessonCapture land in
+// follow-up commits. Reaper + RejectionRouter + PRWatcher are wired
+// in via SetReaper / SetRejectionRouter / SetPRWatcher.
 package orchestrator
 
 import (
@@ -29,6 +29,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/lockfile"
 	"github.com/trilamsr/regatta/internal/orchestrator/merge"
+	"github.com/trilamsr/regatta/internal/orchestrator/prwatch"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
@@ -137,6 +138,7 @@ type Orchestrator struct {
 	reaper      *reaper.Reaper
 	rejection   *rejectionrouter.Router
 	mergeCoord  *merge.Coordinator
+	prWatcher   *prwatch.Watcher
 	dbPath      string
 	cfg         Config
 	log         *slog.Logger
@@ -192,6 +194,25 @@ func (o *Orchestrator) SetReaper(r *reaper.Reaper) {
 // never wake on AI-gate rejections and never escalate to needs-human.
 func (o *Orchestrator) SetRejectionRouter(r *rejectionrouter.Router) {
 	o.rejection = r
+}
+
+// SetPRWatcher installs the prwatch.Watcher used by Run to drive the
+// running→pr_open agent transition by polling GitHub. Optional; without
+// a Watcher the daemon still functions but agents stay in running
+// forever (no PR-open signal). Wired by serve.go in production; nil
+// in --no-pr-watch fixture paths.
+func (o *Orchestrator) SetPRWatcher(w *prwatch.Watcher) {
+	o.prWatcher = w
+}
+
+// WatchPRs invokes the configured Watcher.Sweep. Safe to call with no
+// Watcher set; returns nil in that case. Same nil-safety shape as
+// ReapTerminal so a Watcher-less daemon keeps booting.
+func (o *Orchestrator) WatchPRs(ctx context.Context) error {
+	if o.prWatcher == nil {
+		return nil
+	}
+	return o.prWatcher.Sweep(ctx)
 }
 
 // SetMergeCoordinator installs the merge.Coordinator used by Recover
@@ -484,6 +505,9 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			}
 			if err := o.ReapTerminal(ctx); err != nil {
 				o.log.Warn("orchestrator.reap_failed", string(obs.KeyErr), err.Error())
+			}
+			if err := o.WatchPRs(ctx); err != nil {
+				o.log.Warn("orchestrator.prwatch_failed", string(obs.KeyErr), err.Error())
 			}
 		case <-heartT.C:
 			if err := o.Heartbeat(ctx); err != nil {
