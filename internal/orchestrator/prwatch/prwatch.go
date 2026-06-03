@@ -178,7 +178,7 @@ func (w *Watcher) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("prwatch: gh version probe: %w", err)
 	}
-	ok, err := versionAtLeast(got, MinGHVersion)
+	ok, err := VersionAtLeast(got, MinGHVersion)
 	if err != nil {
 		return fmt.Errorf("prwatch: parse gh version %q: %w", got, err)
 	}

@@ -33,12 +33,20 @@ const (
 	OutcomeAuthExpired      Outcome = "auth_expired"
 	OutcomeGhNotInstalled   Outcome = "gh_not_installed"
 	OutcomeTimeout          Outcome = "timeout"
-	OutcomeUnknown          Outcome = "unknown"
+	// OutcomeBranchDeleted — gh refused because the head branch was
+	// already deleted (race: an earlier sweep + --delete-branch landed,
+	// then a duplicate execute call hits the empty ref). Spec §4.3
+	// completion-event semantics: equivalent to AlreadyMerged — success
+	// path writes merge_completed + transitions Done (#655).
+	OutcomeBranchDeleted Outcome = "branch_deleted"
+	OutcomeUnknown       Outcome = "unknown"
 )
 
 // IsTerminal — terminal outcomes write merge_failed and crash the
 // agent for requeue; non-terminal outcomes leave the agent in
 // AwaitingMerge so Reconcile + the next tick can re-probe.
+// BranchDeleted is terminal-success (handled via IsSuccess) so it
+// drives the merge_completed path, not merge_failed.
 func (o Outcome) IsTerminal() bool {
 	switch o {
 	case OutcomeSHADiverged, OutcomeBranchProtection, OutcomeConflict, OutcomePRClosed:
@@ -48,9 +56,10 @@ func (o Outcome) IsTerminal() bool {
 }
 
 // IsSuccess — completion path writes merge_completed and transitions
-// to Done.
+// to Done. BranchDeleted joins AlreadyMerged as success-via-error: gh
+// rejected the call but the underlying invariant (PR landed) holds.
 func (o Outcome) IsSuccess() bool {
-	return o == OutcomeMerged || o == OutcomeAlreadyMerged
+	return o == OutcomeMerged || o == OutcomeAlreadyMerged || o == OutcomeBranchDeleted
 }
 
 // ExecutorResult is the executor's structured response — pure data so
@@ -126,9 +135,10 @@ func (g GhExecutor) Merge(ctx context.Context, prNumber int, headSHA string) (Ex
 			res.ExitCode = ee.ExitCode()
 		}
 		res.Outcome = classifyStderr(res.Stderr)
-		// AlreadyMerged is success-via-error-exit; surface no error
-		// to upstream so the success path runs.
-		if res.Outcome == OutcomeAlreadyMerged {
+		// Success-via-error-exit: gh returned non-zero but the
+		// underlying invariant (PR landed) holds. Surface no error
+		// upstream so ExecuteMerge runs the completion path.
+		if res.Outcome.IsSuccess() {
 			return res, nil
 		}
 		return res, fmt.Errorf("merge: gh pr merge %d: %w (%s)", prNumber, err, res.Stderr)
@@ -143,9 +153,28 @@ func (g GhExecutor) Merge(ctx context.Context, prNumber int, headSHA string) (Ex
 // classifyStderr maps gh's stderr substrings to an Outcome. The set is
 // stable for gh ≥ 2.40; new gh strings degrade to OutcomeUnknown which
 // the coordinator treats as recoverable (next sweep retries).
+//
+// BranchDeleted ordering: tested BEFORE AlreadyMerged because the gh
+// stderr for the delete-branch-after-merge race is
+// "pull request was already merged; branch was already deleted" — both
+// substrings match, and the spec §4.3 completion-event semantics are
+// equivalent, but BranchDeleted carries the more specific signal for
+// dashboards (#655). Both outcomes drive IsSuccess so the FSM
+// transition is identical.
+//
+// PRClosed matches gh's two phrasings: pre-2.45 prints "pull request
+// is closed"; 2.45+ prints "pull request <N> is not in the open
+// state". Both yield OutcomePRClosed (#657).
+//
+// Anchors are tight to avoid over-match: "branch was" + "deleted"
+// requires the gh-specific phrasing rather than any stray "deleted"
+// substring; "not in open state" + "pull request" requires gh's full
+// idiom.
 func classifyStderr(s string) Outcome {
 	l := strings.ToLower(s)
 	switch {
+	case strings.Contains(l, "branch was already deleted"), strings.Contains(l, "branch has been deleted"):
+		return OutcomeBranchDeleted
 	case strings.Contains(l, "already merged"), strings.Contains(l, "pull request was already merged"):
 		return OutcomeAlreadyMerged
 	case strings.Contains(l, "head commit does not match"), strings.Contains(l, "match-head-commit"):
@@ -158,8 +187,15 @@ func classifyStderr(s string) Outcome {
 		return OutcomeBranchProtection
 	case strings.Contains(l, "merge conflict"), strings.Contains(l, "conflicts must be resolved"):
 		return OutcomeConflict
-	case strings.Contains(l, "pull request is closed"), strings.Contains(l, "closed without"):
+	case strings.Contains(l, "pull request is closed"),
+		strings.Contains(l, "closed without"),
+		strings.Contains(l, "not in the open state"),
+		strings.Contains(l, "not in open state"):
 		return OutcomePRClosed
+	case strings.Contains(l, "command not found"), strings.Contains(l, "executable file not found"):
+		return OutcomeGhNotInstalled
+	case strings.Contains(l, "context deadline exceeded"), strings.Contains(l, "operation timed out"):
+		return OutcomeTimeout
 	}
 	return OutcomeUnknown
 }

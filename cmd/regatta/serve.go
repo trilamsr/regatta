@@ -647,6 +647,12 @@ func parseBriefKeyring(raw string) (map[string][]byte, []string, error) {
 // autonomous gh-pr-merge flow. The worker is nil when the gate is
 // off so the deferred Stop() shutdown is a no-op.
 //
+// gh ≥ 2.40 floor: when the worker is enabled we run a boot-time
+// gh-version probe (spec §9.10, #656). Refuse to wire the worker if
+// gh is too old — --match-head-commit silently fails on 2.39 and
+// older, defeating the SHA-pin guard. The Coordinator (Reconcile-only
+// path) still gets built so the recovery sweep stays live.
+//
 // The probe seam stays nil-stubbed for now: the production gh-CLI
 // prober ships alongside the W7 L4-as-review wiring; until then the
 // Coordinator's Reconcile path is exercised by tests + the executor
@@ -663,9 +669,20 @@ func buildMergeWiring(db *state.DB, autoMergeEnabled bool, logger *slog.Logger) 
 	if !autoMergeEnabled {
 		return coord, nil, nil
 	}
+	if err := verifyGhVersionFn(context.Background(), logger); err != nil {
+		return nil, nil, fmt.Errorf("merge: gh version check: %w", err)
+	}
 	coord.SetExecutor(merge.GhExecutor{})
 	w := merge.NewWorker(coord, 32, logger)
 	return coord, w, nil
+}
+
+// verifyGhVersionFn is the test seam for the boot-time gh-version
+// gate (#656). Production defaults to merge.VerifyGhVersion with the
+// real shell-out probe; tests reassign it to a fake that returns a
+// pinned version string so buildMergeWiring stays hermetic.
+var verifyGhVersionFn = func(ctx context.Context, logger *slog.Logger) error {
+	return merge.VerifyGhVersion(ctx, nil, logger)
 }
 
 // noopMergeProber is the temporary prober for c2 wiring — Reconcile

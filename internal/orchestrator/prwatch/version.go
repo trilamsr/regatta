@@ -12,14 +12,17 @@ import (
 // both vary across releases, so the regex anchors only on the triple.
 var semverPattern = regexp.MustCompile(`(\d+)\.(\d+)\.(\d+)`)
 
-// versionAtLeast reports whether got >= floor where both are
+// VersionAtLeast reports whether got >= floor where both are
 // MAJOR.MINOR.PATCH semver triples. Either argument may carry
 // surrounding text (`gh version 2.55.0 ...`); the first triple wins.
 //
 // Returns an error when no triple is present in `got`, so the caller
-// (Watcher.Start) refuses to start instead of silently proceeding
-// against an unknown gh build.
-func versionAtLeast(got, floor string) (bool, error) {
+// (Watcher.Start, merge.VerifyGhVersion) refuses to start instead of
+// silently proceeding against an unknown gh build.
+//
+// Exported so the merge package can share the same comparator at
+// boot — both subsystems gate on the same gh-≥2.40 floor (#656).
+func VersionAtLeast(got, floor string) (bool, error) {
 	gMaj, gMin, gPat, err := parseSemver(got)
 	if err != nil {
 		return false, err
