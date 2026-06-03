@@ -106,3 +106,11 @@ INDEPENDENT REVIEW MEASURES vs A+ RUBRIC
 3. **Comment-noise gate trip-traps** per #333 followup. Regex was tightened in #371; if it still over-matches your prose, hyphenate the matching token (`reviewer-Request` / `reviewer-JSON`) or lowercase the following capital. Banner regex rejects `# --- Section ---` — use plain `# Section.` instead.
 
 4. **GH base-sha drift workaround** per #343 (root-cause fix #347 merged): if check-tdd flags a file that isn't in your diff, the workflow's BASE_SHA env was stale. Now resolved live via `git merge-base`. If you still see ghost flags, add `[DOCS]` / `[CI]` / `[CHORE]` category prefix to the release-notes block to opt out.
+
+5. **Scorecard citation tokens MUST be OUTSIDE backticks** per `feedback_scorecard_citation_token_outside_backticks`. `scripts/check-scorecard.sh` strips inline-backtick spans before regex-scanning rows for citation tokens. Tokens wrapped in backticks are INVISIBLE to the validator.
+   - Bad row: `| [x] Test passes | A | TestXyz_DoesThing in internal/foo/bar_test.go:42 |` with the cite tokens wrapped in backticks.
+   - Good row: `| [x] Test passes | A | TestXyz_DoesThing (internal/foo/bar_test.go:42) |` — tokens bare.
+   - Acceptable bare tokens: `TestPascalCase` / `FuzzPascalCase` / `BenchmarkPascalCase` / `path/to/file.go:NNN` / `#NNNN` / `N/A — <rationale>`.
+   - Pre-push check: `bash scripts/check-scorecard.sh --body-file /tmp/pr-<branch>.md` to catch locally.
+
+6. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Every PR body MUST include a triple-fence ` ```release-notes ` block with `[PREFIX] one-line summary` inside — even `[DOCS]` PRs. Without the fence, `check-scorecard.sh` cannot read the category and falls through to the error branch reporting `Scorecard section present but contains no [x] marks`. The category-exempt branch only fires when the fence is present.
