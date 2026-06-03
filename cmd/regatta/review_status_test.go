@@ -63,8 +63,7 @@ func TestReviewSetupCodeowners_IdempotentOnSecondRun(t *testing.T) {
 	}
 }
 
-// TestReviewSetupCodeowners_PreservesExistingLines pins safety —
-// pre-existing CODEOWNERS lines must survive the append.
+// TestReviewSetupCodeowners_PreservesExistingLines asserts existing CODEOWNERS lines survive append (#624).
 func TestReviewSetupCodeowners_PreservesExistingLines(t *testing.T) {
 	tmp := t.TempDir()
 	dir := filepath.Join(tmp, ".github")
