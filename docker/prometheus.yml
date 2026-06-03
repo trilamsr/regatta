@@ -1,0 +1,51 @@
+# Prometheus 3.x config for the Stage 2 self-host stack.
+#
+# Two ingest paths:
+#   1. OTLP push  — regatta → :9090/api/v1/otlp via --web.enable-otlp-receiver
+#      (TSDB-direct, no collector hop; primary path per #519 §6 + §9).
+#   2. Pull scrape — regatta:9464/metrics (fallback when an operator pins
+#      OTEL_METRICS_PROMETHEUS_PORT=9464 instead of the OTLP exporter).
+#
+# Recording + alerting rules: Sloth-compiled output already lives in-tree
+# at dashboards/prometheus/rules/ (per #503 + Makefile slo-compile). The
+# compose mount surfaces that directory at /etc/prometheus/rules/.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    deployment: self-host
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+rule_files:
+  - /etc/prometheus/rules/*.yaml
+
+# OTLP receiver translates resource attributes into target labels so the
+# Sloth recording rules' service= grouping survives the OTLP → Prom hop.
+otlp:
+  promote_resource_attributes:
+    - service.name
+    - service.namespace
+    - service.instance.id
+    - deployment.environment
+
+scrape_configs:
+  # Self-scrape for Prom's own health dashboards.
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - localhost:9090
+
+  # Fallback pull path. Inert (no /metrics endpoint) when regatta uses
+  # the OTLP push path; keeps the scrape relationship explicit for
+  # operators who flip OTEL_METRICS_PROMETHEUS_PORT=9464.
+  - job_name: regatta
+    static_configs:
+      - targets:
+          - regatta:9464
+    metrics_path: /metrics
