@@ -79,6 +79,20 @@ func TestSubstrate_KindPayloadValidation(t *testing.T) {
 			malformed:    `{"subject_id":"","actor":"tree","reason":"x"}`,
 			wantStrategy: substrate.StrategyAppend,
 		},
+		{
+			name:         "cost_cap_throttled",
+			kind:         substrate.KindCostCapThrottled,
+			wellFormed:   `{"spend_micro":40000001,"cap_micro":40000000,"auto_resume_at":"2026-06-03T00:00:00Z","tz":"UTC"}`,
+			malformed:    `{"spend_micro":40000001,"cap_micro":0,"auto_resume_at":"","tz":""}`,
+			wantStrategy: substrate.StrategyAppend,
+		},
+		{
+			name:         "cost_cap_resumed",
+			kind:         substrate.KindCostCapResumed,
+			wellFormed:   `{"actor":"tree","reason":"operator","until":"2026-06-03T00:00:00Z"}`,
+			malformed:    `{"actor":"","reason":"operator","until":"2026-06-03T00:00:00Z"}`,
+			wantStrategy: substrate.StrategyAppend,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
