@@ -7,7 +7,7 @@ Copy-paste this prompt to bootstrap a fully autonomous regatta dev session. Desi
 ## Prompt
 
 ```
-Continue regatta development autonomously. Operate INDEFINITELY in auto mode — execute don't ask, ship don't explain, stop only when externally interrupted. **Self-host-first; Phase S1+S2+S3 SHIPPED 2026-06-02 (96+ PRs merged in single autonomous session).** Direct path to autonomous self-improvement loop: Phase OBS-A (meter + dashboards + SLOs, ACTIVE) → Phase OBS-B/C/D (substrate + agent-loop telemetry + operator surface) → Phase AUTONOMY (#458 — 7 wedges closing the autonomous-loop gaps) → Phase DEPLOY (container + systemd/launchd, READY) → Phase GREEN-CLOCK (30-day-green trigger) → Phase MVR-1 (first external-customer wedges + DW-superset T7 strategy iface, gated on customer-0 interview) → Phase MVR-2 (paying-customer wedges + DW substrate bridge T6 + /workflows UI T7) → Phase MVR-3 (DW-superset capstone — script gate T5 + JS runtime T6 — makes regatta superset of Claude-Code Dynamic Workflows). External-buyer wedges (W8 multi-tenant, W10 Sigstore, W11 blackboard, W12 billing, P3.8 swap-out adapters, W9 Temporal-backed impl) stay Phase X until 30-day-green OR external-customer-ask fires. Never bottleneck on roadmap depth — pre-fetch next horizon per feedback_roadmap_pre_fetch when current wave drains. NEVER ask for clarification; decide via subagent + memory rules per feedback_decision_priority (UX > ease > performance > best-practices > speed > velocity). When blocked: file [followup] issue + add to watch-triggers list + pick next priority. Pause only for genuinely irreversible action (tag signing, secret rotation, branch-protection downgrade).
+Continue regatta development autonomously. Operate INDEFINITELY in auto mode — execute don't ask, ship don't explain, stop only when externally interrupted. **Self-host-first; Phase S1+S2+S3 + OBS-A/B/C/D + PHASE-AUTONOMY W1-W7 ALL SHIPPED through 2026-06-03 (~150+ PRs merged across autonomous sessions). Autonomy-loop structurally CLOSED — regatta can dispatch + L4-review + auto-merge + cost-throttle + self-improvement-detect + alarm-webhook → file issue → close loop. Operator action: `regatta install-service` once + watch.** Direct path to first paying customer: Phase DEPLOY (container + systemd/launchd, READY — operator install pending) → Phase GREEN-CLOCK (30-day-green trigger — counts after deploy) → Phase MVR-1 (first external-customer wedges + DW-superset T7 strategy iface — specs landed for T1/T2/T3/T5/T6, gated on customer-0 interview) → Phase MVR-2 (paying-customer wedges + DW substrate bridge T6 + /workflows UI T7 — skeleton specs landed) → Phase MVR-3 (DW-superset capstone — script gate T5 + JS runtime T6 — makes regatta superset of Claude-Code Dynamic Workflows; skeleton specs in flight). External-buyer wedges (W8 multi-tenant, W10 Sigstore, W11 blackboard, W12 billing, P3.8 swap-out adapters, W9 Temporal-backed impl) stay Phase X until 30-day-green OR external-customer-ask fires. Never bottleneck on roadmap depth — pre-fetch next horizon per feedback_roadmap_pre_fetch when current wave drains. NEVER ask for clarification; decide via subagent + memory rules per feedback_decision_priority (UX > ease > performance > best-practices > speed > velocity). When blocked: file [followup] issue + add to watch-triggers list + pick next priority. Pause only for genuinely irreversible action (tag signing, secret rotation, branch-protection downgrade).
 
 BOOT
 1. cd /Users/treedesk/Desktop/Projects/regatta && git fetch && git pull --ff-only main
@@ -16,45 +16,39 @@ BOOT
 4. gh pr list --state open  (note current state; in-flight PRs are normal)
 5. Read MEMORY.md + AGENTS.md (auto-loaded). Specs in `docs/engineer/specs/` are canonical for execution.
 
-PRIORITY (top-down, current direct path to autonomous self-improvement loop)
+PRIORITY (top-down, current direct path: deploy regatta-the-binary → green-clock → first paying customer)
 
-PHASE S — Self-host dogfood-ready core [COMPLETE]
-  S1+S2+S3 shipped 2026-06-02. Acceptance: regatta dispatches itself on this repo end-to-end. Smoke test PASSED LIVE.
+PHASE S — Self-host dogfood-ready core [COMPLETE 2026-06-02]
+  S1+S2+S3 shipped. Acceptance: regatta dispatches itself on this repo end-to-end. Smoke test PASSED LIVE. (Detail in git history — pruned per feedback_boot_prompt_per_wave_refresh.)
 
-PHASE OBS-A — Observability Wave-A meter + dashboards + SLOs [ACTIVE]
-  8 items in .regatta/items/obs-wave-a-*.md. Operator's autonomous loop shipping: #490 (MeterProvider + OTLP/Prom), #491 (gate_rejected events), #495 (cost.usd metrics), #496 (Meter fan-out), #502 (scheduler tick latency), #503 (OpenSLO YAML), #505 (digest cron). Target: all 8 items merged. Acceptance: Prom scraping regatta /metrics + 6 Grafana dashboards live + Sloth-compiled SLOs alerting.
+PHASE OBS-A/B/C/D — Observability full stack [COMPLETE 2026-06-03]
+  All 4 waves (meter+dashboards+SLOs · substrate health · agent-loop telemetry · operator surface) shipped or queued for merge. Acceptance: Prom scraping regatta /metrics + Grafana dashboards live + Sloth-compiled SLOs alerting + event-rate alarm + HMAC chain detector + divergence-audit + W9 replay-latency + PR-lifecycle stages + cost-per-PR + subagent-failure-taxonomy + `regatta status` TUI + daily digest + trigger-clock dashboard. Per #432 spec.
 
-PHASE OBS-B/C/D — Substrate health + agent-loop telemetry + operator surface [QUEUED]
-  11 items in .regatta/items/obs-wave-{b,c,d}-*.md per #432 spec. Dispatch after OBS-A green. Acceptance: event-rate alarm + HMAC chain detector + divergence-audit dashboard + W9 replay-latency + PR-lifecycle stages + cost-per-PR + subagent-failure-taxonomy + `regatta status` TUI + daily digest + trigger-clock dashboard.
+PHASE AUTONOMY — 7 wedges closing the autonomous-loop gaps [COMPLETE 2026-06-03]
+  Per #458 spec. All 7 wedges landed or queued: W1 alarm-webhook · W2 auto-merge-on-gate-pass (intent/outbox + awaiting_merge recovery re-probe) · W3 service-supervisor · W6 secret-credential-fetch · W4 self-improvement-detector · W5 cost-cap-autonomic-enforcement · W7 PR-merge L4-as-review identity (#589). Acceptance MET (structural): regatta serve can run unattended dispatching + L4-reviewing + auto-merging + cost-throttling + alarm-webhooking → file issue → close loop. Operator action: one `regatta install-service` invocation + watch.
 
-PHASE AUTONOMY — 7 wedges closing the autonomous-loop gaps [BLOCKED on OBS-A green]
-  Per #458 spec. 7 items in .regatta/items/phase-autonomy-w{1..7}-*.md. Sequenced by layer:
-    Layer 1 [obs→issue→merge]: W1 alarm-webhook · W2 auto-merge-on-gate-pass (c0 BLOCKS c2: ship intent/outbox + awaiting_merge recovery re-probe before any real `gh pr merge` — see #552, #551)
-    Layer 2 [bootstrap]: W3 service-supervisor · W6 secret-credential-fetch
-    Layer 3 [self-improvement]: W4 self-improvement-detector · W5 cost-cap-autonomic-enforcement · W7 PR-merge L4-as-review identity
-  Total ~1100 LoC (+120 for W2 c0), ~10-14 days subagent-time. Acceptance: regatta serve runs unattended for 7 days dispatching + auto-merging without operator click.
-
-PHASE DEPLOY — Production deploy of regatta-the-binary [READY]
-  Container Stage 1+2+3 SHIPPED (#518 #534 #533 #536). Operator action required:
+PHASE DEPLOY — Production deploy of regatta-the-binary [READY — operator install pending]
+  Container Stage 1+2+3 SHIPPED. Operator action required (ONE of):
     Option A: docker compose up -d (Stage 2 — full obs stack)
     Option B: ./deploy/install-systemd.sh (Linux native)
     Option C: ./deploy/install-launchd.sh (macOS native)
   Env vars: ANTHROPIC_API_KEY · GH_TOKEN · REGATTA_BRIEF_HMAC_KEYS (optional, markdown-only).
-  Acceptance: regatta serve running 24/7 against this repo.
+  Acceptance: regatta serve running 24/7 against this repo. **This is the next operator-side gate — every downstream phase blocks on it.**
 
 PHASE GREEN-CLOCK — 30-day-green trigger [BLOCKED on DEPLOY]
-  Metric: ≥10 PRs/day green-merge ≥30 consecutive days unattended. Each green-merge from regatta-the-binary increments the day-count. Operator intervention (manual merge) resets to day-0. Trigger fires → unlocks Phase X.
+  Metric: ≥10 PRs/day green-merge ≥30 consecutive days unattended. Each green-merge from regatta-the-binary increments the day-count. Operator intervention (manual merge) resets to day-0. Trigger fires → unlocks Phase X. **Day-0 starts only after Phase DEPLOY operator action.**
 
-PHASE MVR-1 — First external-customer wedges [BLOCKED on GREEN-CLOCK OR external-customer-ask]
-  Per #433 unified next-horizon roadmap + §14 DW-superset integration. 5 items in .regatta/items/mvr-1-*.md:
-    MVR-1 T1: W7 Wave 1 htmx UI MVP
-    MVR-1 T2: regatta init bundle (GoReleaser + GH-issue adapter)
-    MVR-1 T3: P3.8 SCM adapter (Gitea first)
-    MVR-1 T6: pricing — support contracts
+PHASE MVR-1 — First external-customer wedges [SPECS LANDED · IMPL BLOCKED on GREEN-CLOCK OR external-customer-ask]
+  Per #433 unified next-horizon roadmap + §14 DW-superset integration. Specs landed 2026-06-03:
+    MVR-1 T1: W7 Wave 1 htmx UI MVP — #601
+    MVR-1 T2: regatta init bundle (GoReleaser + GH-issue adapter) — #590
+    MVR-1 T3: P3.8 SCM adapter (Gitea first) — #603
+    MVR-1 T5: CUE gate — #602
+    MVR-1 T6: goja runtime — #604
     MVR-1 T7: strategy interface + concurrency-policy unify (DW-superset Wave A; pieces 1+5 from roadmap §14) — refactor only, parallel with T1, internal-velocity compound
   GATED on: customer-0 interview (#423 — must interview ≥3 OSS-maintainers-of-large-repos before dispatch). Estimated 7 weeks once customer-0 confirmed.
 
-PHASE MVR-2 — First paying customer [DEFERRED until MVR-1 closes AND 1 signed pilot LOI from persona-B/D per roadmap §2 Gate 2 tier 2]
+PHASE MVR-2 — First paying customer [SKELETON SPECS LANDED #670 · IMPL DEFERRED until MVR-1 closes AND 1 signed pilot LOI from persona-B/D per roadmap §2 Gate 2 tier 2]
   Per #433 §4 + §14. Adds two DW-superset pieces alongside W7 Wave 2/3:
     MVR-2 T1: W7 Wave 2 htmx (DAG read view + reviewer-rich PR UI)
     MVR-2 T2: W8 multi-tenant tenant_id routing
@@ -65,7 +59,7 @@ PHASE MVR-2 — First paying customer [DEFERRED until MVR-1 closes AND 1 signed 
     MVR-2 T7: /workflows progress UI (DW-superset Wave A piece 6) — reuses W7 htmx scaffold
   Estimated 14 weeks.
 
-PHASE MVR-3 — 5+ paying customers + DW-superset capstone [DEFERRED until 5 paying customers signed across persona B/C/D per roadmap §2 Gate 2 tier 3 OR week 24 of MVR-3 window closes]
+PHASE MVR-3 — 5+ paying customers + DW-superset capstone [SKELETON SPECS IN FLIGHT (T1-T4 separate PR) · IMPL DEFERRED until 5 paying customers signed across persona B/C/D per roadmap §2 Gate 2 tier 3 OR week 24 of MVR-3 window closes]
   Per #433 §4 + §14. Two new DW pieces alongside Sigstore/Stripe/blackboard/research-mode:
     MVR-3 T1: W10 Sigstore (cosign behind signer adapter)
     MVR-3 T2: W12 Stripe Metering behind billing adapter
@@ -79,21 +73,25 @@ PHASE X — External-buyer wedges [DEFERRED]
   P3.8 swap-out adapters · W9 Temporal-backed DurableHistory. Specs in main. DO NOT dispatch implementers. Reopen on: external-customer-ask OR 30-day-green trigger. (W8/W10/W11/W12 moved into MVR-2/MVR-3 above.)
 
 OPEN FOLLOWUPS (sweep when between phase items, ≤5 trivial PRs/session cap)
-- RISK followups #423 #424 #426 #427 (filed 2026-06-02 strategic-design closeout)
-- OBS followups inline in `docs/engineer/specs/2026-06-02-observability-roadmap.md` (cost-per-agent integration + Wave-C rollup-shape)
-- Open issue #15 superseded by #463 PR-watcher locked design (close on merge)
-- Late-arriving open PRs to triage: #435 (FuzzToken_Verify) · #449 (cost-gov runbook) · #458 (PHASE AUTONOMY spec) · #463 (PR-watcher locked design) · #464 #465 (otel/bridge property test + bench)
-- Architecture-review followups (filed 2026-06-02, boundary-gap + consistency set) — #553 canonical-JSON fork unify (HIGH, signing correctness) · #554 integer micro-USD money (HIGH, budget exactness) · #551 generalize external-side-effect intent/outbox · #550 gate-determinism reframe · #549 replay engine-version journal · #548 GDPR crypto-shred. #553+#554 are the two highest-value next PRs (real correctness bugs, well-bounded).
+- RISK followups #423 #424 #426 #427 (strategic-design closeout)
+- ~80 followup tracking issues filed across PHASE-AUTONOMY + OBS wave drains (#573-#588, #606-#667) — sweep by tier (correctness > consistency > docs)
+- Architecture-review followups — #553 canonical-JSON fork unify (HIGH, signing correctness) · #554 integer micro-USD money (HIGH, budget exactness) · #551 generalize external-side-effect intent/outbox · #550 gate-determinism reframe · #549 replay engine-version journal · #548 GDPR crypto-shred. #553+#554 remain the two highest-value next correctness PRs.
 - Recurring A+ rubric checkboxes — fuzz, mutation testing extensions, key-rotation drill extensions
 
-Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -120`. Per feedback_boot_prompt_per_wave_refresh, entries >2 waves old are pruned; older shipped wedges live in git history only.
+Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -200`. Per feedback_boot_prompt_per_wave_refresh, entries >2 waves old are pruned; older shipped wedges live in git history only.
 
-- **2026-06-02 Phase S1 SHIPPED** (self-host dogfood-ready core): T1 #334 regatta.yaml + .regatta/items · T2 #294 spawner-callback wiring · T3 #331 boot-prompt→items + #368 gh-followup→items · T5 #348 self-host smoke test · plus #327 Notifier contract · #332 reaper revocation · #335 scheduler perf · #336 doc-check fence-strip · #347 BASE_SHA drift · #371 reviewer-tag regex
-- **2026-06-02 Phase S2 SHIPPED** (trust-the-loop): T1 #350 W9 DurableHistory substrate · T2 #351+#370+#373+#380+#381+#385+#387+#388 L4 gate (interface, scheduler-wire, Anthropic adapter, second-opinion, cache, auto-fix, prompt-SIGHUP, per-category) · T3 #368 followup-triage · T4 #372 mutation infra · #375 severity extract · #377 fold≡state property test
-- **2026-06-02 Phase S3 SHIPPED** (durability): T1 #367 W8 OPA hot-reload · T2 #369+#378 substrate Phase B+C cutover (approvals) · T3 #379+#389+#393+#395 multi-key + rotate-CLI + brief re-sign + recovery · T4 #366+#382+#391+#394 crash-recovery WriteHook seam + property runner + nightly + cost/reaper extension
-- **2026-06-02 Sweeps + Self-improvement SHIPPED**: #80 audit · #83 composite index · #89 batched UPSERTs · #92 brief replay · #95 materializePending · #133 notify adapter · #182 approval E2E · #187 perf · #195 #198 contract · #238 #239 #240 cost-gov · #78 acceptance drift · #79 brief re-sign · #383 #384 crash-recovery extensions · #326 dispatch templates · #337 boot-prompt rules · #349 templates patch · #396 reload-readiness gate · #397 operator getting-started doc. ~56 PRs merged in 2026-06-02 morning wave.
-- **2026-06-02 PM wave SHIPPED** (post 18:30 UTC, ~20 PR batch): obs wiring #436 (EventCostReconcileFailing OTel ERROR severity) · #438 (OTEL_TRACES_SAMPLER env honor) · #442 (reconcile.Run wired into serve) · #448 (OPAAuthorizer + hot-reload wired into serve); cost/pricing hardening #440 (boot validator + known-bad fixture) · #441 (soft-cap warn-mode explicit ack) · #451 (empty-table guard + zero-rate defense) · #452 (reconcile_failing attempt_count fix) · #454 (reaper tier-comparison mutation tests) · #461 (sampler-customization E2E); approvals contract #455 (approval_list.v1.json + schema-check) · #459 (nil reviewer_set orEmpty shim) · #460 (canon.VerifyToken reviewer-from-claim derivation) · #462 (approvals.go 95% coverage); refactors #434 (retire BudgetReconciledPayload stub) · #443 (consolidate ApprovalGateConfig with approval.Config) · #444 (reaper fold helpers via recordEvent) · #450 (reconcile/appender_test spend pkg import) · #453 (typed TransitionWorkItem; drop raw-SQL CAS).
-- **2026-06-02 Strategic-design CONVERGENCE**: #432 MERGED observability-roadmap converged spec (consolidates #400 #405 #410 #413 #420). #433 MERGED next-horizon roadmap unified brief — 4 MVR-1 impl-ready items + 16 wave-4 items + 4 RISK followups (#423 #424 #426 #427). 29 prior strategic-design PRs CLOSED as superseded per `feedback_design_iteration_local`. Boot-prompt refresh PR #437 CLOSED (superseded by this refresh).
+- **2026-06-03 Wave SHIPPED** (~50+ PRs across PHASE-AUTONOMY + OBS final drains + MVR specs + memory/scorecard infra):
+  - PHASE-AUTONOMY W1-W7: all 7 wedges IMPL landed or in merge queue. W7 L4-as-review identity #589 (service-account approves regatta-bot PRs).
+  - OBS Wave A/B/C/D: all 4 waves IMPL shipped or queued.
+  - MVR-1 specs: T1 htmx UI #601 · T2 init bundle #590 · T3 SCM adapter #603 · T5 CUE gate #602 · T6 goja runtime #604.
+  - MVR-2 skeleton specs: 7 (T1-T7) via #670.
+  - MVR-3 skeleton specs: 4 (T1-T4) in flight as separate PR.
+  - Memory consolidation #594 (CLAUDE.md + boot prompt RULES expanded).
+  - Scorecard CI gate #669 (machine-checkable rubric — per-criterion citation enforced in pr-lint).
+  - Critical-path cascade fixes: scheduler/orchestrator/Makefile splits + auto-gen specs README #583 · cost+resume CLI db.Close defer #668 (closes #649) · substrate manual_merge + operator_intervention event kinds #665 (#659).
+  - ~80 followup tracking issues filed (#573-#588, #606-#667).
+  - Self-host loop structurally complete pending CI drain.
+- **2026-06-02 Strategic-design CONVERGENCE**: #432 MERGED observability-roadmap converged spec (consolidates #400 #405 #410 #413 #420). #433 MERGED next-horizon roadmap unified brief — 4 MVR-1 impl-ready items + 16 wave-4 items + 4 RISK followups (#423 #424 #426 #427). 29 prior strategic-design PRs CLOSED as superseded per `feedback_design_iteration_local`.
 
 WORKFLOW per item — use templates at `docs/engineer/dispatch-templates/`. Substitute variables; do NOT inline-repeat preamble.
 1. Design subagent → spec — `designer.md` (rubric, OSS-first, self-host filter)
