@@ -1,4 +1,4 @@
-.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full crash-recovery-property-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups mutation-test mutation-test-install agent-status agent-status-test ci-flake-report ci-flake-report-test slo-compile slo-compile-test build
+.PHONY: help check ci-check doc-check doc-check-test go-check go-check-full cover vet lint tidy-check mod-verify install-hooks uninstall-hooks stale-todo ci prose-dup property-test property-test-full crash-recovery-property-full bench pre-push-check cleanup-branches build-tailwind verify-vendored-assets items followups mutation-test mutation-test-install agent-status agent-status-test ci-flake-report ci-flake-report-test slo-compile slo-compile-test build specs-index specs-index-test specs-index-check
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -78,6 +78,15 @@ slo-compile:  ## Compile every slo/*.yaml -> dashboards/prometheus/rules/ via pi
 slo-compile-test:  ## Assert pin file exists, every slo/*.yaml has a rendered rule, and re-compile is byte-deterministic.
 	bash scripts/slo-compile_test.sh
 
+specs-index:  ## Regenerate docs/engineer/specs/README.md from spec frontmatter. Run after adding/editing a spec; idempotent.
+	bash scripts/gen-specs-readme.sh
+
+specs-index-check:  ## Fail if docs/engineer/specs/README.md is stale vs the spec corpus. CI gate.
+	bash scripts/gen-specs-readme.sh --check
+
+specs-index-test:  ## Assert specs-index generator: determinism, status grouping, frontmatter title override, stale detection.
+	bash scripts/gen-specs-readme_test.sh
+
 build:  ## Build cmd/regatta with engine-version + dirty flag pinned from git (#549). Replay-skew detection relies on this binary having a real SHA stamp.
 	@SHA=$$(git rev-parse HEAD 2>/dev/null || echo unknown); \
 	DIRTY=$$(test -n "$$(git status --porcelain 2>/dev/null)" && echo true || echo false); \
@@ -138,7 +147,7 @@ verify-vendored-assets:  ## Assert on-disk SHA-256 of internal/web/static/htmx.m
 		fi; \
 		echo "verify-vendored-assets: htmx.min.js sha256 ok ($$ON_DISK)"'
 
-check: doc-check doc-check-test prose-dup vet lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test  ## Local gate; <60s. Single source of truth for what is verified locally.
+check: doc-check doc-check-test specs-index-check specs-index-test prose-dup vet lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test  ## Local gate; <60s. Single source of truth for what is verified locally.
 
 ci-check: check stale-todo  ## CI gate; supersedes `check` with longer-running scans (stale-todo).
 

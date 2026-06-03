@@ -1,3 +1,9 @@
+---
+title: "W9 replay+diff harness — Temporal vs. bespoke red-team"
+status: active
+summary: "W9 replay+diff harness, option C (hybrid): `DurableHistory` Go interface, substrate-default impl, Temporal-backed impl behind refined P2.5 trigger. Ships AFTER W6/W7/W8 land."
+---
+
 # W9 Replay+Diff Harness — Temporal vs. Bespoke Red-Team
 
 **Status**: Red-team analysis answering the open question from

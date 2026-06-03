@@ -1,3 +1,9 @@
+---
+title: "OBS Wave-B substrate health"
+status: active
+summary: "OBS Wave-B substrate-health observability. 4 emitters (event-rate counter, HMAC chain-break counter + 24h sliding sweeper, divergence-audit reader+counter, W9 replay-latency histogram) + 4 Grafana dashboards + 2 SLO YAMLs + 2 alarm-only YAMLs + 3 runbooks. Counters carry only closed-enum tags (`layer`, `kind`, `program_kind`, `outcome`); read-path + sweeper double coverage for chain breaks; event-rate stall alarm `AND`s with cost-cap state to suppress operator-paused quiescence. Ships against Wave-A A-T0b's substrate + history `Config.Meter` retrofit. 4 dispatch-ready tasks (B-T1..B-T4) parallel inside the wave."
+---
+
 # OBS Wave-B — substrate health + replay latency — Design Spec
 
 Status: ready for review

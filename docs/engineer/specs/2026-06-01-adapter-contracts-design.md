@@ -1,3 +1,9 @@
+---
+title: "Adapter contracts for swap-out (P3.8)"
+status: active
+summary: "P3.8 swap-out adapter contracts: 5 adapters (OTel exporter, OPA RBAC, Sigstore signer, Stripe metered billing, LLM gateway) behind `internal/adapters/<name>/` `sql.Register`-style pattern. Trigger = first customer ask for hosted backend."
+---
+
 # Adapter Contracts for Swap-Out — Design Spec
 
 **Date:** 2026-06-01

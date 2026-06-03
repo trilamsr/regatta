@@ -1,3 +1,9 @@
+---
+title: "Unified substrate v2"
+status: active
+summary: "Unified substrate v2 (events log only in Wave 1). 3 tasks. Ships AFTER W6 T1+T2+T5 merge. Policies primitive deferred to W8; blobs primitive deferred to W11. Phased read-side cutover; no atomic dual-write."
+---
+
 # Spec: Unified Substrate — events log (v2, post-review)
 
 _Author: design subagent, 2026-06-01 (v2 re-spec). Source-of-truth: `docs/wedges/unified-substrate.md` (thesis) + `docs/superpowers/briefs/2026-05-31-mvp-3-next-level.md` §5 thread #1. Adversarial review v1: `docs/superpowers/reviews/2026-06-01-unified-substrate-review.md` (8 Risk + 7 Important + 5 Simplifications)._

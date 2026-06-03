@@ -1,3 +1,9 @@
+---
+title: "MVP-3 W6 OTel observability backbone"
+status: active
+summary: "W6 OTel observability backbone: SDK + slog bridge + scheduler/spawner/gate spans + Jaeger E2E. Wave 1 partial shipped (#172, #169, #168); T3+T4+T5+T6+T7 remain."
+---
+
 # MVP-3 W6 — OpenTelemetry + GenAI semconv observability backbone — Design Spec
 
 Status: ready for review
