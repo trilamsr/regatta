@@ -58,6 +58,13 @@ func TestSubstrate_KindPayloadValidation(t *testing.T) {
 			malformed:    `{"work_item_id":""}`,
 			wantStrategy: substrate.StrategyLWW,
 		},
+		{
+			name:         "pr_stage_transition",
+			kind:         substrate.KindPRStageTransition,
+			wellFormed:   `{"pr_number":42,"from_stage":"draft","to_stage":"gates_running","duration_seconds":12.5}`,
+			malformed:    `{"pr_number":42,"from_stage":"bogus","to_stage":"merged"}`,
+			wantStrategy: substrate.StrategyAppend,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

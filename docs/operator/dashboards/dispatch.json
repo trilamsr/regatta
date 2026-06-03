@@ -1,0 +1,67 @@
+{
+  "uid": "regatta-dispatch-subagent",
+  "title": "Regatta — Subagent Dispatch (OBS-WAVE-C-T1)",
+  "schemaVersion": 39,
+  "version": 1,
+  "tags": ["regatta", "obs-wave-c", "dispatch", "tier-1", "slo-5"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Subagent latency p95 (s) by kind",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum by (le, kind) (rate(regatta_dispatch_subagent_duration_seconds_bucket[5m])))",
+        "legendFormat": "{{kind}}"
+      }],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Dispatch throughput (per minute) by kind",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [{
+        "expr": "sum by (kind) (rate(regatta_dispatch_subagent_total[1m]))",
+        "legendFormat": "{{kind}}"
+      }]
+    },
+    {
+      "id": 3,
+      "type": "piechart",
+      "title": "Outcome distribution (24h)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "targets": [{
+        "expr": "sum by (outcome) (increase(regatta_dispatch_subagent_total[24h]))",
+        "legendFormat": "{{outcome}}"
+      }]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Failure-taxonomy share (24h)",
+      "datasource": { "type": "prometheus", "uid": "${datasource}" },
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "targets": [{
+        "expr": "sum by (taxonomy) (increase(regatta_pr_failure_total[24h]))",
+        "legendFormat": "{{taxonomy}}"
+      }]
+    }
+  ]
+}

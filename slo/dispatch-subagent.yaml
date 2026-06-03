@@ -1,0 +1,53 @@
+# SLO-5 — Subagent dispatch latency
+#
+# Source spec: docs/engineer/specs/2026-06-02-obs-wave-c-agent-loop-telemetry.md §7 SLO-5.
+# Objective: p95 of regatta_dispatch_subagent_duration_seconds_bucket <= 120 s.
+# Window:    7d rolling.
+# Budget:    5 % of dispatches slower than 2 min.
+#
+# Metric origin: internal/obs/dispatch (OBS-WAVE-C-T1). Prom-wire form is
+# `regatta_dispatch_subagent_duration_seconds_bucket` per the §2.1 double-unit
+# suffix convention pinned at A-T0a. The bucket boundary `le="120"` must
+# exist in the emitter's view; the SDK default exponential buckets include
+# 120 s by interpolation between 64 s and 128 s — if the view drift bites,
+# file [OBS-followup] Histogram bucket boundaries.
+version: "prometheus/v1"
+service: "regatta-dispatch"
+labels:
+  owner: "regatta"
+  tier: "1"
+  wave: "c"
+  slo_id: "slo-5"
+slos:
+  - name: "dispatch-subagent-latency"
+    objective: 95.0
+    description: "p95 subagent dispatch latency <= 2 min. Source: spec §7 SLO-5."
+    labels:
+      category: "latency"
+      runbook: "docs/operator/runbooks/dispatch-subagent-latency.md"
+    sli:
+      events:
+        error_query: |
+          (
+            sum(rate(regatta_dispatch_subagent_duration_seconds_count[{{.window}}]))
+            -
+            sum(rate(regatta_dispatch_subagent_duration_seconds_bucket{le="120"}[{{.window}}]))
+          )
+        total_query: |
+          sum(rate(regatta_dispatch_subagent_duration_seconds_count[{{.window}}]))
+    alerting:
+      name: DispatchSubagentLatencyHigh
+      labels:
+        category: "latency"
+        slo_id: "slo-5"
+      annotations:
+        summary: "Subagent dispatch p95 latency budget burning"
+        runbook: "docs/operator/runbooks/dispatch-subagent-latency.md"
+      page_alert:
+        labels:
+          severity: critical
+          sloth_severity: page
+      ticket_alert:
+        labels:
+          severity: warning
+          sloth_severity: ticket
