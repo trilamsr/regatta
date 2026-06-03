@@ -154,6 +154,37 @@ To swap exporters in practice:
   exporter pipeline to translate. This is the upstream-recommended
   shape and the one regatta tests against.
 
+## Metric: rejection-router label failures
+
+When the rejection router escalates an agent past K=3 gate rejections,
+it shells out to `gh pr edit --add-label needs-human`. Every failure
+of that shell-out increments the counter
+`regatta.rejection_router.label_failures` (Prom wire form:
+`regatta_rejection_router_label_failures_total`).
+
+The counter carries one label, `reason`, drawn from a closed set of
+four values so dashboards can route on the bucket:
+
+| `reason` value | Trigger | Operator action |
+|---|---|---|
+| `absent` | The repo has no `needs-human` label literal; gh emits "could not add label: 'needs-human' not found". | `gh label create needs-human --description "Escalated by rejection-router" --color D93F0B` on the target repo. |
+| `rate_limited` | gh hit the GitHub REST/GraphQL rate cap; the counter records the breach so the operator can correlate with throttle dashboards. | Wait out the cap; if persistent, rotate the gh auth token to a less-throttled identity or raise the orchestrator tick interval. |
+| `not_found` | The PR (or branch, or repo) backing the agent does not exist — operator deleted the PR, branch was force-deleted, or the brief points at the wrong repo. Distinct from `absent` per issue #498 — `not_found` means the target itself is missing, not the label. | Inspect the agent row (`regatta status <agent_id>`) for the resolved branch, then verify the repo + branch + open-PR state. Withdraw the agent if the target is gone. |
+| `unknown` | Every other failure (network, gh-CLI bug, parse). Bucket exists so a novel error shape surfaces in dashboards rather than vanishing. | Pull the daemon slog for the matching `rejectionrouter.labeled` audit row + nearest WARN around the same agent_id; file a ticket if the bucket is non-trivial. |
+
+The metric is emitted via the same OTel MeterProvider that carries
+`regatta.l4.*` and `regatta.cost.*`. Operators who run the Prom
+exporter see the counter on every `/metrics` scrape; OTLP operators
+see it on every periodic-reader export tick.
+
+Recommended alert: `rate(regatta_rejection_router_label_failures_total[5m]) > 1/60`
+sustained for 10 minutes — one failed escalation per minute is
+already an operator-visible event. Tighten or loosen per fleet size.
+
+The four-reason cardinality cap is load-bearing — adding a fifth
+bucket requires an obs-roadmap amendment, since dashboards key off
+the literals named here.
+
 ## Cardinality
 
 Per-span attributes that regatta emits are bounded (the `gen_ai.*`
