@@ -59,16 +59,17 @@ func (s *PromSource) Fetch(date string) (Snapshot, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// First query doubles as the reachability probe — if Prom is down,
-	// backendUp flips immediately and subsequent queries no-op into
-	// zero values so the digest still renders.
+	// AND-fold `up` across all 3 queries — a partial outage (cost-today
+	// 200 + tick_p95 404) would otherwise render zeros as authoritative
+	// with no backend-down banner. Short-circuit on the first query so
+	// a fully-unreachable Prom still skips the remaining round-trips.
 	costToday, up := s.queryScalar(ctx, "sum(increase(regatta_cost_usd_total[24h]))")
 	if !up {
 		return Snapshot{}, false, nil
 	}
-
-	costWeek, _ := s.queryScalar(ctx, "sum(increase(regatta_cost_usd_total[7d]))")
-	tickP95, _ := s.queryScalar(ctx, "histogram_quantile(0.95, sum(rate(regatta_scheduler_tick_latency_ms_bucket[1h])) by (le))")
+	costWeek, upWeek := s.queryScalar(ctx, "sum(increase(regatta_cost_usd_total[7d]))")
+	tickP95, upTick := s.queryScalar(ctx, "histogram_quantile(0.95, sum(rate(regatta_scheduler_tick_latency_ms_bucket[1h])) by (le))")
+	backendUp := up && upWeek && upTick
 
 	return Snapshot{
 		TickP95Ms:    int(tickP95),
@@ -78,7 +79,7 @@ func (s *PromSource) Fetch(date string) (Snapshot, bool, error) {
 		// stay at zero values until the C-T2 / D-T1 emitters and the
 		// trigger-clock (A-T?) land. The renderer's degraded-contract
 		// placeholders cover sections 2 + 3.
-	}, true, nil
+	}, backendUp, nil
 }
 
 // queryScalar runs an instant query and returns the first sample value
