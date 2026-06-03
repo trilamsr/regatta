@@ -18,7 +18,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
@@ -62,7 +62,7 @@ func (r Result) String() string {
 type Gate struct {
 	db       *state.DB
 	notifier Notifier
-	keyring  canon.Keyring
+	keyring  approvaltoken.Keyring
 	kid      string
 	clock    func() time.Time
 	log      *slog.Logger
@@ -79,7 +79,7 @@ type Gate struct {
 
 // NewGate wires a Gate. Constructor-time guards mean a misconfigured
 // runtime panics here rather than silently no-op at first tick.
-func NewGate(db *state.DB, n Notifier, kr canon.Keyring, kid string, clock func() time.Time, log *slog.Logger) *Gate {
+func NewGate(db *state.DB, n Notifier, kr approvaltoken.Keyring, kid string, clock func() time.Time, log *slog.Logger) *Gate {
 	if db == nil {
 		panic(ErrMissingDB)
 	}
@@ -298,13 +298,13 @@ func (g *Gate) mintTierTokens(snap state.ReviewerSet, approvalID, workItemID str
 	sort.Strings(reviewers)
 	windowEnd := now.Add(decisionWindow).Unix()
 	for _, reviewer := range reviewers {
-		payload := canon.TokenPayload{
+		payload := approvaltoken.TokenPayload{
 			WI:       workItemID,
 			AID:      approvalID,
 			Reviewer: reviewer,
 			Window:   windowEnd,
 		}
-		wire, jti, err := canon.MintToken(g.keyring, g.kid, payload, g.jtiRand)
+		wire, jti, err := approvaltoken.MintToken(g.keyring, g.kid, payload, g.jtiRand)
 		if err != nil {
 			return nil, nil, fmt.Errorf("approval: mint token for %q: %w", reviewer, err)
 		}

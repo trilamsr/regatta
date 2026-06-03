@@ -74,7 +74,7 @@ type OutputsSchemaResolver func(featureID string) (any, bool)
 type HotspotResolver func(workItemID string) []string
 
 // ApprovalGate is the scheduler-side seam to the HITL gate — keeps the
-// gate's transitive deps (canon.Keyring, notifier, slog) invisible to
+// gate's transitive deps (approvaltoken.Keyring, notifier, slog) invisible to
 // scheduler tests.
 type ApprovalGate interface {
 	Evaluate(ctx context.Context, wi state.WorkItem, cfg approval.Config) (approval.Result, error)

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -20,7 +20,7 @@ const maxCallbackBodyBytes = 1 << 20
 // Dependencies bundles the side-effect handles NewHTTPCallback needs.
 type Dependencies struct {
 	DB      *state.DB
-	Keyring canon.Keyring
+	Keyring approvaltoken.Keyring
 	Clock   func() time.Time
 }
 
@@ -39,7 +39,7 @@ func NewHTTPCallback(deps Dependencies) (string, http.Handler) {
 // codes per spec §3.6 typed-error envelope.
 type httpCallback struct {
 	db      *state.DB
-	keyring canon.Keyring
+	keyring approvaltoken.Keyring
 	clock   func() time.Time
 }
 
@@ -66,7 +66,7 @@ func (h *httpCallback) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payload, err := canon.VerifyToken(h.keyring, wire, reviewer, h.clock())
+	payload, err := approvaltoken.VerifyToken(h.keyring, wire, reviewer, h.clock())
 	if err != nil {
 		code, sentinel := classifyVerifyErr(err)
 		writeJSONError(w, code, sentinel)
@@ -91,13 +91,13 @@ func (h *httpCallback) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // classifyVerifyErr maps canon verify-time sentinels to HTTP status codes.
 func classifyVerifyErr(err error) (int, string) {
 	switch {
-	case errors.Is(err, canon.ErrTokenExpired):
+	case errors.Is(err, approvaltoken.ErrTokenExpired):
 		return http.StatusUnauthorized, "token_expired"
-	case errors.Is(err, canon.ErrTokenInvalid):
+	case errors.Is(err, approvaltoken.ErrTokenInvalid):
 		return http.StatusBadRequest, "token_invalid"
-	case errors.Is(err, canon.ErrUnverifiable):
+	case errors.Is(err, approvaltoken.ErrUnverifiable):
 		return http.StatusUnauthorized, "token_unverifiable"
-	case errors.Is(err, canon.ErrUnknownKeyID):
+	case errors.Is(err, approvaltoken.ErrUnknownKeyID):
 		return http.StatusUnauthorized, "unknown_key"
 	default:
 		return http.StatusUnauthorized, "token_invalid"

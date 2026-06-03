@@ -154,3 +154,22 @@ func TestCanon_CanonicaliseJSON_RejectsDuplicateKeys(t *testing.T) {
 		t.Fatalf("expected error on duplicate keys, got nil")
 	}
 }
+
+// TestCanon_Marshal_PreservesLargeIntPrecision proves the unified path keeps int64 precision past 2^53 where the old schemas fork lost it.
+func TestCanon_Marshal_PreservesLargeIntPrecision(t *testing.T) {
+	t.Parallel()
+	// int64 values above 2^53 cannot round-trip through float64
+	// without loss. The old schemas.CanonicalJSON did exactly that
+	// round-trip (json.Marshal → json.Unmarshal into any → re-marshal);
+	// the value would silently truncate. canon.Marshal uses UseNumber
+	// so the original digit string survives.
+	big := int64(1<<60) + 1
+	out, err := Marshal(map[string]any{"v": big})
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	want := `{"v":1152921504606846977}`
+	if string(out) != want {
+		t.Fatalf("large-int precision lost:\n got=%s\nwant=%s", out, want)
+	}
+}

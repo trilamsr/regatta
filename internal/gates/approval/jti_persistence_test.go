@@ -14,7 +14,7 @@ import (
 	"testing/quick"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -166,7 +166,7 @@ func TestGate_ReaperRevokesMintedTokens_RevokedTokenIsUnusable(t *testing.T) {
 	}
 	// Verify the token + extract its JTI so we can assert exactly that
 	// JTI lands in a token_consumed-reason=escalated row.
-	tier0Payload, err := canon.VerifyToken(kr, aliceTier0Wire, "alice", t0)
+	tier0Payload, err := approvaltoken.VerifyToken(kr, aliceTier0Wire, "alice", t0)
 	if err != nil {
 		t.Fatalf("VerifyToken tier-0: %v", err)
 	}

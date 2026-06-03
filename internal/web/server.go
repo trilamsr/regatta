@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -31,7 +31,7 @@ func AssetsFS() fs.FS { return assetsFS }
 // (cmd/regatta/serve.go) pass nil and NewHandler nil-guards the call.
 type Dependencies struct {
 	DB             *state.DB
-	Keyring        canon.Keyring
+	Keyring        approvaltoken.Keyring
 	Templates      *Templates
 	Clock          func() time.Time
 	Config         Config

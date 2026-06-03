@@ -1,4 +1,4 @@
-package canon
+package approvaltoken
 
 import (
 	"bytes"
@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/canon"
 )
 
 // testKey is a deterministic 32-byte HMAC key for round-trip tests.
@@ -195,11 +196,11 @@ func TestApprovalToken_DisallowUnknownFields(t *testing.T) {
 	jti := base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{0x42}, 16))
 	body := []byte(`{"aid":"aid-1","foo":"bar","jti":"` + jti + `","kid":"k1","reviewer":"alice","wi":"wi-1","window":` + itoa(window) + `}`)
 	// Re-canonicalise to ensure byte-stable input.
-	canon, err := CanonicaliseJSON(body)
+	cbody, err := canon.CanonicaliseJSON(body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire := craftSignedWire(t, testKey, "k1", canon)
+	wire := craftSignedWire(t, testKey, "k1", cbody)
 	_, err = VerifyToken(kr, wire, "alice", time.Now())
 	if !errors.Is(err, ErrUnverifiable) {
 		t.Fatalf("want ErrUnverifiable from unknown-field rejection, got %v", err)

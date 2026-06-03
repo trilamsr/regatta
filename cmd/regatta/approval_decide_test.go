@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -21,7 +21,7 @@ type approvalDecideHarness struct {
 	dsn         string
 	clock       func() time.Time
 	now         time.Time
-	keyring     canon.MapKeyring
+	keyring     approvaltoken.MapKeyring
 	keyID       string
 	keyEnvName  string
 	approvalID  string
@@ -42,7 +42,7 @@ func newApprovalDecideHarness(t *testing.T, requestedBy string, reviewers []stri
 	seedApprovalWorkItemForCLI(t, db, "F-1", t0)
 
 	key := bytes.Repeat([]byte{0x42}, 32)
-	kr := canon.MapKeyring{"kdecide": key}
+	kr := approvaltoken.MapKeyring{"kdecide": key}
 
 	approvalID := "a-cli00000001"
 	a := state.Approval{
@@ -100,7 +100,7 @@ func seedApprovalWorkItemForCLI(t *testing.T, db *state.DB, id string, at time.T
 
 func mintHarnessToken(t *testing.T, h *approvalDecideHarness, reviewer string, window time.Time) string {
 	t.Helper()
-	wire, _, err := canon.MintToken(h.keyring, h.keyID, canon.TokenPayload{
+	wire, _, err := approvaltoken.MintToken(h.keyring, h.keyID, approvaltoken.TokenPayload{
 		WI:       h.workItemID,
 		AID:      h.approvalID,
 		Reviewer: reviewer,
@@ -273,11 +273,11 @@ func TestApprovalDecide_ExitCodeMappingTable(t *testing.T) {
 	// list has a defined exit code. Drift in either direction (missing
 	// mapping or duplicate exit code) fails this guard.
 	want := map[error]int{
-		canon.ErrTokenInvalid:    exitTokenInvalid,
-		canon.ErrUnverifiable:    exitUnverifiable,
-		canon.ErrTokenExpired:    exitTokenExpired,
+		approvaltoken.ErrTokenInvalid:    exitTokenInvalid,
+		approvaltoken.ErrUnverifiable:    exitUnverifiable,
+		approvaltoken.ErrTokenExpired:    exitTokenExpired,
 		state.ErrTokenReplay:     exitTokenReplay,
-		canon.ErrUnknownKeyID:    exitUnknownKeyID,
+		approvaltoken.ErrUnknownKeyID:    exitUnknownKeyID,
 		errApprovalNotReviewer:   exitNotReviewer,
 		errApprovalSelfReview:    exitSelfReview,
 	}

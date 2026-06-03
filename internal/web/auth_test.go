@@ -9,26 +9,26 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 )
 
-// testKeyring builds a deterministic canon.Keyring + reviewer + helper
+// testKeyring builds a deterministic approvaltoken.Keyring + reviewer + helper
 // that mints valid wire tokens. Lifted out so every auth test sees an
 // identical fixture surface.
-func testKeyring(t *testing.T) (canon.Keyring, string, string, []byte) {
+func testKeyring(t *testing.T) (approvaltoken.Keyring, string, string, []byte) {
 	t.Helper()
 	kid := "kid-test"
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		t.Fatalf("seed key: %v", err)
 	}
-	kr := canon.MapKeyring{kid: key}
+	kr := approvaltoken.MapKeyring{kid: key}
 	return kr, kid, "alice@co", key
 }
 
-func mintWire(t *testing.T, kr canon.Keyring, kid, reviewer, aid, wi string, window time.Time) string {
+func mintWire(t *testing.T, kr approvaltoken.Keyring, kid, reviewer, aid, wi string, window time.Time) string {
 	t.Helper()
-	wire, _, err := canon.MintToken(kr, kid, canon.TokenPayload{
+	wire, _, err := approvaltoken.MintToken(kr, kid, approvaltoken.TokenPayload{
 		WI:       wi,
 		AID:      aid,
 		Reviewer: reviewer,

@@ -19,6 +19,26 @@ import (
 	"sort"
 )
 
+// Marshal returns the canonical JSON encoding of v.
+//
+// One-step alternative to json.Marshal+CanonicaliseJSON for callers
+// that hold a typed Go value (handoff signing, gate-result signing,
+// approval-event audit payloads). Routes through CanonicaliseJSON so
+// the output is byte-identical to the []byte path — every signed byte
+// in the system passes through the same canonicaliser, eliminating
+// the MAC-divergence class of bug (issue #553).
+//
+// Note on dup-keys: a Go-typed value cannot express duplicate object
+// keys, so the dup-key rejection in CanonicaliseJSON is unreachable
+// from this entry point — the property still holds for the []byte path.
+func Marshal(v any) ([]byte, error) {
+	raw, err := json.Marshal(v)
+	if err != nil {
+		return nil, fmt.Errorf("canon: marshal: %w", err)
+	}
+	return CanonicaliseJSON(raw)
+}
+
 // CanonicaliseJSON returns the canonical encoding of payload: object
 // keys sorted by byte-order of their UTF-8 encoded names (equivalent
 // to codepoint order for the ASCII-dominant key universe we target),

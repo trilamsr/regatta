@@ -26,7 +26,7 @@ import (
 	"github.com/trilamsr/regatta/internal/authz/policies/disk"
 	"github.com/trilamsr/regatta/internal/authz/policies/embedded"
 	"github.com/trilamsr/regatta/internal/authz/policies/reload"
-	"github.com/trilamsr/regatta/internal/canon"
+	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/config"
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
 	"github.com/trilamsr/regatta/internal/cost/spend"
@@ -309,7 +309,7 @@ func runServe(args []string) int {
 		UI:         *ui,
 		Addr:       *addr,
 		DB:         db,
-		Keyring:    canon.MapKeyring(loadBriefKeyring()),
+		Keyring:    approvaltoken.MapKeyring(loadBriefKeyring()),
 		Clock:      time.Now,
 		Authorizer: authzr,
 	})
@@ -609,7 +609,7 @@ type listenerConfig struct {
 	UI         bool
 	Addr       string
 	DB         *state.DB
-	Keyring    canon.Keyring
+	Keyring    approvaltoken.Keyring
 	Clock      func() time.Time
 	// Authorizer is the OPA-backed gate built at runServe boot. Pre-T3
 	// the web handler does not yet consume it; the field is plumbed so
@@ -807,10 +807,10 @@ func parseAuthzDebounce(s string) time.Duration {
 // Operators set REGATTA_HMAC_KEY once and both surfaces light up; an
 // empty key returns an empty MapKeyring so NewGate's constructor guard
 // fires only when the operator has at least one gate defined.
-func approvalKeyring() (canon.Keyring, string) {
+func approvalKeyring() (approvaltoken.Keyring, string) {
 	keys, active := loadBriefKeyringWithActive()
 	if active == "" {
 		active = "k1"
 	}
-	return canon.MapKeyring(keys), active
+	return approvaltoken.MapKeyring(keys), active
 }
