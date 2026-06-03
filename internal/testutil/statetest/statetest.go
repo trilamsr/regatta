@@ -64,6 +64,26 @@ func OpenMigratedRaw(t *testing.T) *sql.DB {
 	return raw
 }
 
+// OpenMigratedRawBench mirrors OpenMigratedRaw for benchmarks. Required
+// because *testing.B and *testing.T do not share a Helper/Fatalf surface
+// (#628 file-based bench harness wants a raw sqlite handle plus a real
+// on-disk DB path so the chain-break Sweeper can open its own ro pool).
+func OpenMigratedRawBench(b *testing.B) (*sql.DB, string) {
+	b.Helper()
+	dbPath := filepath.Join(b.TempDir(), "raw.db")
+	raw, err := sql.Open("sqlite", state.DSN(dbPath))
+	if err != nil {
+		b.Fatalf("statetest.OpenMigratedRawBench: open: %v", err)
+	}
+	b.Cleanup(func() { _ = raw.Close() })
+	raw.SetMaxOpenConns(1)
+	if err := state.Migrate(context.Background(), raw); err != nil {
+		b.Fatalf("statetest.OpenMigratedRawBench: migrate: %v", err)
+	}
+	substrate.ResetClockForTesting()
+	return raw, dbPath
+}
+
 // goldenOnce + goldenBytes amortise the ~6ms goose-migration cost
 // across hundreds of property-test cases. Migrations run once on the
 // first ensureGolden call; every subsequent GoldenClone writes the
