@@ -28,6 +28,7 @@ LENSES (apply in order)
 6. Doc-check + release-notes — banned phrases (`scripts/doc-check.sh` 11-token list), release-notes fence present.
 7. Subagent verification — re-run `make pre-push-check`; ~10% lie rate on "make check clean" per `feedback_subagent_verification`.
 8. Load-bearing leftovers — every unaddressed load-bearing item → tracking issue filed + cited in PR body per `feedback_unaddressed_load_bearing`. PHASE-S-RELAX: Risk-tier+ only during self-host window.
+9. **Comment sweep** — inspect every added/modified comment per `feedback_reviewer_comment_trim`. Flag each: version-ref (`// added in v2.3`, `// PR #N`), what-not-why (`// loops over items`), banner (`// --- Section ---`), untagged deferred-debt marker without bug-link (per `scripts/stale-todo.sh`), commented-out code, AI signatures (`Co-Authored-By`, `Generated with`). Output `## Comment sweep` section listing offenders by `path:line`; if zero, state `## Comment sweep: clean` explicitly (silence = failure).
 
 OUTPUT FORMAT
 - Inline GH PR review comments OR markdown report. Each finding: `[Tier] file:line — observation — proposed fix`.
@@ -45,10 +46,11 @@ NO SIGNATURES
 
 ## Definition of done
 - [ ] auto-skip evaluated explicitly (skip or proceed, document choice)
-- [ ] all 8 lenses applied (or skip documented per lens)
+- [ ] all 9 lenses applied (or skip documented per lens)
 - [ ] independent scorecard re-score posted
 - [ ] verdict line present
 - [ ] Risk-tier+ findings have a disposition (inline-fix OR tracking issue #)
+- [ ] `## Comment sweep` section emitted (offenders or `clean`)
 - [ ] memory rules cited
 
 ## RECURRING-FAILURE TRAPS
