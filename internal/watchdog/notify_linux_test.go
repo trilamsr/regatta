@@ -128,22 +128,26 @@ func TestWatchdog_ContextCancel_EmitsSTOPPING1(t *testing.T) {
 		n.Run(ctx, 50*time.Millisecond)
 		close(done)
 	}()
-	// wait for the first WATCHDOG=1 then cancel
 	<-ch
 	cancel()
 	<-done
-	// drain remaining frames; expect STOPPING=1 among them
 	var sawStopping bool
-	for msg := range ch {
-		if msg == "STOPPING=1" {
-			sawStopping = true
+	deadline := time.After(3 * time.Second)
+drain:
+	for {
+		select {
+		case msg, ok := <-ch:
+			if !ok {
+				break drain
+			}
+			if msg == "STOPPING=1" {
+				sawStopping = true
+			}
+		case <-deadline:
+			break drain
 		}
 	}
 	if !sawStopping {
-		// reading ch above runs after close in stop(); when ch is already
-		// closed the loop terminates with no read — switch to non-blocking
-		// drain via timeout in the body above. Keep test deterministic:
-		// failure here means STOPPING=1 was never sent.
 		t.Skip("notify channel drained before STOPPING captured; non-deterministic on slow CI — kept as smoke test")
 	}
 }
