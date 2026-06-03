@@ -117,7 +117,7 @@ func TestWatcher_BranchRenamed_DetectsAndEmitsEvent(t *testing.T) {
 	lister.mu.Lock()
 	lister.byBranch = map[string][]PullRequest{}
 	lister.mu.Unlock()
-	for i := 0; i < BranchRenameThreshold-1; i++ {
+	for i := 0; i < DefaultBranchRenameThreshold-1; i++ {
 		if err := w.Sweep(context.Background()); err != nil {
 			t.Fatalf("sub-threshold sweep %d: %v", i, err)
 		}

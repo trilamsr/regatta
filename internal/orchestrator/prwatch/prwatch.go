@@ -59,12 +59,6 @@ const MinGHVersion = "2.40.0"
 // commit cadences override via Config.BranchRenameThreshold (issue #631).
 const DefaultBranchRenameThreshold = 12
 
-// BranchRenameThreshold preserves the public name historically used by
-// the const so external callers + telemetry payload remain stable.
-//
-// Deprecated: read Watcher.branchRenameThreshold via the Config knob.
-const BranchRenameThreshold = DefaultBranchRenameThreshold
-
 // PullRequest is the GH PR view the watcher consumes. Mirrors gh's
 // JSON shape so the production lister can decode `gh pr list --json
 // number,headRefOid,state,author,title,headRefName` directly.
