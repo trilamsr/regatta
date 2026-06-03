@@ -1,0 +1,59 @@
+# SLO-3 — Substrate event-rate stall + storm (Wave-B T1)
+#
+# Source spec: docs/engineer/specs/2026-06-02-obs-wave-b-substrate-health.md §3.
+# Objective: rate(regatta_substrate_events_appended_total[5m]) > 0
+#            AND ≤ 2 × 24h trailing P95.
+# Window:    7d rolling.
+# Tier:      warn (bursty distribution false-positives at 1-3/day per §3).
+# Alarms:    stall — rate == 0 AND regatta_cost_cap_state != 1 (quiescence
+#            guard so operator-paused loops do not page).
+#            storm — rate > 2 × 24h P95 baseline.
+#
+# Metric origin: T1 (internal/orchestrator/state/substrate/event.go). Wire
+# form regatta_substrate_events_appended_total per §2.1 double-unit suffix.
+#
+# Compile with `make slo-compile`; output lands at
+# dashboards/prometheus/rules/substrate-event-rate.yaml (Sloth-rendered).
+version: "prometheus/v1"
+service: "regatta-substrate"
+labels:
+  owner: "regatta"
+  tier: "2"
+  wave: "b"
+  slo_id: "slo-3"
+slos:
+  - name: "substrate-event-rate"
+    objective: 95.0
+    description: "Substrate event-rate stays nonzero AND ≤ 2× 24h P95. Source: spec §3."
+    labels:
+      category: "availability"
+      runbook: "docs/operator/runbooks/substrate-event-rate.md"
+    sli:
+      events:
+        # SLO models the stall side only — the storm side is a separate
+        # Prom alert rule (not budget-burn) per spec §3. A bad event is
+        # a 5m window with zero rate; total is the window count.
+        #
+        # Cost-cap quiescence guard: the rule wrapping this SLO at the
+        # alarm layer ANDs with regatta_cost_cap_state != 1 so a paused
+        # loop does not burn budget.
+        error_query: |
+          sum_over_time(
+            (sum(rate(regatta_substrate_events_appended_total[5m])) == bool 0)[{{.window}}:5m]
+          )
+        total_query: |
+          sum_over_time(
+            (vector(1))[{{.window}}:5m]
+          )
+    alerting:
+      name: SubstrateEventRateAnomaly
+      labels:
+        category: "availability"
+        slo_id: "slo-3"
+      annotations:
+        summary: "Substrate event-rate stalled or storming"
+        runbook: "docs/operator/runbooks/substrate-event-rate.md"
+      ticket_alert:
+        labels:
+          severity: warning
+          sloth_severity: ticket

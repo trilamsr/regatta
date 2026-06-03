@@ -1,0 +1,52 @@
+# Wave-B T2 — Substrate HMAC chain-break (alarm-only, no SLO)
+#
+# Source spec: docs/engineer/specs/2026-06-02-obs-wave-b-substrate-health.md §4.
+# Tier:        critical (zero-tolerance — any non-zero increment pages).
+# Window:      n/a; this is a "zero is the only acceptable value" signal,
+#              not a budget-burn.
+# Dedup:       Alertmanager 15m so transient exporter blips do not double-page.
+#
+# Metric origin: T2 (internal/orchestrator/state/substrate/sign.go read-path
+# + internal/orchestrator/state/substrate/chainbreak.go background sweeper).
+# Wire form regatta_substrate_chain_break_total per §2.1 double-unit suffix.
+#
+# Alarm-only YAML: no `objective` / no error_budget; the Sloth toolchain
+# accepts this shape per the OpenSLO v1 "alarm-only" extension.
+version: "prometheus/v1"
+service: "regatta-substrate"
+labels:
+  owner: "regatta"
+  tier: "1"
+  wave: "b"
+  slo_id: "slo-chain-break"
+slos:
+  - name: "substrate-chain-break"
+    # objective is required by Sloth even on alarm-only YAMLs; 100.0
+    # encodes "any non-zero is a budget violation" semantics.
+    objective: 100.0
+    description: "Zero substrate HMAC chain breaks tolerated. Source: spec §4."
+    labels:
+      category: "integrity"
+      runbook: "docs/operator/runbooks/substrate-chain-break.md"
+    sli:
+      events:
+        # total uses the chain.break rate's count denominator. The
+        # {{.window}} variable is Sloth-required even on alarm-only
+        # SLOs; we anchor it to a synthetic "always 1 over window"
+        # series so the budget arithmetic stays well-defined.
+        error_query: |
+          sum(increase(regatta_substrate_chain_break_total[{{.window}}]))
+        total_query: |
+          sum(count_over_time(vector(1)[{{.window}}:1m])) or vector(1)
+    alerting:
+      name: SubstrateChainBreakDetected
+      labels:
+        category: "integrity"
+        slo_id: "slo-chain-break"
+      annotations:
+        summary: "Substrate HMAC chain break — investigate row + keyring"
+        runbook: "docs/operator/runbooks/substrate-chain-break.md"
+      page_alert:
+        labels:
+          severity: critical
+          sloth_severity: page

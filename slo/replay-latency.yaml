@@ -1,0 +1,58 @@
+# SLO-5 — W9 replay latency (Wave-B T4)
+#
+# Source spec: docs/engineer/specs/2026-06-02-obs-wave-b-substrate-health.md §6.
+# Objective: P95 ≤ 60 s.
+# Window:    7d rolling.
+# Budget:    1% of replays / 7d.
+# Tier:      warn + critical (multi-window multi-burn-rate per Google SRE).
+# Alarms:    warn — P95 > 30s over 10m (early-warning at half critical).
+#            critical — Sloth-compiled standard burn-rate breach of P95 ≤ 60s.
+#
+# Metric origin: T4 (internal/orchestrator/state/substrate/replay_latency.go
+# histogram + internal/history/substrate_impl.go Replay timer). Wire form
+# regatta_substrate_replay_duration_seconds_bucket per §2.1.
+#
+# Buckets are explicit (13 boundaries per spec §6) so histogram_quantile
+# reads cleanly at the 30s warn and 60s critical thresholds.
+version: "prometheus/v1"
+service: "regatta-replay"
+labels:
+  owner: "regatta"
+  tier: "1"
+  wave: "b"
+  slo_id: "slo-5"
+slos:
+  - name: "replay-latency"
+    objective: 99.0
+    description: "P95 substrate replay duration ≤ 60s. Source: spec §6."
+    labels:
+      category: "latency"
+      runbook: "docs/operator/runbooks/replay-latency.md"
+    sli:
+      events:
+        # le="60" is the bucket boundary; replays SLOWER than 60s land
+        # above this boundary so the error count is (total - good).
+        error_query: |
+          (
+            sum(rate(regatta_substrate_replay_duration_seconds_count[{{.window}}]))
+            -
+            sum(rate(regatta_substrate_replay_duration_seconds_bucket{le="60"}[{{.window}}]))
+          )
+        total_query: |
+          sum(rate(regatta_substrate_replay_duration_seconds_count[{{.window}}]))
+    alerting:
+      name: ReplayLatencyHigh
+      labels:
+        category: "latency"
+        slo_id: "slo-5"
+      annotations:
+        summary: "Replay P95 latency budget burning"
+        runbook: "docs/operator/runbooks/replay-latency.md"
+      page_alert:
+        labels:
+          severity: critical
+          sloth_severity: page
+      ticket_alert:
+        labels:
+          severity: warning
+          sloth_severity: ticket

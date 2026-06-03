@@ -170,6 +170,12 @@ func AppendEvent(ctx context.Context, tx *sql.Tx, e Event, key []byte, keyID str
 	if e.WrittenAt > lastWrittenAt {
 		lastWrittenAt = e.WrittenAt
 	}
+	// T1 (OBS Wave-B): one atomic counter increment per appended row.
+	// Bumped post-INSERT so rejected rows do not double-count the
+	// validator's bounce path. Tag set is the closed-enum guarded
+	// `kind` only — `layer` is rolled up at Prom-query time from the
+	// recorded kind (cardinality-bounded by AllKinds()).
+	recordEventAppended(ctx, e.Kind)
 	return nil
 }
 
