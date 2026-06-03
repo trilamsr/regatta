@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify check-memory-citations check-memory-citations-test
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -9,6 +9,12 @@ doc-check-test:  ## Assert banned-phrase gate strips fenced + inline backtick sp
 
 prose-dup:  ## Fail if a previously-deduped prose phrase reappears in 2+ markdown files.
 	bash scripts/check-prose-dup.sh
+
+check-memory-citations:  ## Fail if a feedback_* slug cited in CLAUDE.md/boot-prompt/templates does not resolve under MEMORY_DIR (or its archive/).
+	bash scripts/check-memory-citations.sh
+
+check-memory-citations-test:  ## Fixture-driven test for check-memory-citations.sh (live-resolve → 0, broken slug → 1).
+	bash scripts/check-memory-citations_test.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh

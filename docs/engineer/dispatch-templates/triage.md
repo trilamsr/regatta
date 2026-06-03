@@ -29,7 +29,7 @@ ROOT CAUSE
 - For bug reports: identify root cause before verdict; symptom-suppression workarounds rejected per `feedback_root_cause`.
 
 DEDUPE
-- Search existing issues/PRs before filing new tracking items. Per `feedback_parallel_dup_followups`.
+- Search existing issues/PRs before filing new tracking items. Per `CLAUDE.md` §Dispatch.
 
 OUTPUT FORMAT
 - One block per target:

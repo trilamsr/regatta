@@ -35,7 +35,7 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 ## CI gates (local pre-push)
 
 - **`make pre-push-check`** before every push (= `make check` + PR-body release-notes-block sanity).
-- **`make check`** = `doc-check doc-check-test prose-dup vet lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test`. Single source of truth.
+- **`make check`** = `doc-check doc-check-test prose-dup check-memory-citations check-memory-citations-test vet lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test`. Single source of truth.
 - **`make ci-check`** = `check stale-todo`.
 - **Banned-phrase gate** (`scripts/doc-check.sh`): rejects `blazing[- ]fast`, `production[- ]grade`, `world[- ]class`, `seamless`, `cutting[- ]edge`, `state[- ]of[- ]the[- ]art`, and 5 more (11 total). Wrap literal token mentions in backticks. Reword hits to falsifiable claims (version pin, benchmark, named reference). (`feedback_ci_gates`)
 - **Banned-phrase doc-check + check-tdd opt-outs**: tag spec-only PRs with `[DOCS]`/`[CI]`/`[CHORE]` release-notes prefix to skip check-tdd. (`feedback_ci_gates`)
