@@ -1,7 +1,7 @@
-// cost subcommand tree. Today: `cost status` prints the W5 global
-// daily-cap state — 24h spend, configured cap, scheduler state, and
-// auto-resume horizon. Operator runs this to answer "why is regatta
-// idle?" without grepping the substrate.
+// cost subcommand tree. `status` prints the W5 global daily-cap state.
+// `backfill <run_id>` re-derives token_spend rows from the Anthropic
+// Usage API for a run window — the §9 R4 recovery primitive when a
+// spawner crash left an open llm_call span without a substrate row.
 package main
 
 import (
@@ -15,6 +15,7 @@ import (
 
 	"github.com/trilamsr/regatta/internal/config/validate"
 	costcap "github.com/trilamsr/regatta/internal/cost/cap"
+	"github.com/trilamsr/regatta/internal/cost/reconcile"
 	"github.com/trilamsr/regatta/internal/cost/spend"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
@@ -40,12 +41,14 @@ type costDeps struct {
 
 func runCost(args []string) int {
 	if len(args) == 0 {
-		_, _ = fmt.Fprintln(os.Stderr, "regatta cost: expected sub-subcommand (status)")
+		_, _ = fmt.Fprintln(os.Stderr, "regatta cost: expected sub-subcommand (status|backfill)")
 		return 2
 	}
 	switch args[0] {
 	case "status": //nolint:goconst // sub-subcommand verb shared with merge/secret; per-parent scoping reads cleaner than a global enum.
 		return runCostStatus(args[1:])
+	case "backfill":
+		return runCostBackfill(args[1:])
 	default:
 		_, _ = fmt.Fprintf(os.Stderr, "regatta cost: unknown subcommand %q\n", args[0])
 		return 2
@@ -176,4 +179,99 @@ func defaultConfigPath(args []string) string {
 		}
 	}
 	return defaultRegattaConfig
+}
+
+// backfillDeps mirrors costDeps but adds the keyring + RunID inputs the
+// backfill path needs. Opener stays so tests assert per-invocation
+// Close parity with the rest of the cost CLI.
+type backfillDeps struct {
+	Stdout     io.Writer
+	Stderr     io.Writer
+	Clock      func() time.Time
+	DSN        string
+	ConfigPath string
+	Opener     func(context.Context, string) (*state.DB, error)
+	Keys       map[string][]byte
+	ActiveKey  string
+	BaseURL    string
+}
+
+func runCostBackfill(args []string) int {
+	keys, active := loadBriefKeyringWithActive()
+	return runCostBackfillWith(backfillDeps{
+		Stdout:     os.Stdout,
+		Stderr:     os.Stderr,
+		Clock:      time.Now,
+		DSN:        state.DSN(defaultDBPath(args)),
+		ConfigPath: defaultConfigPath(args),
+		Keys:       keys,
+		ActiveKey:  active,
+	}, args)
+}
+
+func runCostBackfillWith(deps backfillDeps, args []string) int {
+	fs := flag.NewFlagSet("cost backfill", flag.ContinueOnError)
+	fs.SetOutput(deps.Stderr)
+	_ = fs.String("db", "regatta.db", "Path to sqlite state DB")
+	_ = fs.String("config", defaultRegattaConfig, "Path to regatta.yaml")
+	fs.Usage = func() {
+		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta cost backfill <run_id> [--db <path>] [--config <path>]")
+		_, _ = fmt.Fprintln(deps.Stderr, "Re-derives token_spend rows from Anthropic Usage API for the run window (spec §9 R4).")
+	}
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	pos := fs.Args()
+	if len(pos) == 0 {
+		fs.Usage()
+		return 2
+	}
+	runID := pos[0]
+
+	clock := deps.Clock
+	if clock == nil {
+		clock = time.Now
+	}
+	opener := deps.Opener
+	if opener == nil {
+		opener = state.Open
+	}
+	ctx := context.Background()
+	db, err := opener(ctx, deps.DSN)
+	if err != nil {
+		_, _ = fmt.Fprintf(deps.Stderr, "regatta cost backfill: open state db: %v\n", err)
+		return 1
+	}
+	defer func() { _ = db.Close() }()
+
+	key := deps.Keys[deps.ActiveKey]
+	if len(key) == 0 {
+		_, _ = fmt.Fprintln(deps.Stderr, "regatta cost backfill: REGATTA_HMAC_KEY unset — backfill rows would not sign")
+		return 1
+	}
+	res, err := reconcile.Backfill(ctx, reconcile.BackfillConfig{
+		DB:       db.SQL(),
+		RunID:    runID,
+		TenantID: substrate.DefaultTenantID,
+		BaseURL:  deps.BaseURL,
+		Key:      key,
+		KeyID:    deps.ActiveKey,
+		Now:      clock,
+	})
+	if err != nil {
+		if errors.Is(err, reconcile.ErrRunNotFound) {
+			_, _ = fmt.Fprintf(deps.Stderr, "regatta cost backfill: run %q has no substrate events\n", runID)
+			return 1
+		}
+		_, _ = fmt.Fprintf(deps.Stderr, "regatta cost backfill: %v\n", err)
+		return 1
+	}
+	_, _ = fmt.Fprintf(deps.Stdout,
+		"backfilled run=%s window=[%s, %s) emitted=%d skipped=%d pricing_rev=%s\n",
+		runID,
+		res.WindowStart.Format(time.RFC3339),
+		res.WindowEnd.Format(time.RFC3339),
+		res.RowsEmitted, res.RowsSkipped, res.PricingRev,
+	)
+	return 0
 }

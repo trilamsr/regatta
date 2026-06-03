@@ -3,6 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +18,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
 // openCounter records every state.Open call the Opener seam routes
@@ -291,4 +297,137 @@ func TestRunResume_ClosesDB(t *testing.T) {
 
 func writeFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o644)
+}
+
+// TestCostBackfill_CLI_HappyPath drives the full CLI seam end-to-end (#272).
+func TestCostBackfill_CLI_HappyPath(t *testing.T) {
+	substrate.ResetClockForTesting()
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "state.db")
+	db, err := state.Open(ctx, state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	key := []byte("0123456789abcdef0123456789abcdef")
+	keyID := "k1"
+	seedCLIRunWindow(t, ctx, db.SQL(), "run-Y",
+		time.Date(2026, 6, 1, 10, 30, 0, 0, time.UTC),
+		time.Date(2026, 6, 1, 11, 30, 0, 0, time.UTC),
+		key, keyID)
+	_ = db.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/cost_report/") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"bucket_start":                "2026-06-01T10:00:00Z",
+				"bucket_end":                  "2026-06-01T11:00:00Z",
+				"model":                       "claude-sonnet-4-7",
+				"uncached_input_tokens":       1_000_000,
+				"cache_read_input_tokens":     0,
+				"cache_creation_input_tokens": 0,
+				"output_tokens":               500_000,
+			}},
+		})
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("ANTHROPIC_ADMIN_KEY", "sk-admin-test")
+
+	var stdout, stderr bytes.Buffer
+	code := runCostBackfillWith(backfillDeps{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		Clock:      func() time.Time { return time.Date(2026, 6, 1, 13, 0, 0, 0, time.UTC) },
+		DSN:        state.DSN(dbPath),
+		ConfigPath: "",
+		Keys:       map[string][]byte{keyID: key},
+		ActiveKey:  keyID,
+		BaseURL:    srv.URL,
+	}, []string{"run-Y"})
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "emitted=1") {
+		t.Fatalf("stdout missing emitted count: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "pricing_rev=backfill:") {
+		t.Fatalf("stdout missing pricing_rev tag: %s", stdout.String())
+	}
+}
+
+// TestCostBackfill_CLI_RequiresRunID exits 2 when arg missing.
+func TestCostBackfill_CLI_RequiresRunID(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := runCostBackfillWith(backfillDeps{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		Clock:      time.Now,
+		DSN:        "ignored",
+		ConfigPath: "",
+		Keys:       map[string][]byte{"k1": []byte("0123456789abcdef0123456789abcdef")},
+		ActiveKey:  "k1",
+	}, []string{})
+	if code != 2 {
+		t.Fatalf("exit=%d, want 2; stderr=%s", code, stderr.String())
+	}
+}
+
+// TestCostBackfill_CLI_RejectsMissingHMAC exits 1 when key absent.
+func TestCostBackfill_CLI_RejectsMissingHMAC(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "state.db")
+	db, err := state.Open(context.Background(), state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	_ = db.Close()
+	var stdout, stderr bytes.Buffer
+	code := runCostBackfillWith(backfillDeps{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		Clock:      time.Now,
+		DSN:        state.DSN(dbPath),
+		ConfigPath: "",
+		Keys:       map[string][]byte{},
+		ActiveKey:  "",
+	}, []string{"run-Z"})
+	if code != 1 {
+		t.Fatalf("exit=%d, want 1; stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "REGATTA_HMAC_KEY") {
+		t.Fatalf("stderr missing key hint: %s", stderr.String())
+	}
+}
+
+func seedCLIRunWindow(t *testing.T, ctx context.Context, db *sql.DB, runID string, start, end time.Time, key []byte, keyID string) {
+	t.Helper()
+	for i, at := range []time.Time{start, end} {
+		ev := substrate.Event{
+			ID:            substrate.Mint(at),
+			RunID:         runID,
+			WorkItemID:    "WI-cli",
+			TenantID:      substrate.DefaultTenantID,
+			Kind:          substrate.KindHeartbeat,
+			PayloadJSON:   json.RawMessage(fmt.Sprintf(`{"work_item_id":"WI-cli","timestamp":%d}`, at.UnixMilli())),
+			WrittenBy:     "spawner-test",
+			WrittenAt:     at.UnixMilli(),
+			SchemaVersion: 1,
+			Nonce:         fmt.Sprintf("cli-hb-%d", i),
+		}
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			t.Fatalf("begin: %v", err)
+		}
+		if err := substrate.AppendEvent(ctx, tx, ev, key, keyID); err != nil {
+			_ = tx.Rollback()
+			t.Fatalf("seed: %v", err)
+		}
+		if err := tx.Commit(); err != nil {
+			t.Fatalf("commit: %v", err)
+		}
+	}
 }

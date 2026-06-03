@@ -424,6 +424,49 @@ The major gaps operators commonly expect:
 - **In-process admin-key rotation without restart** — rolling restart
   is the MVP-2 procedure.
 
+## Backfill
+
+`regatta cost backfill <run_id>` is the §9 R4 recovery primitive — run
+it when a spawner crash left an open `llm_call` span without a
+substrate `token_spend` row (the next reconcile tick raised a drift
+alert, and the operator wants to close the gap explicitly rather than
+accept the drift). The CLI re-derives one `token_spend` row per
+`(bucket, model)` from the Anthropic Usage API for the run's window.
+
+```
+regatta cost backfill run-2026-06-01-abc123
+```
+
+What it does, in order:
+
+1. Reads `MIN/MAX(written_at)` across `substrate_events WHERE run_id =
+   <run_id>` to frame the window; floors start + ceils end to the
+   hourly bucket boundary.
+2. Calls the Anthropic Usage API (`/v1/organizations/usage_report/messages`)
+   for that window with `bucket_width=1h` and `group_by[]=model`.
+3. Prices each `(bucket, model)` row through the in-tree pricing table
+   and appends a substrate `kind=token_spend` row tagged
+   `pricing_rev=backfill:<commit-sha>` (12-char short SHA) so audits
+   can distinguish recovery rows from spawner emissions.
+4. Prints a one-line summary: `emitted=N skipped=M` per run.
+
+**Idempotency.** The substrate nonce is derived deterministically from
+`sha256(run_id|bucket_start|model)[:16]`, so re-running backfill
+against the same Anthropic response replays into the
+`UNIQUE(run_id, written_by, nonce)` constraint and counts as
+`skipped` rather than double-counting. Safe to run on a schedule, safe
+to re-run after a partial network failure.
+
+**Reopen trigger.** Backfill is a manual incident-response tool, not
+a steady-state path. The reconciler tick is the first-line drift
+detector; backfill is the second-line operator decision to close a
+known gap. If the gap is unknown (no drift alert), the reconciler will
+catch it on the next tick and there is no work for backfill to do.
+
+Required env: `REGATTA_HMAC_KEY` (signing keyring) +
+`ANTHROPIC_ADMIN_KEY` (admin API auth). Missing either is a hard
+failure; the CLI exits non-zero and names the missing surface.
+
 ## Where to look next
 
 - Incident playbook for on-call response —
