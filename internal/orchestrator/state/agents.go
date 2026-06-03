@@ -200,6 +200,42 @@ func (d *DB) ListAgentsByState(ctx context.Context, states ...AgentState) ([]Age
 	return out, rows.Err()
 }
 
+// ListEscalatedUnlabeled returns escalated agents that have no
+// `labeled` event row yet, capped at limit. The absence-of-event
+// filter runs in SQL so the per-call cost scales with the
+// unlabeled-tail size, not the (terminal, unbounded) escalated set —
+// see issue #478 for the failure mode. A non-positive limit defaults
+// to 100; pass a larger value when the caller (e.g.
+// rejectionrouter.sweepUnlabeled) wants its own bound.
+func (d *DB) ListEscalatedUnlabeled(ctx context.Context, limit int) ([]Agent, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := d.sql.QueryContext(ctx, `
+		SELECT id, work_item_id, lane, state, pid, session_id, pr_sha, rejection_count, created_at, updated_at
+		FROM agents
+		WHERE state = ?
+		  AND NOT EXISTS (
+		    SELECT 1 FROM events
+		    WHERE events.agent_id = agents.id AND events.kind = ?
+		  )
+		ORDER BY id ASC
+		LIMIT ?`, string(AgentEscalated), "labeled", limit)
+	if err != nil {
+		return nil, fmt.Errorf("state: list escalated unlabeled: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Agent
+	for rows.Next() {
+		var a Agent
+		if err := scanAgent(rows, &a); err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // CountAgentsByLane returns the number of agents currently in any of
 // the given states, grouped by lane. Used by the scheduler to honor
 // per-lane concurrency caps.
