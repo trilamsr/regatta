@@ -56,10 +56,7 @@ func insert(t *testing.T, db *sql.DB, kind, payload string, writtenAt time.Time,
 	}
 }
 
-// TestReader_BudgetState_SumOverWindow also covers the #554
-// shadow-window fallback: legacy rows carrying only $.usd (float) get
-// per-row CAST(ROUND($.usd*1e6)) before SUM, so the integer-canonical
-// total survives the float→micro conversion exactly at $1+$2.5+$3.5.
+// TestReader_BudgetState_SumOverWindow asserts legacy $.usd rows convert per-row to micro before SUM over window.
 func TestReader_BudgetState_SumOverWindow(t *testing.T) {
 	db := openReaderDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -202,12 +199,7 @@ func indexOf(s, sub string) int {
 	return -1
 }
 
-// TestReader_BudgetState_LegacyFloatRowsConvertExactly pins the
-// #554 shadow-window contract: pre-migration rows carry only $.usd
-// (float64) and the reader's COALESCE → CAST(ROUND($.usd*1e6))
-// converts each row to micro before SUM. Per-row drift is bounded at
-// ±0.5 micro; aggregate drift over N rows is bounded by N/2 micro
-// (irrelevant for cap enforcement at any plausible volume).
+// TestReader_BudgetState_LegacyFloatRowsConvertExactly asserts COALESCE prefers usd_micro and casts legacy $.usd to micro exactly.
 func TestReader_BudgetState_LegacyFloatRowsConvertExactly(t *testing.T) {
 	db := openReaderDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -235,16 +227,7 @@ func TestReader_BudgetState_LegacyFloatRowsConvertExactly(t *testing.T) {
 	}
 }
 
-// TestBudget_FloatRoundingExceedsCap_IntegerDoesNot pins issue #554's
-// load-bearing claim: a sequence of float-encoded spend values whose
-// IEEE-754 SUM lands below the cap (allowing one more spawn) sums
-// EXACTLY to the cap in integer-micro space (closing the gap). The
-// previous reader path ran SUM(json_extract($.usd)) → float; the
-// fixed path runs SUM(CAST(ROUND($.usd*1e6) AS INTEGER)) → int64.
-//
-// Why the values: 11 × $0.10 = 1.0999999999999998 in float64
-// (deterministic across Go runtimes per IEEE-754 §6.1). Integer micro
-// equivalent: 11 × 100_000 = 1_100_000 = exactly $1.10.
+// TestBudget_FloatRoundingExceedsCap_IntegerDoesNot asserts integer-micro SUM hits cap exactly where float SUM undershoots by one ULP.
 func TestBudget_FloatRoundingExceedsCap_IntegerDoesNot(t *testing.T) {
 	db := openReaderDB(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)

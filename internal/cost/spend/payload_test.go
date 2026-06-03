@@ -10,9 +10,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// TestPayload_TokenSpendJSONTags pins spec §3.5 lines 264-276 plus
-// the #554 usd_micro shadow field. The legacy $.usd float emission
-// remains for dashboards that grep raw JSON.
+// TestPayload_TokenSpendJSONTags asserts TokenSpendPayload dual-emits usd_micro plus legacy usd JSON tags.
 func TestPayload_TokenSpendJSONTags(t *testing.T) {
 	p := spend.TokenSpendPayload{
 		USDMicro:        spend.FromUSD(1.0),
@@ -41,8 +39,7 @@ func TestPayload_TokenSpendJSONTags(t *testing.T) {
 	}
 }
 
-// TestPayload_BudgetReconciledJSONTags pins spec §3.5 lines 278-289
-// plus the #554 *_usd_micro fields the reconciler dual-emits.
+// TestPayload_BudgetReconciledJSONTags asserts BudgetReconciledPayload dual-emits *_usd_micro plus legacy usd JSON tags.
 func TestPayload_BudgetReconciledJSONTags(t *testing.T) {
 	p := spend.BudgetReconciledPayload{
 		PeriodStart:      1,

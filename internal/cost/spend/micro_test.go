@@ -8,9 +8,7 @@ import (
 	"github.com/trilamsr/regatta/internal/cost/spend"
 )
 
-// TestMicroUSD_FromUSD_RoundsHalfAwayFromZero pins the boundary
-// conversion contract: math.Round semantics so $0.0000005 → 1 micro
-// and operator-typed cap setting $1.00 → 1_000_000 micro exactly.
+// TestMicroUSD_FromUSD_RoundsHalfAwayFromZero asserts math.Round semantics at the USD→micro conversion boundary.
 func TestMicroUSD_FromUSD_RoundsHalfAwayFromZero(t *testing.T) {
 	cases := []struct {
 		usd  float64
@@ -36,8 +34,7 @@ func TestMicroUSD_FromUSD_RoundsHalfAwayFromZero(t *testing.T) {
 	}
 }
 
-// TestMicroUSD_USD_RoundTripsAtMillionthPrecision pins the display
-// boundary — operators see USD, ledger holds micro.
+// TestMicroUSD_USD_RoundTripsAtMillionthPrecision asserts micro→USD display preserves millionth precision for operators.
 func TestMicroUSD_USD_RoundTripsAtMillionthPrecision(t *testing.T) {
 	cases := []struct {
 		micro spend.USDMicro
@@ -57,11 +54,7 @@ func TestMicroUSD_USD_RoundTripsAtMillionthPrecision(t *testing.T) {
 	}
 }
 
-// TestMicroUSD_CanonicalJSON_ByteStableAcrossRoundTrip pins issue
-// #554's load-bearing claim: integer micro emits as a JSON integer
-// that round-trips through unmarshal→marshal byte-for-byte. This is
-// the HMAC-input shape the substrate signer canonicalises (see
-// contracts/schemas.CanonicalJSON).
+// TestMicroUSD_CanonicalJSON_ByteStableAcrossRoundTrip asserts integer micro JSON round-trips byte-stable for HMAC signing.
 func TestMicroUSD_CanonicalJSON_ByteStableAcrossRoundTrip(t *testing.T) {
 	// Round-trip every magnitude up to ~$9B per single event (the
 	// float64 mantissa-exact bound of 2^53 micro). Production rows
@@ -97,16 +90,7 @@ func TestMicroUSD_CanonicalJSON_ByteStableAcrossRoundTrip(t *testing.T) {
 	}
 }
 
-// TestMicroUSD_IntegerSum_BeatsFloatRoundingAtBoundary is the issue
-// #554 demonstration test. Eleven $0.10 events accumulate in float64
-// to 1.0999999999999998 — less than the operator-typed cap of $1.10
-// by one ULP. Integer-micro sum is exactly 1_100_000 = the operator
-// intent. The bug: float SUM passes the cap check, integer SUM does
-// not.
-//
-// This pins the determinism floor: cap enforcement MUST run on
-// integer math because float ULP drift accumulates on the wrong side
-// of the boundary at sub-cent volume.
+// TestMicroUSD_IntegerSum_BeatsFloatRoundingAtBoundary asserts integer-micro sum hits cap exactly where float ULP drift undershoots.
 func TestMicroUSD_IntegerSum_BeatsFloatRoundingAtBoundary(t *testing.T) {
 	const perEventUSD = 0.10
 	const events = 11

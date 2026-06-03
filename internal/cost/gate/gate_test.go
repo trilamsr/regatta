@@ -263,12 +263,7 @@ func TestGate_EmitsCostEvaluateSpan(t *testing.T) {
 	}
 }
 
-// TestGate_PerDAGCap_IntegerPrecisionAtBoundary pins the issue #554
-// fix at the cap-decision surface: eleven $0.10 spends sum to
-// 1.0999999999999998 in float (< $1.10 cap → buggy allow) but exactly
-// 1_100_000 micro in integer (== cap, > 0 estimate → deny). The bug
-// surface (float SUM allowed one extra spawn past cap) is closed by
-// integer comparison.
+// TestGate_PerDAGCap_IntegerPrecisionAtBoundary asserts integer-micro cap comparison denies the float-ULP-slip spawn at boundary.
 func TestGate_PerDAGCap_IntegerPrecisionAtBoundary(t *testing.T) {
 	db := openTestDB(t)
 	// Eleven legacy float rows of $0.10 each, at distinct timestamps so
