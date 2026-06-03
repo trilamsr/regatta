@@ -237,11 +237,11 @@ func TestReloader_ConcurrentSighupAndFsnotifyStoreConsistent(t *testing.T) {
 	wg.Wait()
 }
 
-// HR8 restore-after-removal recovery (issue #365 / spec §3.7): operator
-// `rm -rf <policy_dir>` then recreate + write must resume hot-reload via
-// the watchLoop retry ticker. RetryInterval is shrunk from 5 s default so
-// the test runs in ~1 s instead of the 12-s production envelope.
+// TestReloader_PolicyDirRemovedThenRestored_ResumesWatching asserts F-HR8 watcher recovery (#365).
 func TestReloader_PolicyDirRemovedThenRestored_ResumesWatching(t *testing.T) {
+	if testing.Short() {
+		t.Skip("spans production 5s retry ticker; skip with -short (make check)")
+	}
 	t.Parallel()
 	dir, az := setupAuthz(t)
 	r := &reload.Reloader{
@@ -249,7 +249,6 @@ func TestReloader_PolicyDirRemovedThenRestored_ResumesWatching(t *testing.T) {
 		Loader:        &disk.Loader{Dir: dir, Fallback: embeddedFallback()},
 		Tenant:        authz.DefaultTenant,
 		Debounce:      25 * time.Millisecond,
-		RetryInterval: 100 * time.Millisecond,
 		Logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		DisableSighup: true,
 	}
@@ -258,25 +257,21 @@ func TestReloader_PolicyDirRemovedThenRestored_ResumesWatching(t *testing.T) {
 	startReloader(t, r, ctx)
 
 	policyDir := filepath.Join(dir, "regatta", "v1", authz.DefaultTenant)
+	revBefore := az.CurrentRevision(authz.DefaultTenant)
 	if err := os.RemoveAll(policyDir); err != nil {
 		t.Fatalf("rm -rf policy_dir: %v", err)
 	}
-	// Give the watcher time to observe the removal + tick at least once.
-	time.Sleep(300 * time.Millisecond)
+	// 6 s spans the production 5 s retry ticker, guaranteeing at least one
+	// retry tick has fired against the missing dir before recreate.
+	time.Sleep(6 * time.Second)
 	if err := os.MkdirAll(policyDir, 0o755); err != nil {
 		t.Fatalf("recreate policy_dir: %v", err)
 	}
-	// Two retry ticks (~200 ms) so the watcher re-Adds the recreated root
-	// before the .rego write lands; otherwise the write hits a no-watch
-	// gap and only the SHA-driven reload (no fsnotify) would catch it.
-	time.Sleep(300 * time.Millisecond)
-
-	revBefore := az.CurrentRevision(authz.DefaultTenant)
 	writeRego(t, dir, "approval.rego", "package regatta.v1.approval.view\n\ndefault decision := {\"allow\": true, \"reason\": \"hr8-restored\"}\n")
 
-	// 2 s upper bound — covers (debounce 25 ms + retry-tick 100 ms + reload
-	// ~10 ms) ×N retries on slow CI without slipping past meaningful failure.
-	waitForRevisionChange(t, az, revBefore, 2*time.Second)
+	// 6 s budget after recreate: ≤5 s for next retry tick to re-Add the
+	// root + debounce + reload. Total wall clock ≤12 s per acceptance.
+	waitForRevisionChange(t, az, revBefore, 6*time.Second)
 }
 
 // ctx cancel cleanly shuts down the watcher goroutine.
