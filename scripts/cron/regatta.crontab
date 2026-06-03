@@ -9,7 +9,8 @@
 0 9 * * * /usr/local/bin/regatta-cron-daily-digest
 
 # Self-improvement detector scan (PHASE-AUTONOMY W4): nightly rule
-# sweep over the substrate; --apply files GH issues for findings that
-# crossed threshold within their per-rule window. Dry-run via
-# --apply=false during ruleset tuning.
-0 3 * * * /usr/local/bin/regatta self-improve scan --apply
+# sweep over the substrate. Default is dry-run (no --apply) so the
+# first-deploy run never spam-files GH issues from a noisy ruleset
+# (#646). Operator inspects one clean audit, then appends --apply to
+# this line manually — per spec §8.1 amendment.
+0 3 * * * /usr/local/bin/regatta self-improve scan

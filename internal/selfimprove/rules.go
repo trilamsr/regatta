@@ -5,28 +5,36 @@ import (
 	"time"
 )
 
-// Rule kinds (spec §5.2). Each rule = ~25 LoC; the registry returns
-// the five MVP rules pre-configured with the spec's window+threshold
-// table. Adding R6 is a one-file diff per acceptance criterion c3.
+// Rule kinds align verbatim with spec §5.2's MVP table — names + windows
+// + thresholds + group_by + event kinds are the contract the detector
+// hashes into dedup keys; drift here drift's all open dedup-key issues
+// off their fingerprint. #644 closed the prior name/threshold deviation.
 const (
-	RuleL4Rejection       = "l4-rejection-streak"
-	RuleCIFailStreak      = "ci-check-fail-streak"
-	RuleReaperRecurrent   = "reaper-kill-recurrent"
-	RuleCostCapBreach     = "cost-cap-breach"
-	RuleReviewerFindStorm = "reviewer-finding-storm"
+	RuleSameGateFailRepeats             = "same-gate-fail-repeats"
+	RuleBannedPhraseRecurrence          = "banned-phrase-recurrence"
+	RuleSubagentClaimedCleanButCIFailed = "subagent-claimed-clean-but-ci-failed"
+	RuleLoadBearingLeftoverPattern      = "load-bearing-leftover-pattern"
+	RuleReaperKillsSameAgent            = "reaper-kills-same-agent"
 )
 
-// PauseAllTag names the W5 substrate-event tag that suppresses rule
-// fires during a cost-pause window (spec §11 risk #4). Every MVP rule
-// declares it in FilterOut so pause-induced halts never get blamed on
-// agents.
+// PauseAllTag is the W5 cost-pause suppressor; every rule that could
+// fire during a forced halt declares it in FilterOut so pause-induced
+// halts never blame agents (spec §11 risk #4).
 const PauseAllTag = "regatta_pause_all"
 
-// streakRule is the shared bucketing primitive: count events grouped
-// by a tuple of payload fields, fire one Finding per bucket that
-// crosses threshold inside window. All five MVP rules are
-// streak-by-fingerprint variants of the same shape (spec §5.1), so the
-// implementation lives once.
+// Substrate event-kind names rules consume (spec §5.2). Shared
+// constants keep tests + rule registry + reader on one spelling.
+const (
+	EventKindGateFail        = "gate_fail"
+	EventKindDocCheckFailed  = "doc_check_failed"
+	EventKindSubagentClaim   = "subagent_claim"
+	EventKindCIFailed        = "ci_failed"
+	EventKindPRBodyScan      = "pr_body_scan"
+	EventKindReaperKilled    = "reaper_killed"
+)
+
+// streakRule is the shared bucketing primitive — all five spec §5.2
+// rules are streak-by-fingerprint variants of one Match() loop.
 type streakRule struct {
 	name       string
 	window     time.Duration
@@ -37,15 +45,14 @@ type streakRule struct {
 	groupBy    func(Event) (map[string]string, string)
 }
 
-func (r *streakRule) Name() string         { return r.name }
+func (r *streakRule) Name() string          { return r.name }
 func (r *streakRule) Window() time.Duration { return r.window }
 func (r *streakRule) EventKinds() []string  { return r.eventKinds }
 func (r *streakRule) FilterOut() []string   { return r.filterOut }
 
-// Match groups events by the rule's fingerprint and emits one Finding
-// per bucket whose count >= threshold. Pause-tagged events are
-// filtered up-front so a cost-pause storm never triggers an agent-
-// blaming false positive (spec §11 risk #4).
+// Match buckets events on the rule fingerprint and emits one Finding
+// per bucket crossing threshold; pause-tagged events are filtered first
+// so a cost-pause storm never blames agents (spec §11 risk #4).
 func (r *streakRule) Match(events []Event, now time.Time) []Finding {
 	cutoff := now.Add(-r.window)
 	filtered := filterOut(events, r.filterOut)
@@ -114,45 +121,86 @@ func kindMatches(kind string, allowed []string) bool {
 	return false
 }
 
-// DefaultRules returns the five MVP rules configured per spec §5.2's
-// window/threshold table. Operator overrides land via a YAML loader
-// (deferred — spec §15 followup, not blocking W4 issue-filing path).
+// DefaultRules returns the five MVP rules verbatim from spec §5.2's
+// window/threshold table. Any drift here must amend the spec FIRST per
+// `feedback_spec_pattern_authority` — implementer-side deviation is what
+// #644 fixed.
 func DefaultRules() []Rule {
 	return []Rule{
+		// R1: same-gate-fail-repeats (7d / 3) — gate_fail grouped by
+		// gate_kind+gate_reason. Spec §5.2.
 		&streakRule{
-			name:       RuleL4Rejection,
-			window:     24 * time.Hour,
+			name:       RuleSameGateFailRepeats,
+			window:     7 * 24 * time.Hour,
 			threshold:  3,
-			eventKinds: []string{"l4_reject", "gate_fail"},
+			eventKinds: []string{EventKindGateFail},
 			filterOut:  []string{PauseAllTag},
 			severity:   SeverityMedium,
 			groupBy: func(e Event) (map[string]string, string) {
-				if e.Author == "" || e.Reason == "" {
+				if e.GateKind == "" || e.GateReason == "" {
 					return nil, ""
 				}
-				return map[string]string{"author": e.Author, "reason": e.Reason},
-					fmt.Sprintf("%s/%s", e.Author, e.Reason)
+				return map[string]string{"gate_kind": e.GateKind, "gate_reason": e.GateReason},
+					fmt.Sprintf("%s/%s", e.GateKind, e.GateReason)
 			},
 		},
+		// R2: banned-phrase-recurrence (7d / 2) — doc_check_failed
+		// grouped by banned_token across distinct PRs. Spec §5.2.
 		&streakRule{
-			name:       RuleCIFailStreak,
+			name:       RuleBannedPhraseRecurrence,
+			window:     7 * 24 * time.Hour,
+			threshold:  2,
+			eventKinds: []string{EventKindDocCheckFailed},
+			filterOut:  []string{PauseAllTag},
+			severity:   SeverityMedium,
+			groupBy: func(e Event) (map[string]string, string) {
+				if e.BannedToken == "" {
+					return nil, ""
+				}
+				return map[string]string{"banned_token": e.BannedToken}, e.BannedToken
+			},
+		},
+		// R3: subagent-claimed-clean-but-ci-failed (7d / 3) — pairs
+		// subagent_claim with ci_failed grouped by claim_text+failure_kind.
+		// Spec §5.2.
+		&streakRule{
+			name:       RuleSubagentClaimedCleanButCIFailed,
+			window:     7 * 24 * time.Hour,
+			threshold:  3,
+			eventKinds: []string{EventKindSubagentClaim, EventKindCIFailed},
+			filterOut:  []string{PauseAllTag},
+			severity:   SeverityHigh,
+			groupBy: func(e Event) (map[string]string, string) {
+				if e.ClaimText == "" || e.FailureKind == "" {
+					return nil, ""
+				}
+				return map[string]string{"claim_text": e.ClaimText, "failure_kind": e.FailureKind},
+					fmt.Sprintf("%s/%s", e.ClaimText, e.FailureKind)
+			},
+		},
+		// R4: load-bearing-leftover-pattern (14d / 2) — pr_body_scan
+		// grouped by leftover_pattern across PRs. Spec §5.2.
+		&streakRule{
+			name:       RuleLoadBearingLeftoverPattern,
+			window:     14 * 24 * time.Hour,
+			threshold:  2,
+			eventKinds: []string{EventKindPRBodyScan},
+			filterOut:  []string{PauseAllTag},
+			severity:   SeverityMedium,
+			groupBy: func(e Event) (map[string]string, string) {
+				if e.LeftoverPattern == "" {
+					return nil, ""
+				}
+				return map[string]string{"leftover_pattern": e.LeftoverPattern}, e.LeftoverPattern
+			},
+		},
+		// R5: reaper-kills-same-agent (7d / 5) — reaper_killed grouped
+		// by agent_id. Spec §5.2 (extra-beyond-brief; observed in waves).
+		&streakRule{
+			name:       RuleReaperKillsSameAgent,
 			window:     7 * 24 * time.Hour,
 			threshold:  5,
-			eventKinds: []string{"ci_failed"},
-			filterOut:  []string{PauseAllTag},
-			severity:   SeverityMedium,
-			groupBy: func(e Event) (map[string]string, string) {
-				if e.CheckName == "" {
-					return nil, ""
-				}
-				return map[string]string{"check_name": e.CheckName}, e.CheckName
-			},
-		},
-		&streakRule{
-			name:       RuleReaperRecurrent,
-			window:     7 * 24 * time.Hour,
-			threshold:  3,
-			eventKinds: []string{"reaper_killed"},
+			eventKinds: []string{EventKindReaperKilled},
 			filterOut:  []string{PauseAllTag},
 			severity:   SeverityHigh,
 			groupBy: func(e Event) (map[string]string, string) {
@@ -160,32 +208,6 @@ func DefaultRules() []Rule {
 					return nil, ""
 				}
 				return map[string]string{"agent_id": e.AgentID}, e.AgentID
-			},
-		},
-		&streakRule{
-			name:       RuleCostCapBreach,
-			window:     7 * 24 * time.Hour,
-			threshold:  3,
-			eventKinds: []string{"cost_cap_breach"},
-			filterOut:  nil,
-			severity:   SeverityHigh,
-			groupBy: func(e Event) (map[string]string, string) {
-				return map[string]string{"kind": "cost_cap_breach"}, "cost_cap"
-			},
-		},
-		&streakRule{
-			name:       RuleReviewerFindStorm,
-			window:     14 * 24 * time.Hour,
-			threshold:  10,
-			eventKinds: []string{"reviewer_finding"},
-			filterOut:  []string{PauseAllTag},
-			severity:   SeverityMedium,
-			groupBy: func(e Event) (map[string]string, string) {
-				if e.Severity == "" || e.Scope == "" {
-					return nil, ""
-				}
-				return map[string]string{"severity": e.Severity, "scope": e.Scope},
-					fmt.Sprintf("%s/%s", e.Severity, e.Scope)
 			},
 		},
 	}
