@@ -57,6 +57,7 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 ## Worktree discipline
 
 - **Agents always in worktrees** (`.claude/worktrees/agent-<id>/`). Main checkout is read-only (`git fetch`, `git log`, `git status`). Never push from primary.
+- **Never `git clone` or `git worktree add` from a subagent** — the harness pre-creates the worktree at `.claude/worktrees/agent-<id>/`; subagent only `cd`s to it. Writing under `/tmp/regatta-<slug>/` leaves stray edits in main worktree with no pushable branch. (#188)
 - **Per-merge cleanup**: `git worktree remove --force` after merge.
 - **Force-twice clears locks**: `git worktree remove --force --force <path>` if lock persists.
 - **Post-removal hygiene**: `golangci-lint cache clean` after worktree removal (cache holds stale per-file analysis refs). prose-dup may also hold stale refs; verify script `exclude-dirs` current. (`feedback_worktree_discipline`, `feedback_post_worktree_removal_hygiene`)

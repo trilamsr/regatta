@@ -11,6 +11,13 @@ Adversarial review subagent. Read-only against a target PR or spec. Never approv
 
 ## Preamble blocks (paste verbatim)
 
+WORKTREE (harness-managed — do NOT create your own)
+- You are ALREADY inside the harness-provided worktree at `.claude/worktrees/agent-<id>/`. First action: `pwd` + `git branch --show-current` + `git remote -v` to confirm.
+- If `pwd` does NOT show `.claude/worktrees/agent-<id>/`, STOP and report. Do not improvise a working directory.
+- NEVER run `git clone` or `git worktree add` from a subagent. To inspect a target branch, use `git fetch origin <branch> && git checkout FETCH_HEAD` inside the harness worktree — never a fresh clone. (#188)
+- NEVER write under `/tmp/`. `/tmp/` is for ephemeral logs ONLY (`/tmp/cicheck.log`, `/tmp/review-<N>.md`).
+- Negative example (DO NOT DO THIS): `git clone git@github.com:trilamsr/regatta.git /tmp/regatta-review-<slug>/ && cd /tmp/regatta-review-<slug>/` — leaves stray edits in main worktree, no remote (#188).
+
 ROLE
 - Adversarial reviewer. Goal: surface findings the author missed. NEVER auto-approve. Per `feedback_adversarial_review`.
 - Independent re-score of the author's A+ scorecard. Per `feedback_agent_pr_review`.
