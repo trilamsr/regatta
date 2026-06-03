@@ -12,16 +12,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// TestTick_UsesInjectedClock_NotWallClock proves Tick's latency
-// histogram observes the injected Clock — not time.Now() — by feeding
-// a step clock that jumps by exactly 1 second on every call and
-// asserting the recorded tick latency is a positive integer multiple
-// of one second (≥ 1 s). Wall-clock fallback would record a sub-
-// millisecond value (test runtime is well under one second), so a
-// regression that drops the injection seam fails this assertion.
-// The exact multiplier depends on internal step count (one Clock()
-// call per step boundary), so the assertion is multiple-of-1000ms
-// rather than a fixed integer.
+// TestTick_UsesInjectedClock_NotWallClock asserts injected clock drives tick latency, not wall clock.
 func TestTick_UsesInjectedClock_NotWallClock(t *testing.T) {
 	dbClock := time.Unix(1_700_000_000, 0).UTC()
 	db, err := state.OpenWithClock(
@@ -78,11 +69,7 @@ func TestTick_UsesInjectedClock_NotWallClock(t *testing.T) {
 	}
 }
 
-// TestTick_NilClock_DefaultsToWallClock proves the zero-value Config
-// stays back-compat — a caller that never sets Clock gets time.Now
-// and records a non-negative sub-second latency. Pairs with the
-// injection-required test above so the seam can be exercised both
-// ways.
+// TestTick_NilClock_DefaultsToWallClock asserts zero-value Config falls back to time.Now for back-compat.
 func TestTick_NilClock_DefaultsToWallClock(t *testing.T) {
 	dbClock := time.Unix(1_700_000_000, 0).UTC()
 	db, err := state.OpenWithClock(
