@@ -29,10 +29,10 @@ PHASE OBS-B/C/D — Substrate health + agent-loop telemetry + operator surface [
 
 PHASE AUTONOMY — 7 wedges closing the autonomous-loop gaps [BLOCKED on OBS-A green]
   Per #458 spec. 7 items in .regatta/items/phase-autonomy-w{1..7}-*.md. Sequenced by layer:
-    Layer 1 [obs→issue→merge]: W1 alarm-webhook · W2 auto-merge-on-gate-pass
+    Layer 1 [obs→issue→merge]: W1 alarm-webhook · W2 auto-merge-on-gate-pass (c0 BLOCKS c2: ship intent/outbox + awaiting_merge recovery re-probe before any real `gh pr merge` — see #552, #551)
     Layer 2 [bootstrap]: W3 service-supervisor · W6 secret-credential-fetch
     Layer 3 [self-improvement]: W4 self-improvement-detector · W5 cost-cap-autonomic-enforcement · W7 PR-merge L4-as-review identity
-  Total ~980 LoC, ~10-14 days subagent-time. Acceptance: regatta serve runs unattended for 7 days dispatching + auto-merging without operator click.
+  Total ~1100 LoC (+120 for W2 c0), ~10-14 days subagent-time. Acceptance: regatta serve runs unattended for 7 days dispatching + auto-merging without operator click.
 
 PHASE DEPLOY — Production deploy of regatta-the-binary [READY]
   Container Stage 1+2+3 SHIPPED (#518 #534 #533 #536). Operator action required:
