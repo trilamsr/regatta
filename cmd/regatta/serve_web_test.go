@@ -8,8 +8,7 @@ import (
 	"testing"
 )
 
-// B-tier #6 — bootListener's mux routes `/` through web.NewHandler while keeping the more-specific
-// /healthz + /api/approval/callback routes intact (longest-prefix-wins).
+// TestServe_RootHandlerWiredIntoBootListener asserts bootListener mux routes `/` through web.NewHandler while keeping /healthz + /api/approval/callback intact (longest-prefix-wins, B-tier #6).
 func TestServe_RootHandlerWiredIntoBootListener(t *testing.T) {
 	t.Setenv("REGATTA_HMAC_KEY", "test-key")
 	h := newListenerHarness(t, true, "127.0.0.1:0")

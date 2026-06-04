@@ -11,8 +11,7 @@ import (
 	"github.com/trilamsr/regatta/internal/authz"
 )
 
-// buildAuthorizer with no regatta.yaml + no policy_dir hydrates the embed.FS
-// default-deny bundle; CurrentRevision returns the embedded SHA prefix.
+// TestBuildAuthorizer_NoYAML_HydratesEmbeddedFallback asserts no-yaml path hydrates embed.FS default-deny bundle and exposes a SHA prefix via CurrentRevision.
 func TestBuildAuthorizer_NoYAML_HydratesEmbeddedFallback(t *testing.T) {
 	repo := t.TempDir()
 	az, err := buildAuthorizer(context.Background(), repo, discardLogger())
@@ -24,8 +23,7 @@ func TestBuildAuthorizer_NoYAML_HydratesEmbeddedFallback(t *testing.T) {
 	}
 }
 
-// safety.authz absent ⇒ no Reloader spawn (probe: Authorizer hydrates, ctx
-// can be canceled without leaking a goroutine since none was started).
+// TestBuildAuthorizer_NoPolicyDir_SkipsReloader asserts safety.authz absent ⇒ no Reloader spawned (no goroutine leak on ctx cancel).
 func TestBuildAuthorizer_NoPolicyDir_SkipsReloader(t *testing.T) {
 	repo := t.TempDir()
 	yaml := []byte(`version: 1
@@ -59,8 +57,7 @@ safety:
 	}
 }
 
-// policy_dir resolves repo-relative paths to absolute under repoRoot —
-// the disk loader is byte-stable across cwds.
+// TestBuildAuthorizer_RelativePolicyDir_ResolvedUnderRepoRoot asserts policy_dir resolves repo-relative → absolute under repoRoot so disk loader is byte-stable across cwds.
 func TestBuildAuthorizer_RelativePolicyDir_ResolvedUnderRepoRoot(t *testing.T) {
 	repo := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(repo, "pol", "regatta", "v1", "default"), 0o755); err != nil {

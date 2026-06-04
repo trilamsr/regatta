@@ -12,16 +12,7 @@ import (
 	"github.com/trilamsr/regatta/internal/slogutil"
 )
 
-// Spec §7 audit-trail conformance: shared suite every Notifier impl runs through.
-//
-// Pins the four invariants closed under #198 so future channel impls
-// (slack, pagerduty, email) earn full conformance by appending a row:
-//
-//  1. len(Receipt.DeliveredTo) == len(req.Reviewers) on nil error.
-//  2. Emitted obs event carries the canonical four attrs
-//     (approval_id, work_item_id, gate_id, reviewer_count).
-//  3. zero-reviewer request returns ErrNoReviewers (fail-closed).
-//  4. ctx-cancelled Notify returns ctx.Err() before any side effect.
+// TestNotifier_InterfaceContract asserts spec §7 audit-trail conformance — DeliveredTo == Reviewers, canonical obs attrs, ErrNoReviewers fail-closed, ctx-cancel returns ctx.Err() (#198).
 func TestNotifier_InterfaceContract(t *testing.T) {
 	cases := []struct {
 		name    string
