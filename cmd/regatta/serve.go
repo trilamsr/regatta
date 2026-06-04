@@ -171,7 +171,7 @@ func runServe(args []string) int {
 	}
 	defer func() { _ = db.Close() }()
 
-	ad, err := buildSpecAdapter(f)
+	ad, err := buildSpecAdapter(f, slogger)
 	if err != nil {
 		logger.Printf("adapter: %v", err)
 		return 2
