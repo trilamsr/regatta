@@ -403,6 +403,132 @@ func TestCostBackfill_CLI_RejectsMissingHMAC(t *testing.T) {
 	}
 }
 
+// TestCostBackfill_CLI_RejectsMissingAdminKey fails fast at parse time (#705 R3).
+func TestCostBackfill_CLI_RejectsMissingAdminKey(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "state.db")
+	db, err := state.Open(context.Background(), state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	_ = db.Close()
+	t.Setenv("ANTHROPIC_ADMIN_KEY", "")
+	var stdout, stderr bytes.Buffer
+	code := runCostBackfillWith(backfillDeps{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		Clock:      time.Now,
+		DSN:        state.DSN(dbPath),
+		ConfigPath: "",
+		Keys:       map[string][]byte{"k1": []byte("0123456789abcdef0123456789abcdef")},
+		ActiveKey:  "k1",
+	}, []string{"run-Z"})
+	if code != 1 {
+		t.Fatalf("exit=%d, want 1; stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "ANTHROPIC_ADMIN_KEY") {
+		t.Fatalf("stderr missing admin key hint: %s", stderr.String())
+	}
+}
+
+// TestCostBackfill_CLI_SingleEventWarns surfaces R4 synthetic-window warning to operator (#705).
+func TestCostBackfill_CLI_SingleEventWarns(t *testing.T) {
+	substrate.ResetClockForTesting()
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "state.db")
+	db, err := state.Open(ctx, state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	key := []byte("0123456789abcdef0123456789abcdef")
+	keyID := "k1"
+	at := time.Date(2026, 6, 1, 10, 30, 0, 0, time.UTC)
+	seedCLIRunWindow(t, ctx, db.SQL(), "run-single", at, at, key, keyID)
+	_ = db.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/cost_report/") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{}})
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("ANTHROPIC_ADMIN_KEY", "sk-admin-test")
+	var stdout, stderr bytes.Buffer
+	code := runCostBackfillWith(backfillDeps{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		Clock:      func() time.Time { return time.Date(2026, 6, 1, 13, 0, 0, 0, time.UTC) },
+		DSN:        state.DSN(dbPath),
+		ConfigPath: "",
+		Keys:       map[string][]byte{keyID: key},
+		ActiveKey:  keyID,
+		BaseURL:    srv.URL,
+	}, []string{"run-single"})
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "no calls in window") {
+		t.Fatalf("stderr missing single-event warning: %s", stderr.String())
+	}
+}
+
+// TestCostBackfill_CLI_TagFlagFlowsThrough pipes --backfill-tag into pricing_rev (#705 R1).
+func TestCostBackfill_CLI_TagFlagFlowsThrough(t *testing.T) {
+	substrate.ResetClockForTesting()
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "state.db")
+	db, err := state.Open(ctx, state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("state.Open: %v", err)
+	}
+	key := []byte("0123456789abcdef0123456789abcdef")
+	keyID := "k1"
+	seedCLIRunWindow(t, ctx, db.SQL(), "run-tag",
+		time.Date(2026, 6, 1, 10, 30, 0, 0, time.UTC),
+		time.Date(2026, 6, 1, 11, 30, 0, 0, time.UTC),
+		key, keyID)
+	_ = db.Close()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/cost_report/") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"bucket_start":                "2026-06-01T10:00:00Z",
+				"bucket_end":                  "2026-06-01T11:00:00Z",
+				"model":                       "claude-sonnet-4-7",
+				"uncached_input_tokens":       1_000_000,
+				"cache_read_input_tokens":     0,
+				"cache_creation_input_tokens": 0,
+				"output_tokens":               500_000,
+			}},
+		})
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("ANTHROPIC_ADMIN_KEY", "sk-admin-test")
+	var stdout, stderr bytes.Buffer
+	code := runCostBackfillWith(backfillDeps{
+		Stdout:     &stdout,
+		Stderr:     &stderr,
+		Clock:      func() time.Time { return time.Date(2026, 6, 1, 13, 0, 0, 0, time.UTC) },
+		DSN:        state.DSN(dbPath),
+		ConfigPath: "",
+		Keys:       map[string][]byte{keyID: key},
+		ActiveKey:  keyID,
+		BaseURL:    srv.URL,
+	}, []string{"--backfill-tag", "ops-705", "run-tag"})
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "pricing_rev=backfill:ops-705") {
+		t.Fatalf("stdout missing tag-derived pricing_rev: %s", stdout.String())
+	}
+}
+
 func seedCLIRunWindow(t *testing.T, ctx context.Context, db *sql.DB, runID string, start, end time.Time, key []byte, keyID string) {
 	t.Helper()
 	for i, at := range []time.Time{start, end} {
