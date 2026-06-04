@@ -38,6 +38,13 @@ const AttrCostError = attribute.Key("regatta.cost.error")
 // emitter resolves the OTel meter under the spend scope. Wave-1
 // single-writer keeps key+keyID in-process; W9 will swap for a
 // keyring lookup.
+//
+// Key is treated as caller-owned for the call's duration; RecordCall
+// passes Key through substrate.AppendEventCanonicalized which uses the
+// F1 fast-path. Mutating Key concurrently with RecordCall is undefined
+// (#700 R2). RecordCall internally pre-canonicalises the payload via
+// canon.Marshal before calling AppendEventCanonicalized (#700 R8) —
+// callers do NOT supply pre-canonical bytes.
 type WriteOptions struct {
 	Key   []byte
 	KeyID string

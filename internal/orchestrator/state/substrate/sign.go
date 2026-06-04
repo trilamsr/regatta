@@ -1,6 +1,7 @@
 package substrate
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -145,37 +146,32 @@ func Verify(e Event, keyring map[string][]byte) error {
 // the F1 hot path (#216) avoids per-row heap churn on the envelope
 // build + hex-encoded MAC + HMAC state. One Get/Put per row.
 type fastScratch struct {
-	canon  []byte    // envelope buffer (grown as needed)
-	macOut [32]byte  // HMAC-SHA256 raw output (pre-hex)
-	lp     [4]byte   // keyID length-prefix scratch
-	h      hash.Hash // HMAC-SHA256, lazily bound to a (key, keyID) pair
-	hKey   string    // cached keyID the HMAC state was initialised with
-	hKeyPP uintptr   // cached first-byte ptr of key for identity check
+	canon   []byte    // envelope buffer (grown as needed)
+	macOut  [32]byte  // HMAC-SHA256 raw output (pre-hex)
+	lp      [4]byte   // keyID length-prefix scratch
+	h       hash.Hash // HMAC-SHA256, lazily bound to a (key, keyID) pair
+	hKey    string    // cached keyID the HMAC state was initialised with
+	hKeyBuf []byte    // owned copy of the key bytes for value-identity (#700 R2)
 }
 
 var fastScratchPool = sync.Pool{
 	New: func() any { return &fastScratch{canon: make([]byte, 0, 512)} },
 }
 
-// SignCanonicalized is the F1 fast path: skips signedPayload's
-// map[string]any round-trip and emits canonical envelope bytes directly,
-// inlining the pre-canonicalised payload bytes as a JSON value. Same
-// HMAC primitive as Sign — MAC bytes are byte-identical when preCanon
-// == canon.Marshal(e.PayloadJSON) (TestSubstrate_AppendEventCanonicalizedMatchesSlowPath).
+// SignCanonicalized is the F1 fast path that skips signedPayload's
+// map[string]any round-trip and emits envelope bytes directly. MAC is
+// byte-identical to Sign when preCanon == canon.CanonicaliseJSON(e.PayloadJSON)
+// (TestSubstrate_AppendEventCanonicalizedMatchesSlowPath).
 //
-// preCanon MUST be the result of canon.CanonicaliseJSON(e.PayloadJSON);
-// the contract is caller-trusted (cheap sanity below — NOT a re-canon).
-// Use Sign for cold paths; reserve this for hot writers (#216).
+// preCanon MUST be canon.CanonicaliseJSON(e.PayloadJSON). The `{`/`}`
+// boundary check below is a smoke test, not a contract gate — wrong
+// field order or truncation passes sanity and surfaces only at Verify
+// time as ErrUnverifiable (#700 R7). Use Sign for cold paths.
 func SignCanonicalized(e *Event, preCanon []byte, key []byte, keyID string) error {
 	if len(key) < schemas.MinKeyLen {
 		return fmt.Errorf("%w: got %d bytes, want >= %d",
 			schemas.ErrWeakKey, len(key), schemas.MinKeyLen)
 	}
-	// Cheap caller-contract sanity. A full byte-compare with
-	// canon.Marshal(e.PayloadJSON) is the slow path the fast path
-	// exists to avoid; instead bound the trust surface to "looks like a
-	// canonical JSON object" + per-kind metadata. Verify() catches MAC
-	// drift downstream when a caller violates the contract.
 	if len(preCanon) < 2 || preCanon[0] != '{' || preCanon[len(preCanon)-1] != '}' {
 		return fmt.Errorf("substrate: SignCanonicalized: preCanon not a JSON object")
 	}
@@ -193,54 +189,36 @@ func SignCanonicalized(e *Event, preCanon []byte, key []byte, keyID string) erro
 	if len(keyID) > maxKeyIDLenFast {
 		return fmt.Errorf("substrate: keyID too long: %d bytes", len(keyID))
 	}
-	// Pool-bound HMAC reuse: keep one HMAC state per scratch entry,
-	// re-initialise only when the (key, keyID) identity changes. Pre-W9
-	// is single-writer + single key (#216 scope); cache miss is the
-	// rotation path.
-	var keyPP uintptr
-	if len(key) > 0 {
-		// #nosec G103 — pointer is used as a stable identity tag, never
-		// dereferenced; caller-owns-key contract is documented above.
-		keyPP = uintptr(unsafe.Pointer(&key[0]))
-	}
-	if s.h == nil || s.hKey != keyID || s.hKeyPP != keyPP {
+	// Pool-bound HMAC reuse keyed on (keyID, key-bytes). Value-identity
+	// (not pointer-identity) is the only sound cache key: callers may
+	// mutate the key buffer in place, and `hmac.New` snapshots the key's
+	// padded form at construction (#700 R2).
+	if s.h == nil || s.hKey != keyID || !bytes.Equal(s.hKeyBuf, key) {
 		s.h = hmac.New(sha256.New, key)
 		s.hKey = keyID
-		s.hKeyPP = keyPP
+		s.hKeyBuf = append(s.hKeyBuf[:0], key...)
 	} else {
 		s.h.Reset()
 	}
 	binary.BigEndian.PutUint32(s.lp[:], uint32(len(keyID))) // #nosec G115 — bounded above
 	_, _ = s.h.Write(s.lp[:])
-	// hash.Hash.Write only reads its argument; the []byte view of keyID
-	// is safe even though we do not retain it.
 	_, _ = s.h.Write(unsafeStringBytes(keyID))
 	_, _ = s.h.Write(s.canon)
 	mac := s.h.Sum(s.macOut[:0])
-	// Hex-encode into a fresh 64-byte slice we hand to the string
-	// header — saves the [64]byte → string copy that doubles the
-	// allocation budget. The slice is uniquely owned (just allocated)
-	// so the unsafe.String view is safe.
-	hexBuf := make([]byte, 64)
-	hex.Encode(hexBuf, mac)
 	e.SigAlg = SigAlg
 	e.SigKeyID = keyID
-	// #nosec G103 — hexBuf is a fresh, uniquely-owned 64-byte slice; the
-	// string view aliases bytes we never mutate again, saving the copy.
-	e.SigMAC = unsafe.String(unsafe.SliceData(hexBuf), 64)
+	e.SigMAC = hex.EncodeToString(mac)
 	return nil
 }
 
-// unsafeStringBytes returns a []byte view of s without copying. Caller
-// MUST treat the result as read-only and MUST NOT retain it past the
-// call — used here only as a hash.Hash.Write argument, which is a pure
-// reader. Eliminates the []byte(keyID) heap allocation on the F1 path.
+// unsafeStringBytes returns a zero-copy read-only []byte view of s. The
+// result MUST be consumed synchronously — callers MUST NOT retain it
+// past the call. Used here as a hash.Hash.Write argument only.
 func unsafeStringBytes(s string) []byte {
 	if len(s) == 0 {
 		return nil
 	}
-	// #nosec G103 — read-only []byte view of s; result is consumed by
-	// hash.Hash.Write in the same statement and never retained.
+	// #nosec G103 — read-only view; consumer is hash.Hash.Write (pure reader).
 	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 

@@ -88,10 +88,12 @@ func TestSubstrate_AppendEventCanonicalizedHitsBudget(t *testing.T) {
 	t.Logf("BenchmarkAppendEvent_PreCanonicalized: %.1f ns/op, %d B/op, %d allocs/op",
 		nsPerOp, r.AllocedBytesPerOp(), r.AllocsPerOp())
 	// Spec §7 target is 500 ns/op on GitHub Actions ubuntu-latest 4-vCPU
-	// x86_64. Local M1 Max measures 450-500 ns/op; the gate at 1500
-	// ns/op catches >3× regression while absorbing per-architecture
-	// noise. A tighter gate flaps on shared CI runners (#216).
-	if nsPerOp > 1500.0 {
-		t.Fatalf("F1 fast-path regressed past 1500ns/op gate: got %.1f ns/op (#216)", nsPerOp)
+	// x86_64. Local M1 Max measures 450-500 ns/op; gate at 1200 ns/op
+	// catches ~2.4× regression while absorbing shared-runner + short-
+	// benchtime noise (#216, tightened #700 R5 from 1500 — the R2/R4
+	// correctness fixes added one extra alloc, so a strict 1000 ns/op
+	// gate flaps under `testing.Benchmark`'s 1s default budget).
+	if nsPerOp > 1200.0 {
+		t.Fatalf("F1 fast-path regressed past 1200ns/op gate: got %.1f ns/op (#216)", nsPerOp)
 	}
 }
