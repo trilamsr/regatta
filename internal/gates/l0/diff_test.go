@@ -49,11 +49,7 @@ func TestParseUnifiedDiff_NewFile(t *testing.T) {
 	}
 }
 
-// TestParseUnifiedDiff_PureRename pins down L0 README §5: a criterion
-// in a renamed file must still be tracked. Git's pure-rename output
-// (no content change) omits the `--- a/foo` and `+++ b/bar` headers
-// entirely; only `rename from`/`rename to` carry the paths. The
-// parser must pick them up so L0 sees the file as in-scope.
+// TestParseUnifiedDiff_PureRename asserts pure-rename diffs (no `--- a/`/`+++ b/` headers) yield in-scope paths via `rename from`/`rename to` (L0 README §5).
 func TestParseUnifiedDiff_PureRename(t *testing.T) {
 	t.Parallel()
 	d := `diff --git a/MILESTONES_OLD.md b/MILESTONES.md

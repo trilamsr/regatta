@@ -10,12 +10,7 @@ import (
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-// TestFixtureCorpus sweeps testdata/gates/l0/{pass,fail,edge}/ and
-// asserts each *.diff fixture produces the expected verdict.
-//
-// - pass/*.diff   → schemas.VerdictPass, empty findings
-// - fail/*.diff   → schemas.VerdictFail, ≥1 blocking finding
-// - edge/*.diff   → verdict specified in sibling *.expected.json
+// TestFixtureCorpus asserts every testdata/gates/l0/{pass,fail,edge}/*.diff fixture produces its expected verdict (pass empty, fail ≥1 blocking, edge per sibling *.expected.json).
 func TestFixtureCorpus(t *testing.T) {
 	for _, kind := range []string{"pass", "fail", "edge"} {
 		t.Run(kind, func(t *testing.T) {

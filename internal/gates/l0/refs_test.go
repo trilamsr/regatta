@@ -80,15 +80,7 @@ func (r *testRepo) merge(ref, msg string) string {
 	return r.git("rev-parse", "HEAD")
 }
 
-// TestCheckRefs_DiffBaseHidesBaseBranchTightening is the §1 contract test.
-//
-// Scenario: PR branches from main@A and flips a criterion. Main then advances
-// to B, tightening an unrelated criterion. If L0 diffed PR-head against main
-// tip, it would see main's tightening as a "removal by the PR" and fail.
-// Diffing against merge-base(main, pr-head) — which is A — shows only the
-// PR's actual change, which is a valid status flip with citation.
-//
-// Verdict must be pass.
+// TestCheckRefs_DiffBaseHidesBaseBranchTightening asserts CheckRefs diffs against merge-base (not main-tip) so unrelated base-branch tightening does not fail the PR (§1 contract).
 func TestCheckRefs_DiffBaseHidesBaseBranchTightening(t *testing.T) {
 	r := newTestRepo(t)
 	r.write("MILESTONES.md", "# M1\n- [ ] Alpha criterion.\n- [ ] Bravo criterion.\n")
@@ -111,9 +103,7 @@ func TestCheckRefs_DiffBaseHidesBaseBranchTightening(t *testing.T) {
 	}
 }
 
-// TestCheckRefs_DiffBaseCatchesPRTextEdit confirms the diff-base path still
-// catches real PR violations. PR off A edits Alpha's text; verdict must fail
-// regardless of main's state.
+// TestCheckRefs_DiffBaseCatchesPRTextEdit asserts the merge-base diff path still fails when the PR itself edits criterion text.
 func TestCheckRefs_DiffBaseCatchesPRTextEdit(t *testing.T) {
 	r := newTestRepo(t)
 	r.write("MILESTONES.md", "# M1\n- [ ] Alpha criterion.\n")
@@ -132,16 +122,7 @@ func TestCheckRefs_DiffBaseCatchesPRTextEdit(t *testing.T) {
 	}
 }
 
-// TestCheckMergeCommit_CatchesPostMergeRegression is the §7 contract test.
-//
-// Scenario: PR passed L0 at PR-head time against an earlier base. Before the
-// merge lands, main tightens a criterion. The natural 3-way merge produces a
-// conflict because both sides modified MILESTONES.md non-overlappingly with
-// respect to the ancestor but on the same lines after auto-merge. A
-// rubber-stamp resolution that takes the PR's version wholesale (modeled
-// here with `-X theirs`) clobbers main's tightening. Re-running L0 on the
-// merge commit against its first parent (post-tighten main) catches the
-// regression — both the text revert and the criterion addition.
+// TestCheckMergeCommit_CatchesPostMergeRegression asserts CheckMergeCommit catches a rubber-stamp merge (`-X theirs`) that clobbers main's post-PR tightening (§7 contract).
 func TestCheckMergeCommit_CatchesPostMergeRegression(t *testing.T) {
 	r := newTestRepo(t)
 	r.write("MILESTONES.md", "# M1\n- [ ] Alpha criterion original.\n")
@@ -169,9 +150,7 @@ func TestCheckMergeCommit_CatchesPostMergeRegression(t *testing.T) {
 	}
 }
 
-// TestCheckMergeCommit_CleanMergePasses pins the negative: a clean merge that
-// only carries a valid status flip from the PR (no base-branch divergence on
-// spec text) re-runs to pass.
+// TestCheckMergeCommit_CleanMergePasses asserts a clean merge carrying only a valid PR status flip re-runs to pass.
 func TestCheckMergeCommit_CleanMergePasses(t *testing.T) {
 	r := newTestRepo(t)
 	r.write("MILESTONES.md", "# M1\n- [ ] Alpha criterion.\n")
