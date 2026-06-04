@@ -150,6 +150,179 @@ func TestCostBackfill_EmitsTokenSpendRows(t *testing.T) {
 	}
 }
 
+// TestCostBackfill_TagOverridesPricingRev pins R1 disambiguator (#705).
+func TestCostBackfill_TagOverridesPricingRev(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "subs.db")
+	db, err := sql.Open("sqlite", state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	if err := state.Migrate(ctx, db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	substrate.ResetClockForTesting()
+	seedRunWindow(t, ctx, db, "run-R1",
+		time.Date(2026, 6, 1, 10, 30, 0, 0, time.UTC),
+		time.Date(2026, 6, 1, 12, 30, 0, 0, time.UTC),
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/cost_report/") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"bucket_start":                "2026-06-01T10:00:00Z",
+				"bucket_end":                  "2026-06-01T11:00:00Z",
+				"model":                       "claude-sonnet-4-7",
+				"uncached_input_tokens":       1_000_000,
+				"cache_read_input_tokens":     0,
+				"cache_creation_input_tokens": 0,
+				"output_tokens":               500_000,
+			}},
+		})
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("ANTHROPIC_ADMIN_KEY", "sk-admin-test")
+	res, err := reconcile.Backfill(ctx, reconcile.BackfillConfig{
+		DB:       db,
+		RunID:    "run-R1",
+		TenantID: substrate.DefaultTenantID,
+		BaseURL:  srv.URL,
+		Key:      backfillKey,
+		KeyID:    backfillKeyID,
+		Tag:      "ops-2026-06-03",
+		Now:      func() time.Time { return time.Date(2026, 6, 1, 13, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatalf("Backfill: %v", err)
+	}
+	if got, want := res.PricingRev, "backfill:ops-2026-06-03"; got != want {
+		t.Fatalf("PricingRev=%q, want %q", got, want)
+	}
+}
+
+// TestCostBackfill_WorkItemIDHasRandomSuffix pins R2 collision-proof prefix (#705).
+func TestCostBackfill_WorkItemIDHasRandomSuffix(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "subs.db")
+	db, err := sql.Open("sqlite", state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	if err := state.Migrate(ctx, db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	substrate.ResetClockForTesting()
+	seedRunWindow(t, ctx, db, "run-R2",
+		time.Date(2026, 6, 1, 10, 30, 0, 0, time.UTC),
+		time.Date(2026, 6, 1, 12, 30, 0, 0, time.UTC),
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/cost_report/") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data": []map[string]any{{
+				"bucket_start":                "2026-06-01T10:00:00Z",
+				"bucket_end":                  "2026-06-01T11:00:00Z",
+				"model":                       "claude-sonnet-4-7",
+				"uncached_input_tokens":       1_000_000,
+				"cache_read_input_tokens":     0,
+				"cache_creation_input_tokens": 0,
+				"output_tokens":               500_000,
+			}},
+		})
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("ANTHROPIC_ADMIN_KEY", "sk-admin-test")
+	_, err = reconcile.Backfill(ctx, reconcile.BackfillConfig{
+		DB:       db,
+		RunID:    "run-R2",
+		TenantID: substrate.DefaultTenantID,
+		BaseURL:  srv.URL,
+		Key:      backfillKey,
+		KeyID:    backfillKeyID,
+		Now:      func() time.Time { return time.Date(2026, 6, 1, 13, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatalf("Backfill: %v", err)
+	}
+	var wid string
+	if err := db.QueryRowContext(ctx,
+		`SELECT work_item_id FROM substrate_events WHERE kind='token_spend' AND run_id='run-R2' LIMIT 1`,
+	).Scan(&wid); err != nil {
+		t.Fatalf("scan work_item_id: %v", err)
+	}
+	// Format: backfill:<run_id>:<8-hex>. The 8-hex suffix prevents
+	// collision with operator-named work items prefixed `backfill:`.
+	prefix := "backfill:run-R2:"
+	if !strings.HasPrefix(wid, prefix) {
+		t.Fatalf("work_item_id=%q, want prefix %q", wid, prefix)
+	}
+	suffix := strings.TrimPrefix(wid, prefix)
+	if len(suffix) != 8 {
+		t.Fatalf("work_item_id suffix=%q (len %d), want 8-hex", suffix, len(suffix))
+	}
+	for _, c := range suffix {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			t.Fatalf("work_item_id suffix=%q has non-hex char %q", suffix, c)
+		}
+	}
+}
+
+// TestCostBackfill_SingleEventWindow flags synthetic 1h window (#705 R4).
+func TestCostBackfill_SingleEventWindow(t *testing.T) {
+	ctx := context.Background()
+	dbPath := filepath.Join(t.TempDir(), "subs.db")
+	db, err := sql.Open("sqlite", state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	if err := state.Migrate(ctx, db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	substrate.ResetClockForTesting()
+	// Single event → MIN == MAX → start.Equal(end).
+	at := time.Date(2026, 6, 1, 10, 30, 0, 0, time.UTC)
+	seedRunWindow(t, ctx, db, "run-R4", at, at)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/cost_report/") {
+			w.WriteHeader(http.StatusForbidden)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{}})
+	}))
+	t.Cleanup(srv.Close)
+	t.Setenv("ANTHROPIC_ADMIN_KEY", "sk-admin-test")
+	res, err := reconcile.Backfill(ctx, reconcile.BackfillConfig{
+		DB:       db,
+		RunID:    "run-R4",
+		TenantID: substrate.DefaultTenantID,
+		BaseURL:  srv.URL,
+		Key:      backfillKey,
+		KeyID:    backfillKeyID,
+		Now:      func() time.Time { return time.Date(2026, 6, 1, 13, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatalf("Backfill: %v", err)
+	}
+	if !res.SingleEventWindow {
+		t.Fatalf("SingleEventWindow=false, want true when MIN==MAX")
+	}
+	if res.RowsEmitted != 0 {
+		t.Fatalf("RowsEmitted=%d, want 0 on empty Usage response", res.RowsEmitted)
+	}
+}
+
 // seedRunWindow inserts two heartbeat rows defining the run window.
 func seedRunWindow(t *testing.T, ctx context.Context, db *sql.DB, runID string, start, end time.Time) {
 	t.Helper()
