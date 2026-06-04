@@ -7,66 +7,45 @@ import (
 )
 
 // GateVerdictPayload is the typed shape of a kind=gate_verdict event's
-// payload. CELDecider mints these in internal/program/cel_decider.go;
-// the substrate validator dispatch rejects malformed shapes before
-// HMAC sign so a hostile producer cannot smuggle past the cycle/replay
-// checks with garbage bytes.
+// payload; the substrate validator rejects malformed shapes pre-HMAC
+// so a hostile producer cannot smuggle past the cycle/replay checks.
 //
 // Issue #550 reframe: non-determinism sources (LLM model id, scanner
 // tool + DB snapshot, schema version at decision time) are journaled
-// into the payload itself. Re-verification of a recorded verdict
-// proves the HMAC chain is intact (tamper-evidence) — it does NOT
-// reproduce the verdict bit-for-bit unless Deterministic=true. The
-// Tool / ModelOrVersion / DBSchemaVersion fields exist so an auditor
-// can name precisely which non-deterministic dependency produced the
-// recorded result, even when that result is not replayable.
-//
-// Fields are stable across schema_version=1; spec §5 forward-version
-// migration recipe applies if a future kind change drops or renames
-// any. JSON keys are short to stay under the 1024-byte CHECK on
-// substrate_events.payload_json.
+// into the payload so an auditor can name which dependency produced
+// the result even when the verdict is not bit-replayable. JSON keys
+// are short to stay under the 1024-byte CHECK on substrate_events.
 type GateVerdictPayload struct {
 	GateName   string `json:"gate_name"`
 	Pass       bool   `json:"pass"`
 	Reason     string `json:"reason"`
 	WorkItemID string `json:"work_item_id"`
 
-	// Tool names the verdict producer: "cel" (deterministic predicate),
-	// "gitleaks", "osv-scanner", "opa", "anthropic-api", etc. Required;
-	// the audit-verify CLI groups verdicts by tool so an auditor can
-	// see at a glance which gates rely on which external dependency.
+	// Tool names the verdict producer ("cel", "gitleaks", "opa",
+	// "anthropic-api", ...). Required; audit-verify groups by tool.
 	Tool string `json:"tool"`
 
-	// ModelOrVersion pins the producer version that wrote this verdict:
-	// a git-SHA (deterministic Go gates), a tool version string
-	// ("gitleaks 8.18.4"), a model id + snapshot ("claude-opus-4-7"),
-	// or a vuln-DB snapshot id. Required; empty would lie about
-	// reproducibility. Compliance teams treat the (tool, version) pair
-	// as the audit anchor.
+	// ModelOrVersion pins the producer version (git-SHA, tool version,
+	// model id + snapshot, vuln-DB snapshot id). Required; empty would
+	// lie about reproducibility. (tool, version) is the audit anchor.
 	ModelOrVersion string `json:"tv"`
 
 	// DBSchemaVersion is the latest applied state.CurrentSchemaVersion
-	// at verdict-emit time. Lets the audit-verify CLI flag schema-skew
-	// (verdict recorded under N, replay under N+M) which would change
-	// what fold sees even when the HMAC chain is intact.
+	// at emit time; lets audit-verify flag schema-skew that would shift
+	// fold semantics even when the HMAC chain is intact.
 	DBSchemaVersion int64 `json:"db_v"`
 
-	// Deterministic flags whether re-running the verdict's producer
-	// with the same inputs would re-yield the same Pass/Reason. False
-	// for any gate touching an LLM, a CVE database, or a wall-clock
-	// scanner; true for CEL predicates and pure-Go gates pinned by
-	// git-SHA. Drives the audit posture: false ⇒ "verify-only" (chain
-	// is tamper-evident but verdict is non-replayable by construction);
-	// true ⇒ "reproduce" (chain + re-run both must agree).
+	// Deterministic is true iff re-running the producer with the same
+	// inputs would re-yield Pass/Reason. False ⇒ "verify-only" posture
+	// (chain tamper-evident, verdict non-replayable); true ⇒ "reproduce"
+	// (chain + re-run must agree).
 	Deterministic bool `json:"det"`
 }
 
-// NewGateVerdictPayload is the constructor that enforces non-empty
-// metadata. Callers (CELDecider today; LLM-gate producers when they
-// land) pass through here so the "we recorded the tool but not the
-// version" failure mode is impossible by construction. Mirrors the
-// validator's rejections — a payload that constructs cleanly here
-// will also validate cleanly when AppendEvent re-checks the bytes.
+// NewGateVerdictPayload constructs a payload, rejecting empty metadata
+// so the "recorded the tool but not the version" failure mode is
+// impossible by construction. Mirrors validateGateVerdict so a payload
+// that constructs cleanly also validates cleanly on AppendEvent.
 func NewGateVerdictPayload(gateName, workItemID, tool, modelOrVersion string, dbSchemaVersion int64, deterministic bool, pass bool, reason string) (GateVerdictPayload, error) {
 	if gateName == "" {
 		return GateVerdictPayload{}, fmt.Errorf("%w: gate_verdict missing gate_name", ErrInvalidPayload)
@@ -95,17 +74,9 @@ func NewGateVerdictPayload(gateName, workItemID, tool, modelOrVersion string, db
 	}, nil
 }
 
-// AuditPosture returns the audit stance for this verdict's recorded
-// metadata. The string is operator-facing: it appears verbatim in the
-// `regatta audit verify` output and downstream compliance reports.
-//
-//   - "reproduce": Deterministic=true — same input must yield same verdict
-//     on replay; re-verification can compare bit-for-bit.
-//   - "verify-only": Deterministic=false — re-verification proves the
-//     HMAC chain is intact (tamper-evidence of the recorded verdict)
-//     but the verdict is NOT replayable by construction.
-//
-// Keep the strings stable; doc and CLI both pin against them.
+// AuditPosture returns "reproduce" or "verify-only" — the operator-
+// facing strings rendered by `regatta audit verify` and downstream
+// compliance reports. Keep stable; CLI + docs pin against them.
 func (p GateVerdictPayload) AuditPosture() string {
 	if p.Deterministic {
 		return "reproduce"
@@ -113,19 +84,12 @@ func (p GateVerdictPayload) AuditPosture() string {
 	return "verify-only"
 }
 
-// validateGateVerdict is the dispatch-table entry registered for
-// KindGateVerdict. Strict-unmarshal forbids unknown fields per spec
-// §S4; missing required metadata ⇒ ErrInvalidPayload.
-// Reason is the operator-facing English string; empty is allowed
-// (a passing gate may have nothing to say).
-//
-// Non-empty validation on (tool, tv, db_v) is the issue #550 fix —
-// before this change, a producer could record a verdict without
-// naming its tool/model, leaving an auditor unable to tell whether
-// the verdict was deterministic. The new fields are REQUIRED on
-// every new write; legacy-migration backfill (Tool="unknown-legacy",
-// Deterministic=false) is handled at fold time by the audit-verify
-// CLI, not at the validator (the validator gates new writes).
+// validateGateVerdict is the dispatch-table entry for KindGateVerdict.
+// Strict-unmarshal forbids unknown fields (spec §S4); the (tool, tv,
+// db_v) non-empty checks are the issue #550 fix that prevents a
+// producer from recording a verdict without naming its dependency.
+// Legacy-migration backfill happens at fold time, not here — the
+// validator gates new writes only.
 func validateGateVerdict(raw json.RawMessage) error {
 	if len(raw) == 0 {
 		return fmt.Errorf("%w: gate_verdict payload empty", ErrInvalidPayload)
