@@ -90,3 +90,4 @@ Every wedge filtered by: "does the sole internal operator need this to dispatch 
 - Dispatch templates: `docs/engineer/dispatch-templates/{implementer,reviewer,designer,triage}.md`
 - Self-host brief: `docs/engineer/briefs/2026-06-01-self-host-first.md`
 - Per-operator memory (citation-only; NEVER `Read` from agents): `~/.claude/projects/<project-hash>/memory/MEMORY.md`
+- CI-portable slug fixtures (stub-only re-export; `scripts/check-memory-citations.sh` resolves here when `MEMORY_DIR` is unset): `scripts/testdata/memory/`
