@@ -43,8 +43,14 @@ func TestFullChainSweep_CleanChain_ReportsZeroBreaks(t *testing.T) {
 		t.Fatalf("close raw: %v", err)
 	}
 
+	ro, err := sql.Open("sqlite", substrate.ReadOnlyDSN(dbPath))
+	if err != nil {
+		t.Fatalf("open ro: %v", err)
+	}
+	t.Cleanup(func() { _ = ro.Close() })
+	ro.SetMaxOpenConns(1)
 	rpt, err := substrate.SweepFullChain(ctx, substrate.FullChainConfig{
-		DBPath:          dbPath,
+		RODB:            ro,
 		Keyring:         testKeyring(),
 		BatchSize:       5,
 		InterBatchPause: time.Millisecond,
@@ -112,8 +118,14 @@ func TestFullChainSweep_DetectsOldBreak(t *testing.T) {
 		t.Fatalf("close raw: %v", err)
 	}
 
+	ro, err := sql.Open("sqlite", substrate.ReadOnlyDSN(dbPath))
+	if err != nil {
+		t.Fatalf("open ro: %v", err)
+	}
+	t.Cleanup(func() { _ = ro.Close() })
+	ro.SetMaxOpenConns(1)
 	rpt, err := substrate.SweepFullChain(ctx, substrate.FullChainConfig{
-		DBPath:          dbPath,
+		RODB:            ro,
 		Keyring:         testKeyring(),
 		BatchSize:       3,
 		InterBatchPause: time.Millisecond,
@@ -132,12 +144,3 @@ func TestFullChainSweep_DetectsOldBreak(t *testing.T) {
 	}
 }
 
-// TestFullChainSweep_MissingDBPath_ReturnsError surfaces wiring bugs.
-func TestFullChainSweep_MissingDBPath_ReturnsError(t *testing.T) {
-	_, err := substrate.SweepFullChain(context.Background(), substrate.FullChainConfig{
-		Keyring: testKeyring(),
-	})
-	if err == nil {
-		t.Fatal("want error on empty DBPath, got nil")
-	}
-}

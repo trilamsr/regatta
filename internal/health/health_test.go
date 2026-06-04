@@ -114,11 +114,14 @@ func TestHealthz_NoAccept_ReturnsJSONEnvelope(t *testing.T) {
 
 // TestHeartbeatPool_SetMaxOpenConns1_NoContention covers spec §3.5 dedicated pool.
 func TestHeartbeatPool_SetMaxOpenConns1_NoContention(t *testing.T) {
-	db, err := OpenHeartbeatPool("sqlite", ":memory:")
+	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
+	if err := ConfigureHeartbeatPool(db); err != nil {
+		t.Fatalf("ConfigureHeartbeatPool: %v", err)
+	}
 	if got := db.Stats().MaxOpenConnections; got != 1 {
 		t.Fatalf("want MaxOpenConns=1, got %d", got)
 	}

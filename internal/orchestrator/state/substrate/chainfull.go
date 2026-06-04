@@ -26,13 +26,14 @@ import (
 	"time"
 )
 
-// FullChainConfig tunes the head-to-tail re-verifier. DBPath + Keyring
+// FullChainConfig tunes the head-to-tail re-verifier. RODB + Keyring
 // are required; the rest fall back to defaults that prioritise writer
 // yield over walk-throughput (this is the slow audit path, not the hot
 // path — spec §4 default budgets do not apply).
 type FullChainConfig struct {
-	// DBPath is the absolute path to the substrate sqlite file.
-	DBPath string
+	// RODB is the caller-injected read-only handle. Composition root
+	// owns the open + close lifecycle. Open with substrate.ReadOnlyDSN.
+	RODB *sql.DB
 
 	// Keyring maps SigKeyID → HMAC key. Same shape Verify() consumes.
 	Keyring map[string][]byte
@@ -108,18 +109,11 @@ func (c FullChainConfig) withDefaults() FullChainConfig {
 //	if err != nil { log.Fatal(err) }
 //	if rpt.BreakCount > 0 { os.Exit(2) }
 func SweepFullChain(ctx context.Context, cfg FullChainConfig) (FullChainReport, error) {
-	if cfg.DBPath == "" {
-		return FullChainReport{}, fmt.Errorf("substrate: full-chain sweep requires DBPath")
+	if cfg.RODB == nil {
+		return FullChainReport{}, fmt.Errorf("substrate: full-chain sweep requires RODB")
 	}
 	cfg = cfg.withDefaults()
-
-	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_query_only=1&mode=ro", cfg.DBPath)
-	roDB, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		return FullChainReport{}, fmt.Errorf("substrate: full-chain open ro: %w", err)
-	}
-	defer func() { _ = roDB.Close() }()
-	roDB.SetMaxOpenConns(1)
+	roDB := cfg.RODB
 
 	rpt := FullChainReport{StartedAt: time.Now().UTC()}
 	defer func() { rpt.FinishedAt = time.Now().UTC() }()

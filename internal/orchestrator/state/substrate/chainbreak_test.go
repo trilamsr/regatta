@@ -2,18 +2,29 @@ package substrate_test
 
 import (
 	"context"
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
 
+	_ "modernc.org/sqlite"
+
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// newTestSweeper builds a Sweeper against a fresh temp DB path.
+// newTestSweeper builds a Sweeper against a fresh temp DB with an
+// injected RO handle (G2 caller-injection contract).
 func newTestSweeper(t *testing.T) *substrate.Sweeper {
 	t.Helper()
+	dbPath := filepath.Join(t.TempDir(), "sweeper.db")
+	ro, err := sql.Open("sqlite", substrate.ReadOnlyDSN(dbPath))
+	if err != nil {
+		t.Fatalf("open RO: %v", err)
+	}
+	t.Cleanup(func() { _ = ro.Close() })
+	ro.SetMaxOpenConns(1)
 	s, err := substrate.NewSweeper(substrate.SweeperConfig{
-		DBPath:  filepath.Join(t.TempDir(), "sweeper.db"),
+		RODB:    ro,
 		Keyring: testKeyring(),
 	})
 	if err != nil {

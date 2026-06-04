@@ -16,10 +16,13 @@ package substrate_test
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
@@ -57,8 +60,14 @@ func BenchmarkSubstrate_AppendUnderSweeperLoad(b *testing.B) {
 	// Start the Sweeper with an aggressive interval so it actively
 	// competes for the WAL during the measurement loop. 10ms ticks +
 	// 1ms inter-batch pause is the worst-case shape we want bounded.
+	ro, err := sql.Open("sqlite", substrate.ReadOnlyDSN(dbPath))
+	if err != nil {
+		b.Fatalf("open ro: %v", err)
+	}
+	b.Cleanup(func() { _ = ro.Close() })
+	ro.SetMaxOpenConns(1)
 	sweeper, err := substrate.NewSweeper(substrate.SweeperConfig{
-		DBPath:          dbPath,
+		RODB:            ro,
 		Keyring:         testKeyring(),
 		Interval:        10 * time.Millisecond,
 		Window:          24 * time.Hour,
