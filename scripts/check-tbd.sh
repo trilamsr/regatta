@@ -37,8 +37,11 @@ SUBDIRS=(specs plans briefs)
 #
 # Filter pipeline (Perl one-pass):
 #   - Track release-notes fence open/close — skip lines inside.
-#   - Skip HTML-comment lines that carry a `#NNN` issue ref anywhere on the
-#     line (covers `<!-- TODO(#NNN) ... -->` and multi-token variants).
+#   - Strip every `<!-- ... -->` span so neither TBD nor `#NNN` inside a
+#     comment counts as content. This lets `<!-- TODO(#NNN) -->` stand
+#     while preventing a comment-bound `#NNN` from whitelisting a TBD that
+#     lives OUTSIDE the comment on the same line.
+#   - Strip inline backtick spans — meta-mentions are exempt.
 #   - Skip lines that carry both `TBD` AND a `#NNN` ref on the same line.
 #   - Emit lines that still carry a bare `TBD` token.
 scan_doc() {
@@ -50,14 +53,10 @@ scan_doc() {
       if ($line =~ /^```\s*$/) { $in_rel_notes = 0 }
       next;
     }
-    # Strip inline backtick spans first — meta-mentions are exempt
-    # (mirrors scripts/doc-check.sh banned-phrase policy).
     my $stripped = $line;
+    $stripped =~ s{<!--(?:(?!-->).)*?-->}{}g;
     $stripped =~ s/`[^`]*`//g;
     next unless $stripped =~ /\bTBD\b/;
-    # HTML-comment with issue ref anywhere on the original line.
-    next if $line =~ /<!--.*#\d+.*-->/;
-    # Bare TBD with same-line issue citation.
     next if $stripped =~ /#\d+/;
     printf("%s:%d: %s\n", $ARGV, $., $line);
   ' "$1"
