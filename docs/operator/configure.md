@@ -39,6 +39,17 @@ positions. Run before every commit that touches `regatta.yaml`.
 | `gates` | At least one. Each gate has `id`, `type` (deterministic / ai), and `severity_block`. |
 | `safety` | All fields take defaults; an empty `safety: {}` is valid. |
 
+## Verifying the wired spec adapter
+
+After editing `spec_adapter.type` and restarting `regatta serve`, confirm the change took effect via the boot log. Every boot emits one `adapter.configured` INFO record naming the wired type plus the resolved selector / items root (#867):
+
+```
+level=INFO msg=adapter.configured type=github_issues selector=label:autonomous repo=trilamsr/regatta
+level=INFO msg=adapter.configured type=markdown_catalog items_root=/repo
+```
+
+If `regatta.yaml` parses but does not match the schema, a `adapter.config_load_failed` WARN record names the parse error before the default `markdown_catalog` fallback engages — so a malformed yaml never silently downgrades a `github_issues` deployment.
+
 ## Severity DSL
 
 `severity_block` accepts:
