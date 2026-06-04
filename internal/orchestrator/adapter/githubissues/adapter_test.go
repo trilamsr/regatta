@@ -452,6 +452,53 @@ func TestGitHubIssues_List_NeverLogsBodyBytes(t *testing.T) {
 	}
 }
 
+// TestGitHubIssues_GetMidflightBodyEdit_ReturnsErrSourceMutated asserts adapter surfaces mid-flight edits via UpdatedAt drift (#850).
+func TestGitHubIssues_GetMidflightBodyEdit_ReturnsErrSourceMutated(t *testing.T) {
+	t1 := time.Unix(1700000000, 0)
+	t2 := t1.Add(5 * time.Minute)
+	listIss := loadFixture(t, "issue-590-valid.json")
+	listIss.UpdatedAt = t1
+	getIss := listIss
+	getIss.UpdatedAt = t2
+	getIss.Body = listIss.Body + "\noperator edited mid-flight\n"
+	gh := &fakeGH{
+		listIssues: []ghclient.Issue{listIss},
+		getIssue:   map[int]ghclient.Issue{listIss.Number: getIss},
+	}
+	now := t1
+	a := newAdapter(t, gh, &captureLog{}, func() time.Time { return now })
+	if _, err := a.List(context.Background()); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	_, err := a.Get(context.Background(), "ITEM-590")
+	if !errors.Is(err, schemas.ErrSourceMutated) {
+		t.Fatalf("err=%v want ErrSourceMutated", err)
+	}
+}
+
+// TestGitHubIssues_GetUnchangedUpdatedAt_ReturnsWorkItem asserts no false positive when UpdatedAt is stable (#850).
+func TestGitHubIssues_GetUnchangedUpdatedAt_ReturnsWorkItem(t *testing.T) {
+	t1 := time.Unix(1700000000, 0)
+	iss := loadFixture(t, "issue-590-valid.json")
+	iss.UpdatedAt = t1
+	gh := &fakeGH{
+		listIssues: []ghclient.Issue{iss},
+		getIssue:   map[int]ghclient.Issue{iss.Number: iss},
+	}
+	now := t1
+	a := newAdapter(t, gh, &captureLog{}, func() time.Time { return now })
+	if _, err := a.List(context.Background()); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	wi, err := a.Get(context.Background(), "ITEM-590")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if wi.ID != "ITEM-590" {
+		t.Fatalf("ID=%s want ITEM-590", wi.ID)
+	}
+}
+
 // TestGitHubIssues_List_BodyEditChangesKey_ReprojectsWorkItem asserts dedup key recomputes on body edit.
 func TestGitHubIssues_List_BodyEditChangesKey_ReprojectsWorkItem(t *testing.T) {
 	iss := loadFixture(t, "issue-590-valid.json")
