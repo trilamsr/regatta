@@ -139,13 +139,15 @@ func (s *Scheduler) fetchWorkItemForRecheck(ctx context.Context, workItemID stri
 	getter, isGetter := s.db.(workItemGetter)
 	if !isGetter {
 		// Production schedulerDB always exposes GetWorkItem; a wrapper
-		// that strips it silently disables the re-check (#703 R2). Warn
-		// so the operator sees the misconfiguration.
+		// that strips it silently disables the re-check (#703 R2, #776).
+		// Warn so the operator sees the misconfiguration, then fail-closed
+		// (ok=true, fetched=false) so the caller skips the orphan rather
+		// than spawning it blind through a half-wired gate stack.
 		s.log.Warn("scheduler.gate_recheck_unavailable",
 			string(obs.KeyWorkItemID), workItemID,
 			string(obs.KeyReason), "schedulerdb_missing_getworkitem",
 		)
-		return state.WorkItem{}, false, false
+		return state.WorkItem{}, false, true
 	}
 	wi, err := getter.GetWorkItem(ctx, workItemID)
 	if err != nil {
