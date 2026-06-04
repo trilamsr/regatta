@@ -1,6 +1,10 @@
 package approvals_shadow
 
-import "testing"
+import (
+	"testing"
+
+	_ "pgregory.net/rapid" // registers -rapid.checks for Makefile.d/test.mk property-test sweep.
+)
 
 // TestShadowMode_Constants pins the per-process tri-state token strings (#795 T5).
 func TestShadowMode_Constants(t *testing.T) {
