@@ -628,13 +628,7 @@ func TestCascadeDep_DepNotFound(t *testing.T) {
 	}
 }
 
-// TestCascadeDep_MultiHopWithinOneSync inserts the chain in REVERSE
-// dependency order (C first, then B, then A-archived) on purpose: in
-// SQLite, an unordered SELECT typically returns rows in insertion
-// order. A naive single-pass cascade visiting C before B would miss
-// the C→B→A archive chain because at C's visit B is still planned.
-// Only a fixed-point loop converges in one Sync; the test pins that
-// contract.
+// TestCascadeDep_MultiHopWithinOneSync asserts fixed-point cascade converges C→B→A archive chain in one Sync despite reverse insertion order.
 func TestCascadeDep_MultiHopWithinOneSync(t *testing.T) {
 	db := newBriefTestDB(t)
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
@@ -862,10 +856,7 @@ func TestBriefLoaderSync_V2BriefRejectionDoesNotWriteEdges(t *testing.T) {
 	}
 }
 
-// TestBriefLoaderSync_V2SchemaStalePurged verifies cross-Sync hygiene:
-// when a feature disappears from a brief on the next tick, its
-// OutputsSchema entry is dropped. Operators rely on this so a re-plan
-// that removes F-X cannot leave stale predicate-typing data behind.
+// TestBriefLoaderSync_V2SchemaStalePurged asserts OutputsSchema for a removed feature is purged on the next Sync tick.
 func TestBriefLoaderSync_V2SchemaStalePurged(t *testing.T) {
 	db := newBriefTestDB(t)
 	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")

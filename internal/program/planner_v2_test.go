@@ -91,11 +91,7 @@ func TestValidateV2_HappyPath(t *testing.T) {
 	}
 }
 
-// TestValidateV2_RejectsNestedUnknownField pins the recursive AST walk
-// against schema.Properties: a predicate that references a nested path
-// `out.a.missing` must reject when `missing` is absent from the child
-// schema, even though `a` itself is declared. Previously the walker
-// only inspected the top-level Select, so nested unknowns slipped past.
+// TestValidateV2_RejectsNestedUnknownField asserts ValidateV2 rejects predicates referencing nested paths absent from child schemas (ErrPredicateUnknownField).
 func TestValidateV2_RejectsNestedUnknownField(t *testing.T) {
 	b := validV2(t)
 	b.FeaturesV2[0].OutputsSchema = &OutputsSchema{
@@ -117,8 +113,7 @@ func TestValidateV2_RejectsNestedUnknownField(t *testing.T) {
 	}
 }
 
-// TestValidateV2_AcceptsNestedKnownField is the positive control for
-// the nested walker — a declared nested path must validate.
+// TestValidateV2_AcceptsNestedKnownField asserts ValidateV2 accepts predicates referencing declared nested paths (positive control).
 func TestValidateV2_AcceptsNestedKnownField(t *testing.T) {
 	b := validV2(t)
 	b.FeaturesV2[0].OutputsSchema = &OutputsSchema{
@@ -139,10 +134,7 @@ func TestValidateV2_AcceptsNestedKnownField(t *testing.T) {
 	}
 }
 
-// TestPlannerV2_CelGoClassifierRegression pins the brittle string-
-// matching error classifier in compilePredicate. If cel-go bumps and
-// changes diagnostic wording, this test fires loudly so we can update
-// the heuristics before downstream sentinel-based callers regress.
+// TestPlannerV2_CelGoClassifierRegression asserts compilePredicate's string-matching error classifier still routes cel-go diagnostics to the expected sentinels.
 func TestPlannerV2_CelGoClassifierRegression(t *testing.T) {
 	schema := &OutputsSchema{
 		Type: "object",

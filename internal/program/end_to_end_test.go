@@ -12,13 +12,7 @@ import (
 	"github.com/trilamsr/regatta/internal/testutil/reporoot"
 )
 
-// TestEndToEnd_PlanAndServe exercises the MVP-1 acceptance flow:
-// regatta program plan --write -> regatta serve --tick-once ->
-// 3 brief-child work_items rows + 3 running feature agents.
-//
-// Per spec §6 series-complete DoD #5. Offline: -planner=stub +
-// -spawner=stub keep the run hermetic; no Anthropic key or live
-// process is touched.
+// TestEndToEnd_PlanAndServe asserts plan-then-tick produces 3 brief-child work_items and 3 running feature agents (MVP-1 DoD #5).
 func TestEndToEnd_PlanAndServe(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e test; skip with -short")
