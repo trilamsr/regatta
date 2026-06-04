@@ -24,12 +24,22 @@ import (
 // standard DSN. The DB is closed automatically on test cleanup.
 func OpenDB(t *testing.T) *state.DB {
 	t.Helper()
-	db, err := state.Open(context.Background(), state.DSN(filepath.Join(t.TempDir(), "state.db")))
+	db, _ := OpenDBWithPath(t)
+	return db
+}
+
+// OpenDBWithPath is OpenDB plus the on-disk path so CLI-shaped tests can
+// re-open the same file via state.DSN(path) under a different process /
+// dependency wiring (e.g. cmd/regatta merge-status reads the DSN flag).
+func OpenDBWithPath(t *testing.T) (*state.DB, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "state.db")
+	db, err := state.Open(context.Background(), state.DSN(path))
 	if err != nil {
-		t.Fatalf("statetest.OpenDB: %v", err)
+		t.Fatalf("statetest.OpenDBWithPath: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return db
+	return db, path
 }
 
 // OpenBenchDB mirrors OpenDB for benchmarks — *testing.B's distinct
