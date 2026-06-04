@@ -86,17 +86,29 @@ func TestHealthz_HeartbeatStale_ReturnsDegradedNot503(t *testing.T) {
 	}
 }
 
-// TestHealthz_LegacyPlaintext_PreservesW7Contract covers no-Accept legacy.
-func TestHealthz_LegacyPlaintext_PreservesW7Contract(t *testing.T) {
-	h := Handler(Dependencies{})
-	req := httptest.NewRequest("GET", "/healthz", nil)
+// TestHealthz_NoAccept_ReturnsJSONEnvelope asserts the plaintext W7.0 shim is gone (Wave C2).
+func TestHealthz_NoAccept_ReturnsJSONEnvelope(t *testing.T) {
+	db := openMemDB(t)
+	hb := NewHeartbeatCell(time.Now)
+	hb.Touch()
+	brief := NewBriefCell()
+	brief.SetPath("/x")
+	h := Handler(Dependencies{DB: db, Heartbeat: hb, Brief: brief, Version: "v"})
+	req := httptest.NewRequest("GET", "/healthz", nil) // no Accept header
 	rr := httptest.NewRecorder()
 	h(rr, req)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("want 200, got %d", rr.Code)
 	}
-	if rr.Body.String() != "ok\n" {
-		t.Fatalf("want ok\\n, got %q", rr.Body.String())
+	if ct := rr.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("Content-Type=%q want application/json", ct)
+	}
+	var got Response
+	if err := json.NewDecoder(rr.Body).Decode(&got); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if got.Status != StatusOK {
+		t.Fatalf("status=%q want ok", got.Status)
 	}
 }
 

@@ -86,10 +86,10 @@ curl -fsS -H 'Accept: application/json' http://127.0.0.1:8080/healthz
 journalctl -u regatta -f
 ```
 
-The `/healthz` endpoint honours `Accept: application/json` and returns
-the W3 readiness envelope (`status` + per-subsystem `checks`); without
-that header it returns the legacy `ok\n` body (W7.0 contract). 200 on
-ok or degraded; 503 only when the DB ping fails AND no recent heartbeat.
+The `/healthz` endpoint returns the W3 readiness envelope (`status` +
+per-subsystem `checks`) as `application/json` regardless of the request
+`Accept` header. 200 on ok or degraded; 503 only when the DB ping fails
+AND no recent heartbeat.
 
 ### Watchdog
 
