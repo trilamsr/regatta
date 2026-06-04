@@ -57,9 +57,11 @@ func (b *recheckBackoff) Admit(id string) bool {
 }
 
 // RecordFailure returns true exactly once — on the Kth strike that
-// flips id into the suppression window.
-func (b *recheckBackoff) RecordFailure(id string) (enteredBackoff bool) {
-	b.incr(context.Background())
+// flips id into the suppression window. ctx threads the caller's span
+// onto the unavailable counter so the Add lands on the right scope
+// rather than context.Background() (#793).
+func (b *recheckBackoff) RecordFailure(ctx context.Context, id string) (enteredBackoff bool) {
+	b.incr(ctx)
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	e := b.entries[id]

@@ -136,6 +136,9 @@ func (s *Scheduler) fetchWorkItemForRecheck(ctx context.Context, workItemID stri
 	if !gatesWired {
 		return state.WorkItem{}, false, false
 	}
+	if s.backoff != nil && !s.backoff.Admit(workItemID) {
+		return state.WorkItem{}, false, true
+	}
 	getter, isGetter := s.db.(workItemGetter)
 	if !isGetter {
 		// Production schedulerDB always exposes GetWorkItem; a wrapper
@@ -151,12 +154,18 @@ func (s *Scheduler) fetchWorkItemForRecheck(ctx context.Context, workItemID stri
 	}
 	wi, err := getter.GetWorkItem(ctx, workItemID)
 	if err != nil {
+		if s.backoff != nil {
+			s.backoff.RecordFailure(ctx, workItemID)
+		}
 		s.log.Warn(string(obs.EventApprovalDecided),
 			string(obs.KeyWorkItemID), workItemID,
 			string(obs.KeyReason), "get_work_item_failed",
 			string(obs.KeyErr), err.Error(),
 		)
 		return state.WorkItem{}, false, true
+	}
+	if s.backoff != nil {
+		s.backoff.RecordSuccess(workItemID)
 	}
 	return wi, true, true
 }
