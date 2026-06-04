@@ -18,6 +18,7 @@ import (
 	"github.com/trilamsr/regatta/internal/authz/policies/disk"
 	"github.com/trilamsr/regatta/internal/authz/policies/embedded"
 	"github.com/trilamsr/regatta/internal/authz/policies/reload"
+	"github.com/trilamsr/regatta/internal/testutil"
 )
 
 // fsnotify event on a `.rego` write triggers Reload; CurrentRevision advances.
@@ -239,9 +240,6 @@ func TestReloader_ConcurrentSighupAndFsnotifyStoreConsistent(t *testing.T) {
 
 // TestReloader_PolicyDirRemovedThenRestored_ResumesWatching asserts F-HR8 watcher recovery (#365).
 func TestReloader_PolicyDirRemovedThenRestored_ResumesWatching(t *testing.T) {
-	if testing.Short() {
-		t.Skip("spans production 5s retry ticker; skip with -short (make check)")
-	}
 	t.Parallel()
 	dir, az := setupAuthz(t)
 	r := &reload.Reloader{
@@ -249,6 +247,7 @@ func TestReloader_PolicyDirRemovedThenRestored_ResumesWatching(t *testing.T) {
 		Loader:        &disk.Loader{Dir: dir, Fallback: embeddedFallback()},
 		Tenant:        authz.DefaultTenant,
 		Debounce:      25 * time.Millisecond,
+		RetryInterval: 100 * time.Millisecond,
 		Logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
 		DisableSighup: true,
 	}
@@ -261,17 +260,59 @@ func TestReloader_PolicyDirRemovedThenRestored_ResumesWatching(t *testing.T) {
 	if err := os.RemoveAll(policyDir); err != nil {
 		t.Fatalf("rm -rf policy_dir: %v", err)
 	}
-	// 6 s spans the production 5 s retry ticker, guaranteeing at least one
-	// retry tick has fired against the missing dir before recreate.
-	time.Sleep(6 * time.Second)
+	// Span ≥1 retry tick against the missing dir before recreate.
+	time.Sleep(300 * time.Millisecond)
 	if err := os.MkdirAll(policyDir, 0o755); err != nil {
 		t.Fatalf("recreate policy_dir: %v", err)
 	}
 	writeRego(t, dir, "approval.rego", "package regatta.v1.approval.view\n\ndefault decision := {\"allow\": true, \"reason\": \"hr8-restored\"}\n")
 
-	// 6 s budget after recreate: ≤5 s for next retry tick to re-Add the
-	// root + debounce + reload. Total wall clock ≤12 s per acceptance.
-	waitForRevisionChange(t, az, revBefore, 6*time.Second)
+	waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer waitCancel()
+	testutil.Eventually(t, waitCtx, 20*time.Millisecond, func() bool {
+		return az.CurrentRevision(authz.DefaultTenant) != revBefore
+	}, "revision unchanged after dir restore")
+}
+
+// TestReloader_RapidRmMkdirWriteCycleReloadsWithinTickBoundary asserts #702 R1 — rapid rm+mkdir+write inside one retry interval still reloads within the interval, not 2× it.
+func TestReloader_RapidRmMkdirWriteCycleReloadsWithinTickBoundary(t *testing.T) {
+	t.Parallel()
+	dir, az := setupAuthz(t)
+	const retry = 500 * time.Millisecond
+	r := &reload.Reloader{
+		Authorizer:    az,
+		Loader:        &disk.Loader{Dir: dir, Fallback: embeddedFallback()},
+		Tenant:        authz.DefaultTenant,
+		Debounce:      25 * time.Millisecond,
+		RetryInterval: retry,
+		Logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		DisableSighup: true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	startReloader(t, r, ctx)
+
+	policyDir := filepath.Join(dir, "regatta", "v1", authz.DefaultTenant)
+	revBefore := az.CurrentRevision(authz.DefaultTenant)
+
+	// Land rm+mkdir+write inside one retry window. Pre-fix: the Remove event
+	// clears rootWatched but does not reset the ticker, so the next probe
+	// fires up to `retry` after the last unrelated tick — observed stall is
+	// up to 2× retry. Post-fix: Remove resets the ticker, so the next probe
+	// fires `retry` after rm, bounding the stall to ≤ retry+debounce.
+	if err := os.RemoveAll(policyDir); err != nil {
+		t.Fatalf("rm -rf policy_dir: %v", err)
+	}
+	if err := os.MkdirAll(policyDir, 0o755); err != nil {
+		t.Fatalf("recreate policy_dir: %v", err)
+	}
+	writeRego(t, dir, "approval.rego", "package regatta.v1.approval.view\n\ndefault decision := {\"allow\": true, \"reason\": \"rapid-cycle\"}\n")
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, retry+500*time.Millisecond)
+	defer waitCancel()
+	testutil.Eventually(t, waitCtx, 20*time.Millisecond, func() bool {
+		return az.CurrentRevision(authz.DefaultTenant) != revBefore
+	}, "rapid rm+mkdir+write stalled past one retry interval (#702 R1)")
 }
 
 // ctx cancel cleanly shuts down the watcher goroutine.
