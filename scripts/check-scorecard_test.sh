@@ -187,6 +187,36 @@ body_alt_header='```release-notes
 '
 run_case "alt-header-passes" 0 "scorecard: 2/2 criteria cited" "$body_alt_header"
 
+# Fixture: citations wrapped in backticks must count (#741 regression).
+# Authors routinely wrap file paths and identifiers in backticks for
+# rendering. Pre-fix, sed stripped the entire backtick span before
+# regex scan, making the citation invisible and the row read as uncited.
+body_backticked_cites='```release-notes
+[FEATURE] add bar
+```
+## A+ Scorecard
+
+- [x] (a) build green — `TestBarBuild`
+- [x] (b) coverage — `internal/bar/bar_test.go:42`
+- [x] (c) deferral tracked — see `#1234`
+- [x] (d) cardinality — `N/A` — pure CPU
+'
+run_case "backticked-cites-counted" 0 "scorecard: 4/4 criteria cited" "$body_backticked_cites"
+
+# Fixture: prose-style `[x]` inside backticks within a scorecard section
+# must still NOT be counted as a criterion mark. Defends against the
+# Option B unwrap regression: if we unwrapped delimiters, this `[x]`
+# would leak into the count.
+body_prose_xspan_in_scorecard='```release-notes
+[FEATURE] add baz
+```
+## A+ Scorecard
+
+- [x] (a) build green — TestBazBuild
+- Note: to mark a criterion done, use `[x]` in the row prose.
+'
+run_case "prose-xspan-in-scorecard-not-counted" 0 "scorecard: 1/1 criteria cited" "$body_prose_xspan_in_scorecard"
+
 # Fixture: --skip short-circuits without parsing.
 tmp_skip=$(mktemp); printf 'irrelevant body\n' > "$tmp_skip"
 out=$("$check" --skip 2>&1) && got_exit=0 || got_exit=$?

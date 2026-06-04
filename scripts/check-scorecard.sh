@@ -150,19 +150,17 @@ fi
 #
 # `[x]` markers inside an inline-code span (backticks) are ignored to
 # prevent false positives from prose like "use `[x]` to mark done".
-# Strategy: strip everything between paired single backticks before
-# scanning. Fenced ``` blocks are intentionally kept — most scorecards
-# live inside one.
+# Strategy: strip backtick spans only for the [x] count; scan citations
+# against the original line so backtick-wrapped cites stay visible (#741).
+# Fenced ``` blocks are intentionally kept — most scorecards live inside.
 
 total=0
 missing=()
 line_no=0
 while IFS= read -r line; do
   line_no=$((line_no + 1))
-  # Strip inline-code spans (paired single backticks). awk's gensub
-  # would be cleaner but we stay portable with sed.
+  # Backtick-stripped view: defends [x] count from prose like "use `[x]`".
   scrub=$(printf '%s' "$line" | sed -E 's/`[^`]*`//g')
-  # Count [x] / [X] occurrences on this scrubbed line.
   # Trailing `|| true` swallows grep's no-match exit-1 under
   # `set -o pipefail` so the command substitution stays clean.
   count=$({ printf '%s' "$scrub" | grep -oE '\[[xX]\]' || true; } | wc -l | tr -d ' ')
@@ -170,28 +168,28 @@ while IFS= read -r line; do
     continue
   fi
   total=$((total + count))
-  # Each [x] mark needs at least one citation on the same line.
+  # Citation scan uses the ORIGINAL line so backticked cites count (#741).
   has_cite=0
   # Test-name token.
-  if printf '%s' "$scrub" | grep -qE '\b(Test|Fuzz|Benchmark|Example)[A-Z_][A-Za-z0-9_]+'; then
+  if printf '%s' "$line" | grep -qE '\b(Test|Fuzz|Benchmark|Example)[A-Z_][A-Za-z0-9_]+'; then
     has_cite=1
   fi
   # file:line anchor.
-  if [ "$has_cite" -eq 0 ] && printf '%s' "$scrub" | grep -qE '[A-Za-z0-9_./-]+\.[A-Za-z]+:[0-9]+'; then
+  if [ "$has_cite" -eq 0 ] && printf '%s' "$line" | grep -qE '[A-Za-z0-9_./-]+\.[A-Za-z]+:[0-9]+'; then
     has_cite=1
   fi
   # Issue reference.
-  if [ "$has_cite" -eq 0 ] && printf '%s' "$scrub" | grep -qE '#[0-9]+'; then
+  if [ "$has_cite" -eq 0 ] && printf '%s' "$line" | grep -qE '#[0-9]+'; then
     has_cite=1
   fi
   # N/A clause (case-sensitive on the literal; rationale text after).
-  if [ "$has_cite" -eq 0 ] && printf '%s' "$scrub" | grep -qE 'N/A|N-A|DEFERRED'; then
+  if [ "$has_cite" -eq 0 ] && printf '%s' "$line" | grep -qE 'N/A|N-A|DEFERRED'; then
     has_cite=1
   fi
   if [ "$has_cite" -eq 0 ]; then
     # Identify the criterion code(s) on the line for the operator
     # message. Common formats: `(a)`, `B1`, `A2`, `A+1`.
-    crit=$({ printf '%s' "$scrub" | grep -oE '\(([a-z]|[0-9]+)\)|\b[ABC][+]?[0-9]+\b' || true; } | tr '\n' ' ')
+    crit=$({ printf '%s' "$line" | grep -oE '\(([a-z]|[0-9]+)\)|\b[ABC][+]?[0-9]+\b' || true; } | tr '\n' ' ')
     if [ -z "$crit" ]; then crit="(unlabeled)"; fi
     # For lines with multiple [x] all sharing the line, surface each
     # uncited count. We treat the whole line as one offender row.
