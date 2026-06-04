@@ -477,6 +477,24 @@ The HTTP listener defaults to `:8080`. Confirm:
 - nothing else is bound on 8080 (`sudo lsof -i :8080`),
 - the unit was not started with the listener disabled.
 
+### Distroless image — no shell
+
+The `regatta` container image is distroless
+(`gcr.io/distroless/base-debian12:nonroot`). There is no `sh`, `bash`,
+or `apt` inside. Debug via `docker image inspect regatta:stage2` for
+config and `docker compose logs regatta` for runtime. Override
+`--entrypoint sh` only as a last resort and only when also bind-mounting
+a host shell into the container.
+
+### Compose-vol nonroot uid (`CANTOPEN` on first boot)
+
+The named volume `regatta-data` is mounted into `/data` for the
+distroless nonroot user (uid 65532). First-create ownership is `root`,
+so sqlite returns `CANTOPEN` until the volume is chowned. The compose
+file ships an init container that runs `chown 65532:65532 /data` once
+before `regatta` starts. Idempotent on subsequent `docker compose up`.
+See #843 root cause.
+
 ## Rollback escape hatches
 
 `regatta uninstall-service` is the happy-path verb (covered above).

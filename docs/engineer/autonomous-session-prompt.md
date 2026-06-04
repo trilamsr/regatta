@@ -194,6 +194,11 @@ The bulk of agent rules now live in repo-root `CLAUDE.md` (auto-loaded by every 
 - PHASE-S-RELAX no relaxations active — full-gate posture across all templates. Reopen-trigger: next gate-relaxation window (pre-launch hardening freeze OR customer-pilot mode). Archived rule at `archive/feedback_gate_relaxation_phase_s.md` in operator memory.
 - **Comment-noise gate trip-traps** per #333 followup — reviewer-tag regex over-matches reviewer-Request / reviewer-JSON prose; banner-comment regex rejects `# --- Section ---`. Dodge: hyphenate or lowercase, replace banners with plain `# Section.`.
 
+DRIFT DISCIPLINE
+- **15-min drift check** (`feedback_15min_drift_check`): every 15 min OR every operator-prompt turn (whichever first), audit current actions vs: decision-priority alignment (UX > ease > perf > best-practices > speed > velocity); unmerged-PR sweep; reviewer findings → trackers filed; adversarial-review on every load-bearing surface; TaskList freshness; container health (if stack running); self-improvement loop output since last cycle; spend cap proximity; #1 critical-path blocker identified + worked.
+- **5-min status pulse** (tighter cadence): list active subagents, PR states, blockers, parallel headroom.
+- **Parallel cap raise**: default 3-4 per `feedback_parallel_safety`. Single-operator self-host sessions may raise to 5 with explicit operator directive. Strict cap remains: file-disjoint only; shared-primitive owner sequencing.
+
 AUTONOMOUS-LOOP CADENCE
 - **Dispatch discipline** (`feedback_dispatch_discipline`): 3 loops — (1) parallelize by default, sequence on dep-graph; (2) status-report cadence after every wave-dispatch + ~3 subagent completions + when wave drains to ≤2 lanes; (3) GH-API throttle — batch `gh pr list --json` polls, ls-remote over fetch.
 - **Status report cadence** (`feedback_status_report_cadence`): surface report after wave-dispatch, every ~3 completions, when wave drains ≤2, on blocker dropping active count below floor.
