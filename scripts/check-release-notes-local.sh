@@ -7,7 +7,7 @@
 #   check-release-notes-local.sh --body-file F    # validate F as intended PR body
 
 set -euo pipefail
-cats='FEATURE|CHANGE|BUGFIX|SECURITY|PERF|DOCS|CHORE|CI'
+cats='FEATURE|CHANGE|BUGFIX|FIX|SECURITY|PERF|DOCS|CHORE|CI|REFACTOR'
 
 if [ "${1:-}" = "--body-file" ]; then
   [ -f "${2:-}" ] || { echo "check-release-notes: --body-file requires an existing path"; exit 2; }
