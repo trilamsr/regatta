@@ -165,6 +165,18 @@ CI workflow only, no impl tests on the gate yet.
 '
 run_case "ci-no-scorecard-passes" 0 "exempt" "$body_ci_skip"
 
+# Fixture: [REFACTOR] category + no scorecard → pass (skip). Mechanical
+# refactors (test polling migrations, code reshape with no behavior change)
+# do not earn scorecard ceremony.
+body_refactor_no_scorecard='```release-notes
+[REFACTOR] migrate polling sites to EventuallyT
+```
+## Summary
+
+Pure test-helper migration, no production behavior change.
+'
+run_case "refactor-no-scorecard-passes" 0 "exempt" "$body_refactor_no_scorecard"
+
 # Fixture: [FIX] category + scorecard with all cited → pass.
 body_fix_cited='```release-notes
 [FIX] correct boundary
