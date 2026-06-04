@@ -49,6 +49,22 @@ Body has no scorecard section.
 '
 run_case "empty-scorecard-feature-fails" 1 "No scorecard section" "$body_empty_feature"
 
+# Fixture (#826 trap): [CHORE] prefix written OUTSIDE the release-notes
+# fence — category regex misses it, scorecard absent, operator sees a
+# message that demands a scorecard instead of pointing at the fence.
+# New diagnostic must mention the fence rule + the exempt category list.
+body_chore_no_fence='## Summary
+
+Chore PR, but author forgot the triple-backtick fence.
+
+## Test plan
+- [x] verified locally
+
+[CHORE] gitignore .env
+'
+run_case "chore-no-fence-mentions-fence-rule" 1 "release-notes" "$body_chore_no_fence"
+run_case "chore-no-fence-lists-exempt-categories" 1 "CHORE" "$body_chore_no_fence"
+
 # Fixture: scorecard with all [x] cited → pass.
 body_all_cited='```release-notes
 [FEATURE] add foo
