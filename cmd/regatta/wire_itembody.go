@@ -27,8 +27,8 @@ func buildItemBodyLoader(repoRoot string, slogger *slog.Logger) func(ctx context
 	}
 }
 
-// maxItemBodyBytes caps a single brief at 256KB so prompt-bloat (and downstream token cost) stays bounded; oversize files fall through to the WARN-and-degrade path.
-const maxItemBodyBytes = 256 * 1024
+// MaxItemBodyBytes caps a single brief at 256KB so prompt-bloat (and downstream token cost) stays bounded per `feedback_default_simpler`; oversize files fall through to the WARN-and-degrade path.
+const MaxItemBodyBytes = 256 * 1024
 
 func scanItemsForID(dir, workItemID string, slogger *slog.Logger) (string, bool) {
 	entries, err := os.ReadDir(dir)
@@ -57,9 +57,9 @@ func scanItemsForID(dir, workItemID string, slogger *slog.Logger) (string, bool)
 			}
 			continue
 		}
-		if info.Size() > maxItemBodyBytes {
+		if info.Size() > MaxItemBodyBytes {
 			if slogger != nil {
-				slogger.Warn("item_body_loader.oversize_skipped", "path", path, "bytes", info.Size(), "cap", maxItemBodyBytes)
+				slogger.Warn("item_body_loader.oversize_skipped", "path", path, "bytes", info.Size(), "cap", MaxItemBodyBytes)
 			}
 			continue
 		}
