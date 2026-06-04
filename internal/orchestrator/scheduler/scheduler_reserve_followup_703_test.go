@@ -229,7 +229,7 @@ func wrapNoGetter(db *state.DB) *noWorkItemGetterDB {
 	}
 }
 
-// TestReserveOrphans_LogsWhenGetterMissing_R2 asserts a missing workItemGetter logs a WARN instead of silently disabling the re-check (#703 R2).
+// TestReserveOrphans_LogsWhenGetterMissing_R2 asserts a missing workItemGetter logs a WARN AND fails-closed by leaving the orphan pending instead of spawning it blind (#703 R2, #776).
 func TestReserveOrphans_LogsWhenGetterMissing_R2(t *testing.T) {
 	db := statetest.OpenDB(t)
 	ctx := context.Background()
@@ -261,6 +261,15 @@ func TestReserveOrphans_LogsWhenGetterMissing_R2(t *testing.T) {
 	}
 	if !sawWarn {
 		t.Fatalf("missing gate_recheck_unavailable warn — operator cannot diagnose silently-disabled re-check")
+	}
+
+	spawning, _ := db.ListAgentsByState(ctx, state.AgentSpawning)
+	if len(spawning) != 0 {
+		t.Fatalf("spawning=%+v; want 0 — getter-missing must fail-closed, not spawn blind (#776)", spawning)
+	}
+	pending, _ := db.ListAgentsByState(ctx, state.AgentPending)
+	if len(pending) != 1 || pending[0].WorkItemID != "wi-getter" {
+		t.Fatalf("pending=%+v; want one preserved orphan for wi-getter (#776)", pending)
 	}
 }
 
