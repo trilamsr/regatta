@@ -17,6 +17,7 @@ import (
 	"google.golang.org/grpc"
 
 	otelpkg "github.com/trilamsr/regatta/internal/obs/otel"
+	"github.com/trilamsr/regatta/internal/testutil"
 )
 
 // TestMeterSetup_NoEnvVar_ReturnsNoopMeter pins the zero-env path.
@@ -124,21 +125,19 @@ func TestMeterSetup_PrometheusExporterWiresOnEnvVar(t *testing.T) {
 	}
 	ctr.Add(context.Background(), 7)
 
-	// Poll the /metrics endpoint — exporter wires asynchronously.
-	deadline := time.Now().Add(2 * time.Second)
+	pollCtx, pollCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer pollCancel()
 	var body string
-	for time.Now().Before(deadline) {
+	testutil.EventuallyT(t, pollCtx, 20*time.Millisecond, func() bool {
 		resp, err := http.Get("http://127.0.0.1:" + strconv.Itoa(port) + "/metrics")
-		if err == nil {
-			b, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
-			body = string(b)
-			if strings.Contains(body, "regatta_prom_counter") {
-				break
-			}
+		if err != nil {
+			return false
 		}
-		time.Sleep(20 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
-	}
+		b, _ := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		body = string(b)
+		return strings.Contains(body, "regatta_prom_counter")
+	}, "Prometheus scrape did not surface counter")
 	if !strings.Contains(body, "regatta_prom_counter") {
 		t.Errorf("Prometheus /metrics scrape missing regatta_prom_counter; body=%q", body)
 	}
