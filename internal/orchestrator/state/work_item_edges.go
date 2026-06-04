@@ -9,8 +9,7 @@
 //
 // EdgeRow + EdgeFromAggregate live in state/edgeagg/ (pure subpackage;
 // see docs/engineer/specs/2026-06-04-state-package-split-design.md §5.T2)
-// and are re-exported via aliases.go so callers keep their state.X
-// spelling.
+// and are re-exported below so callers keep their state.X spelling.
 package state
 
 import (
@@ -22,6 +21,12 @@ import (
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state/edgeagg"
 )
+
+// EdgeRow re-exports edgeagg.EdgeRow so callers keep the state.EdgeRow spelling post-T2 split.
+type EdgeRow = edgeagg.EdgeRow
+
+// EdgeFromAggregate re-exports edgeagg.EdgeFromAggregate; same rationale as EdgeRow.
+type EdgeFromAggregate = edgeagg.EdgeFromAggregate
 
 // UpsertEdges is the legacy shim that stamps timestamps from d.now().
 // New production writers (BriefLoader) should call UpsertEdgesAt with
