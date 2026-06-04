@@ -40,7 +40,7 @@ Each substrate event payload (per `kind=fact` validator registered via W1 `Regis
   "started_at": "<RFC3339>",
   "completed_at": "<RFC3339>",
   "duration_ms": 1234,
-  "tenant_id": "<from ctx>",
+  "tenant_id": "<substrate.DefaultTenantID — self-host literal; multi-tenant propagation deferred to Phase X W8>",
   "parent_run_id": "<ULID>"
 }
 ```
@@ -72,7 +72,7 @@ func init() {
 }
 ```
 
-Validator checks required fields, sha256 format, ULID format, tenant_id non-empty.
+Validator checks required fields, sha256 format, ULID format. Per self-host filter (`docs/engineer/briefs/2026-06-01-self-host-first.md` §4 W8), the tenant field is pinned to `substrate.DefaultTenantID` at the call site — no per-event tenant validation in Phase S. Active multi-tenant validation (non-empty / membership / authorization) is forward-fit only and re-enters scope when W8 lands.
 
 ### 2.3 Replay surface
 
@@ -95,7 +95,7 @@ Replay CLI itself is followup (post-MVR-2). This spec ships the bridge that make
 | R4 | Replay determinism violated by step that calls `time.Now()` or `rand.Read` | Followup (post-MVR-2): script runner must inject deterministic clock + rand; bridge logs warning if step output sha256 differs across replays |
 | R5 | Bridge dropped event on crash → script audit trail has hole | Bridge writes BEFORE step executes (BeforeStep) and AFTER (AfterStep); orphan BeforeStep events flagged by reducer as `incomplete_step`; replay tool surfaces |
 | R6 | Signer (sigstore) not yet available pre-MVR-3 → bridge can't sign | Optional signer interface; pre-MVR-3 events written unsigned, post-MVR-3 events signed; both replay |
-| R7 | Tenant_id missing from ctx (forgot to thread per MVR-2-T2) | Bridge fails closed: returns error if `tenant.FromContext(ctx) == ""`; test enforces |
+| R7 | Self-host literal seam drifts (call site forgets `substrate.DefaultTenantID`, hard-codes a string) | Bridge call site references the exported constant; test pins the event payload tenant field to `substrate.DefaultTenantID`; per `docs/engineer/briefs/2026-06-01-self-host-first.md` §4 W8 active multi-tenant validation is deferred to Phase X |
 | R8 | Step kind cardinality grows unbounded over time → cost panel cardinality explodes | Whitelist of allowed step_kind values; validator rejects unknowns; new kinds require explicit registration |
 
 ## 4. Test plan (≥8)
@@ -103,7 +103,7 @@ Replay CLI itself is followup (post-MVR-2). This spec ships the bridge that make
 - `TestBridge_BeforeStepWritesFactEvent` — fact event appears in substrate after call
 - `TestBridge_AfterStepWritesCompletionFact` — paired event with duration
 - `TestBridge_OrphanBeforeStepFlagsIncomplete` — crash between Before/After → reducer flags
-- `TestBridge_FailsClosedOnMissingTenant` — empty tenant_id → error
+- `TestBridge_PinsDefaultTenantID` — payload tenant field equals `substrate.DefaultTenantID` literal; no validator branch on emptiness in Phase S (multi-tenant validation deferred to W8 per self-host brief §4)
 - `TestBridge_BatchesShortSteps_OneEvent` — step < 100ms → one event instead of two
 - `TestBridge_StreamingOutputHashedOnce` — io.Reader passthrough, hash matches
 - `TestBridge_SignerNil_WritesUnsigned` — degraded mode works
@@ -113,7 +113,7 @@ Replay CLI itself is followup (post-MVR-2). This spec ships the bridge that make
 
 ## 5. Dependency order
 
-`Substrate v2 W1` (T-S1 `AppendEvent`/`RegisterPayloadValidator`) — shipped → `MVR-2-T2 multi-tenant` (tenant_id in ctx) → `MVR-1-T7 strategy iface + script runner shell` — lands first; this spec is the substrate side of T7 → this spec lands → MVR-2-T7 (`/workflows` UI) consumes the fact events directly for live progress view.
+`Substrate v2 W1` (T-S1 `AppendEvent`/`RegisterPayloadValidator`) — shipped → `MVR-1-T7 strategy iface + script runner shell` — lands first; this spec is the substrate side of T7 → this spec lands (self-host: tenant pinned to `substrate.DefaultTenantID` literal — per `docs/engineer/briefs/2026-06-01-self-host-first.md` §4 W8 active multi-tenant propagation is Phase X) → MVR-2-T7 (`/workflows` UI) consumes the fact events directly for live progress view.
 
 ## 6. Deferred to dispatch-time elaboration
 
