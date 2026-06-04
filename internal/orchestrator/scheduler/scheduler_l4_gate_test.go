@@ -39,18 +39,21 @@ func (f *fakeL4Gate) Evaluate(_ context.Context, _ l4.Config, in l4.Input) (sche
 	return schemas.GateResult{Verdict: schemas.VerdictPass}, nil
 }
 
-// l4ResolverByID maps wi.ID -> (Config, Input) so each test pins which
+// l4ResolverByID maps wi.ID -> L4Scope so each test pins which
 // work_items are L4-gated and threads the wi id through Input.RunID.
 // PRSHA derives from wi.ID so the gate_rejected payload assertion can
 // pin a deterministic value without bloating each test fixture.
 func l4ResolverByID(ids map[string]struct{}) L4GateResolver {
-	return func(wi state.WorkItem) (l4.Config, l4.Input, bool) {
+	return func(wi state.WorkItem) (L4Scope, bool) {
 		if _, ok := ids[wi.ID]; !ok {
-			return l4.Config{}, l4.Input{}, false
+			return L4Scope{}, false
 		}
-		return l4.Config{GateID: "l4_adversarial"}, l4.Input{
-			RunID: wi.ID,
-			PRSHA: "sha-" + wi.ID,
+		return L4Scope{
+			Cfg: l4.Config{GateID: "l4_adversarial"},
+			In: l4.Input{
+				RunID: wi.ID,
+				PRSHA: "sha-" + wi.ID,
+			},
 		}, true
 	}
 }

@@ -16,11 +16,11 @@ import (
 // to keep the scheduler → rejectionrouter dependency one-way.
 const eventKindGateRejected = "gate_rejected"
 
-// l4Scope pairs the resolver's Config + Input so filter.Pass[Scope]
-// can carry both into the Evaluate closure.
-type l4Scope struct {
-	cfg l4.Config
-	in  l4.Input
+// L4Scope pairs the resolver's Config + Input so filter.Pass[L4Scope]
+// can carry both into the Evaluate closure without an adapter (#704 R1).
+type L4Scope struct {
+	Cfg l4.Config
+	In  l4.Input
 }
 
 // applyL4Gate filters spawnable through the adversarial-reviewer gate
@@ -35,18 +35,15 @@ func (s *Scheduler) applyL4Gate(ctx context.Context, spawnable []state.WorkItem)
 	if s.cfg.L4Gate == nil || s.cfg.L4GateResolver == nil {
 		return spawnable, nil
 	}
-	return filter.Apply(ctx, filter.Pass[l4Scope]{
-		Name: "l4",
-		Resolve: func(wi state.WorkItem) (l4Scope, bool) {
-			cfg, in, gated := s.cfg.L4GateResolver(wi)
-			return l4Scope{cfg: cfg, in: in}, gated
-		},
-		Evaluate: func(ctx context.Context, wi state.WorkItem, sc l4Scope) (bool, error) {
-			gr, err := s.cfg.L4Gate.Evaluate(ctx, sc.cfg, sc.in)
+	return filter.Apply(ctx, filter.Pass[L4Scope]{
+		Name:    "l4",
+		Resolve: s.cfg.L4GateResolver,
+		Evaluate: func(ctx context.Context, wi state.WorkItem, sc L4Scope) (bool, error) {
+			gr, err := s.cfg.L4Gate.Evaluate(ctx, sc.Cfg, sc.In)
 			if err != nil {
 				s.log.Warn("scheduler.l4_gate_error",
 					string(obs.KeyWorkItemID), wi.ID,
-					string(obs.KeyGateID), sc.cfg.GateID,
+					string(obs.KeyGateID), sc.Cfg.GateID,
 					string(obs.KeyErr), err.Error(),
 				)
 				return false, nil
@@ -60,11 +57,11 @@ func (s *Scheduler) applyL4Gate(ctx context.Context, spawnable []state.WorkItem)
 			}
 			s.log.Info("scheduler.l4_gate_blocked",
 				string(obs.KeyWorkItemID), wi.ID,
-				string(obs.KeyGateID), sc.cfg.GateID,
+				string(obs.KeyGateID), sc.Cfg.GateID,
 				string(obs.KeyVerdict), string(gr.Verdict),
 				string(obs.KeyReason), reason,
 			)
-			s.emitGateRejected(ctx, wi.ID, sc.in.PRSHA, reason)
+			s.emitGateRejected(ctx, wi.ID, sc.In.PRSHA, reason)
 			return false, nil
 		},
 	}, spawnable)
