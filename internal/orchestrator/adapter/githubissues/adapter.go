@@ -139,7 +139,7 @@ func (a *adapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
 			a.warnSkip(iss.Number, reason)
 			continue
 		}
-		// Spec §4.2: tolerate back-fill write failure with WARN so a transient API hiccup does not block projection.
+		// Spec §4.2: tolerate first-sighting backfill failure with WARN; mutation detection deferred to F20 (#850).
 		if p.DedupKey == "" {
 			key := computeDedupKey(a.cfg.Repo.Owner, a.cfg.Repo.Name, iss.Number, iss.Body)
 			newBody := withBackfilledMarker(normalize(iss.Body), key)

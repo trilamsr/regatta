@@ -1,12 +1,8 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"os/exec"
 	"path/filepath"
-	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
@@ -14,53 +10,6 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter/githubissues"
 )
-
-// ghIssueRaw is the gh-CLI label-object JSON shape decoded into ghclient.Issue.
-type ghIssueRaw struct {
-	Number    int          `json:"number"`
-	Title     string       `json:"title"`
-	Body      string       `json:"body"`
-	Labels    []ghLabelRaw `json:"labels"`
-	UpdatedAt time.Time    `json:"updatedAt"`
-}
-
-type ghLabelRaw struct {
-	Name string `json:"name"`
-}
-
-func decodeGHIssues(out []byte) ([]ghclient.Issue, error) {
-	var raws []ghIssueRaw
-	if err := json.Unmarshal(out, &raws); err != nil {
-		return nil, err
-	}
-	return flattenGHIssues(raws), nil
-}
-
-func decodeGHIssuesOrSingle(out []byte) ([]ghclient.Issue, error) {
-	var single ghIssueRaw
-	if err := json.Unmarshal(out, &single); err != nil {
-		return decodeGHIssues(out)
-	}
-	return flattenGHIssues([]ghIssueRaw{single}), nil
-}
-
-func flattenGHIssues(raws []ghIssueRaw) []ghclient.Issue {
-	out := make([]ghclient.Issue, 0, len(raws))
-	for _, r := range raws {
-		labels := make([]string, 0, len(r.Labels))
-		for _, l := range r.Labels {
-			labels = append(labels, l.Name)
-		}
-		out = append(out, ghclient.Issue{
-			Number:    r.Number,
-			Title:     r.Title,
-			Body:      r.Body,
-			Labels:    labels,
-			UpdatedAt: r.UpdatedAt,
-		})
-	}
-	return out
-}
 
 // buildSpecAdapter dispatches the schemas.SpecAdapter by `regatta.yaml::spec_adapter.type` (MVR-1-T4 §10.1); markdown_catalog stays the default.
 func buildSpecAdapter(f serveFlags) (schemas.SpecAdapter, error) {
@@ -70,83 +19,12 @@ func buildSpecAdapter(f serveFlags) (schemas.SpecAdapter, error) {
 		if cfg.Repo == nil || cfg.Repo.Owner == "" || cfg.Repo.Name == "" {
 			return nil, fmt.Errorf("spec_adapter.type=github_issues requires repo.{owner,name}")
 		}
-		client := newGHCLIClient(cfg.Repo.Owner, cfg.Repo.Name)
 		return githubissues.NewGitHubIssues(githubissues.GitHubIssuesConfig{
-			Client:            client,
+			Client:            ghclient.NewGHCLIClient(cfg.Repo.Owner, cfg.Repo.Name),
 			Repo:              githubissues.Repo{Owner: cfg.Repo.Owner, Name: cfg.Repo.Name},
 			Selector:          cfg.SpecAdapter.Selector,
 			AcceptanceSection: cfg.SpecAdapter.AcceptanceSection,
 		})
 	}
 	return adapter.NewMarkdownCatalog(adapter.MarkdownCatalogConfig{Root: f.ItemsRoot})
-}
-
-// ghCLIClient is the gh-CLI-subprocess ghclient.Client for the github_issues adapter; non-list/get methods stub-fail (alarm path uses the HTTP client).
-type ghCLIClient struct {
-	owner string
-	repo  string
-}
-
-func newGHCLIClient(owner, name string) ghclient.Client {
-	return &ghCLIClient{owner: owner, repo: name}
-}
-
-func (c *ghCLIClient) ListOpenIssuesByLabel(_ context.Context, _, _ string) ([]ghclient.Issue, error) {
-	return nil, fmt.Errorf("ghCLIClient: ListOpenIssuesByLabel not implemented (alarmwebhook path)")
-}
-
-func (c *ghCLIClient) CreateIssue(_ context.Context, _, _ string, _ []string) (int, error) {
-	return 0, fmt.Errorf("ghCLIClient: CreateIssue not implemented (alarmwebhook path)")
-}
-
-func (c *ghCLIClient) CommentOnIssue(ctx context.Context, n int, body string) error {
-	cmd := exec.CommandContext(ctx, "gh", "issue", "comment", fmt.Sprint(n), "--repo", c.owner+"/"+c.repo, "--body", body) //nolint:gosec // G204: argv-style, no shell; repo CUE-validated, body operator-supplied
-	return cmd.Run()
-}
-
-func (c *ghCLIClient) ListIssuesByLabelPaginated(ctx context.Context, label string, opts ghclient.ListIssuesOpts) ([]ghclient.Issue, error) {
-	state := opts.State
-	if state == "" {
-		state = "open"
-	}
-	limit := opts.Limit
-	if limit <= 0 {
-		limit = 1000
-	}
-	cmd := exec.CommandContext(ctx, "gh", "issue", "list", //nolint:gosec // G204: argv-style, no shell; repo/label CUE-validated
-		"--repo", c.owner+"/"+c.repo,
-		"--label", label,
-		"--state", state,
-		"--json", "number,title,body,labels,updatedAt",
-		"--limit", fmt.Sprint(limit),
-	)
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("gh issue list: %w", err)
-	}
-	return decodeGHIssues(out)
-}
-
-func (c *ghCLIClient) GetIssue(ctx context.Context, n int) (ghclient.Issue, error) {
-	cmd := exec.CommandContext(ctx, "gh", "issue", "view", fmt.Sprint(n), //nolint:gosec // G204: argv-style, no shell
-		"--repo", c.owner+"/"+c.repo,
-		"--json", "number,title,body,labels,updatedAt",
-	)
-	out, err := cmd.Output()
-	if err != nil {
-		return ghclient.Issue{}, fmt.Errorf("gh issue view: %w", err)
-	}
-	issues, err := decodeGHIssuesOrSingle(out)
-	if err != nil || len(issues) == 0 {
-		return ghclient.Issue{}, fmt.Errorf("gh issue view %d: decode: %w", n, err)
-	}
-	return issues[0], nil
-}
-
-func (c *ghCLIClient) EditIssueBody(ctx context.Context, n int, body string) error {
-	cmd := exec.CommandContext(ctx, "gh", "issue", "edit", fmt.Sprint(n), //nolint:gosec // G204: argv-style, no shell
-		"--repo", c.owner+"/"+c.repo,
-		"--body", body,
-	)
-	return cmd.Run()
 }

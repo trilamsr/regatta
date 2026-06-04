@@ -118,7 +118,7 @@ func (c *captureLog) Lines() []string {
 	return out
 }
 
-func newAdapter(t *testing.T, gh *fakeGH, log *captureLog, now func() time.Time) schemas.SpecAdapter {
+func newAdapter(t *testing.T, gh ghclient.Client, log *captureLog, now func() time.Time) schemas.SpecAdapter {
 	t.Helper()
 	cfg := GitHubIssuesConfig{
 		Client: gh,
@@ -286,15 +286,33 @@ func TestGitHubIssues_List_BodyMissingMarker_BackfillsOnce(t *testing.T) {
 	}
 }
 
-// TestGitHubIssues_List_RateLimitWrapsErrRateLimited surfaces upstream ErrRateLimited.
+// TestGitHubIssues_List_RateLimitWrapsErrRateLimited drives real ghclient.GHCLIClient via Runner fixture so stderr classifier (#848) reaches the adapter (closes #863).
 func TestGitHubIssues_List_RateLimitWrapsErrRateLimited(t *testing.T) {
-	upstream := fmt.Errorf("%w: %v", schemas.ErrRateLimited, schemas.RateLimitHint{RetryAfter: 60 * time.Second})
-	gh := &fakeGH{listErr: upstream}
+	resetAt := time.Now().Add(90 * time.Second).Unix()
+	stderr := []byte(fmt.Sprintf("gh: HTTP 403: API rate limit exceeded\nX-RateLimit-Reset: %d\n", resetAt))
+	gh := ghclient.NewGHCLIClientWithRunner("trilamsr", "regatta", rateLimitRunner{stderr: stderr, err: errors.New("exit status 1")})
 	a := newAdapter(t, gh, &captureLog{}, time.Now)
 	_, err := a.List(context.Background())
 	if !errors.Is(err, schemas.ErrRateLimited) {
-		t.Fatalf("err=%v want ErrRateLimited", err)
+		t.Fatalf("err=%v want errors.Is(err, ErrRateLimited)", err)
 	}
+	var rl *ghclient.RateLimitedError
+	if !errors.As(err, &rl) {
+		t.Fatalf("err=%v does not unwrap to *RateLimitedError", err)
+	}
+	if rl.Hint.RetryAfter <= 0 {
+		t.Fatalf("RetryAfter=%v want >0", rl.Hint.RetryAfter)
+	}
+}
+
+// rateLimitRunner is the canned ghclient.Runner returning exit-1 + stderr (#863).
+type rateLimitRunner struct {
+	stderr []byte
+	err    error
+}
+
+func (r rateLimitRunner) Run(_ context.Context, _ string, _ ...string) ([]byte, []byte, error) {
+	return nil, r.stderr, r.err
 }
 
 // TestGitHubIssues_Get_NotFound_WrapsErrNotFound surfaces ErrNotFound for unknown ID.
