@@ -33,6 +33,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/strutil"
+	"github.com/trilamsr/regatta/internal/testutil"
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
@@ -234,14 +235,11 @@ func stopCompose(t *testing.T, composePath string) {
 // connect to a half-warm container.
 func waitForJaegerReady(t *testing.T, deadline time.Duration) {
 	t.Helper()
-	end := time.Now().Add(deadline)
-	for time.Now().Before(end) {
-		if dialOK("localhost:"+jaegerOTLPPort) && dialOK("localhost:"+jaegerQueryPort) {
-			return
-		}
-		time.Sleep(500 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
-	}
-	t.Fatalf("Jaeger not ready within %s", deadline)
+	ctx, cancel := context.WithTimeout(context.Background(), deadline)
+	defer cancel()
+	testutil.Eventually(t, ctx, 500*time.Millisecond, func() bool {
+		return dialOK("localhost:"+jaegerOTLPPort) && dialOK("localhost:"+jaegerQueryPort)
+	}, fmt.Sprintf("Jaeger not ready within %s", deadline))
 }
 
 func dialOK(addr string) bool {
@@ -261,29 +259,32 @@ func dialOK(addr string) bool {
 // so we wait until the count stabilises at ≥5 spans.
 func pollJaegerForTrace(t *testing.T, traceID string, deadline time.Duration) ([]string, error) {
 	t.Helper()
-	end := time.Now().Add(deadline + 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), deadline+5*time.Second)
+	defer cancel()
 	url := fmt.Sprintf("http://localhost:%s/api/traces/%s", jaegerQueryPort, traceID)
 	var (
 		lastErr error
 		names   []string
 	)
-	for time.Now().Before(end) {
+	testutil.EventuallyT(t, ctx, 500*time.Millisecond, func() bool {
 		resp, err := http.Get(url)
 		if err != nil {
 			lastErr = err
-			time.Sleep(500 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
-			continue
+			return false
 		}
 		body, _ := io.ReadAll(resp.Body)
 		_ = resp.Body.Close()
 		if resp.StatusCode == http.StatusOK {
 			names = traceSpanNames(body)
 			if len(names) >= 5 {
-				return names, nil
+				return true
 			}
 		}
 		lastErr = fmt.Errorf("status=%d body=%s", resp.StatusCode, strutil.Truncate(string(body), 200))
-		time.Sleep(500 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
+		return false
+	}, "Jaeger trace not complete")
+	if len(names) >= 5 {
+		return names, nil
 	}
 	if len(names) > 0 {
 		return names, fmt.Errorf("incomplete span set (got %d, want ≥5): %v; last_err=%v", len(names), names, lastErr)
