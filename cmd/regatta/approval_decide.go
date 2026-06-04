@@ -33,18 +33,18 @@ const (
 	exitSelfReview   = 7
 )
 
-// CLI-local aliases preserve the pre-lift identifier surface that existing tests reference unchanged; each delegates to the lifted approval-package sentinel.
+// Aliases kept post-lift so existing test identifiers compile without edits.
 var (
 	errApprovalNotReviewer = approval.ErrNotReviewer
 	errApprovalSelfReview  = approval.ErrSelfReview
 )
 
-// insertApprovalEvent is a thin alias around approval.InsertApprovalEvent kept so cmd/regatta/approval_decide_trace_id_test.go references compile post-lift without test edits.
+// insertApprovalEvent aliases approval.InsertApprovalEvent so approval_decide_trace_id_test.go compiles post-lift without edits.
 func insertApprovalEvent(ctx context.Context, tx *sql.Tx, ev state.ApprovalEvent) error {
 	return approval.InsertApprovalEvent(ctx, tx, ev)
 }
 
-// runApproval dispatches the `approval ...` subcommand tree.
+// runApproval is the CLI entry point for the `approval ...` subcommand tree.
 func runApproval(args []string) int {
 	if len(args) == 0 {
 		_, _ = fmt.Fprintln(os.Stderr, "regatta approval: expected sub-subcommand (decide|list)")
@@ -61,7 +61,7 @@ func runApproval(args []string) int {
 	}
 }
 
-// approvalDecideDeps injects every side-effect the decide path touches.
+// approvalDecideDeps lifts clock + stdio + DSN so tests substitute deterministic fakes.
 type approvalDecideDeps struct {
 	Stdout io.Writer
 	Stderr io.Writer
@@ -78,7 +78,7 @@ func runApprovalDecide(args []string) int {
 	}, args)
 }
 
-// defaultDBPath scans args for --db override; defaults to "regatta.db" to match `regatta serve`'s default and operator muscle memory.
+// defaultDBPath scans args for --db override; default matches `regatta serve` so operator muscle memory holds across subcommands.
 func defaultDBPath(args []string) string {
 	for i, a := range args {
 		switch {
@@ -95,7 +95,7 @@ func defaultDBPath(args []string) string {
 	return "regatta.db"
 }
 
-// runApprovalDecideWith is the testable entry point; all side effects flow through deps so tests substitute a fixed clock + temp-DB DSN.
+// runApprovalDecideWith is the testable entry point so tests bypass os.Stdout/os.Stderr/time.Now.
 func runApprovalDecideWith(deps approvalDecideDeps, args []string) int {
 	fs := flag.NewFlagSet("approval decide", flag.ContinueOnError)
 	fs.SetOutput(deps.Stderr)
@@ -168,7 +168,7 @@ func runApprovalDecideWith(deps approvalDecideDeps, args []string) int {
 	return 0
 }
 
-// exitCodeFor maps every typed sentinel the decide path can surface to its spec §5.6 exit code; anything outside the table maps to 1 (generic).
+// exitCodeFor maps typed sentinels to spec §5.6 exit codes; off-table errors fall back to 1 (generic).
 func exitCodeFor(err error) int {
 	switch {
 	case errors.Is(err, approvaltoken.ErrTokenInvalid):
@@ -190,7 +190,7 @@ func exitCodeFor(err error) int {
 	}
 }
 
-// loadApprovalTokenKeyring reads the HMAC key + key id from env so the approval-token surface rotates without touching brief signing.
+// loadApprovalTokenKeyring reads HMAC key + key id from env so the approval-token surface rotates independently of brief signing.
 func loadApprovalTokenKeyring() (approvaltoken.Keyring, error) {
 	envName := os.Getenv("REGATTA_APPROVAL_TOKEN_KEY_ENV")
 	if envName == "" {

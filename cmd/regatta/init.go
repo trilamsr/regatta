@@ -26,8 +26,7 @@ const (
 	actionDiverge   = "diverge"
 )
 
-// runInit is the CLI entry point. It dispatches to runInitWithIO so
-// tests can capture output without touching real stdout/stderr.
+// runInit is the CLI entry point; thin wrapper around runInitWithIO so tests inject stdout/stderr.
 func runInit(args []string) int {
 	return runInitWithIO(args, os.Stdout, os.Stderr)
 }
@@ -79,8 +78,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	// Classify each file's action BEFORE any write so divergence
-	// causes an atomic refusal — never partial state.
+	// Atomic refusal: classify before any write so divergence never leaves partial state.
 	type decision struct {
 		path   string
 		blurb  string
@@ -107,8 +105,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 			files[i].action = actionDiverge
 		}
 	}
-	// Short-circuit on any divergence — print one friendly error per
-	// diverged file and refuse before any write happens.
+	// Short-circuit divergence before any write so refusal stays atomic.
 	for _, d := range files {
 		if d.action == actionDiverge {
 			_, _ = fmt.Fprintf(stderr, "regatta init: %s already exists and differs from the bundled template.\n", filepath.ToSlash(d.path))
@@ -118,7 +115,6 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	// Ensure .regatta/ exists if any file inside it needs writing.
 	for _, d := range files {
 		if d.action == actionSkip {
 			continue
@@ -133,9 +129,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 
 	var written, skipped, overwritten []string
 	for _, d := range files {
-		// Operator-facing display: always forward-slash so prose
-		// matches docs/incidents.md references regardless of OS, and
-		// copy-paste from output back into prose stays stable.
+		// Forward-slash so output matches docs/incidents.md prose across OSes.
 		display := filepath.ToSlash(d.path)
 		switch d.action {
 		case actionWrite:
@@ -164,8 +158,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	// Re-read sample.diff so the demo verdict reflects what's on
-	// disk (operator might inspect or edit it).
+	// Re-read from disk so operator edits to sample.diff flow into the demo verdict.
 	diffPath := files[1].path
 	onDisk, err := os.ReadFile(diffPath) //nolint:gosec // G304: diffPath is filepath.Join(".regatta","sample.diff"), a fixed literal, never user input
 	if err != nil {
@@ -185,9 +178,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// safeMkdir ensures path exists as a regular directory. Refuses if
-// path exists as a symlink, regular file, device, or other non-dir.
-// Defends against an attacker pre-creating .regatta -> /etc.
+// safeMkdir refuses non-directory targets (symlink/file/device) to defend against pre-created .regatta -> /etc.
 func safeMkdir(path string) error {
 	info, err := os.Lstat(path)
 	if os.IsNotExist(err) {
@@ -202,7 +193,7 @@ func safeMkdir(path string) error {
 	return nil
 }
 
-// padPath right-pads the path for column alignment in friendly output.
+// padPath right-pads the path so prose columns align.
 func padPath(p string) string {
 	const width = 22
 	if len(p) >= width {
@@ -211,9 +202,7 @@ func padPath(p string) string {
 	return p + strings.Repeat(" ", width-len(p))
 }
 
-// emitInitProse formats the GateResult into the friendly demo block.
-// Generated from the GateResult, not hardcoded, so future fixture
-// or L0 changes ripple correctly.
+// emitInitProse renders the demo block straight from the GateResult so L0 fixture changes ripple without a hand-edit here.
 func emitInitProse(w io.Writer, res schemas.GateResult) {
 	_, _ = fmt.Fprintln(w)
 	_, _ = fmt.Fprintln(w, "Running L0 gate against the demo to show you what regatta catches:")
@@ -253,9 +242,7 @@ func emitInitProse(w io.Writer, res schemas.GateResult) {
 	_, _ = fmt.Fprintln(w, "Done.")
 }
 
-// patternBlurbs maps a Trap Catalog pattern ID to its one-line summary.
-// Unknown IDs fall back via patternBlurb so future L0 patterns surface
-// noisily instead of crashing init.
+// patternBlurbs maps Trap Catalog pattern IDs to one-line summaries; unknown IDs fall back via patternBlurb so new L0 patterns never crash init.
 var patternBlurbs = map[string]string{
 	"P1":  "(deterministic gate before AI gate on destructive ops)",
 	"P2":  "(two-key approval on irreversible actions)",
@@ -280,7 +267,7 @@ func patternBlurb(p string) string {
 	return "(uncatalogued). See docs/incidents.md."
 }
 
-// emitInitJSON writes the structured envelope for --json mode.
+// emitInitJSON writes the --json mode envelope so callers can script `regatta init` output.
 func emitInitJSON(w io.Writer, written, skipped, overwritten []string, res schemas.GateResult) error {
 	type envelope struct {
 		Written     []string           `json:"written"`

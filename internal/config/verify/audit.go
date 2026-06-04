@@ -26,7 +26,7 @@ import (
 	"time"
 )
 
-// Config drives the audit.
+// Config names the GitHub repo + branch the audit interrogates; Token falls back to $GITHUB_TOKEN.
 type Config struct {
 	Owner  string
 	Repo   string
@@ -34,7 +34,7 @@ type Config struct {
 	Token  string // GitHub PAT or App installation token (read from GITHUB_TOKEN if empty)
 }
 
-// Result is the audit's structured outcome.
+// Result aggregates per-check verdicts; FailedOK lists the IDs callers should pipe into exit code 2.
 type Result struct {
 	OK       bool     `json:"ok"`
 	Checks   []Check  `json:"checks"`
@@ -47,8 +47,7 @@ const (
 	checkTitleCodeowners    = "CODEOWNERS parses cleanly"
 )
 
-// Check is one named assertion in the audit result. Emitted as JSON
-// alongside the Result that contains it.
+// Check is one named assertion in the audit; JSON-tagged so callers can render the report verbatim.
 type Check struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
@@ -57,7 +56,7 @@ type Check struct {
 	Rationale string `json:"rationale,omitempty"`
 }
 
-// Run executes the full audit and returns a structured Result.
+// Run executes every check sequentially; partial failure is captured in Result, not returned as error, so callers can render the full report.
 func Run(ctx context.Context, cfg Config) (Result, error) {
 	if cfg.Branch == "" {
 		cfg.Branch = "main"
