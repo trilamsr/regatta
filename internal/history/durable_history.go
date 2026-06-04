@@ -1,11 +1,8 @@
 // Package history exports DurableHistory — the typed interface
-// wrapping the substrate event log so callers append, tail, and
-// replay run histories through one boundary. Spec:
-// docs/engineer/specs/2026-06-02-s2-t1-w9-substrate-impl.md §3.
-//
-// Wave-1 slice: interface + types + substrate-backed Append.
-// Tail and Replay are reserved Phase X (§1 OUT + §11 F1/F2/F3); the
-// substrate impl returns ErrUnsupported until those waves land so
+// wrapping the substrate event log (spec
+// docs/engineer/specs/2026-06-02-s2-t1-w9-substrate-impl.md §3). Wave-1
+// ships Append; Tail and Replay are reserved Phase X (§1 OUT + §11
+// F1/F2/F3) — the substrate impl returns ErrUnsupported until then so
 // callers fail loud rather than silently observe nil channels.
 package history
 
@@ -16,9 +13,8 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// DurableHistory wraps substrate's append-only event log behind an
-// interface so the Phase X Temporal-backed impl drops in without an
-// API break. Substrate-default is the only impl shipping in Wave 1.
+// DurableHistory wraps substrate's append-only event log so the Phase X
+// Temporal-backed impl drops in without an API break.
 type DurableHistory interface {
 	Append(ctx context.Context, runID string, ev substrate.Event) error
 	Tail(ctx context.Context, runID string, since string) (<-chan substrate.Event, io.Closer, error)
@@ -62,11 +58,9 @@ type DiffResult struct {
 // DiffVerdict enumerates the three terminal outcomes per replayed event.
 type DiffVerdict string
 
+// Match / Divergent / ReplaySkipped are the three terminal verdicts.
 const (
-	// Match indicates canonical-JSON byte-equality between original and replayed.
-	Match DiffVerdict = "match"
-	// Divergent indicates at least one JSON-path key disagreement.
-	Divergent DiffVerdict = "divergent"
-	// ReplaySkipped indicates a non-deterministic kind or a quarantine-listed kind.
-	ReplaySkipped DiffVerdict = "replay_skipped"
+	Match         DiffVerdict = "match"          // canonical-JSON byte-equal.
+	Divergent     DiffVerdict = "divergent"      // ≥1 JSON-path key disagreement.
+	ReplaySkipped DiffVerdict = "replay_skipped" // non-deterministic or quarantine-listed kind.
 )

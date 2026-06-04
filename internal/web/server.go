@@ -10,25 +10,21 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// assetsFS embeds templates/ + static/ at build time per spec §3.8. Both
-// subdirs must contain at least one regular file or go:embed errors;
-// htmx-config.js + layout.tmpl + _flash.tmpl satisfy that pre-T5.
-//
-// `all:` prefix forces underscore-prefixed files (e.g. _flash.tmpl) into the
-// embed set; without it, Go's default rule excludes them.
+// assetsFS embeds templates/ + static/ at build time (spec §3.8). The
+// `all:` prefix forces underscore-prefixed files (e.g. _flash.tmpl)
+// into the embed set; without it, Go's default rule excludes them.
 //
 //go:embed all:templates all:static
 var assetsFS embed.FS
 
-// AssetsFS returns the embedded FS so cmd/regatta can LoadTemplates(AssetsFS())
+// AssetsFS returns the embedded FS so cmd/regatta can wire templates
 // without re-declaring the //go:embed directive in two places.
 func AssetsFS() fs.FS { return assetsFS }
 
-// Dependencies bundles the side-effect handles NewHandler needs. Shape mirrors
-// approval.Dependencies (W7.0 T1) so the seam is familiar across the surface.
-// RouteRegistrar is the T6 extension hook: T6's PR will pass a non-nil func
-// that mounts /approve/{approval_id}* on the sub-mux. Pre-T6 callers
-// (cmd/regatta/serve.go) pass nil and NewHandler nil-guards the call.
+// Dependencies bundles the side-effect handles NewHandler needs. Shape
+// mirrors approval.Dependencies (W7.0 T1). RouteRegistrar is the T6
+// extension hook for /approve/* sub-mux mounting; pre-T6 callers pass
+// nil and NewHandler nil-guards the call.
 type Dependencies struct {
 	DB             *state.DB
 	Keyring        approvaltoken.Keyring
@@ -38,29 +34,25 @@ type Dependencies struct {
 	RouteRegistrar func(mux *http.ServeMux, deps Dependencies)
 }
 
-// Config holds the boot-time knobs the handler reads. Kept narrow on purpose:
-// per spec §3.6.4 + R4, an Authorizer interface is over-design until W8 adds a
-// second auth caller.
+// Config holds the boot-time knobs the handler reads. Kept narrow on
+// purpose: per spec §3.6.4 + R4, an Authorizer interface is over-design
+// until W8 adds a second auth caller.
 type Config struct {
 	DecisionWindow time.Duration
 	PublicHost     string
 }
 
-// NewHandler builds the top-level http.Handler that cmd/regatta wires into
-// bootListener's mux. The returned handler is the SOLE entry point for UI
-// routes; it owns sub-mux dispatch + CSP middleware composition. T6's
-// RouteRegistrar extends the sub-mux without re-shaping Dependencies.
+// NewHandler is the sole entry point for UI routes; owns sub-mux
+// dispatch + CSP middleware composition. T6's RouteRegistrar extends
+// the sub-mux without re-shaping Dependencies.
 func NewHandler(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle(uiStaticPrefix, staticHandler())
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Spec §3.3 default Cache-Control: no-store on operator surfaces.
-		// /ui/static/* sets its own immutable cache above before delegating.
 		w.Header().Set("Cache-Control", noStoreCacheControl)
-		// mux.HandleFunc("/", ...) is the catch-all; narrow to the literal
-		// root so /foo etc. surface as 404 instead of pretending the layout
-		// is the page they asked for. T6 mounts /approve/* below via
-		// RouteRegistrar, so those paths win on the longest-prefix rule.
+		// Narrow the catch-all to literal root so /foo surfaces as 404
+		// instead of rendering the layout. T6 mounts /approve/* via
+		// RouteRegistrar; longest-prefix rule lets those win.
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
@@ -79,15 +71,13 @@ func NewHandler(deps Dependencies) http.Handler {
 	return CSPMiddleware(mux)
 }
 
-// staticHandler serves /ui/static/* from the embedded FS with the spec §3.3
-// immutable cache directive. http.StripPrefix unwinds the route prefix so
-// the FileServer sees plain filenames.
+// staticHandler serves /ui/static/* from the embedded FS with the
+// spec §3.3 immutable cache directive.
 func staticHandler() http.Handler {
 	sub, err := fs.Sub(assetsFS, staticDirName)
 	if err != nil {
-		// Should never fire — staticDirName matches the //go:embed directive.
-		// Falling back to a 500 keeps the handler buildable in tests that
-		// load a synthetic FS via LoadTemplates.
+		// staticDirName tracks the //go:embed directive — this branch
+		// is the test-FS escape hatch (LoadTemplates synthetic root).
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			http.Error(w, "static fs init: "+err.Error(), http.StatusInternalServerError)
 		})

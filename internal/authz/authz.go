@@ -1,8 +1,6 @@
 // Package authz owns the Authorizer seam — every gated handler routes
 // through Check(ctx, principal, action, resource) before mutating state.
-//
-// Interface born with TWO callers (web handler + CLI re-spawn) per spec
-// §3.1 — closes the W7 R4 "premature interface" deferral.
+// Born with two callers (web handler + CLI re-spawn) per spec §3.1.
 package authz
 
 import (
@@ -12,11 +10,11 @@ import (
 	"github.com/trilamsr/regatta/internal/web"
 )
 
-// Action enumerates gated operations evaluated by OPA. Spec §3.1.
+// Action enumerates gated operations evaluated by OPA (spec §3.1).
 type Action string
 
-// Spec §3.1 — 4 actions verbatim. SQL CHECK / Rego data-key parity is
-// the load-bearing invariant; do NOT rename without re-spawning design.
+// SQL CHECK / Rego data-key parity is the load-bearing invariant; do
+// NOT rename without re-spawning design.
 const (
 	ActionApprovalView   Action = "approval.view"
 	ActionApprovalDecide Action = "approval.decide"
@@ -28,10 +26,9 @@ const (
 // "tenant:<id>" for tenant-scoped ops. OPA inspects via input.resource.
 type Resource string
 
-// Decision is what OPA renders. Reason is the Rego policy's `reason`
-// binding — safe to surface in audit log + UI; not raw policy text.
-// PolicyRevision is the 8-char bundle SHA prefix (spec §3.7 R7 — full
-// SHA stays in the audit row to avoid OTel cardinality blowup).
+// Decision is the Rego eval result. Reason is safe to surface in
+// audit + UI. PolicyRevision is the 8-char bundle SHA prefix; full
+// SHA stays in the audit row (spec §3.7 R7).
 type Decision struct {
 	Allow          bool
 	Reason         string
@@ -39,13 +36,12 @@ type Decision struct {
 }
 
 // Authorizer is the seam consumed by web handlers and the CLI
-// approve-decide path. Both callers exist at birth (spec §3.1 line 96).
+// approve-decide path (spec §3.1 line 96).
 type Authorizer interface {
 	Check(ctx context.Context, p web.Principal, a Action, r Resource) (Decision, error)
 }
 
-// Sentinels — typed errors so callers errors.Is-match without string
-// compare. Naming verbatim from spec §3.1.
+// Sentinel errors so callers errors.Is-match without string compare.
 var (
 	ErrDenied          = errors.New("authz: denied")
 	ErrTenantUnknown   = errors.New("authz: tenant unknown")
@@ -53,6 +49,6 @@ var (
 	ErrPolicyEvalError = errors.New("authz: opa eval error")
 )
 
-// DefaultTenant is the canonical single-tenant slot — populated when a
-// signed payload's Tenant field is empty (spec §3.4.1 wire-back-compat).
+// DefaultTenant is the canonical single-tenant slot, used when a signed
+// payload's Tenant field is empty (spec §3.4.1 wire-back-compat).
 const DefaultTenant = "default"

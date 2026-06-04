@@ -30,172 +30,137 @@ import (
 )
 
 // CostGate is the scheduler-side seam to the cost-governor pre-call
-// deny primitive — exists so tests can inject fakes without pulling
-// in spend.Reader + substrate fixtures.
+// deny primitive — lets tests inject fakes without pulling in
+// spend.Reader + substrate fixtures.
 type CostGate interface {
 	Evaluate(ctx context.Context, scope gate.WorkItemScope) (gate.Verdict, error)
 }
 
-// CostGateResolver maps a planned work_item to its cost scope; ok=false
-// means out-of-scope (lane outside the cost regime).
+// CostGateResolver maps wi to its cost scope; ok=false means out-of-
+// scope (lane outside the cost regime).
 type CostGateResolver func(wi state.WorkItem) (gate.WorkItemScope, bool)
 
-// L4Gate is the scheduler-side seam to the adversarial-reviewer gate —
-// keeps the model adapter + prompt loader + OTel emitter transitive
-// deps invisible to scheduler tests. Spec §3.2 step 0.7.
+// L4Gate is the scheduler-side seam to the adversarial-reviewer gate
+// (spec §3.2 step 0.7); keeps the model adapter + prompt loader + OTel
+// emitter deps invisible to scheduler tests.
 type L4Gate interface {
 	Evaluate(ctx context.Context, cfg l4.Config, in l4.Input) (schemas.GateResult, error)
 }
 
-// L4GateResolver maps a planned work_item to its L4 scope (Config +
-// Input); ok=false means out-of-scope (e.g. doc-only PRs). Input
-// construction (diff vs base, scorecard extraction) lives in production
-// wiring so the scheduler stays policy-agnostic. Returning L4Scope
-// directly lets filter.Pass[L4Scope] consume the resolver without an
-// adapter wrapper (#704 R1).
+// L4GateResolver maps wi to its L4 scope; ok=false means out-of-scope.
+// Returning L4Scope directly lets filter.Pass[L4Scope] consume the
+// resolver without an adapter wrapper (#704 R1).
 type L4GateResolver func(wi state.WorkItem) (L4Scope, bool)
 
 // DowngradeHook surfaces a soft-cap-induced model swap to the spawner.
 // Nil is legal — soft-cap downgrades degrade to WARN-only.
 type DowngradeHook func(workItemID, model string)
 
-// EdgeEvaluator is defined here rather than imported from program to
-// avoid an import cycle: program imports orchestrator for predicate
-// sentinels and orchestrator imports scheduler. Schema is opaque (any)
-// because type-checking against OutputsSchema happens at brief-load
-// time (ValidateV2 in program), not at the runtime seam.
+// EdgeEvaluator is declared here rather than imported from program to
+// avoid an import cycle. Schema is opaque (any) because OutputsSchema
+// type-checks happen at brief-load (ValidateV2 in program), not at
+// the runtime seam.
 type EdgeEvaluator interface {
 	Eval(ctx context.Context, edge state.EdgeRow, schema any, journal state.OutputJournalEntry) (bool, string, error)
 }
 
 // OutputsSchemaResolver maps an upstream feature ID to the live
-// OutputsSchema; (nil, false) is treated as "no schema", matching the
-// runtime evaluator's contract.
+// OutputsSchema; (nil, false) means "no schema".
 type OutputsSchemaResolver func(featureID string) (any, bool)
 
-// HotspotResolver maps a work-item ID to the hotspot lock names it
-// touches. Empty slice is valid for items that touch no hotspots.
+// HotspotResolver maps a work-item ID to its hotspot lock names; empty
+// slice is valid.
 type HotspotResolver func(workItemID string) []string
 
-// ApprovalGate is the scheduler-side seam to the HITL gate — keeps the
-// gate's transitive deps (approvaltoken.Keyring, notifier, slog) invisible to
-// scheduler tests.
+// ApprovalGate is the scheduler-side seam to the HITL gate; keeps
+// approvaltoken.Keyring + notifier + slog invisible to scheduler tests.
 type ApprovalGate interface {
 	Evaluate(ctx context.Context, wi state.WorkItem, cfg approval.Config) (approval.Result, error)
 }
 
-// GateResolver maps a planned work_item to its approval gate config;
-// (_, false) means non-gated. Resolution policy (by-lane, by-tag,
-// predicate-CEL) lives in serve.go so the scheduler stays policy-agnostic.
+// GateResolver maps wi to its approval gate config; (_, false) means
+// non-gated. Resolution policy lives in serve.go so scheduler stays
+// policy-agnostic.
 type GateResolver func(wi state.WorkItem) (approval.Config, bool)
 
 // Config holds tunables derived from regatta.yaml at orchestrator
 // construction time.
 type Config struct {
-	// LaneCaps gives the max active agents per lane; missing lane means
-	// unlimited. Default lane uses the empty-string key.
+	// LaneCaps: max active agents per lane; missing = unlimited.
+	// Default lane uses the empty-string key.
 	LaneCaps map[string]int
 
-	// LockTTL is the heartbeat lease passed to TryAcquireLocks; a lock
-	// whose heartbeat is older than LockTTL may be stolen.
+	// LockTTL is the heartbeat lease for TryAcquireLocks; older locks
+	// may be stolen.
 	LockTTL time.Duration
 
 	// Hotspots resolves an item to its hotspot lock names; nil disables
-	// lock acquisition entirely.
+	// lock acquisition.
 	Hotspots HotspotResolver
 
-	// Evaluator runs CEL predicates; nil makes scheduler behave like its
-	// MVP-1 self (depends_on_features only). Shared across ticks so its
-	// compile cache survives.
+	// Evaluator runs CEL predicates; nil falls back to MVP-1 behaviour
+	// (depends_on_features only). Shared across ticks for compile cache.
 	Evaluator EdgeEvaluator
 
 	// OutputsSchemas resolves an upstream feature's OutputsSchema for
-	// runtime predicate eval. nil is legal; runtime evaluator does not
-	// consult schema (reserved for forward-compat).
+	// runtime predicate eval; nil is legal (schema is advisory).
 	OutputsSchemas OutputsSchemaResolver
 
-	// Logger is the structured-event sink; nil falls back to
-	// slog.Default() (spec §4.1).
+	// Logger nil falls back to slog.Default() (spec §4.1).
 	Logger *slog.Logger
 
-	// Gate evaluates the HITL approval gate-pass (spec §3.1 step 0.5);
-	// nil disables the pass.
-	Gate ApprovalGate
-
-	// GateResolver maps wi to gate config; nil disables the pass. Same
-	// semantics as Gate=nil so a half-wired runtime fails cleanly.
+	// Gate / GateResolver: spec §3.1 step 0.5 HITL approval gate-pass;
+	// either nil disables the pass so a half-wired runtime fails cleanly.
+	Gate         ApprovalGate
 	GateResolver GateResolver
 
-	// Tracer is the OTel tracer; nil falls back to otel.Tracer scoped
-	// to the global provider — noop until obs/otel.Setup runs.
+	// Tracer nil falls back to otel.Tracer on the global provider
+	// (noop until obs/otel.Setup runs).
 	Tracer trace.Tracer
 
-	// Meter is the OTel instrument factory; nil resolves lazily at
-	// ResolveMeter() so a global MeterProvider swap takes effect.
+	// Meter nil resolves lazily at ResolveMeter() so a global
+	// MeterProvider swap takes effect on the next call.
 	Meter metric.Meter
 
-	// CostGate evaluates the cost-governor pre-call deny gate (spec
-	// §3.2 step 0.6); nil short-circuits applyCostGovernor to identity
-	// for zero overhead.
-	CostGate CostGate
-
-	// CostGateResolver maps wi to cost scope; nil disables the pass.
+	// CostGate / CostGateResolver: spec §3.2 step 0.6 cost-governor
+	// pre-call deny gate; either nil short-circuits applyCostGovernor
+	// to identity (zero overhead).
+	CostGate         CostGate
 	CostGateResolver CostGateResolver
 
 	// OnDowngrade fires once per Evaluate that returns
 	// SoftCapBreached=true with a DowngradeTo target AND a scope that
-	// opted in via AllowDowngrade. Spawner-side ModelOverride consumer
-	// lands in Wave 2.
+	// opted in via AllowDowngrade.
 	OnDowngrade DowngradeHook
 
-	// L4Gate evaluates the adversarial-reviewer gate-pass (spec §3.2
-	// step 0.7); nil short-circuits applyL4Gate to identity.
-	L4Gate L4Gate
-
-	// L4GateResolver maps wi to L4 config + Input; nil disables the pass.
+	// L4Gate / L4GateResolver: spec §3.2 step 0.7 adversarial-reviewer
+	// gate-pass; either nil short-circuits applyL4Gate to identity.
+	L4Gate         L4Gate
 	L4GateResolver L4GateResolver
 
-	// CostCap is the global daily-spend ceiling (spec PHASE-AUTONOMY W5).
-	// Allow=false halts the entire tick BEFORE any per-scope gate runs.
-	// nil short-circuits applyCostCap to identity (zero overhead).
+	// CostCap is the global daily-spend ceiling (PHASE-AUTONOMY W5).
+	// Allow=false halts the whole tick BEFORE per-scope gates; nil
+	// short-circuits to identity.
 	CostCap CostCapGate
 
-	// Clock is the time source for tick + step latency measurement;
-	// nil falls back to time.Now (production wiring). Injection seam
-	// is the same shape as the rest of regatta (state.OpenWithClock,
-	// spawner.Config.Clock, web.Dependencies.Clock) so tests that
-	// already fix the state-layer clock can pin the scheduler's loop
-	// clock to the same instant for fully deterministic latency
-	// histograms.
+	// Clock nil falls back to time.Now. Injection seam mirrors
+	// state.OpenWithClock + spawner.Config.Clock so tests pin both
+	// layers to the same instant for deterministic latency histograms.
 	Clock func() time.Time
 
 	// MergeCoordinator + MergeWorker wire the gates_pass → auto-merge
-	// path (#612). Both nil = auto-merge disabled (--auto-merge=false
-	// default) so OnGatesPass becomes a no-op and the daemon stays
-	// operator-observable-equivalent to pre-c2.
+	// path (#612). Both nil = auto-merge disabled.
 	MergeCoordinator *merge.Coordinator
 	MergeWorker      *merge.Worker
 
-	// RecheckBackoffK is the per-orphan fetch-failure budget before the
-	// recheck gate enters its suppression window (#794). Zero falls back
-	// to the legacy K=3 default; values <1 clamp.
-	RecheckBackoffK int
-
-	// RecheckBackoffSuppressTicks is the recheck-gate suppression-window
-	// length once an orphan trips the K budget (#794). Zero falls back
-	// to the legacy N=10 default; values <1 clamp.
+	// RecheckBackoff*: orphan fetch-failure backoff knobs (#794). Zero
+	// picks legacy defaults (K=3, N=10, stale=20); sub-1 values clamp.
+	RecheckBackoffK             int
 	RecheckBackoffSuppressTicks int
-
-	// RecheckBackoffStaleTicks is the idle-eviction grace for sub-K
-	// entries — bounds map growth when a flapping orphan never reaches
-	// the K threshold (#794). Zero falls back to the default 20; values
-	// below K clamp.
-	RecheckBackoffStaleTicks int
+	RecheckBackoffStaleTicks    int
 }
 
-// ResolveMeter returns the configured meter or falls back lazily so a
-// global provider swap (e.g. test noop injection) takes effect on the
-// next call.
+// ResolveMeter returns Meter or a lazily-resolved global fallback.
 func (c Config) ResolveMeter() metric.Meter {
 	return obs.ResolveMeter(c.Meter, obs.MeterScopeScheduler)
 }
@@ -245,23 +210,21 @@ type schedulerDB interface {
 // Scheduler is single-caller: Tick must not run concurrently. The
 // orchestrator's Run loop owns the only call site and is flock-guarded
 // by PollOnce, so this holds without an explicit mutex. Admin commands
-// that want to peek at state must use read-only state.DB queries
-// rather than calling Tick.
+// MUST use read-only state.DB queries rather than calling Tick.
 type Scheduler struct {
 	db     schedulerDB
 	cfg    Config
 	log    *slog.Logger
 	tracer trace.Tracer
 
-	// tickLatency + stepDuration are the §3 row 4 / A-T3 histograms,
-	// pre-created so the hot path is a single Record() with no per-tick
-	// allocation.
+	// Pre-created (§3 row 4 / A-T3) so the hot path is a single
+	// Record() with no per-tick allocation.
 	tickLatency  metric.Float64Histogram
 	stepDuration metric.Float64Histogram
 
 	// multiDefaultLogged dedupes edge.multiple_defaults_per_from so a
 	// misconfigured brief logs once per (program_id, from_id) per
-	// scheduler-process lifetime rather than every tick.
+	// process — not every tick.
 	multiDefaultLogged sync.Map
 
 	// WriteHook is test-only — see
@@ -278,8 +241,7 @@ func New(db *state.DB, cfg Config) *Scheduler {
 	return newScheduler(db, cfg)
 }
 
-// newWithDB is the test-only constructor accepting the schedulerDB
-// interface so crash-injection tests can wrap *state.DB.
+// newWithDB lets crash-injection tests wrap *state.DB.
 func newWithDB(db schedulerDB, cfg Config) *Scheduler {
 	return newScheduler(db, cfg)
 }
@@ -305,8 +267,8 @@ func newScheduler(db schedulerDB, cfg Config) *Scheduler {
 	meter := cfg.ResolveMeter()
 	tickLatency, err := meter.Float64Histogram("regatta.scheduler.tick.latency_ms")
 	if err != nil {
-		// Construction failure on a noop or in-process SDK is
-		// unrecoverable here; fall back to noop so Tick stays hot.
+		// Fall back to noop so Tick stays hot when the SDK rejects
+		// histogram creation.
 		tickLatency, _ = obs.Meter(obs.MeterScopeSchedulerFallback).Float64Histogram("regatta.scheduler.tick.latency_ms")
 	}
 	stepDuration, err := meter.Float64Histogram("regatta.scheduler.tick.step_duration_ms")
@@ -320,9 +282,8 @@ func newScheduler(db schedulerDB, cfg Config) *Scheduler {
 	}
 }
 
-// activeStates lists agent states that count against a lane's cap.
-// Pending agents don't count (they're candidates, not active workers);
-// terminal states never count.
+// activeStates count against a lane's cap. Pending is a candidate,
+// not a worker; terminal states never count.
 var activeStates = []state.AgentState{
 	state.AgentSpawning,
 	state.AgentRunning,
@@ -332,17 +293,16 @@ var activeStates = []state.AgentState{
 	state.AgentGatesFailed,
 }
 
-// Tick performs one scheduling pass. Reads work_items via
-// ListSpawnable (universal-queue source of truth per spec §2.8),
-// applies the gate-pass chain (approval → cost → l4), then reserves
-// lanes + hotspot locks for survivors.
+// Tick performs one scheduling pass: ListSpawnable (universal-queue
+// source of truth, spec §2.8) → gate chain (approval → cost → l4) →
+// reserve lanes + hotspot locks for survivors.
 //
-// Per-agent reservation runs as a single sqlite tx — UpsertPending +
-// TryAcquireLocks + TransitionAgent commit atomically or roll back as
-// a unit (issue #88). Orphan-row safety is preserved via two paths:
-// ListSpawnable filters a.id IS NULL so a wi with any agent row stops
-// re-emitting, and ListAgentsByState(AgentPending) re-discovers any
-// agent upserted but not transitioned (lane-capped, hotspot-blocked).
+// Per-agent reservation is one sqlite tx (UpsertPending +
+// TryAcquireLocks + TransitionAgent commit atomically or roll back;
+// issue #88). Orphan-row safety: ListSpawnable filters a.id IS NULL
+// so wis with any agent row stop re-emitting, while
+// ListAgentsByState(AgentPending) re-discovers lane-capped /
+// hotspot-blocked upserts.
 func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 	tickStart := s.cfg.Clock()
 	defer func() {
@@ -383,10 +343,9 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 			spawnable = sp
 			return nil
 		}},
-		// gate_cost_cap runs BEFORE per-scope evaluation so a saturated
-		// 24h budget halts the entire tick — saves the approval/cost/l4
-		// passes their per-candidate work when nothing is going to spawn
-		// anyway. Spec PHASE-AUTONOMY W5 §5.
+		// Run cost-cap BEFORE per-scope evaluation: a saturated 24h
+		// budget halts the whole tick and saves the approval/cost/l4
+		// passes their per-candidate work (spec PHASE-AUTONOMY W5 §5).
 		{"gate_cost_cap", func() error {
 			spawnable = s.applyCostCap(ctx, spawnable)
 			return nil
@@ -399,8 +358,7 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 			spawnable = sp
 			return nil
 		}},
-		// gate_cost runs BEFORE l4 so we never pay model tokens for
-		// cost-denied wi.
+		// gate_cost before l4: never pay model tokens for cost-denied wi.
 		{"gate_cost", func() error {
 			sp, e := s.applyCostGovernor(ctx, spawnable)
 			if e != nil {
@@ -428,11 +386,9 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 			attempted = att
 			return e
 		}},
-		// persist: orphan re-reservation — lane-capped and lock-held
-		// pending rows from prior ticks (spec §3.2 step 0.9). Append
-		// any partial-progress before returning the error so an
-		// orphan-pass halt (e.g. reject CAS failure on the 3rd of 5
-		// orphans) does not discard the first two reservations (#703 R4).
+		// persist: orphan re-reservation (spec §3.2 step 0.9). Append
+		// partial progress before returning err so an orphan-pass halt
+		// does not discard earlier reservations (#703 R4).
 		{"persist", func() error {
 			rest, e := s.reserveOrphans(ctx, tc, occupancy, attempted)
 			reserved = append(reserved, rest...)
@@ -460,22 +416,19 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 	return reserved, nil
 }
 
-// tickCtx threads the per-tick WriteHook counter through Tick's
-// substrate-bound writes. Heap-once allocation cost is negligible vs.
-// sqlite-tx overhead.
+// tickCtx threads the per-tick WriteHook counter through substrate
+// writes; heap-once cost is negligible vs sqlite-tx overhead.
 type tickCtx struct{ writeIndex int }
 
-// writeHookErr wraps a non-nil WriteHook return so per-item err
-// swallow inside reserveFromSpawnable can errors.Is-detect the
-// crash-sim path and propagate it up. Production WriteHook=nil never
-// constructs this.
+// writeHookErr wraps a WriteHook return so per-item err swallow inside
+// reserveFromSpawnable can errors.Is-detect the crash-sim path.
+// Production WriteHook=nil never constructs this.
 type writeHookErr struct{ inner error }
 
 func (e *writeHookErr) Error() string { return "scheduler: write-hook aborted: " + e.inner.Error() }
 func (e *writeHookErr) Unwrap() error { return e.inner }
 
-// fireWriteHook is the test-only crash-injection seam (spec §3.3). Nil
-// hook short-circuits with one branch + one pointer-deref, no allocs.
+// fireWriteHook is the test-only crash-injection seam (spec §3.3).
 // writeIndex increments even when nil so counter meaning is
 // independent of test wiring.
 func (s *Scheduler) fireWriteHook(tc *tickCtx) error {

@@ -106,20 +106,15 @@ type Event struct {
 }
 
 // clockMu guards lastWrittenAt for the process-local monotonicity
-// check per spec §8 I2. The mutex scope is the AppendEvent critical
-// section; this is intentionally process-local — multi-host writers
+// check (spec §8 I2). Intentionally process-local — multi-host writers
 // are out of scope until W9 (UUIDv7 follow-up F6).
-//
-// Test seam: ResetClockForTesting() lets the test suite reset state
-// between cases without exporting the mutex itself.
 var (
 	clockMu       sync.Mutex
 	lastWrittenAt int64
 )
 
 // ResetClockForTesting resets the process-local monotonicity watermark.
-// Test-only; callers in production paths SHOULD NOT use this — the
-// watermark exists to catch clock regression.
+// Test-only — the watermark exists to catch clock regression.
 func ResetClockForTesting() {
 	clockMu.Lock()
 	lastWrittenAt = 0
@@ -152,11 +147,9 @@ func AppendEvent(ctx context.Context, tx *sql.Tx, e Event, key []byte, keyID str
 		clockMu.Unlock()
 		return fmt.Errorf("%w: got %d < watermark %d", ErrClockRegression, e.WrittenAt, lastWrittenAt)
 	}
-	// Bump watermark only on a successful insert path; defer the
-	// monotonicity commit until after the row lands. Hold the mutex
-	// for the whole AppendEvent body to serialize concurrent writers
-	// against the watermark — sqlite's single-writer pool already
-	// serializes at the SQL layer, so the lock cost is amortized.
+	// Hold the mutex for the whole body; bump watermark only after the
+	// row lands. sqlite's single-writer pool already serializes at the
+	// SQL layer, so the lock cost is amortized.
 	defer clockMu.Unlock()
 
 	if err := Sign(&e, key, keyID); err != nil {
@@ -183,10 +176,6 @@ func AppendEvent(ctx context.Context, tx *sql.Tx, e Event, key []byte, keyID str
 		e.SigAlg, e.SigKeyID, e.SigMAC,
 	)
 	if err != nil {
-		// modernc.org/sqlite surfaces UNIQUE violations as a generic
-		// error string; match on the substring sqlite emits. The
-		// alternative (PRAGMA-driven extended error codes) requires a
-		// driver-specific cast we'd rather not bind to.
 		if isUniqueNonceViolation(err) {
 			return fmt.Errorf("%w: %w", ErrReplay, err)
 		}
@@ -196,7 +185,6 @@ func AppendEvent(ctx context.Context, tx *sql.Tx, e Event, key []byte, keyID str
 	if e.WrittenAt > lastWrittenAt {
 		lastWrittenAt = e.WrittenAt
 	}
-	// T1 (OBS Wave-B): one atomic counter increment per appended row.
 	// Bumped post-INSERT so rejected rows do not double-count the
 	// validator's bounce path. Tag set is the closed-enum guarded
 	// `kind` only — `layer` is rolled up at Prom-query time from the
@@ -274,10 +262,9 @@ func AppendEventCanonicalized(ctx context.Context, tx *sql.Tx, e Event, preCanon
 }
 
 // payloadOrEmpty returns "{}" when PayloadJSON is empty so the schema
-// CHECK (length(payload_json) <= 1024) sees a valid JSON literal. Empty
-// payloads are a legitimate writer choice (heartbeat); the schema
-// DEFAULT '{}' covers omitted columns but Go's RawMessage zero value
-// is `nil` not `[]byte("{}")`.
+// CHECK (length(payload_json) <= 1024) sees a valid JSON literal. The
+// schema DEFAULT '{}' covers omitted columns, but RawMessage's zero
+// value is `nil` not `[]byte("{}")`.
 func payloadOrEmpty(p json.RawMessage) string {
 	if len(p) == 0 {
 		return "{}"
@@ -285,10 +272,8 @@ func payloadOrEmpty(p json.RawMessage) string {
 	return string(p)
 }
 
-// nullableString returns sql.NullString so the work_item_id column
-// (NULL allowed for run-level events) is set to NULL on empty input
-// rather than '' — the schema's NULL semantics distinguish "no
-// work_item" from "work_item with empty id".
+// nullableString returns NULL for empty input so the schema can
+// distinguish "no work_item" from "work_item with empty id".
 func nullableString(s string) any {
 	if s == "" {
 		return nil
@@ -296,10 +281,10 @@ func nullableString(s string) any {
 	return s
 }
 
-// isUniqueNonceViolation matches the modernc.org/sqlite UNIQUE-collision
-// error shape. The substring check is bound to the sqlite driver's
-// stable error text — the alternative (driver-internal sqlite3.Error
-// extended-code probe) couples us to a driver-private API.
+// isUniqueNonceViolation matches modernc.org/sqlite's UNIQUE-collision
+// error text. Substring probe binds to the driver's stable error
+// string — the alternative (driver-internal sqlite3.Error extended
+// code) couples us to a driver-private API.
 func isUniqueNonceViolation(err error) bool {
 	if err == nil {
 		return false
@@ -320,20 +305,16 @@ func isUniqueNonceViolation(err error) bool {
 // supersedes target's run_id). The check both rejects cross-run links
 // AND keeps the graph load bounded by per-run cardinality.
 func cycleCheck(ctx context.Context, tx *sql.Tx, runID, newID, supersedes string) error {
-	// Self-loop is the smallest possible cycle (newID -> newID). Catch
-	// it before the FK lookup; the FK would otherwise reject it as
+	// Catch self-loop before the FK lookup; the FK would reject it as
 	// "target not found" because newID has not been inserted yet, and
-	// that error masks the cycle-detection invariant the caller cares
-	// about.
+	// that error masks the cycle-detection invariant.
 	if newID == supersedes {
 		return fmt.Errorf("%w: self-loop (id == supersedes == %q)",
 			ErrSupersedesCycle, newID)
 	}
 
-	// Confirm supersedes target lives in the same run. Cross-run
-	// supersedes is forbidden per spec §8 R7 / §10 #3 — both because
-	// the Kahn's-scope contract is per-run and because cross-run
-	// causality is an audit-trail smell.
+	// Cross-run supersedes is forbidden (spec §8 R7 / §10 #3): Kahn's
+	// scope is per-run, and cross-run causality is an audit-trail smell.
 	var targetRun string
 	err := tx.QueryRowContext(ctx,
 		`SELECT run_id FROM substrate_events WHERE id = ?`, supersedes).Scan(&targetRun)
@@ -348,12 +329,9 @@ func cycleCheck(ctx context.Context, tx *sql.Tx, runID, newID, supersedes string
 			supersedes, targetRun, runID)
 	}
 
-	// Load existing edges (child -> parent via supersedes column) for
-	// this run. Treat (child, parent) as a directed edge from child to
-	// parent — i.e. "child supersedes parent". The new event introduces
-	// an edge (newID -> supersedes). A cycle exists iff the graph with
-	// the new edge has a node whose indegree never hits zero in Kahn's
-	// sweep.
+	// Load (child -> parent) edges via supersedes for this run; the
+	// new event adds (newID -> supersedes). A cycle exists iff some
+	// node's indegree never hits zero under Kahn's sweep.
 	rows, err := tx.QueryContext(ctx,
 		`SELECT id, supersedes FROM substrate_events
 		 WHERE run_id = ? AND supersedes IS NOT NULL`, runID)
@@ -386,25 +364,21 @@ func cycleCheck(ctx context.Context, tx *sql.Tx, runID, newID, supersedes string
 	if err := rows.Close(); err != nil {
 		return fmt.Errorf("substrate: cycle rows close: %w", err)
 	}
-	// Overlay the new edge: newID -> supersedes. newID may not exist
-	// yet (it's being inserted); supersedes must already exist (FK).
+	// newID may not exist yet (being inserted); supersedes must already
+	// exist (FK).
 	f := addNode(newID)
 	t := addNode(supersedes)
 	edges = append(edges, edge{from: f, to: t})
 
 	n := len(idx)
 	indeg := make([]int, n)
-	// Build adjacency in reverse: for Kahn's we need parents-of(child),
-	// then drain parents whose indegree hits 0. Easier: treat edge
-	// child -> parent as a "depends on" edge; parent must come BEFORE
-	// child in any topological order. So indeg[child]++ for each
-	// edge child -> parent; the "no remaining nodes" sweep starts
-	// from indeg == 0 leaves (parents nobody supersedes).
+	// Treat child->parent edges as "depends on": parent must come
+	// before child in any topo order. indeg[child]++ per edge; sweep
+	// starts from indeg==0 leaves (parents nobody supersedes).
 	for _, e := range edges {
 		indeg[e.from]++
 	}
-	// Reverse adjacency: parent -> children (so when parent drains,
-	// we can decrement its children's indegree).
+	// Reverse adjacency lets a drained parent decrement its children.
 	revAdj := make([][]int, n)
 	for _, e := range edges {
 		revAdj[e.to] = append(revAdj[e.to], e.from)
