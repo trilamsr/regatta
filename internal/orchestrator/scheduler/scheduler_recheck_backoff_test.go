@@ -130,3 +130,77 @@ func TestRecheckBackoff_WarnOnceOnEntry(t *testing.T) {
 		t.Fatalf("entered-backoff signal fired %d times; want exactly 1", warns)
 	}
 }
+
+// TestRecheckBackoff_RespectsConfigK_N asserts the config-driven K/N override fires backoff on the Kth strike with N-tick suppression (#794).
+func TestRecheckBackoff_RespectsConfigK_N(t *testing.T) {
+	b := newRecheckBackoffWithConfig(recheckBackoffConfig{K: 5, SuppressTicks: 7, StaleTicks: 20})
+	const id = "wi-1"
+	for i := 0; i < 4; i++ {
+		if !b.Admit(id) {
+			t.Fatalf("strike %d: Admit=false; want true (under K=5)", i)
+		}
+		if entered := b.RecordFailure(id); entered {
+			t.Fatalf("strike %d: enteredBackoff=true; want false (K=5 not yet hit)", i)
+		}
+	}
+	if !b.Admit(id) {
+		t.Fatalf("5th strike: Admit=false; want true (still under K=5 pre-record)")
+	}
+	if !b.RecordFailure(id) {
+		t.Fatalf("5th strike: enteredBackoff=false; want true (hits K=5)")
+	}
+	for i := 0; i < 7; i++ {
+		if b.Admit(id) {
+			t.Fatalf("admit at suppressed tick %d; want false until N=7 elapses", i)
+		}
+		b.Tick()
+	}
+	if !b.Admit(id) {
+		t.Fatalf("Admit=false after N=7 ticks elapsed; want true (re-admitted)")
+	}
+}
+
+// TestRecheckBackoff_DefaultsMatchLegacyConstants asserts the zero-value config produces K=3, N=10, stale=20 (#794).
+func TestRecheckBackoff_DefaultsMatchLegacyConstants(t *testing.T) {
+	b := newRecheckBackoffWithConfig(recheckBackoffConfig{})
+	if b.k != recheckBackoffDefaultK {
+		t.Fatalf("k=%d; want %d (default)", b.k, recheckBackoffDefaultK)
+	}
+	if b.suppressTicks != recheckBackoffDefaultSuppressTicks {
+		t.Fatalf("suppressTicks=%d; want %d (default)", b.suppressTicks, recheckBackoffDefaultSuppressTicks)
+	}
+	if b.staleTicks != recheckBackoffDefaultStaleTicks {
+		t.Fatalf("staleTicks=%d; want %d (default)", b.staleTicks, recheckBackoffDefaultStaleTicks)
+	}
+}
+
+// TestRecheckBackoff_StaleTicksEvictsIdleEntries asserts sub-K entries are evicted after stale ticks of inactivity (#794).
+func TestRecheckBackoff_StaleTicksEvictsIdleEntries(t *testing.T) {
+	b := newRecheckBackoffWithConfig(recheckBackoffConfig{K: 3, SuppressTicks: 10, StaleTicks: 4})
+	const id = "wi-1"
+	b.RecordFailure(id)
+	b.RecordFailure(id)
+	for i := 0; i < 4; i++ {
+		b.Tick()
+	}
+	b.mu.Lock()
+	_, present := b.entries[id]
+	b.mu.Unlock()
+	if present {
+		t.Fatalf("entry still present after stale=4 ticks of idleness; want evicted")
+	}
+}
+
+// TestRecheckBackoff_ConfigValidationClamps asserts invalid K/N/stale fall back to defaults (#794).
+func TestRecheckBackoff_ConfigValidationClamps(t *testing.T) {
+	b := newRecheckBackoffWithConfig(recheckBackoffConfig{K: 0, SuppressTicks: -1, StaleTicks: 1})
+	if b.k != recheckBackoffDefaultK {
+		t.Fatalf("k=%d; want %d (K=0 invalid, clamped to default)", b.k, recheckBackoffDefaultK)
+	}
+	if b.suppressTicks != recheckBackoffDefaultSuppressTicks {
+		t.Fatalf("suppressTicks=%d; want %d (N<1 invalid, clamped to default)", b.suppressTicks, recheckBackoffDefaultSuppressTicks)
+	}
+	if b.staleTicks < b.k {
+		t.Fatalf("staleTicks=%d < k=%d; want stale >= k (clamped)", b.staleTicks, b.k)
+	}
+}
