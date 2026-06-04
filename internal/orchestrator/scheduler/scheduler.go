@@ -400,14 +400,14 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 			return e
 		}},
 		// persist: orphan re-reservation — lane-capped and lock-held
-		// pending rows from prior ticks (spec §3.2 step 0.9).
+		// pending rows from prior ticks (spec §3.2 step 0.9). Append
+		// any partial-progress before returning the error so an
+		// orphan-pass halt (e.g. reject CAS failure on the 3rd of 5
+		// orphans) does not discard the first two reservations (#703 R4).
 		{"persist", func() error {
 			rest, e := s.reserveOrphans(ctx, tc, occupancy, attempted)
-			if e != nil {
-				return e
-			}
 			reserved = append(reserved, rest...)
-			return nil
+			return e
 		}},
 	}
 
