@@ -28,3 +28,9 @@ package.json
 # tools/sloth/version pin; never committed — the pin file is the
 # source of truth).
 tools/sloth/bin/
+
+# Local env file holding secrets (ANTHROPIC_API_KEY, GH_TOKEN, etc).
+# Template in .env.example; real values never committed.
+.env
+.env.*
+!.env.example
