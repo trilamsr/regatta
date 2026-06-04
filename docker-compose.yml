@@ -18,6 +18,14 @@
 # machines. Root-in-container was rejected: drops the distroless security
 # posture.
 #
+# OS scope: the chown step is load-bearing only on Linux container hosts,
+# where named-volume ownership is a real on-disk uid. On Docker Desktop
+# (macOS / Windows) the VM translates ownership via the gRPC-FUSE / virtiofs
+# share, so the volume is writable by uid 65532 with or without the init
+# step. Running the init service on Docker Desktop is harmless (no-op
+# chown) and keeps a single compose file across both hosts. See
+# https://docs.docker.com/desktop/troubleshoot-and-support/faqs/macfaqs/#permissions-errors-on-data-directories-for-shared-volumes.
+#
 # Quickstart:
 #   docker compose up -d
 #   open http://localhost:3000   # Grafana — admin / admin
