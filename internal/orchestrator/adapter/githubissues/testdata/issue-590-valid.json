@@ -1,0 +1,7 @@
+{
+  "number": 590,
+  "title": "ITEM-590: implement adapter listing",
+  "body": "Free-form description prose.\n\n<!--regatta\nlane: server\ndependencies: ITEM-588, ITEM-589\nlinked_artifact: docs/rfc/590.md\n-->\n\n<!-- regatta-dedup-key: deadbeef -->\n\n## Acceptance criteria\n\n- [planned] c1: First criterion text\n- [planned] c2: Second criterion text\n",
+  "labels": ["autonomous", "source:operator"],
+  "updatedAt": "2026-06-04T12:00:00Z"
+}

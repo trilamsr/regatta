@@ -159,3 +159,25 @@ func (c *httpGitHubClient) CommentOnIssue(ctx context.Context, number int, body 
 	_ = resp.Body.Close()
 	return nil
 }
+
+// ListIssuesByLabelPaginated is the gh-CLI-backed method the github_issues
+// spec adapter (MVR-1-T4) relies on; the HTTP alarm-webhook client does
+// not produce work items and returns ErrAdapterUnsupported so a misrouted
+// caller fails loud instead of receiving an empty page.
+func (c *httpGitHubClient) ListIssuesByLabelPaginated(_ context.Context, _ string, _ ghclient.ListIssuesOpts) ([]ghclient.Issue, error) {
+	return nil, fmt.Errorf("%w: ListIssuesByLabelPaginated", ErrGitHub)
+}
+
+// GetIssue mirrors ListIssuesByLabelPaginated — alarm-webhook's HTTP
+// path does not consume single issues, so the github_issues adapter
+// wires a gh-CLI-backed Client at boot rather than reusing this one.
+func (c *httpGitHubClient) GetIssue(_ context.Context, _ int) (ghclient.Issue, error) {
+	return ghclient.Issue{}, fmt.Errorf("%w: GetIssue", ErrGitHub)
+}
+
+// EditIssueBody is the dedup-key backfill seam github_issues uses; the
+// HTTP alarm-webhook client returns ErrGitHub so accidental wiring is
+// loud rather than silently dropping the backfill write.
+func (c *httpGitHubClient) EditIssueBody(_ context.Context, _ int, _ string) error {
+	return fmt.Errorf("%w: EditIssueBody", ErrGitHub)
+}

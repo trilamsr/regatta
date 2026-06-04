@@ -19,6 +19,10 @@ import (
 // SpecAdapterTypeMarkdownCatalog mirrors the CUE discriminator; cmd/regatta uses it to decide whether spec_adapter.root is meaningful.
 const SpecAdapterTypeMarkdownCatalog = "markdown_catalog"
 
+// SpecAdapterTypeGitHubIssues mirrors the CUE discriminator for the
+// MVR-1-T4 github_issues adapter; cmd/regatta wires it when set.
+const SpecAdapterTypeGitHubIssues = "github_issues"
+
 // LoadFile reads path and runs LoadBytes on its contents.
 func LoadFile(path string) error {
 	data, err := os.ReadFile(path)
@@ -72,9 +76,18 @@ type Prompts struct {
 // Config is the Go form of a validated regatta.yaml; only fields callers reach into are surfaced. Schema authority: contracts/schemas/regatta.v1.cue.
 type Config struct {
 	Prompts      *Prompts      `yaml:"prompts,omitempty" json:"prompts,omitempty"`
+	Repo         *Repo         `yaml:"repo,omitempty" json:"repo,omitempty"`
 	SpecAdapter  *SpecAdapter  `yaml:"spec_adapter,omitempty" json:"spec_adapter,omitempty"`
 	Safety       *Safety       `yaml:"safety,omitempty" json:"safety,omitempty"`
 	AlarmWebhook *AlarmWebhook `yaml:"alarm_webhook,omitempty" json:"alarm_webhook,omitempty"`
+}
+
+// Repo mirrors `regatta.yaml::repo`; owner+name pair the github_issues adapter (MVR-1-T4) anchors SourceRef.Locator against.
+type Repo struct {
+	Host          string `yaml:"host,omitempty" json:"host,omitempty"`
+	Owner         string `yaml:"owner,omitempty" json:"owner,omitempty"`
+	Name          string `yaml:"name,omitempty" json:"name,omitempty"`
+	DefaultBranch string `yaml:"default_branch,omitempty" json:"default_branch,omitempty"`
 }
 
 // AlarmWebhook is the typed view of `regatta.yaml::alarm_webhook`; empty ListenAddr ⇒ in-process receiver disabled.
@@ -105,11 +118,15 @@ type Authz struct {
 	ReloadFsnotify *bool `yaml:"reload_fsnotify,omitempty" json:"reload_fsnotify,omitempty"`
 }
 
-// SpecAdapter is the typed view of `regatta.yaml::spec_adapter`; only the markdown_catalog discriminator + Root field land in Go today.
+// SpecAdapter is the typed view of `regatta.yaml::spec_adapter`; per-type fields are unioned and zero for the non-matching type.
 type SpecAdapter struct {
 	Type string `yaml:"type" json:"type"`
 	// Root is the markdown_catalog directory containing `.regatta/items/*.md`; CUE-defaulted to "." for the self-host layout. Empty for non-markdown_catalog types.
 	Root string `yaml:"root,omitempty" json:"root,omitempty"`
+	// Selector is the github_issues label selector (MVR-1-T4); empty for non-github_issues types.
+	Selector string `yaml:"selector,omitempty" json:"selector,omitempty"`
+	// AcceptanceSection overrides the github_issues H2 anchor; empty falls back to the package default.
+	AcceptanceSection string `yaml:"acceptance_section,omitempty" json:"acceptance_section,omitempty"`
 }
 
 // PlannerPromptSHA returns the operator-pinned planner-prompt sha256; nil-safe at every level. Empty when unpinned.

@@ -1,0 +1,7 @@
+{
+  "number": 591,
+  "title": "ITEM-591: bare issue without acceptance section",
+  "body": "Body without an Acceptance criteria H2.\n\n<!-- regatta-dedup-key: feedface -->\n",
+  "labels": ["autonomous", "source:operator"],
+  "updatedAt": "2026-06-04T12:00:00Z"
+}

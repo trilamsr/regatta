@@ -1,0 +1,7 @@
+{
+  "number": 594,
+  "title": "ITEM-594: shell-meta in body",
+  "body": "Description with `; rm -rf /` and $(whoami) embedded.\n\n<!--regatta\nlane: server\n-->\n\n<!-- regatta-dedup-key: dddd4444 -->\n\n## Acceptance criteria\n\n- [planned] c1: criterion containing `cat /etc/passwd`\n",
+  "labels": ["autonomous", "source:operator"],
+  "updatedAt": "2026-06-04T12:00:00Z"
+}

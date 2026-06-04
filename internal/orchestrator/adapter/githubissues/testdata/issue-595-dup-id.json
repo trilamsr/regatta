@@ -1,0 +1,7 @@
+{
+  "number": 595,
+  "title": "DUP-1: collision peer B",
+  "body": "Body B.\n\n<!-- regatta-dedup-key: bbbb2222 -->\n\n## Acceptance criteria\n\n- [planned] c1: text\n",
+  "labels": ["autonomous", "source:operator"],
+  "updatedAt": "2026-06-04T12:00:00Z"
+}
