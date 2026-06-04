@@ -99,7 +99,7 @@ func TestBridge_RecordsFanToBoth(t *testing.T) {
 	lp, mem := newTestProvider()
 	t.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
 
-	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", obsotel.WithLoggerProvider(lp))
+	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", lp)
 	lg := slog.New(bridge)
 
 	lg.Info(string(obs.EventTickStarted), string(obs.KeyProgramID), "prog-1")
@@ -144,7 +144,7 @@ func TestBridge_AttachesTraceID(t *testing.T) {
 	t.Cleanup(func() { _ = tp.Shutdown(context.Background()) })
 	tracer := tp.Tracer("bridge-test")
 
-	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", obsotel.WithLoggerProvider(lp))
+	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", lp)
 	lg := slog.New(bridge)
 
 	ctx, span := tracer.Start(context.Background(), "unit")
@@ -174,7 +174,7 @@ func TestBridge_Concurrent_RaceClean(t *testing.T) {
 	lp, mem := newTestProvider()
 	t.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
 
-	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", obsotel.WithLoggerProvider(lp))
+	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", lp)
 	lg := slog.New(bridge)
 
 	var wg sync.WaitGroup
@@ -202,7 +202,7 @@ func TestBridge_PreservesObsEventNames(t *testing.T) {
 	lp, mem := newTestProvider()
 	t.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
 
-	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", obsotel.WithLoggerProvider(lp))
+	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", lp)
 	lg := slog.New(bridge)
 
 	names := obs.AllEventNames()
@@ -240,7 +240,7 @@ func TestBridge_WithAttrsPropagatesToBothLegs(t *testing.T) {
 	lp, mem := newTestProvider()
 	t.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
 
-	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", obsotel.WithLoggerProvider(lp))
+	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", lp)
 	lg := slog.New(bridge).With(slog.String(string(obs.KeyLane), "default"))
 
 	lg.Info(string(obs.EventTickStarted))
@@ -274,7 +274,7 @@ func TestBridge_WithGroupPropagatesToBothLegs(t *testing.T) {
 	lp, mem := newTestProvider()
 	t.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
 
-	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", obsotel.WithLoggerProvider(lp))
+	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", lp)
 	lg := slog.New(bridge).WithGroup("attrs").With(slog.String(string(obs.KeyReason), "test"))
 
 	lg.Info(string(obs.EventTickCompleted))
@@ -296,7 +296,7 @@ func TestBridge_NilPrimary_FallsBackToTextHandler(t *testing.T) {
 	lp, mem := newTestProvider()
 	t.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
 
-	bridge := obsotel.NewBridgeHandler(nil, "regatta-test", obsotel.WithLoggerProvider(lp))
+	bridge := obsotel.NewBridgeHandler(nil, "regatta-test", lp)
 	lg := slog.New(bridge)
 
 	// Must not panic.
@@ -315,7 +315,7 @@ func TestObsBridge_CostReconcileFailing_RoutesToOTel(t *testing.T) {
 	lp, mem := newTestProvider()
 	t.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
 
-	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", obsotel.WithLoggerProvider(lp))
+	bridge := obsotel.NewBridgeHandler(primary, "regatta-test", lp)
 	lg := slog.New(bridge)
 
 	const wantReason = "upstream_down"

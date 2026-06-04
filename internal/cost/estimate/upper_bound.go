@@ -15,12 +15,6 @@ import (
 	"github.com/trilamsr/regatta/internal/cost/pricing"
 )
 
-// Estimator is the seam Gate uses to price a pending call. Interface
-// shape so T1 can mock without pulling the real pricing table.
-type Estimator interface {
-	Estimate(ctx context.Context, model string, inputTokens, maxTokens int64, hint Hint) (float64, error)
-}
-
 // Hint lets the planner override (input, max). A non-zero field
 // overrides; zero value means "use the caller-supplied parameter".
 type Hint struct {

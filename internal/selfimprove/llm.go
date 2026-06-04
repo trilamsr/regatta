@@ -15,19 +15,17 @@ import (
 // upgrade cannot silently 10x the bill.
 const MaxLLMTokens = 4000
 
-// LLMClient is the seam over the Anthropic API. Tests fake it; the
-// production wiring lives behind a build tag so non-LLM builds (CI,
-// hermetic test envs) stay zero-dep.
-type LLMClient interface {
-	Complete(ctx context.Context, prompt string, maxTokens int) (string, error)
-}
+// LLMComplete is the function shape the Anthropic API call satisfies.
+// Tests pass a closure; production wiring lives behind a build tag so
+// non-LLM builds (CI, hermetic test envs) stay zero-dep.
+type LLMComplete func(ctx context.Context, prompt string, maxTokens int) (string, error)
 
 // LLMScanner runs the nightly path: build the digest prompt, call
 // Haiku with a hard token cap, write the YAML proposal to disk for
 // operator review. Per spec §3.1 + §7.2 it NEVER files issues — that
 // invariant is guarded by TestLLMScanner_NeverAutoFiles_OnlyWritesYAML.
 type LLMScanner struct {
-	Client    LLMClient
+	Client    LLMComplete
 	OutputDir string
 	Clock     func() time.Time
 }
@@ -49,7 +47,7 @@ func (s *LLMScanner) Scan(ctx context.Context, digest string, promptTemplate str
 	}
 
 	prompt := fmt.Sprintf("%s\n\nDIGEST:\n%s\n", promptTemplate, digest)
-	raw, err := s.Client.Complete(ctx, prompt, MaxLLMTokens)
+	raw, err := s.Client(ctx, prompt, MaxLLMTokens)
 	if err != nil {
 		return "", fmt.Errorf("selfimprove: llm complete: %w", err)
 	}

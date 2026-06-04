@@ -10,10 +10,10 @@ import (
 	"github.com/trilamsr/regatta/internal/ghclient"
 )
 
-type fakeSource struct{ events []Event }
-
-func (f *fakeSource) Fetch(_ context.Context, _ time.Time, _ []string) ([]Event, error) {
-	return f.events, nil
+func fakeSource(events []Event) EventFetcher {
+	return func(_ context.Context, _ time.Time, _ []string) ([]Event, error) {
+		return events, nil
+	}
 }
 
 type fakeGH struct {
@@ -54,7 +54,7 @@ func buildGateFailEvents() []Event {
 
 // TestDetector_DedupSha256_SkipsDuplicate asserts a second scan with an existing dedup-key body comments not creates.
 func TestDetector_DedupSha256_SkipsDuplicate(t *testing.T) {
-	src := &fakeSource{events: buildGateFailEvents()}
+	src := fakeSource(buildGateFailEvents())
 	gh := newFakeGH(nil)
 	d := &Detector{Rules: DefaultRules(), Source: src, GH: gh, Label: LabelSelfImprovement, Apply: true, Clock: func() time.Time { return fixedNow }}
 
@@ -105,7 +105,7 @@ func TestDetector_PauseAllEventFilteredOut(t *testing.T) {
 
 // TestDetector_DryRun_FilesNothing asserts apply=false skips all GH writes.
 func TestDetector_DryRun_FilesNothing(t *testing.T) {
-	src := &fakeSource{events: buildGateFailEvents()}
+	src := fakeSource(buildGateFailEvents())
 	gh := newFakeGH(nil)
 	d := &Detector{Rules: DefaultRules(), Source: src, GH: gh, Label: LabelSelfImprovement, Apply: false, Clock: func() time.Time { return fixedNow }}
 
@@ -123,7 +123,7 @@ func TestDetector_DryRun_FilesNothing(t *testing.T) {
 
 // TestDetector_ApplyMode_FilesIssues asserts apply=true writes issues with dedup-key in body.
 func TestDetector_ApplyMode_FilesIssues(t *testing.T) {
-	src := &fakeSource{events: buildGateFailEvents()}
+	src := fakeSource(buildGateFailEvents())
 	gh := newFakeGH(nil)
 	d := &Detector{Rules: DefaultRules(), Source: src, GH: gh, Label: LabelSelfImprovement, Apply: true, Clock: func() time.Time { return fixedNow }}
 
@@ -139,38 +139,35 @@ func TestDetector_ApplyMode_FilesIssues(t *testing.T) {
 	}
 }
 
-type stubLLM struct {
-	gotMax int
-	resp   string
-	err    error
-}
-
-func (s *stubLLM) Complete(_ context.Context, _ string, maxTokens int) (string, error) {
-	s.gotMax = maxTokens
-	return s.resp, s.err
+func stubLLM(resp string, err error, gotMax *int) LLMComplete {
+	return func(_ context.Context, _ string, maxTokens int) (string, error) {
+		if gotMax != nil {
+			*gotMax = maxTokens
+		}
+		return resp, err
+	}
 }
 
 // TestLLMScanner_BudgetCap_StaysUnderMaxTokens asserts the hard 4000-token cap is passed verbatim.
 func TestLLMScanner_BudgetCap_StaysUnderMaxTokens(t *testing.T) {
-	llm := &stubLLM{resp: "rules: []\n"}
+	var gotMax int
 	dir := t.TempDir()
-	s := &LLMScanner{Client: llm, OutputDir: dir, Clock: func() time.Time { return fixedNow }}
+	s := &LLMScanner{Client: stubLLM("rules: []\n", nil, &gotMax), OutputDir: dir, Clock: func() time.Time { return fixedNow }}
 	if _, err := s.Scan(context.Background(), "digest data", "prompt template"); err != nil {
 		t.Fatalf("scan: %v", err)
 	}
-	if llm.gotMax != MaxLLMTokens {
-		t.Fatalf("want max_tokens=%d, got %d", MaxLLMTokens, llm.gotMax)
+	if gotMax != MaxLLMTokens {
+		t.Fatalf("want max_tokens=%d, got %d", MaxLLMTokens, gotMax)
 	}
-	if llm.gotMax > 4000 {
-		t.Fatalf("budget cap exceeded: %d > 4000", llm.gotMax)
+	if gotMax > 4000 {
+		t.Fatalf("budget cap exceeded: %d > 4000", gotMax)
 	}
 }
 
 // TestLLMScanner_NeverAutoFiles_OnlyWritesYAML asserts the LLM path never receives a GH client.
 func TestLLMScanner_NeverAutoFiles_OnlyWritesYAML(t *testing.T) {
-	llm := &stubLLM{resp: "rules:\n  - name: foo\n"}
 	dir := t.TempDir()
-	s := &LLMScanner{Client: llm, OutputDir: dir, Clock: func() time.Time { return fixedNow }}
+	s := &LLMScanner{Client: stubLLM("rules:\n  - name: foo\n", nil, nil), OutputDir: dir, Clock: func() time.Time { return fixedNow }}
 	path, err := s.Scan(context.Background(), "digest", "prompt")
 	if err != nil {
 		t.Fatalf("scan: %v", err)
@@ -182,9 +179,8 @@ func TestLLMScanner_NeverAutoFiles_OnlyWritesYAML(t *testing.T) {
 
 // TestLLMScanner_PropagatesClientError asserts a complete-error surfaces as an error and writes nothing.
 func TestLLMScanner_PropagatesClientError(t *testing.T) {
-	llm := &stubLLM{err: errors.New("boom")}
 	dir := t.TempDir()
-	s := &LLMScanner{Client: llm, OutputDir: dir, Clock: func() time.Time { return fixedNow }}
+	s := &LLMScanner{Client: stubLLM("", errors.New("boom"), nil), OutputDir: dir, Clock: func() time.Time { return fixedNow }}
 	if _, err := s.Scan(context.Background(), "digest", "prompt"); err == nil {
 		t.Fatal("want error, got nil")
 	}

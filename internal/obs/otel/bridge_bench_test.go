@@ -82,7 +82,7 @@ func BenchmarkBridge_Handle_BothLegs(b *testing.B) {
 			lp, _ := newBenchProvider()
 			b.Cleanup(func() { _ = lp.Shutdown(context.Background()) })
 
-			bridge := obsotel.NewBridgeHandler(primary, "regatta-bench", obsotel.WithLoggerProvider(lp))
+			bridge := obsotel.NewBridgeHandler(primary, "regatta-bench", lp)
 			lg := slog.New(bridge)
 			ctx := context.Background()
 

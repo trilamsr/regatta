@@ -24,21 +24,15 @@ import (
 	"github.com/trilamsr/regatta/internal/cost/spend"
 )
 
-// CohortReader is the seam the History estimator consumes. *spend.Reader
-// satisfies it; tests can stub without touching the substrate. Per-row
-// micro-USD shape tracks the spend.Reader contract (#554 — ledger is
-// integer-canonical, float boundary at the percentile read).
-type CohortReader interface {
-	CohortSpends(ctx context.Context, tenantID, operatorID, model string, period time.Duration) ([]spend.USDMicro, error)
-}
-
 // HistoryConfig wires a History estimator. Reader is the cohort-spend
-// source. Fallback is the cold-start estimator (UpperBound behind a
-// gate.Estimator adapter in production wiring). MinSamples gates
-// engagement; 10 per spec §10 S1 + issue #238 acceptance. Period scopes
-// the recency window; defaults to 1h matching gate.SafetyCost.period().
+// source (concrete *spend.Reader — Wave E inlined the prior CohortReader
+// seam since only spend.Reader satisfied it and no test fake exists).
+// Fallback is the cold-start estimator (UpperBound behind a gate.Estimator
+// adapter in production wiring). MinSamples gates engagement; 10 per spec
+// §10 S1 + issue #238 acceptance. Period scopes the recency window;
+// defaults to 1h matching gate.SafetyCost.period().
 type HistoryConfig struct {
-	Reader     CohortReader
+	Reader     *spend.Reader
 	Fallback   gate.Estimator
 	MinSamples int
 	Period     time.Duration
