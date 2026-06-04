@@ -1,4 +1,4 @@
-**Status: Draft design, pre-implementation. Schemas and fixture-corpus contracts are normative; the binary follows.**
+**Status: Phase MVR-1 self-host. Single-tenant, single-operator, single-repo, CLI-only. Schemas and fixture-corpus contracts are normative; the binary tracks them.**
 
 # Regatta
 
@@ -34,7 +34,9 @@ mid-2026.
   one — encode "done" first.
 - Repos that auto-merge without human review. Regatta requires a
   human-merge layer (L6); rubber-stamping breaks the safety model.
-- Teams that need to ship today. This is a design doc, not a binary.
+- Teams that need a hosted multi-tenant SaaS today. Regatta is
+  single-tenant, single-operator, self-hosted; multi-tenant scoping
+  is deferred to Phase X.
 
 ## How it works
 
@@ -138,24 +140,26 @@ the most load-bearing.
   `substrate_events`. Temporal-backed variant deferred to Phase X.
 
 - **Orchestrator skeleton.** `regatta serve` runs a daemon backed by
-  a sqlite state store (`modernc.org/sqlite`) that implements four of
-  the nine responsibilities in `docs/design.md` §Orchestrator shape:
+  a sqlite state store (`modernc.org/sqlite`) that implements the
+  responsibilities in `docs/design.md` §Orchestrator shape:
   the SpecWatcher (markdown_catalog adapter reading
   `<root>/.regatta/items/*.md`), the Scheduler with sorted-lock
   hotspot acquisition and per-lane concurrency caps, the
   `ClaudeSpawner` that shells `claude` per work item into per-agent
-  worktrees (`internal/orchestrator/spawner/claude.go`), and the
-  approval-gate Reaper. The state machine in `docs/design.md` §State,
-  persistence, recovery is enforced in `internal/orchestrator/state`;
-  crash recovery requeues dead agents on startup. `--tick-once` runs a
-  single poll+schedule cycle for CI smoke tests. PRWatcher,
-  RejectionRouter, CanaryInjector, SupervisorLimits (cgroups / rlimits),
+  worktrees (`internal/orchestrator/spawner/claude.go`), the
+  approval-gate Reaper, PRWatcher
+  (`internal/orchestrator/prwatch/`), and RejectionRouter
+  (`internal/orchestrator/rejectionrouter/`). The state machine in
+  `docs/design.md` §State, persistence, recovery is enforced in
+  `internal/orchestrator/state`; crash recovery requeues dead agents
+  on startup. `--tick-once` runs a single poll+schedule cycle for CI
+  smoke tests. CanaryInjector, SupervisorLimits (cgroups / rlimits),
   and LessonCapture are deferred to follow-up commits.
 
 ## Next steps
 
 1. **Expand the L0 fixture corpus toward the 200-fixture target.**
-   Currently at ~75 fixtures under `testdata/gates/l0/`.
+   Currently at ~88 fixtures under `testdata/gates/l0/`.
 2. **`regatta validate-spec`.** Connect to the configured `SpecAdapter`,
    list ready work items, surface NFC + invisible-glyph cleanliness,
    verify the dependency DAG.
