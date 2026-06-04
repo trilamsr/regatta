@@ -226,6 +226,51 @@ Rollback procedure for a bad-pricing PR is in
 cost-governor-incidents (`docs/engineer/runbooks/cost-governor-incidents.md`,
 lands in #300) §"Pricing-table rollback".
 
+### Anthropic response-shape pin — quarterly drift check
+
+The reconciler decodes the Anthropic Cost + Usage API responses into
+`CostBucket` / `UsageBucket` (`internal/cost/reconcile/client.go`).
+Unknown JSON fields are silently ignored by `encoding/json`, so a
+field rename in a future `anthropic-version` bump (e.g. `cost_usd` →
+`cost_amount_usd`) would zero out `actualUSD` and hide drift alerts
+(#277).
+
+`internal/cost/reconcile/schema_pin.go` declares the expected field
+set; two pin tests (`TestReconciler_SchemaPin_FieldSetMatchesDeclared`,
+`TestReconciler_SchemaPin_FixtureMatchesSchemaPin`) fail closed when
+the decoder structs OR the testdata fixtures drift from the pin.
+
+**Cadence: quarterly + ad-hoc on every Anthropic `anthropic-version`
+header bump.**
+
+Step-by-step.
+
+1. Export `ANTHROPIC_ADMIN_KEY` for an admin-scoped key (read access
+   to `/v1/organizations/cost_report/messages` +
+   `/v1/organizations/usage_report/messages`).
+2. Fetch one cost + one usage response for the most recent closed
+   hour:
+   ```
+   curl -sS -H "anthropic-version: 2023-06-01" -H "x-api-key: $ANTHROPIC_ADMIN_KEY" \
+     "https://api.anthropic.com/v1/organizations/cost_report/messages?starting_at=YYYY-MM-DDTHH:00:00Z&ending_at=YYYY-MM-DDTHH:59:59Z&bucket_width=1h&group_by[]=model" \
+     | jq . > /tmp/cost-live.json
+   ```
+   Repeat with `usage_report` for `/tmp/usage-live.json`.
+3. Diff the field set against `internal/cost/reconcile/testdata/anthropic_cost_2026_06_01_01h.json`
+   and `..._usage_...json`:
+   ```
+   jq -r '.data[0] | keys[]' /tmp/cost-live.json | sort > /tmp/live.keys
+   jq -r '.data[0] | keys[]' internal/cost/reconcile/testdata/anthropic_cost_2026_06_01_01h.json | sort > /tmp/fixture.keys
+   diff /tmp/fixture.keys /tmp/live.keys
+   ```
+4. On any diff: update `expectedCostBucketFields` /
+   `expectedUsageBucketFields` in `schema_pin.go`, the matching
+   decoder struct tags in `client.go`, and the testdata fixture —
+   atomically in one PR.
+5. CI re-runs the two pin tests; both green confirms the round-trip
+   is intact before any reconciler tick lands against the renamed
+   field.
+
 ### `pricing_override_path` — escape hatch for forked rates
 
 The default refresh-via-PR flow is the right answer for ≥95% of
