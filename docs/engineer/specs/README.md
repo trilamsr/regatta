@@ -73,11 +73,7 @@ Pre-fetch skeletons gated behind a Phase X reopen-trigger (per `docs/engineer/br
 
 ## Shipped
 
-Specs whose implementation has landed; retained for archaeology.
-
-- [`2026-06-02-fix-195-jti-persistence.md`](2026-06-02-fix-195-jti-persistence.md) — Fix #195 — Persist per-JTI `token_minted` rows so reaper revocation is reachable — Persist per-JTI `token_minted` rows so reaper revocation reaches the event log. Landed via #332.
-- [`2026-06-03-scheduler-filter-helper-consolidation.md`](2026-06-03-scheduler-filter-helper-consolidation.md) — Scheduler filter-helper consolidation (closes #251) — Consolidate `applyApprovalGates` / `applyCostGovernor` / `applyL4Gate` into shared `filter.Apply` helper. No runtime change. Landed via #698.
-- [`2026-06-04-scheduler-filter-monomorphization-bench.md`](2026-06-04-scheduler-filter-monomorphization-bench.md) — Scheduler filter.Apply monomorphization bench (closes #753) — Measure ns/op + B/op + allocs/op for the 3 `filter.Apply[Scope]` instantiation sites and capture stripped `cmd/regatta` binary size as a baseline for monomorphization cost (closes #753).
+_None._
 
 ## Superseded
 
