@@ -344,7 +344,7 @@ func TestPlistRender_EnvFile_OverrideWinsOverDefault(t *testing.T) {
 
 // TestPlistRender_EnvFile_RejectsShellMetacharacters asserts env-file paths with shell metachars are rejected.
 func TestPlistRender_EnvFile_RejectsShellMetacharacters(t *testing.T) {
-	for _, bad := range []string{`/tmp/x"$(rm)"`, "/tmp/x\nFOO=BAR"} {
+	for _, bad := range []string{`/tmp/x"$(rm)"`, "/tmp/x\nFOO=BAR", `/tmp/x\evil/env`} {
 		opts, _ := newDarwinOpts(t)
 		opts.DryRun = true
 		opts.EnvFile = bad

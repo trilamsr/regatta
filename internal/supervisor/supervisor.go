@@ -313,11 +313,12 @@ func resolveDarwinEnvFile(opts Options, home string) string {
 
 // sanitizeEnvFile rejects characters that would break out of the
 // double-quoted shell sourcing string in the plist wrapper — `"`, `$`,
-// backtick, newline, null. Paths with spaces are fine because we
-// double-quote.
+// backtick, newline, null, plus `\` for parity with sanitizeShellPath
+// (asymmetry was the root cause of #859). Paths with spaces are fine
+// because we double-quote.
 func sanitizeEnvFile(p string) error {
-	if strings.ContainsAny(p, "\"$`\n\x00") {
-		return fmt.Errorf("env-file path %q contains a shell metacharacter (one of \" $ ` newline null) that would break the launchd sourcing wrapper", p)
+	if strings.ContainsAny(p, "\"$`\n\x00\\") {
+		return fmt.Errorf("env-file path %q contains a shell metacharacter (one of \" $ ` \\ newline null) that would break the launchd sourcing wrapper", p)
 	}
 	return nil
 }
