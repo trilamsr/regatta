@@ -143,11 +143,72 @@ case_preserves_outside() {
   if [ -z "$fail_reason" ]; then ok "$name"; else fail "$name" "$fail_reason"; fi
 }
 
+# TestGenBootStatus_EscapesHostileTitles asserts triple-backtick + leading-pipe
+# titles render without breaking markdown structure downstream.
+case_escapes_hostile_titles() {
+  local name="escapes triple-backtick + leading-pipe in titles"
+  local dir
+  dir=$(mktemp -d)
+  cp "$FIXTURE" "$dir/prompt.md"
+  mkdir -p "$dir/bin"
+  cat > "$dir/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "pr list")
+    cat <<'JSON'
+[{"number":900,"title":"fix ```code``` block break","mergedAt":"2026-06-04T01:08:09Z"},
+ {"number":901,"title":"|leading pipe corrupts table","mergedAt":"2026-06-04T01:08:09Z"}]
+JSON
+    ;;
+  "issue list")
+    echo "[]"
+    ;;
+  *) exit 2 ;;
+esac
+STUB
+  chmod +x "$dir/bin/gh"
+  PATH="$dir/bin:$PATH" bash "$GEN" --prompt "$dir/prompt.md" >/dev/null 2>&1
+  local content
+  content=$(cat "$dir/prompt.md")
+  local fail_reason=""
+  echo "$content" | grep -qF '```code```' && \
+    fail_reason="${fail_reason}triple-backtick survived unescaped; "
+  echo "$content" | grep -qF '#900' || fail_reason="${fail_reason}PR #900 missing; "
+  echo "$content" | grep -qF '#901' || fail_reason="${fail_reason}PR #901 missing; "
+  # Bullet for #901 must escape leading pipe: "- #901 \|..."
+  echo "$content" | grep -qFe '- #901 \|' || \
+    fail_reason="${fail_reason}leading pipe not escaped; "
+  rm -rf "$dir"
+  if [ -z "$fail_reason" ]; then ok "$name"; else fail "$name" "$fail_reason"; fi
+}
+
+# TestGenBootStatus_FailsWhenGhFails asserts gh non-zero exit propagates
+# (instead of being silently swallowed into a "[]" empty payload).
+case_fails_when_gh_fails() {
+  local name="propagates gh failure rather than silently writing empty block"
+  local dir
+  dir=$(mktemp -d)
+  cp "$FIXTURE" "$dir/prompt.md"
+  mkdir -p "$dir/bin"
+  cat > "$dir/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+echo "gh: auth required" >&2
+exit 4
+STUB
+  chmod +x "$dir/bin/gh"
+  PATH="$dir/bin:$PATH" bash "$GEN" --prompt "$dir/prompt.md" >/dev/null 2>&1
+  local got=$?
+  rm -rf "$dir"
+  if [ "$got" -ne 0 ]; then ok "$name"; else fail "$name" "expected non-zero exit on gh failure"; fi
+}
+
 case_replaces_shipped
 case_replaces_priority
 case_idempotent
 case_missing_markers
 case_preserves_outside
+case_escapes_hostile_titles
+case_fails_when_gh_fails
 
 echo
 if [ "$fails" -gt 0 ]; then

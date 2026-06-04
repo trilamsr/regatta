@@ -3,16 +3,6 @@
 # autonomous-session boot prompt from live gh queries. Kills the per-wave
 # hand-edit tax called out in feedback_boot_prompt_per_wave_refresh.
 #
-# What it does:
-#   1. Queries `gh pr list --state merged` since cutoff date (default 7 days).
-#   2. Queries `gh issue list --state open` for tracking issues; optionally
-#      filtered by --label.
-#   3. Splices the rendered bullet lists between marker pairs in the prompt:
-#         <!-- BEGIN auto-shipped --> ... <!-- END auto-shipped -->
-#         <!-- BEGIN auto-priority --> ... <!-- END auto-priority -->
-#      Anything outside the markers is preserved byte-for-byte.
-#   4. Idempotent: a second run on the same gh output produces no diff.
-#
 # Flags:
 #   --prompt <file>     prompt file to update (default:
 #                       docs/engineer/autonomous-session-prompt.md)
@@ -41,7 +31,7 @@ while [ $# -gt 0 ]; do
     --limit-prs)     limit_prs="$2";     shift 2 ;;
     --limit-issues)  limit_issues="$2";  shift 2 ;;
     -h|--help)
-      sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "gen-boot-status: unknown flag: $1" >&2; exit 2 ;;
@@ -49,7 +39,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -z "$since" ]; then
-  # Default: 7 days ago. macOS/BSD date and GNU date differ on flag syntax.
+  # macOS/BSD date and GNU date differ on flag syntax.
   if date -v-7d +%Y-%m-%d >/dev/null 2>&1; then
     since=$(date -v-7d +%Y-%m-%d)
   else
@@ -62,8 +52,7 @@ if [ ! -f "$prompt" ]; then
   exit 2
 fi
 
-# Guard rails: refuse to splice if either marker pair is missing. Better to
-# fail loudly than silently produce a no-op.
+# Refuse to splice if either marker pair is missing — fail loud over silent no-op.
 need_markers=(
   "<!-- BEGIN auto-shipped -->"
   "<!-- END auto-shipped -->"
@@ -77,56 +66,73 @@ for m in "${need_markers[@]}"; do
   fi
 done
 
-# --- Queries ---------------------------------------------------------------
-# gh prints JSON arrays; python3 turns them into deterministic bullet lists.
-
+# gh failures propagate via set -e; an empty `[]` payload is a legitimate
+# zero-result. Silencing stderr here would mask auth/network failures.
 shipped_json=$(gh pr list \
   --state merged \
   --search "merged:>$since" \
   --json number,title,mergedAt \
-  -L "$limit_prs" 2>/dev/null || echo "[]")
+  -L "$limit_prs")
 
 if [ -n "$label" ]; then
   priority_json=$(gh issue list \
     --state open \
     --label "$label" \
     --json number,title,labels \
-    -L "$limit_issues" 2>/dev/null || echo "[]")
+    -L "$limit_issues")
 else
   priority_json=$(gh issue list \
     --state open \
     --json number,title,labels \
-    -L "$limit_issues" 2>/dev/null || echo "[]")
+    -L "$limit_issues")
 fi
 
-# --- Render ----------------------------------------------------------------
+# JSON passes through env vars — interpolating into a Python string literal
+# would let a PR title containing ''' or \ escape into arbitrary code.
 render_shipped() {
-  python3 - <<PY
-import json, sys
-data = json.loads('''$shipped_json''' or '[]')
-# Sort by PR number ascending — stable irrespective of mergedAt jitter.
+  SHIPPED_JSON="$shipped_json" python3 - <<'PY'
+import json, os
+
+def sanitize(s):
+    # Triple-backtick in a list bullet breaks fenced-code detection downstream;
+    # leading `|` collides with GFM table parsing.
+    s = (s or "").replace("\n", " ").strip()
+    s = s.replace("```", "``")
+    if s.startswith("|"):
+        s = "\\" + s
+    return s
+
+data = json.loads(os.environ.get("SHIPPED_JSON") or "[]")
 data.sort(key=lambda r: r.get("number", 0))
 if not data:
     print("- _No merged PRs in window._")
 else:
     for r in data:
         n = r.get("number", 0)
-        title = (r.get("title") or "").replace("\n", " ").strip()
+        title = sanitize(r.get("title"))
         print(f"- #{n} {title}")
 PY
 }
 
 render_priority() {
-  python3 - <<PY
-import json, sys
-data = json.loads('''$priority_json''' or '[]')
+  PRIORITY_JSON="$priority_json" python3 - <<'PY'
+import json, os
+
+def sanitize(s):
+    s = (s or "").replace("\n", " ").strip()
+    s = s.replace("```", "``")
+    if s.startswith("|"):
+        s = "\\" + s
+    return s
+
+data = json.loads(os.environ.get("PRIORITY_JSON") or "[]")
 data.sort(key=lambda r: r.get("number", 0))
 if not data:
     print("- _No open priority issues._")
 else:
     for r in data:
         n = r.get("number", 0)
-        title = (r.get("title") or "").replace("\n", " ").strip()
+        title = sanitize(r.get("title"))
         labels = ",".join(sorted(l.get("name","") for l in (r.get("labels") or [])))
         suffix = f" [{labels}]" if labels else ""
         print(f"- #{n} {title}{suffix}")
@@ -136,25 +142,21 @@ PY
 shipped_block=$(render_shipped)
 priority_block=$(render_priority)
 
-# --- Splice ----------------------------------------------------------------
-# Python single-pass splice keeps marker lines intact and replaces only the
-# bytes between them. Anything outside the marker pairs is preserved.
-new_content=$(python3 - "$prompt" <<PY
-import sys, io
+new_content=$(SHIPPED_BLOCK="$shipped_block" PRIORITY_BLOCK="$priority_block" \
+  python3 - "$prompt" <<'PY'
+import os, sys
 path = sys.argv[1]
 with open(path, "r", encoding="utf-8") as fh:
     text = fh.read()
 
-shipped = """$shipped_block"""
-priority = """$priority_block"""
+shipped = os.environ.get("SHIPPED_BLOCK", "")
+priority = os.environ.get("PRIORITY_BLOCK", "")
 
 def splice(text, begin, end, payload):
     i = text.find(begin)
     j = text.find(end, i)
     if i < 0 or j < 0:
         raise SystemExit(f"missing markers: {begin} / {end}")
-    # Preserve the BEGIN line + a single trailing newline before payload,
-    # and the END line as-is. Payload is sandwiched on its own lines.
     head = text[: i + len(begin)]
     tail = text[j:]
     return head + "\n" + payload.rstrip("\n") + "\n" + tail
@@ -165,7 +167,7 @@ sys.stdout.write(text)
 PY
 )
 
-# Write only if content changed — preserves mtime when boot status stable.
+# Skip write when stable — preserves mtime + lets callers grep for change signal.
 current=$(cat "$prompt")
 if [ "$current" = "$new_content" ]; then
   echo "gen-boot-status: $prompt already up to date"
