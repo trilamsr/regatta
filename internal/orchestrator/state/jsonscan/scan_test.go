@@ -4,6 +4,12 @@ import (
 	"strings"
 	"testing"
 
+	// Blank-import rapid so the test binary registers -rapid.checks; the
+	// repo-wide `make property-test` runs that flag across every package
+	// under ./internal/orchestrator/state/... and unknown-flag aborts here
+	// would block pre-push-check even though jsonscan itself has no rapid tests.
+	_ "pgregory.net/rapid"
+
 	"github.com/trilamsr/regatta/internal/orchestrator/state/jsonscan"
 )
 
@@ -62,7 +68,12 @@ func TestScan_EscapedBackslash(t *testing.T) {
 // TestScan_UnicodeEscape asserts \u escapes pass through verbatim per impl note (#795).
 func TestScan_UnicodeEscape(t *testing.T) {
 	var got []string
-	if err := jsonscan.Scan([]byte(`["A"]`), func(s []byte) {
+	// IDs never carry \uXXXX in our system; Unescape drops the leading
+	// backslash and keeps subsequent bytes verbatim — pin the
+	// non-standard JSON behavior so future refactors don't silently
+	// "fix" it without updating callers.
+	raw := []byte("[\"\\u0041\"]")
+	if err := jsonscan.Scan(raw, func(s []byte) {
 		got = append(got, string(s))
 	}); err != nil {
 		t.Fatalf("Scan: %v", err)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state/cycle"
+	"github.com/trilamsr/regatta/internal/orchestrator/state/jsonscan"
 )
 
 // ErrCycleDetected re-exports cycle.ErrCycleDetected so existing
@@ -119,7 +120,7 @@ func (d *DB) CycleCheck(ctx context.Context, candidate WorkItem) error {
 			continue
 		}
 		var deps []string
-		if err := scanJSONStrings(depsJSON, func(s []byte) {
+		if err := jsonscan.Scan(depsJSON, func(s []byte) {
 			deps = append(deps, string(s))
 		}); err != nil {
 			_ = rows.Close()
@@ -132,80 +133,6 @@ func (d *DB) CycleCheck(ctx context.Context, candidate WorkItem) error {
 	}
 	adj[candidate.ID] = append([]string(nil), candidate.DependsOnFeatures...)
 	return cycle.Check(adj, candidate.ID)
-}
-
-// scanJSONStrings walks a JSON array of strings (the shape
-// depends_on_features always carries) and invokes f on each unquoted
-// element. Avoids json.Unmarshal's per-element string allocation —
-// the byte slice handed to f aliases the input buffer and must not
-// be retained past f's return. Supports the standard JSON escapes
-// (\", \\) that the upstream marshaler might emit; non-string array
-// elements return an error.
-func scanJSONStrings(raw []byte, f func(s []byte)) error {
-	i := 0
-	for i < len(raw) && (raw[i] == ' ' || raw[i] == '\t' || raw[i] == '\n' || raw[i] == '\r') {
-		i++
-	}
-	if i >= len(raw) || raw[i] != '[' {
-		// Empty deps store as '[]'; treat anything malformed as a
-		// hard error rather than silently dropping edges.
-		if i >= len(raw) {
-			return nil
-		}
-		return fmt.Errorf("expected '[', got %q", raw[i])
-	}
-	i++
-	for i < len(raw) {
-		for i < len(raw) && (raw[i] == ' ' || raw[i] == '\t' || raw[i] == '\n' || raw[i] == '\r' || raw[i] == ',') {
-			i++
-		}
-		if i >= len(raw) || raw[i] == ']' {
-			return nil
-		}
-		if raw[i] != '"' {
-			return fmt.Errorf("expected '\"', got %q at offset %d", raw[i], i)
-		}
-		i++
-		start := i
-		hasEscape := false
-		for i < len(raw) && raw[i] != '"' {
-			if raw[i] == '\\' {
-				hasEscape = true
-				i += 2
-				continue
-			}
-			i++
-		}
-		if i >= len(raw) {
-			return fmt.Errorf("unterminated string")
-		}
-		if !hasEscape {
-			f(raw[start:i])
-		} else {
-			// Escapes are rare in our IDs (F-uuid charset); fall
-			// back to a small allocation on this path.
-			unesc := unescapeJSON(raw[start:i])
-			f(unesc)
-		}
-		i++
-	}
-	return nil
-}
-
-// unescapeJSON handles the two escapes our marshaler can emit for
-// dep IDs (\" and \\). Anything else is passed through verbatim —
-// IDs in our system never contain unicode escapes.
-func unescapeJSON(s []byte) []byte {
-	out := make([]byte, 0, len(s))
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\\' && i+1 < len(s) {
-			out = append(out, s[i+1])
-			i++
-			continue
-		}
-		out = append(out, s[i])
-	}
-	return out
 }
 
 // MaxUpdatedAtForBriefChildren returns the largest updated_at across
