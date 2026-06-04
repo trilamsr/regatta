@@ -10,10 +10,7 @@ import (
 	"testing"
 )
 
-// TestL4Adapter_SystemPromptMarkedEphemeralCache asserts the request payload
-// places the static prefix in a top-level `system` array block with
-// cache_control=ephemeral, and the dynamic per-PR data in the user message
-// without cache_control (#852).
+// TestL4Adapter_SystemPromptMarkedEphemeralCache asserts cache_control=ephemeral on system block + uncached dynamic user content (#852).
 func TestL4Adapter_SystemPromptMarkedEphemeralCache(t *testing.T) {
 	var got map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -126,6 +123,42 @@ func TestL4Adapter_SystemPromptMarkedEphemeralCache(t *testing.T) {
 		}
 	default:
 		t.Fatalf("payload.messages[0].content: unexpected type %T", content)
+	}
+}
+
+// TestL4Adapter_CacheTokensSurfaced asserts cache_read + cache_creation tokens land on InvokeResponse for hit-ratio measurement (#852).
+func TestL4Adapter_CacheTokensSurfaced(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{
+			"content": [{"type":"text","text":"{\"verdict\":\"pass\",\"findings\":[]}"}],
+			"stop_reason": "end_turn",
+			"usage": {
+				"input_tokens": 20,
+				"output_tokens": 10,
+				"cache_read_input_tokens": 800,
+				"cache_creation_input_tokens": 0
+			}
+		}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	a := &AnthropicAdapter{APIKey: "k", BaseURL: srv.URL, Client: srv.Client()}
+	resp, err := a.Invoke()(context.Background(), InvokeRequest{
+		Model:    "m",
+		Input:    Input{Diff: "d"},
+		MaxChars: DefaultMaxDiffChars,
+	})
+	if err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if resp.TokensCacheRead != 800 {
+		t.Errorf("TokensCacheRead: got %d, want 800", resp.TokensCacheRead)
+	}
+	if resp.TokensCacheWrite != 0 {
+		t.Errorf("TokensCacheWrite: got %d, want 0", resp.TokensCacheWrite)
+	}
+	if resp.TokensIn != 20 {
+		t.Errorf("TokensIn: got %d, want 20", resp.TokensIn)
 	}
 }
 

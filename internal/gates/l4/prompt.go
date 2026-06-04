@@ -14,6 +14,12 @@ import (
 //go:embed prompts/adversarial.tmpl
 var adversarialTmpl string
 
+// cacheBreakpointMarker splits the static cacheable prefix from the
+// PR-specific dynamic suffix in adversarial.tmpl. The Anthropic adapter
+// emits the prefix as a `system` block tagged with cache_control so
+// repeat L4 calls hit the prompt cache (#852).
+const cacheBreakpointMarker = "<<<REGATTA_L4_CACHE_BREAKPOINT>>>"
+
 // active is the live prompt slot served by RenderPrompt + PromptSHA.
 // atomic.Pointer is the hot-reload swap primitive shared with W8
 // (internal/authz). Initialized at package init from the embed.FS;
@@ -21,9 +27,10 @@ var adversarialTmpl string
 var active atomic.Pointer[promptSlot]
 
 type promptSlot struct {
-	body string
-	sha  string
-	tmpl *template.Template
+	body   string
+	sha    string
+	tmpl   *template.Template
+	static string
 }
 
 func init() {
@@ -43,10 +50,15 @@ func parseSlot(body string) (*promptSlot, error) {
 		return nil, err
 	}
 	sum := sha256.Sum256([]byte(body))
+	static := body
+	if idx := strings.Index(body, cacheBreakpointMarker); idx >= 0 {
+		static = strings.TrimRight(body[:idx], "\n")
+	}
 	return &promptSlot{
-		body: body,
-		sha:  "sha256:" + hex.EncodeToString(sum[:]),
-		tmpl: t,
+		body:   body,
+		sha:    "sha256:" + hex.EncodeToString(sum[:]),
+		tmpl:   t,
+		static: static,
 	}, nil
 }
 
@@ -78,7 +90,28 @@ func RenderPrompt(in Input, maxChars int) (string, string, error) {
 	if err := slot.tmpl.Execute(&buf, view); err != nil {
 		return "", "", fmt.Errorf("l4 prompt: render: %w", err)
 	}
-	return buf.String(), slot.sha, nil
+	out := strings.Replace(buf.String(), cacheBreakpointMarker+"\n", "", 1)
+	out = strings.Replace(out, cacheBreakpointMarker, "", 1)
+	return out, slot.sha, nil
+}
+
+// RenderPromptSplit returns the static cacheable prefix (system block)
+// and the dynamic per-PR suffix (user message) separately so the
+// Anthropic adapter can tag the prefix with cache_control=ephemeral
+// for prompt-cache reuse across PRs (#852). The SHA still pins the
+// full concatenated body so audit-replay stays exact.
+func RenderPromptSplit(in Input, maxChars int) (string, string, string, error) {
+	slot := active.Load()
+	full, sha, err := RenderPrompt(in, maxChars)
+	if err != nil {
+		return "", "", "", err
+	}
+	if slot.static == slot.body || slot.static == "" {
+		return "", full, sha, nil
+	}
+	dyn := strings.TrimPrefix(full, slot.static)
+	dyn = strings.TrimLeft(dyn, "\n")
+	return slot.static, dyn, sha, nil
 }
 
 // PromptSHA exposes the active template SHA so callers stamping
