@@ -89,6 +89,13 @@ linters:
       # obscure that the literal is the schema-pinned token.
       - path: internal/program/.*\.go
         linters: [goconst]
+      # internal/orchestrator/state/transitions/tables.go is pure data —
+      # each string IS the state.AgentState / WorkItemStatus enum token
+      # verbatim. Extracting constants would either duplicate the enum
+      # (drift risk) or pull state into this subpackage (one-direction
+      # rule break per spec §4.2). Lookup callers use string(enum).
+      - path: internal/orchestrator/state/transitions/.*\.go
+        linters: [goconst]
       - path: internal/program/handoff\.go
         linters: [gosec]
         text: "G304|G602"

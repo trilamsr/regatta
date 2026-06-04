@@ -1,7 +1,11 @@
 // Package transitions tests — pure data tables, no DB.
 package transitions
 
-import "testing"
+import (
+	"testing"
+
+	"pgregory.net/rapid"
+)
 
 // TestAgentEdges_TerminalsHaveNoOutgoing pins terminal-set invariant for the agent FSM (#795 T3).
 func TestAgentEdges_TerminalsHaveNoOutgoing(t *testing.T) {
@@ -101,4 +105,24 @@ func TestWorkItemEdges_NoUnknownStateKey(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestAgentEdges_DestKeysExistAsSources_Property asserts every dest state appears as a source key (#795 T3).
+func TestAgentEdges_DestKeysExistAsSources_Property(t *testing.T) {
+	rapid.Check(t, func(rt *rapid.T) {
+		src := rapid.SampledFrom(keys(AgentEdges)).Draw(rt, "src")
+		for dst := range AgentEdges[src] {
+			if _, ok := AgentEdges[dst]; !ok {
+				rt.Errorf("dest state %q (from %q) missing as source key", dst, src)
+			}
+		}
+	})
+}
+
+func keys(m map[string]map[string]struct{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }
