@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/orchestrator/state/transitions"
 )
 
 // Agent is the in-memory view of a row in the agents table.
@@ -20,56 +22,6 @@ type Agent struct {
 	RejectionCount int
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
-}
-
-// transitions encodes the valid edges from docs/design.md §378.
-// Self-edges and idempotent re-applies are allowed where useful (e.g.
-// pending→pending lets the spec watcher upsert without bookkeeping).
-var transitions = map[AgentState]map[AgentState]struct{}{
-	AgentPending: {
-		AgentPending:   {},
-		AgentSpawning:  {},
-		AgentWithdrawn: {},
-	},
-	AgentSpawning: {
-		AgentRunning: {},
-		AgentCrashed: {},
-	},
-	AgentRunning: {
-		AgentPROpen:  {},
-		AgentCrashed: {},
-	},
-	AgentPROpen: {
-		AgentGatesRunning: {},
-		AgentWithdrawn:    {},
-		AgentCrashed:      {},
-	},
-	AgentGatesRunning: {
-		AgentAwaitingMerge: {},
-		AgentGatesFailed:   {},
-		AgentCrashed:       {},
-	},
-	AgentGatesFailed: {
-		AgentRunning:   {},
-		AgentEscalated: {},
-		AgentWithdrawn: {},
-	},
-	AgentAwaitingMerge: {
-		AgentDone:      {},
-		AgentWithdrawn: {},
-		// AgentCrashed lets merge-recovery requeue agents whose merge
-		// intent never materialized (PR closed unmerged, branch SHA
-		// diverged, or merge call lost between intent + completion).
-		// Crashed→Pending re-uses the existing requeue path so the
-		// work_item can be re-driven without a bespoke recovery state
-		// (PHASE AUTONOMY §11 W2 c0).
-		AgentCrashed: {},
-	},
-	// Terminal states have no outgoing edges.
-	AgentDone:      {},
-	AgentWithdrawn: {},
-	AgentCrashed:   {AgentPending: {}}, // requeue on recovery
-	AgentEscalated: {},
 }
 
 // AgentMutation carries the fields TransitionAgent may overwrite as
@@ -313,11 +265,11 @@ func (d *DB) TransitionAgentTx(ctx context.Context, tx *sql.Tx, id int64, next A
 	if err != nil {
 		return nil, err
 	}
-	allowed, ok := transitions[a.State]
+	allowed, ok := transitions.AgentEdges[string(a.State)]
 	if !ok {
 		return nil, fmt.Errorf("%w: unknown source state %q", ErrInvalidTransition, a.State)
 	}
-	if _, ok := allowed[next]; !ok {
+	if _, ok := allowed[string(next)]; !ok {
 		return nil, fmt.Errorf("%w: %s → %s", ErrInvalidTransition, a.State, next)
 	}
 

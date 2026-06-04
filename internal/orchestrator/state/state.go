@@ -25,7 +25,7 @@ const CurrentSchemaVersion int64 = 17
 // AgentState mirrors the state-machine in docs/design.md §378.
 type AgentState string
 
-// AgentPending and siblings are the closed enum the scheduler's transitions() table edge-checks — adding a value without updating transitions() silently breaks invariants.
+// AgentPending and siblings are the closed enum transitions.AgentEdges edge-checks — adding a value without updating that map silently breaks invariants.
 const (
 	AgentPending       AgentState = "pending"
 	AgentSpawning      AgentState = "spawning"
@@ -41,7 +41,7 @@ const (
 )
 
 // ErrInvalidTransition — TransitionAgent would violate the edges
-// defined in transitions().
+// defined in transitions.AgentEdges.
 var ErrInvalidTransition = errors.New("state: invalid agent transition")
 
 // ErrLockHeld — TryAcquireLock found another agent holds it.
