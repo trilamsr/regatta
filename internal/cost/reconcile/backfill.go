@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -34,6 +35,9 @@ var ErrRunNotFound = errors.New("run not found in substrate")
 
 // BackfillConfig wires one invocation. DB + Key are mandatory; missing
 // Now defaults to time.Now; missing HTTPClient defaults to a 30s client.
+// Tag (when non-empty) overrides the vcs-revision pricing_rev fallback
+// so multiple vendored builds without `vcs.revision` can still produce
+// distinct audit tags (#705 R1).
 type BackfillConfig struct {
 	DB         *sql.DB
 	RunID      string
@@ -42,17 +46,23 @@ type BackfillConfig struct {
 	HTTPClient *http.Client
 	Key        []byte
 	KeyID      string
+	Tag        string
 	Now        func() time.Time
 }
 
 // BackfillResult counts rows the backfill landed vs replay-skipped so
 // the CLI exit message names the recovery delta in one number.
+// SingleEventWindow flags the MIN==MAX case where the window is a
+// 1h synthetic bucket — the Usage API typically returns zero rows and
+// the operator should know the recovery emitted nothing because the
+// window itself is degenerate (#705 R4).
 type BackfillResult struct {
-	WindowStart time.Time
-	WindowEnd   time.Time
-	RowsEmitted int
-	RowsSkipped int
-	PricingRev  string
+	WindowStart       time.Time
+	WindowEnd         time.Time
+	RowsEmitted       int
+	RowsSkipped       int
+	PricingRev        string
+	SingleEventWindow bool
 }
 
 // Backfill re-derives token_spend rows for a run window from the
@@ -81,6 +91,7 @@ func Backfill(ctx context.Context, cfg BackfillConfig) (BackfillResult, error) {
 	if err != nil {
 		return BackfillResult{}, err
 	}
+	singleEvent := start.Equal(end)
 	// Floor start, ceil end to hour boundary so the Anthropic
 	// bucket_width=1h grouping covers the whole window inclusively.
 	wStart := start.UTC().Truncate(time.Hour)
@@ -95,8 +106,17 @@ func Backfill(ctx context.Context, cfg BackfillConfig) (BackfillResult, error) {
 		return BackfillResult{}, fmt.Errorf("fetch usage: %w", err)
 	}
 
-	rev := backfillPricingRev()
-	res := BackfillResult{WindowStart: wStart, WindowEnd: wEnd, PricingRev: rev}
+	rev := backfillPricingRev(cfg.Tag)
+	witemID, err := backfillWorkItemID(cfg.RunID)
+	if err != nil {
+		return BackfillResult{}, err
+	}
+	res := BackfillResult{
+		WindowStart:       wStart,
+		WindowEnd:         wEnd,
+		PricingRev:        rev,
+		SingleEventWindow: singleEvent,
+	}
 
 	for _, b := range usage.Data {
 		usdMicro, err := priceUsageBucket(b)
@@ -104,14 +124,14 @@ func Backfill(ctx context.Context, cfg BackfillConfig) (BackfillResult, error) {
 			return res, fmt.Errorf("price bucket %s/%s: %w", b.BucketStart.Format(time.RFC3339), b.Model, err)
 		}
 		written := cfg.Now().UTC()
-		payload, err := buildBackfillPayload(b, usdMicro, rev, cfg.RunID)
+		payload, err := buildBackfillPayload(b, usdMicro, rev, witemID)
 		if err != nil {
 			return res, err
 		}
 		ev := substrate.Event{
 			ID:            substrate.Mint(written),
 			RunID:         cfg.RunID,
-			WorkItemID:    backfillWorkItemID(cfg.RunID),
+			WorkItemID:    witemID,
 			TenantID:      cfg.TenantID,
 			Kind:          substrate.KindTokenSpend,
 			PayloadJSON:   payload,
@@ -168,9 +188,11 @@ func priceUsageBucket(b UsageBucket) (spend.USDMicro, error) {
 }
 
 // buildBackfillPayload assembles the substrate TokenSpendPayload from a
-// Usage bucket. Synthetic CallID encodes the (run_id, bucket_start,
-// model) triple so audit-grepping the row trail is reversible.
-func buildBackfillPayload(b UsageBucket, usdMicro spend.USDMicro, rev, runID string) (json.RawMessage, error) {
+// Usage bucket. Synthetic CallID encodes the (work_item_id, bucket_start,
+// model) triple so audit-grepping the row trail is reversible — the
+// per-invocation random WorkItemID guards against the operator-named
+// `backfill:` collision (#705 R2).
+func buildBackfillPayload(b UsageBucket, usdMicro spend.USDMicro, rev, workItemID string) (json.RawMessage, error) {
 	p := spend.TokenSpendPayload{
 		USDMicro:            usdMicro,
 		USD:                 usdMicro.USD(),
@@ -179,18 +201,24 @@ func buildBackfillPayload(b UsageBucket, usdMicro spend.USDMicro, rev, runID str
 		OutputTokens:        b.OutputTokens,
 		CacheReadTokens:     b.CacheReadInputTokens,
 		CacheCreationTokens: b.CacheCreationInputTokens,
-		WorkItemID:          backfillWorkItemID(runID),
+		WorkItemID:          workItemID,
 		PricingRev:          rev,
-		CallID:              fmt.Sprintf("%s:%s:%d:%s", backfillCallIDPrefix, runID, b.BucketStart.Unix(), b.Model),
+		CallID:              fmt.Sprintf("%s:%s:%d:%s", backfillCallIDPrefix, workItemID, b.BucketStart.Unix(), b.Model),
 	}
 	return json.Marshal(p)
 }
 
-// backfillWorkItemID names the synthetic work_item identity backfill
-// rows carry. Substrate validator rejects empty work_item_id; real
-// per-call work_item identity is unrecoverable post-incident.
-func backfillWorkItemID(runID string) string {
-	return "backfill:" + runID
+// backfillWorkItemID mints `backfill:<run_id>:<8-hex>` so the synthetic
+// work_item identity cannot collide with an operator-named work item
+// that happens to be prefixed `backfill:` (#705 R2). The hex suffix is
+// per-invocation random; all rows in one Backfill call share it so the
+// (run_id, work_item_id) pair stays grep-affine for audit.
+func backfillWorkItemID(runID string) (string, error) {
+	var buf [4]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return "", fmt.Errorf("backfill work_item_id randomness: %w", err)
+	}
+	return fmt.Sprintf("backfill:%s:%s", runID, hex.EncodeToString(buf[:])), nil
 }
 
 // backfillNonce derives the substrate idempotency nonce from the
@@ -202,21 +230,36 @@ func backfillNonce(runID string, bucketStart time.Time, model string) string {
 	return hex.EncodeToString(h[:16])
 }
 
-// backfillPricingRev returns the `backfill:<sha>` pricing_rev tag every
-// backfilled row carries. Falls back to `backfill:unknown` when VCS
-// metadata is absent (test binaries, `go run`).
-func backfillPricingRev() string {
-	sha := "unknown"
+// backfillPricingRev returns the `backfill:<disambiguator>` pricing_rev
+// tag every backfilled row carries. Resolution order (#705 R1): the
+// operator-supplied tag wins, then vcs.revision (12-char SHA), then
+// vcs.time (build-commit timestamp), then `unknown`. The vcs.time
+// fallback prevents two vendored builds without `vcs.revision` from
+// colliding on `backfill:unknown` and corrupting audit grep.
+func backfillPricingRev(tag string) string {
+	if tag != "" {
+		return "backfill:" + tag
+	}
+	disambig := "unknown"
 	if info, ok := debug.ReadBuildInfo(); ok {
+		var rev, vcsTime string
 		for _, s := range info.Settings {
-			if s.Key == "vcs.revision" && s.Value != "" {
-				sha = s.Value
-				if len(sha) > 12 {
-					sha = sha[:12]
-				}
-				break
+			switch s.Key {
+			case "vcs.revision":
+				rev = s.Value
+			case "vcs.time":
+				vcsTime = s.Value
 			}
 		}
+		switch {
+		case rev != "":
+			disambig = rev
+			if len(disambig) > 12 {
+				disambig = disambig[:12]
+			}
+		case vcsTime != "":
+			disambig = vcsTime
+		}
 	}
-	return "backfill:" + sha
+	return "backfill:" + disambig
 }

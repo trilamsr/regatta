@@ -196,6 +196,12 @@ type backfillDeps struct {
 	BaseURL    string
 }
 
+// adminKeyEnv names the env var Anthropic admin endpoints authenticate
+// against; matches reconcile.ClientConfig.UsageAPIKeyEnv default so the
+// CLI fast-fail at parse time validates the same key the inner client
+// will pull at request time (#705 R3).
+const adminKeyEnv = "ANTHROPIC_ADMIN_KEY" //nolint:gosec // env var name, not a credential
+
 func runCostBackfill(args []string) int {
 	keys, active := loadBriefKeyringWithActive()
 	return runCostBackfillWith(backfillDeps{
@@ -214,8 +220,9 @@ func runCostBackfillWith(deps backfillDeps, args []string) int {
 	fs.SetOutput(deps.Stderr)
 	_ = fs.String("db", "regatta.db", "Path to sqlite state DB")
 	_ = fs.String("config", defaultRegattaConfig, "Path to regatta.yaml")
+	tag := fs.String("backfill-tag", "", "Operator-supplied pricing_rev disambiguator (#705 R1)")
 	fs.Usage = func() {
-		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta cost backfill <run_id> [--db <path>] [--config <path>]")
+		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta cost backfill <run_id> [--db <path>] [--config <path>] [--backfill-tag <tag>]")
 		_, _ = fmt.Fprintln(deps.Stderr, "Re-derives token_spend rows from Anthropic Usage API for the run window (spec §9 R4).")
 	}
 	if err := fs.Parse(args); err != nil {
@@ -227,6 +234,16 @@ func runCostBackfillWith(deps backfillDeps, args []string) int {
 		return 2
 	}
 	runID := pos[0]
+
+	key := deps.Keys[deps.ActiveKey]
+	if len(key) == 0 {
+		_, _ = fmt.Fprintln(deps.Stderr, "regatta cost backfill: REGATTA_HMAC_KEY unset — backfill rows would not sign")
+		return 1
+	}
+	if os.Getenv(adminKeyEnv) == "" {
+		_, _ = fmt.Fprintf(deps.Stderr, "regatta cost backfill: %s unset — Anthropic Usage API would reject (#705 R3)\n", adminKeyEnv)
+		return 1
+	}
 
 	clock := deps.Clock
 	if clock == nil {
@@ -244,11 +261,6 @@ func runCostBackfillWith(deps backfillDeps, args []string) int {
 	}
 	defer func() { _ = db.Close() }()
 
-	key := deps.Keys[deps.ActiveKey]
-	if len(key) == 0 {
-		_, _ = fmt.Fprintln(deps.Stderr, "regatta cost backfill: REGATTA_HMAC_KEY unset — backfill rows would not sign")
-		return 1
-	}
 	res, err := reconcile.Backfill(ctx, reconcile.BackfillConfig{
 		DB:       db.SQL(),
 		RunID:    runID,
@@ -256,6 +268,7 @@ func runCostBackfillWith(deps backfillDeps, args []string) int {
 		BaseURL:  deps.BaseURL,
 		Key:      key,
 		KeyID:    deps.ActiveKey,
+		Tag:      *tag,
 		Now:      clock,
 	})
 	if err != nil {
@@ -265,6 +278,11 @@ func runCostBackfillWith(deps backfillDeps, args []string) int {
 		}
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta cost backfill: %v\n", err)
 		return 1
+	}
+	if res.SingleEventWindow {
+		_, _ = fmt.Fprintf(deps.Stderr,
+			"regatta cost backfill: warn: run %q has a single substrate event — synthetic 1h window, no calls in window expected (#705 R4)\n",
+			runID)
 	}
 	_, _ = fmt.Fprintf(deps.Stdout,
 		"backfilled run=%s window=[%s, %s) emitted=%d skipped=%d pricing_rev=%s\n",
