@@ -35,6 +35,12 @@ type Request struct {
 	OperatorID string
 	DAGID      string
 	RunID      string
+
+	// ItemBody is the raw markdown of the work_item brief; PromptBuilder pastes it verbatim. Empty falls back to the identifier-only prompt.
+	ItemBody string
+
+	// RepoRoot is the absolute repo checkout the agent operates against; empty in isolated prompt-shaping unit tests.
+	RepoRoot string
 }
 
 // Result reports spawned process identifiers the orchestrator records

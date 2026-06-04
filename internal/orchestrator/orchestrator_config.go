@@ -22,6 +22,9 @@ type BriefLoader interface {
 	Sync(ctx context.Context, pollStartedAt time.Time) error
 }
 
+// ItemBodyLoader feeds spawner.Request.ItemBody; nil or ok=false degrades to identifier-only prompt so a missing brief never strands the reservation.
+type ItemBodyLoader func(ctx context.Context, workItemID string) (body string, ok bool)
+
 // Config holds tunables and dependencies for an Orchestrator, wired via
 // construction-time DI so tests can swap any seam without touching
 // internal helpers.
@@ -40,6 +43,12 @@ type Config struct {
 
 	// Spawner launches the reserved agents. Required.
 	Spawner spawner.Spawner
+
+	// ItemBody resolves the per-dispatch markdown brief. Nil = identifier-only prompt (regression-safe).
+	ItemBody ItemBodyLoader
+
+	// RepoRoot is the absolute repo path the worker subprocess targets; threaded into spawner.Request.RepoRoot. Empty in unit tests.
+	RepoRoot string
 
 	// DBPath is the on-disk sqlite path; the process-level lockfile derives as <dbPath>.lock.
 	DBPath string
