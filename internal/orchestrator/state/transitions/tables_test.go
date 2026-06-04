@@ -3,9 +3,7 @@ package transitions
 
 import "testing"
 
-// TestAgentEdges_TerminalsHaveNoOutgoing pins terminal-set invariant
-// (done, withdrawn, escalated have no outgoing edges; crashed has one
-// recovery edge to pending).
+// TestAgentEdges_TerminalsHaveNoOutgoing pins terminal-set invariant for the agent FSM (#795 T3).
 func TestAgentEdges_TerminalsHaveNoOutgoing(t *testing.T) {
 	cases := []struct {
 		state string
@@ -24,41 +22,35 @@ func TestAgentEdges_TerminalsHaveNoOutgoing(t *testing.T) {
 	}
 }
 
-// TestAgentEdges_CrashedRequeues pins the crashed→pending requeue edge
-// (load-bearing — merge-recovery uses it per agents.go comment).
+// TestAgentEdges_CrashedRequeues pins crashed→pending merge-recovery edge (#795 T3).
 func TestAgentEdges_CrashedRequeues(t *testing.T) {
 	if _, ok := AgentEdges["crashed"]["pending"]; !ok {
 		t.Fatal("AgentEdges[crashed][pending] missing — merge-recovery requeue edge broken")
 	}
 }
 
-// TestAgentEdges_PendingSelfEdge pins pending→pending (spec watcher
-// upsert without bookkeeping).
+// TestAgentEdges_PendingSelfEdge pins pending→pending spec-watcher idempotent edge (#795 T3).
 func TestAgentEdges_PendingSelfEdge(t *testing.T) {
 	if _, ok := AgentEdges["pending"]["pending"]; !ok {
 		t.Fatal("AgentEdges[pending][pending] missing — spec watcher idempotent upsert broken")
 	}
 }
 
-// TestAgentEdges_AwaitingMergeCanCrash pins awaiting_merge→crashed
-// (merge-recovery requeue path per PHASE AUTONOMY §11 W2 c0).
+// TestAgentEdges_AwaitingMergeCanCrash pins awaiting_merge→crashed merge-recovery edge (#795 T3).
 func TestAgentEdges_AwaitingMergeCanCrash(t *testing.T) {
 	if _, ok := AgentEdges["awaiting_merge"]["crashed"]; !ok {
 		t.Fatal("AgentEdges[awaiting_merge][crashed] missing — merge-recovery edge broken")
 	}
 }
 
-// TestAgentEdges_RunningCanGoPROpen pins running→pr_open (the canonical
-// happy-path agent edge).
+// TestAgentEdges_RunningCanGoPROpen pins running→pr_open happy-path edge (#795 T3).
 func TestAgentEdges_RunningCanGoPROpen(t *testing.T) {
 	if _, ok := AgentEdges["running"]["pr_open"]; !ok {
 		t.Fatal("AgentEdges[running][pr_open] missing")
 	}
 }
 
-// TestAgentEdges_NoUnknownStateKey ensures the table doesn't gain a
-// typo'd state via a refactor — every key must be one of the 11 enum
-// values in state.go.
+// TestAgentEdges_NoUnknownStateKey rejects typo'd states not in the 11-value AgentState enum (#795 T3).
 func TestAgentEdges_NoUnknownStateKey(t *testing.T) {
 	known := map[string]struct{}{
 		"pending": {}, "spawning": {}, "running": {}, "pr_open": {},
@@ -77,9 +69,7 @@ func TestAgentEdges_NoUnknownStateKey(t *testing.T) {
 	}
 }
 
-// TestWorkItemEdges_TerminalsHaveNoOutgoing pins terminal-set invariant
-// for work-item edges (merged, archived, rejected are terminal per
-// spec §3.1).
+// TestWorkItemEdges_TerminalsHaveNoOutgoing pins terminal-set invariant for work_items.status (#795 T3).
 func TestWorkItemEdges_TerminalsHaveNoOutgoing(t *testing.T) {
 	for _, s := range []string{"merged", "archived", "rejected"} {
 		if got := len(WorkItemEdges[s]); got != 0 {
@@ -88,17 +78,14 @@ func TestWorkItemEdges_TerminalsHaveNoOutgoing(t *testing.T) {
 	}
 }
 
-// TestWorkItemEdges_PlannedCanReject pins the approval-gate edge
-// (scheduler_approval_gate.go: planned→rejected on denial).
+// TestWorkItemEdges_PlannedCanReject pins planned→rejected approval-gate denial edge (#795 T3).
 func TestWorkItemEdges_PlannedCanReject(t *testing.T) {
 	if _, ok := WorkItemEdges["planned"]["rejected"]; !ok {
 		t.Fatal("WorkItemEdges[planned][rejected] missing — approval-gate denial path broken")
 	}
 }
 
-// TestWorkItemEdges_NoUnknownStateKey ensures the table doesn't gain a
-// typo'd status via a refactor — every key must be one of the 7 enum
-// values in work_items.go.
+// TestWorkItemEdges_NoUnknownStateKey rejects typo'd statuses not in the 7-value WorkItemStatus enum (#795 T3).
 func TestWorkItemEdges_NoUnknownStateKey(t *testing.T) {
 	known := map[string]struct{}{
 		"planned": {}, "running": {}, "pr_open": {}, "merged": {},
