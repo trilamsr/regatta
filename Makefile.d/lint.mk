@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-scorecard-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-scorecard-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -42,6 +42,12 @@ check-no-bare-sleep:  ## Fail when a *_test.go file carries `time.Sleep` lexical
 
 check-no-bare-sleep-test:  ## Fixture-driven test for check-no-bare-sleep.sh.
 	bash scripts/check-no-bare-sleep_test.sh
+
+check-state-tier-order:  ## Fail when a pure subpackage under internal/orchestrator/state (jsonscan/edgeagg/transitions/cycle/approvals_shadow) imports the parent `state` package (plan #795 Option E one-way tier).
+	bash scripts/check-state-tier-order.sh
+
+check-state-tier-order-test:  ## Fixture-driven test for check-state-tier-order.sh.
+	bash scripts/check_state_tier_order_test.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh
