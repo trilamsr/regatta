@@ -297,7 +297,8 @@ status: planned
 	}
 }
 
-func TestMarkdownCatalogKindDefaultEmpty(t *testing.T) {
+// TestMarkdownCatalogKindDefaultsFeature pins the omitted-kind default to "feature" per spec_adapter.go:41 (#866).
+func TestMarkdownCatalogKindDefaultsFeature(t *testing.T) {
 	dir := t.TempDir()
 	writeItem(t, dir, "f.md", `---
 id: F-1
@@ -315,8 +316,35 @@ status: planned
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if items[0].Kind != "" {
-		t.Fatalf("expected empty kind (default), got %q", items[0].Kind)
+	if items[0].Kind != schemas.KindFeature {
+		t.Fatalf("expected kind=feature (default), got %q", items[0].Kind)
+	}
+}
+
+// TestMarkdownCatalogKindFixtures asserts both kind: feature and kind: program parse to schemas.Kind* (#866).
+func TestMarkdownCatalogKindFixtures(t *testing.T) {
+	cases := []struct {
+		file string
+		want schemas.WorkItemKind
+	}{
+		{"kind-feature.md", schemas.KindFeature},
+		{"kind-program.md", schemas.KindProgram},
+		{"kind-omitted.md", schemas.KindFeature},
+	}
+	for _, tc := range cases {
+		t.Run(tc.file, func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join("testdata", tc.file))
+			if err != nil {
+				t.Fatalf("read fixture: %v", err)
+			}
+			item, err := ParseMarkdownItem(data)
+			if err != nil {
+				t.Fatalf("parse: %v", err)
+			}
+			if item.Kind != tc.want {
+				t.Fatalf("kind: got %q want %q", item.Kind, tc.want)
+			}
+		})
 	}
 }
 
