@@ -31,20 +31,8 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/orchestrator/state/approvals_shadow"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
-)
-
-// ReadMode is the per-process opt-in for Phase C's read-from-substrate
-// path. Spec §3.4 keeps writes and reads as independent tri-state knobs
-// so an operator can ship the shadow write a week before flipping reads.
-type ReadMode string
-
-const (
-	// ReadModeLegacy reads exclusively from approval_events. Default.
-	ReadModeLegacy ReadMode = "legacy"
-	// ReadModeSubstrateFirst reads from substrate_events; on empty result
-	// AND legacy-non-empty, records a divergence row and returns legacy.
-	ReadModeSubstrateFirst ReadMode = "substrate_first"
 )
 
 // ListApprovalEventsWithShadow returns approval events for approvalID,
@@ -104,14 +92,9 @@ func (d *DB) readApprovalEventsFromSubstrate(ctx context.Context, approvalID, ru
 	}
 	var out []ApprovalEvent
 	for _, ev := range all {
-		var p struct {
-			ApprovalID string `json:"approval_id"`
-			Transition string `json:"transition"`
-			Actor      string `json:"actor"`
-			TokenJTI   string `json:"token_jti"`
-		}
-		if err := json.Unmarshal(ev.PayloadJSON, &p); err != nil {
-			return nil, fmt.Errorf("substrate: parse approval payload: %w", err)
+		p, err := approvals_shadow.ParseSubstrateApprovalPayload(ev.PayloadJSON)
+		if err != nil {
+			return nil, err
 		}
 		if p.ApprovalID != approvalID {
 			continue
