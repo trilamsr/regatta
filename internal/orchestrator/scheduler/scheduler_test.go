@@ -901,8 +901,8 @@ func TestScheduler_GateRecheckAtReservation_PendingAgentBlocked(t *testing.T) {
 	}
 }
 
-// TestScheduler_GateRecheckAtReservation_RaceSafe pins approve-then-tick: a paused orphan spawns once the next tick's gate flips to proceed (#167).
-func TestScheduler_GateRecheckAtReservation_RaceSafe(t *testing.T) {
+// TestScheduler_GateRecheckAtReservation_IntegrationFlow pins approve-then-tick: a paused orphan spawns once the next tick's gate flips to proceed (#167). Sequential by design; concurrent gate flips are covered at the state-DB layer.
+func TestScheduler_GateRecheckAtReservation_IntegrationFlow(t *testing.T) {
 	db := statetest.OpenDB(t)
 	ctx := context.Background()
 	seedPlanned(t, db, "wi-race", "prod")
