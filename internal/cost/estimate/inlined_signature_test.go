@@ -7,8 +7,7 @@ import (
 	"github.com/trilamsr/regatta/internal/cost/spend"
 )
 
-// TestHistoryConfig_ReaderIsConcrete pins the post-Wave-E shape:
-// HistoryConfig.Reader is *spend.Reader directly (CohortReader interface deleted).
+// TestHistoryConfig_ReaderIsConcrete pins post-Wave-E HistoryConfig.Reader as *spend.Reader (CohortReader interface deleted).
 func TestHistoryConfig_ReaderIsConcrete(t *testing.T) {
 	t.Helper()
 	cfg := estimate.HistoryConfig{}
@@ -19,12 +18,7 @@ func TestHistoryConfig_ReaderIsConcrete(t *testing.T) {
 	_ = cfg
 }
 
-// TestEstimatorInterface_Deleted pins that the dead estimate.Estimator
-// interface is gone. UpperBound is the only concrete; nothing accepts the
-// named interface.
-//
-// Compile-fail evidence captured by removing the symbol — this test simply
-// constructs UpperBound to keep import alive.
+// TestEstimatorInterface_Deleted pins that the dead estimate.Estimator interface (zero consumers) is gone.
 func TestEstimatorInterface_Deleted(t *testing.T) {
 	t.Helper()
 	var _ = estimate.UpperBound{}

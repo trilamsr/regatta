@@ -6,8 +6,7 @@ import (
 	"time"
 )
 
-// TestLLMScanner_AcceptsFuncClient pins the post-Wave-E shape: Client is
-// a func value (1 prod impl → no interface, no name).
+// TestLLMScanner_AcceptsFuncClient pins post-Wave-E LLMScanner.Client as a func value (LLMClient interface deleted).
 func TestLLMScanner_AcceptsFuncClient(t *testing.T) {
 	t.Helper()
 	called := false
@@ -27,8 +26,7 @@ func TestLLMScanner_AcceptsFuncClient(t *testing.T) {
 	}
 }
 
-// TestDetector_AcceptsFuncSource pins the post-Wave-E shape: Source is a
-// func value, not an EventSource interface.
+// TestDetector_AcceptsFuncSource pins post-Wave-E Detector.Source as a func value (EventSource interface deleted).
 func TestDetector_AcceptsFuncSource(t *testing.T) {
 	t.Helper()
 	d := &Detector{

@@ -9,8 +9,7 @@ import (
 	obsotel "github.com/trilamsr/regatta/internal/obs/otel"
 )
 
-// TestNewBridgeHandler_AcceptsLoggerProviderDirectly pins the post-Wave-E
-// signature: lp is a direct arg, not a functional option (#deletion-default).
+// TestNewBridgeHandler_AcceptsLoggerProviderDirectly pins post-Wave-E NewBridgeHandler signature: lp as direct arg, not functional option.
 func TestNewBridgeHandler_AcceptsLoggerProviderDirectly(t *testing.T) {
 	t.Helper()
 	var lp otellog.LoggerProvider
