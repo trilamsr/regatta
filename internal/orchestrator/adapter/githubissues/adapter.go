@@ -72,15 +72,17 @@ func NewGitHubIssues(cfg GitHubIssuesConfig) (schemas.SpecAdapter, error) {
 	return &adapter{
 		cfg:             cfg,
 		idToNumber:      map[string]int{},
+		idToUpdatedAt:   map[string]time.Time{},
 		collisionLogged: map[string]struct{}{},
 	}, nil
 }
 
-// adapter caches List()'s ID→number map for cfg.MinPoll (spec §7.7) and dedups §7.8 collision comments by owner/repo:ID:day.
+// adapter caches List()'s ID→number map for cfg.MinPoll (spec §7.7), records UpdatedAt per ID so Get can detect mid-flight edits (§7.9 / #850), and dedups §7.8 collision comments by owner/repo:ID:day.
 type adapter struct {
 	cfg             GitHubIssuesConfig
 	mu              sync.Mutex
 	idToNumber      map[string]int
+	idToUpdatedAt   map[string]time.Time
 	cachedAt        time.Time
 	collisionLogged map[string]struct{}
 }
@@ -129,6 +131,7 @@ func (a *adapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
 
 	out := make([]schemas.WorkItem, 0, len(idable))
 	newCache := map[string]int{}
+	newUpdatedAt := map[string]time.Time{}
 	for _, iss := range idable {
 		id, stripped, _ := extractIDFromTitle(iss.Title)
 		if collided[id] {
@@ -168,21 +171,24 @@ func (a *adapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
 		}
 		out = append(out, wi)
 		newCache[id] = iss.Number
+		newUpdatedAt[id] = iss.UpdatedAt
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	a.idToNumber = newCache
+	a.idToUpdatedAt = newUpdatedAt
 	a.cachedAt = a.cfg.Clock()
 	return out, nil
 }
 
-// Get resolves an ID via the List() cache; on miss-after-TTL issues one search-by-id rebuild (spec §7.7) before returning ErrNotFound.
+// Get resolves an ID via the List() cache; on miss-after-TTL issues one search-by-id rebuild (spec §7.7) before returning ErrNotFound. Returns ErrSourceMutated when the live issue's UpdatedAt drifted from the snapshot captured at List (spec §7.9 / #850).
 func (a *adapter) Get(ctx context.Context, id schemas.WorkItemID) (schemas.WorkItem, error) {
 	a.mu.Lock()
 	num, hit := a.idToNumber[string(id)]
+	snapshotUpdatedAt, hasSnapshot := a.idToUpdatedAt[string(id)]
 	expired := a.cfg.Clock().Sub(a.cachedAt) > a.cfg.MinPoll
 	a.mu.Unlock()
 	if hit && !expired {
-		return a.fetchByNumber(ctx, id, num)
+		return a.fetchByNumber(ctx, id, num, hasSnapshot, snapshotUpdatedAt)
 	}
 	issues, err := a.cfg.Client.ListIssuesByLabelPaginated(ctx, AutonomousLabel, ghclient.ListIssuesOpts{State: "open"})
 	if err != nil {
@@ -207,15 +213,19 @@ func (a *adapter) Get(ctx context.Context, id schemas.WorkItemID) (schemas.WorkI
 	}
 	a.mu.Lock()
 	a.idToNumber[string(id)] = matches[0].Number
+	a.idToUpdatedAt[string(id)] = matches[0].UpdatedAt
 	a.cachedAt = a.cfg.Clock()
 	a.mu.Unlock()
 	return a.projectIssue(matches[0])
 }
 
-func (a *adapter) fetchByNumber(ctx context.Context, id schemas.WorkItemID, number int) (schemas.WorkItem, error) {
+func (a *adapter) fetchByNumber(ctx context.Context, id schemas.WorkItemID, number int, hasSnapshot bool, snapshotUpdatedAt time.Time) (schemas.WorkItem, error) {
 	iss, err := a.cfg.Client.GetIssue(ctx, number)
 	if err != nil {
 		return schemas.WorkItem{}, fmt.Errorf("%w: %s", schemas.ErrNotFound, id)
+	}
+	if hasSnapshot && !snapshotUpdatedAt.IsZero() && !iss.UpdatedAt.IsZero() && !iss.UpdatedAt.Equal(snapshotUpdatedAt) {
+		return schemas.WorkItem{}, fmt.Errorf("%w: %s updated_at %s→%s", schemas.ErrSourceMutated, id, snapshotUpdatedAt.Format(time.RFC3339), iss.UpdatedAt.Format(time.RFC3339))
 	}
 	return a.projectIssue(iss)
 }
