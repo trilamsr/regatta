@@ -40,6 +40,7 @@ WORKTREE (harness-managed — do NOT create your own)
 - NEVER write code under `/tmp/`. `/tmp/` is for ephemeral logs ONLY (`/tmp/cicheck.log`, `/tmp/pr-<branch>.md`). Code, tests, specs, edits → harness worktree only.
 - Negative example (DO NOT DO THIS): `git clone git@github.com:trilamsr/regatta.git /tmp/regatta-<slug>/ && cd /tmp/regatta-<slug>/` — leaves main worktree with stray edits, no remote, no pushable branch (#188).
 - Never push from the primary checkout.
+- gopls cross-worktree noise: repo root ships `go.work` with `use ./` only, so gopls scopes the active module to the primary checkout. Sibling worktrees (`.claude/worktrees/agent-*/`) are out-of-workspace and may surface "file is within module …" warnings in tool results when an editor session straddles trees. Ignore those — they are diagnostic noise, not build errors. Verify with `go env GOWORK` (non-empty) and `go build ./...` (clean) before treating any cross-tree warning as load-bearing. (closes #777)
 
 TDD
 - Failing test FIRST. Capture failing output in PR body. Then impl. Then green. Order matters per `feedback_tdd_discipline`.
