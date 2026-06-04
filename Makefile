@@ -1,7 +1,7 @@
 # Top-level Makefile. Per-feature targets live in Makefile.d/*.mk to reduce
 # cascade-rebase tax — each feature owns its file, parallel PRs do not collide
 # on a shared .PHONY list (memory/feedback_cascade_rebase_root_cause).
-.PHONY: help check ci-check ci pre-push-check
+.PHONY: help check ci-check ci pre-push-check scorecard-check
 
 # Default goal — `make` with no args prints help.
 .DEFAULT_GOAL := help
@@ -25,5 +25,14 @@ ci-check: check stale-todo  ## CI gate; supersedes `check` with longer-running s
 
 ci: ci-check  ## CI entrypoint. CI also runs lint as a separate job via golangci-lint-action for redundancy; `make check` runs the same linter locally so PR-time lint failures show up before push.
 
-pre-push-check: check  ## Local pre-push gate. Runs `make check` + PR-body release-notes block sanity check.
+BODY_FILE ?= /tmp/pr-$(shell git branch --show-current).md
+
+scorecard-check:  ## Pre-PR scorecard citation gate. Runs check-scorecard.sh on $(BODY_FILE) if present; no-op when file absent (closes #778).
+	@if [ -f "$(BODY_FILE)" ]; then \
+		bash scripts/check-scorecard.sh --body-file "$(BODY_FILE)"; \
+	else \
+		echo "scorecard-check: $(BODY_FILE) absent — skip (no draft PR body to validate)"; \
+	fi
+
+pre-push-check: check scorecard-check  ## Local pre-push gate. Runs `make check` + scorecard pre-validation + PR-body release-notes block sanity check.
 	bash scripts/check-release-notes-local.sh

@@ -101,9 +101,10 @@ INDEPENDENT REVIEW MEASURES vs A+ RUBRIC
 - Migration number (if schema): pinned in dispatch prompt, never picked by implementer (`feedback_migration_number_lock`).
 
 ## Definition of done
+- [ ] **BEFORE `gh pr create` / `gh pr edit`: `bash scripts/check-scorecard.sh --body-file /tmp/pr-<branch>.md` exit 0** (or `make scorecard-check BODY_FILE=/tmp/pr-<branch>.md`). Hard step; #758 closed this drift.
 - [ ] worktree branch, not primary
 - [ ] failing test landed first (commit log shows it)
-- [ ] `make pre-push-check` green locally
+- [ ] `make pre-push-check` green locally (now includes `scorecard-check` per #778)
 - [ ] reviewer subagent cleared OR auto-skip condition met
 - [ ] scorecard in PR body OR `<PR-TYPE>` exempt
 - [ ] release-notes fence present
@@ -143,3 +144,5 @@ INDEPENDENT REVIEW MEASURES vs A+ RUBRIC
    git rebase --continue
    ```
    For generated indexes (`docs/engineer/specs/README.md`), prefer regen over `--theirs` so the file matches current source-of-truth.
+
+8. **Scorecard pre-validation BEFORE PR open** per #758. Implementers historically draft the scorecard, open the PR, then watch pr-lint fail and edit-loop. Hard step: write the body to `/tmp/pr-<branch>.md`, then run `bash scripts/check-scorecard.sh --body-file /tmp/pr-<branch>.md` and confirm exit 0 BEFORE `gh pr create` / `gh pr edit`. `make scorecard-check` wraps this (auto-resolves `BODY_FILE` from current branch); also chained into `make pre-push-check`. Catches the bare-token / backtick-wrapping / missing-fence failure modes locally instead of via pr-lint feedback loop.
