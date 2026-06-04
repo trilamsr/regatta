@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +14,7 @@ import (
 
 	"github.com/trilamsr/regatta/internal/cost/gate"
 	"github.com/trilamsr/regatta/internal/cost/spend"
-	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
 // fixedEstimator returns a constant USD estimate. Avoids importing
@@ -32,21 +31,6 @@ type fixedPricing struct {
 }
 
 func (f fixedPricing) DowngradeFor(_ string) string { return f.downgradeTarget }
-
-func openTestDB(t *testing.T) *sql.DB {
-	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "subs.db")
-	db, err := sql.Open("sqlite", state.DSN(dbPath))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(1)
-	if err := state.Migrate(context.Background(), db); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	return db
-}
 
 // spendCounter uniqueifies test inserts so UNIQUE(run_id, written_by,
 // nonce) never collides on co-located rows.
@@ -93,7 +77,7 @@ func baseScope() gate.WorkItemScope {
 }
 
 func TestGate_NoConfig_AllowsAll(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	g := newGate(t, db, gate.Config{}, 0.01, "")
 	v, err := g.Evaluate(context.Background(), baseScope())
 	if err != nil {
@@ -105,7 +89,7 @@ func TestGate_NoConfig_AllowsAll(t *testing.T) {
 }
 
 func TestGate_PerDAGCap_DeniesOverBudget(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	// Recorded $95 on DAG-A; cap=$100; estimate=$10 -> $105 > $100 -> deny.
 	insertSpend(t, db, `{"usd":95.0,"dag_id":"DAG-A","operator_id":"agent-7","work_item_id":"WI-OLD"}`,
 		time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC), "default")
@@ -124,7 +108,7 @@ func TestGate_PerDAGCap_DeniesOverBudget(t *testing.T) {
 }
 
 func TestGate_PerDAGCap_AllowsUnderBudget(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	insertSpend(t, db, `{"usd":80.0,"dag_id":"DAG-A","operator_id":"agent-7","work_item_id":"WI-OLD"}`,
 		time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC), "default")
 	cfg := gate.Config{Safety: &gate.SafetyCost{PerDAGUSD: 100, Period: time.Hour, SoftPct: 80}}
@@ -139,7 +123,7 @@ func TestGate_PerDAGCap_AllowsUnderBudget(t *testing.T) {
 }
 
 func TestGate_SoftCapBreached_WarnByDefault(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	// 80 recorded, 5 estimate -> projected 85 = 85% of 100; soft_pct=80 -> breach.
 	// No allow_downgrade annotation -> WARN-only.
 	insertSpend(t, db, `{"usd":80.0,"dag_id":"DAG-A","operator_id":"agent-7","work_item_id":"WI-OLD"}`,
@@ -162,7 +146,7 @@ func TestGate_SoftCapBreached_WarnByDefault(t *testing.T) {
 }
 
 func TestGate_SoftCapBreached_DowngradeOnlyWithAnnotation(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	insertSpend(t, db, `{"usd":80.0,"dag_id":"DAG-A","operator_id":"agent-7","work_item_id":"WI-OLD"}`,
 		time.Date(2026, 6, 1, 11, 0, 0, 0, time.UTC), "default")
 	cfg := gate.Config{Safety: &gate.SafetyCost{PerDAGUSD: 100, Period: time.Hour, SoftPct: 80}}
@@ -182,7 +166,7 @@ func TestGate_SoftCapBreached_DowngradeOnlyWithAnnotation(t *testing.T) {
 }
 
 func TestGate_PrecedenceMostRestrictiveWins(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	// Operator recorded $48; DAG recorded $48 (same single row covers both).
 	// per_dag_usd=100 (headroom 52), per_operator_usd=50 (headroom 2).
 	// Estimate $10 -> operator-cap exceeded even though DAG has headroom.
@@ -205,7 +189,7 @@ func TestGate_PrecedenceMostRestrictiveWins(t *testing.T) {
 }
 
 func TestGate_NilTracerFallsBackToGlobal(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	// Config.Tracer omitted -> Gate must still Evaluate without panic.
 	cfg := gate.Config{Safety: &gate.SafetyCost{PerDAGUSD: 100, Period: time.Hour, SoftPct: 80}}
 	g := newGate(t, db, cfg, 1.0, "")
@@ -219,7 +203,7 @@ func TestGate_NilTracerFallsBackToGlobal(t *testing.T) {
 }
 
 func TestGate_EmitsCostEvaluateSpan(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	rec := tracetest.NewSpanRecorder()
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(rec))
 	tracer := tp.Tracer("test")
@@ -265,7 +249,7 @@ func TestGate_EmitsCostEvaluateSpan(t *testing.T) {
 
 // TestGate_PerDAGCap_IntegerPrecisionAtBoundary asserts integer-micro cap comparison denies the float-ULP-slip spawn at boundary.
 func TestGate_PerDAGCap_IntegerPrecisionAtBoundary(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	// Eleven legacy float rows of $0.10 each, at distinct timestamps so
 	// the substrate UNIQUE(run_id, written_by, nonce) constraint does
 	// not collide.

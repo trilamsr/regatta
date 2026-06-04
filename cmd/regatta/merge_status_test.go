@@ -9,13 +9,13 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/merge"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
 // stageAwaitingMerge drives an agent through pending→…→awaiting_merge
@@ -54,21 +54,9 @@ func stageAwaitingMerge(t *testing.T, db *state.DB, workItemID string, prNumber 
 	return *got
 }
 
-func openTestDB(t *testing.T) (*state.DB, string) {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "regatta.db")
-	db, err := state.Open(context.Background(), state.DSN(path))
-	if err != nil {
-		t.Fatalf("open db: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	return db, path
-}
-
 // TestMergeStatusCLI_EmptyQueue_PrintsHeader asserts a quiet substrate prints the table header + "no awaiting merges" footer rather than blank output (#586).
 func TestMergeStatusCLI_EmptyQueue_PrintsHeader(t *testing.T) {
-	_, path := openTestDB(t)
+	_, path := statetest.OpenDBWithPath(t)
 
 	var stdout, stderr bytes.Buffer
 	code := runMergeStatusWith(mergeStatusDeps{
@@ -86,7 +74,7 @@ func TestMergeStatusCLI_EmptyQueue_PrintsHeader(t *testing.T) {
 
 // TestMergeStatusCLI_WithAwaitingAgents_PrintsRows asserts each awaiting_merge agent appears with its PR#, head-SHA, intent-at, and last-probe outcome (#586).
 func TestMergeStatusCLI_WithAwaitingAgents_PrintsRows(t *testing.T) {
-	db, path := openTestDB(t)
+	db, path := statetest.OpenDBWithPath(t)
 	stageAwaitingMerge(t, db, "WI-1", 42, "abc123def")
 
 	var stdout, stderr bytes.Buffer
@@ -107,7 +95,7 @@ func TestMergeStatusCLI_WithAwaitingAgents_PrintsRows(t *testing.T) {
 
 // TestMergeStatusCLI_NoSubstrateEvent_HandlesGracefully asserts an awaiting_merge agent missing its intent row prints "(no intent)" rather than crashing (#586).
 func TestMergeStatusCLI_NoSubstrateEvent_HandlesGracefully(t *testing.T) {
-	db, path := openTestDB(t)
+	db, path := statetest.OpenDBWithPath(t)
 	ctx := context.Background()
 	a, err := db.UpsertPending(ctx, "WI-ORPHAN", "server")
 	if err != nil {

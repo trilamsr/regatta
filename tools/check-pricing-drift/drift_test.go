@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,28 +11,13 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/trilamsr/regatta/internal/cost/pricing"
-	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
 // insertCounter monotonically uniqueifies the synthetic (id, nonce) across
 // inserts so the UNIQUE(run_id, written_by, nonce) substrate constraint does
 // not collide on co-located rows.
 var insertCounter int64
-
-func openTestDB(t *testing.T) *sql.DB {
-	t.Helper()
-	dbPath := filepath.Join(t.TempDir(), "drift.db")
-	db, err := sql.Open("sqlite", state.DSN(dbPath))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	db.SetMaxOpenConns(1)
-	if err := state.Migrate(context.Background(), db); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
-	return db
-}
 
 func insertEvent(t *testing.T, db *sql.DB, kind, payload string, writtenAt time.Time, tenantID, key string) {
 	t.Helper()
@@ -91,7 +75,7 @@ func tokenSpendPayload(model string, in, out, cr, cc int64, usd float64) string 
 
 // TestDetect_NoDrift_TableMatchesActualRate exits clean when implied rate matches the table within threshold.
 func TestDetect_NoDrift_TableMatchesActualRate(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	periodStart := now.Add(-time.Hour)
 	periodEnd := now
@@ -120,7 +104,7 @@ func TestDetect_NoDrift_TableMatchesActualRate(t *testing.T) {
 
 // TestDetect_Drift_TableUnderprices flags a +20% drift so the refresh runbook fires before cap overshoot.
 func TestDetect_Drift_TableUnderprices(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	periodStart := now.Add(-time.Hour)
 	periodEnd := now
@@ -155,7 +139,7 @@ func TestDetect_Drift_TableUnderprices(t *testing.T) {
 
 // TestDetect_BelowThreshold confirms a sub-threshold drift (3% vs 5%) does not fire.
 func TestDetect_BelowThreshold(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	periodStart := now.Add(-time.Hour)
 	periodEnd := now
@@ -184,7 +168,7 @@ func TestDetect_BelowThreshold(t *testing.T) {
 
 // TestDetect_SkipUsageFallbackRows pins spec §7 A+5: Usage API rows are skipped (self-referential pricing).
 func TestDetect_SkipUsageFallbackRows(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	periodStart := now.Add(-time.Hour)
 	periodEnd := now
@@ -223,7 +207,7 @@ func TestDetect_SkipUsageFallbackRows(t *testing.T) {
 
 // TestDetect_WindowExcludesStale ignores events outside the lookback so pre-refresh history does not flag.
 func TestDetect_WindowExcludesStale(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	stalePeriodStart := now.Add(-30 * 24 * time.Hour)
 	stalePeriodEnd := stalePeriodStart.Add(time.Hour)
@@ -254,7 +238,7 @@ func TestDetect_WindowExcludesStale(t *testing.T) {
 
 // TestDetect_MissingPricingRow flags a billed SKU that the pricing table does not know about.
 func TestDetect_MissingPricingRow(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	periodStart := now.Add(-time.Hour)
 	periodEnd := now
@@ -286,7 +270,7 @@ func TestDetect_MissingPricingRow(t *testing.T) {
 
 // TestDetect_BedrockSKU_PricedViaCatalog pins the Catalog() wiring (#240).
 func TestDetect_BedrockSKU_PricedViaCatalog(t *testing.T) {
-	db := openTestDB(t)
+	db := statetest.OpenMigratedRaw(t)
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
 	periodStart := now.Add(-time.Hour)
 	periodEnd := now
