@@ -36,9 +36,7 @@ func buildPayload(b *testing.B, targetBytes int, key []byte) map[string]any {
 	return payload
 }
 
-// BenchmarkVerify times HMAC verify over canonicalised payloads at the
-// 10KB / 100KB / 1MB boundaries. canonicalize() is doing most of the
-// work below ~10KB; HMAC dominates above 1MB.
+// BenchmarkVerify times HMAC verify over canonicalised payloads at 10KB/100KB/1MB boundaries.
 func BenchmarkVerify(b *testing.B) {
 	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
 	keyring := map[string][]byte{"k1": key}

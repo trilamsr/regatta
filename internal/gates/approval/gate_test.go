@@ -468,7 +468,7 @@ func TestGate_PostEscalationMintAndNotify(t *testing.T) {
 	}
 }
 
-// Gate refuses to evaluate when given an invalid keyring kid: token mint surfaces ErrUnknownKeyID; the gate must propagate the typed sentinel 
+// TestGate_UnknownKeyIDPropagates asserts gate propagates typed ErrUnknownKeyID from token mint when kid missing from keyring.
 func TestGate_UnknownKeyIDPropagates(t *testing.T) {
 	now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)
 	db := newGateTestDB(t, func() time.Time { return now })

@@ -11,8 +11,8 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel/metric/noop"
-	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
 // TestAdversarial_FindingsCounter_IncrementsOnSubstrateEvent verifies a recorded finding lands on the counter with the correct tag tuple.

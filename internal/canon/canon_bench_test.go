@@ -33,10 +33,7 @@ func buildPayload(b *testing.B, targetBytes int) []byte {
 	return raw
 }
 
-// BenchmarkCanonicaliseJSON times the canonicaliser at three size
-// boundaries that matter operationally: 1KB (a typical edge predicate
-// input), 10KB (a busy outputs-journal entry), 100KB (worst-case
-// brief-side payload before maxBriefSize kicks in).
+// BenchmarkCanonicaliseJSON times the canonicaliser at 1KB/10KB/100KB size boundaries.
 func BenchmarkCanonicaliseJSON(b *testing.B) {
 	sizes := []struct {
 		name  string

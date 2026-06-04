@@ -7,11 +7,7 @@ import (
 	"time"
 )
 
-// TestGateResultSchemaLockstep verifies that the canonical Go
-// shape round-trips through JSON without losing or renaming any
-// schema-required field. Drift between gate_result.go and
-// gate_result.schema.json is the failure mode this test exists to
-// prevent.
+// TestGateResultSchemaLockstep asserts canonical Go shape round-trips JSON without field drift vs gate_result.schema.json.
 func TestGateResultSchemaLockstep(t *testing.T) {
 	t.Parallel()
 	gr := GateResult{
@@ -117,11 +113,7 @@ func TestGateResultSchemaLockstep(t *testing.T) {
 	}
 }
 
-// TestHeartbeatNotInSignedPayload pins that StartedAt/FinishedAt
-// never leak into the canonical JSON used for signing. The
-// reconciler reads Heartbeat in-process; including it in the
-// signed payload would weaken tamper-evidence by including
-// non-deterministic timestamps that vary across re-runs.
+// TestHeartbeatNotInSignedPayload pins StartedAt/FinishedAt never leak into canonical signed JSON (tamper-evidence).
 func TestHeartbeatNotInSignedPayload(t *testing.T) {
 	t.Parallel()
 	gr := GateResult{
