@@ -242,6 +242,21 @@ func (r *Reloader) watchLoop(ctx context.Context, reloads chan<- string, ready c
 		})
 	}
 
+	probe := func() {
+		err := r.addWatch(watcher, root)
+		if err == nil && !rootWatched {
+			rootWatched = true
+			select {
+			case reloads <- TriggerFsnotify:
+			case <-ctx.Done():
+			}
+			return
+		}
+		if err != nil {
+			rootWatched = false
+		}
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -253,33 +268,23 @@ func (r *Reloader) watchLoop(ctx context.Context, reloads chan<- string, ready c
 				return
 			}
 		case <-retryTicker.C:
-			// Re-add the root if the previous attempt failed. Cheap if
-			// the watch already covers the dir (fsnotify returns nil).
-			// On absent→present transitions, enqueue a reload so a write
-			// that landed in the no-watch gap (rm -rf + mkdir + write all
-			// before the next tick) is not stranded until the next event.
-			err := r.addWatch(watcher, root)
-			if err == nil && !rootWatched {
-				rootWatched = true
-				select {
-				case reloads <- TriggerFsnotify:
-				case <-ctx.Done():
-					return
-				}
-			} else if err != nil {
-				rootWatched = false
-			}
+			probe()
 		case ev, ok := <-watcher.Events:
 			if !ok {
 				return
 			}
-			if !shouldHandleEvent(ev) {
+			if ev.Has(fsnotify.Remove) && ev.Name == root {
+				// Rapid rm+mkdir+write inside one retry window stalls reload
+				// up to 2×RetryInterval if we wait for the next tick (#702).
+				// Probe immediately — same-tick mkdir is caught now; a still-
+				// absent dir falls through to the ticker. Root-Remove must be
+				// handled BEFORE the shouldHandleEvent filter (which rejects
+				// non-`.rego` paths).
+				rootWatched = false
+				probe()
 				continue
 			}
-			if ev.Has(fsnotify.Remove) && ev.Name == root {
-				// Operator removed the watch root; queue re-add via the
-				// retry ticker and let embed.FS fallback continue serving.
-				rootWatched = false
+			if !shouldHandleEvent(ev) {
 				continue
 			}
 			armDebounce()
