@@ -13,11 +13,10 @@ import (
 // callbackPath is the spec §3.3 row 8 mount point.
 const callbackPath = "/api/approval/callback"
 
-// maxCallbackBodyBytes caps form-urlencoded callback bodies so a hostile
-// caller cannot exhaust memory before the parser rejects junk fields.
+// maxCallbackBodyBytes caps form-urlencoded callback bodies so a hostile caller can't exhaust memory before parse-time rejection.
 const maxCallbackBodyBytes = 1 << 20
 
-// Dependencies bundles the side-effect handles NewHTTPCallback needs.
+// Dependencies bundles the side-effect handles NewHTTPCallback needs (DB, keyring, clock).
 type Dependencies struct {
 	DB      *state.DB
 	Keyring approvaltoken.Keyring
@@ -34,9 +33,7 @@ func NewHTTPCallback(deps Dependencies) (string, http.Handler) {
 	return callbackPath, h
 }
 
-// httpCallback validates the HMAC token from the POST body, dispatches
-// to approval.DecideTx, and maps the typed sentinels onto HTTP status
-// codes per spec §3.6 typed-error envelope.
+// httpCallback validates the HMAC token, dispatches to approval.DecideTx, and maps typed sentinels onto HTTP status per spec §3.6.
 type httpCallback struct {
 	db      *state.DB
 	keyring approvaltoken.Keyring
@@ -44,8 +41,7 @@ type httpCallback struct {
 }
 
 func (h *httpCallback) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// no-store applies to every response — operator decisions cannot
-	// tolerate a stale-cache lie even on error pages (spec §3.3 row 8).
+	// no-store on every response — operator decisions can't tolerate a stale-cache lie even on errors (spec §3.3 row 8).
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)

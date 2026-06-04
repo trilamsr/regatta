@@ -26,10 +26,7 @@ const (
 	defaultRegattaConfig = "regatta.yaml"
 )
 
-// costDeps injects every side-effect the cost path touches so tests
-// substitute a fixed clock + temp-DB DSN + config bytes. Opener is the
-// state.DB factory — left nil in production (defaults to state.Open);
-// tests inject a counting wrapper to assert the corresponding Close.
+// costDeps lifts every side-effect (clock, DSN, config bytes, DB opener) so tests can substitute deterministic fakes; Opener nil in prod, counting wrapper in tests.
 type costDeps struct {
 	Stdout     io.Writer
 	Stderr     io.Writer
@@ -91,12 +88,7 @@ func runCostStatusWith(deps costDeps, args []string) int {
 	return 0
 }
 
-// buildEnforcer wires a read-only Enforcer from regatta.yaml + the
-// state DB. Returns a closeDB func the caller MUST defer — the
-// Enforcer retains the *state.DB via Recorder/Spend/Resume, so the
-// connection cannot be released earlier without invalidating the
-// Enforcer. Returns CapMicro=0 when the config has no cost.cap block —
-// PrintStatus then renders the unset path.
+// buildEnforcer wires a read-only Enforcer; caller MUST defer the returned closeDB because the Enforcer retains the *state.DB via Recorder/Spend/Resume. CapMicro=0 when regatta.yaml has no cost.cap block — PrintStatus renders the unset path.
 func buildEnforcer(ctx context.Context, deps costDeps) (*costcap.Enforcer, func(), error) {
 	clock := deps.Clock
 	if clock == nil {
@@ -138,7 +130,7 @@ func buildEnforcer(ctx context.Context, deps costDeps) (*costcap.Enforcer, func(
 	return enf, closeDB, nil
 }
 
-// resumeReader adapts state.DB.LatestEventByKind to costcap.ResumeReader.
+// resumeReader adapts state.DB.LatestEventByKind to the costcap.ResumeReader interface.
 type resumeReader struct{ db *state.DB }
 
 func (r resumeReader) LatestResumeAt(ctx context.Context) (time.Time, error) {
@@ -152,8 +144,7 @@ func (r resumeReader) LatestResumeAt(ctx context.Context) (time.Time, error) {
 	return ev.CreatedAt, nil
 }
 
-// errNoRows wraps sql.ErrNoRows behind a thin function so cost.go does
-// not pull database/sql into its top-level imports.
+// errNoRows hides sql.ErrNoRows so cost.go avoids a top-level database/sql import.
 func errNoRows() error {
 	return sqlErrNoRows
 }
@@ -181,9 +172,7 @@ func defaultConfigPath(args []string) string {
 	return defaultRegattaConfig
 }
 
-// backfillDeps mirrors costDeps but adds the keyring + RunID inputs the
-// backfill path needs. Opener stays so tests assert per-invocation
-// Close parity with the rest of the cost CLI.
+// backfillDeps mirrors costDeps + adds keyring/active-key/BaseURL the backfill path needs; Opener kept so tests assert per-invocation Close parity with `cost status`.
 type backfillDeps struct {
 	Stdout     io.Writer
 	Stderr     io.Writer
