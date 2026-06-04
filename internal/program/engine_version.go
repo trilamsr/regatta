@@ -1,13 +1,13 @@
 // Package program stamps the engine identity (git-SHA + dirty flag) of
 // the binary that produced each ProgramBrief so replay months later
-// can refuse on engine-version skew rather than silently produce a
+// refuses on engine-version skew rather than silently producing a
 // divergent verdict (#549).
 //
-// Sources (priority order):
-//  1. compileEngineVersion — `-ldflags "-X .../compileEngineVersion=$SHA"` at build time.
-//  2. runtime/debug.ReadBuildInfo (vcs.revision + vcs.modified) — `go build -buildvcs=true` (default) embeds these.
-//  3. Fallback: "unknown" + dirty=false — surfaced verbatim so audit
-//     replay can refuse rather than treat "unknown" as a match.
+// Sources (priority order): ldflags `-X
+// compileEngineVersion=$SHA` > runtime/debug.ReadBuildInfo
+// (vcs.revision + vcs.modified) > "unknown" + dirty=false. The
+// fallback surfaces verbatim so replay refuses rather than treats
+// "unknown" as a match.
 package program
 
 import (
@@ -15,29 +15,25 @@ import (
 	"strconv"
 )
 
-// compileEngineVersion is overridden via `-ldflags "-X ..."` at build
-// time. Dev default "" forces the runtime/debug fallback.
-var compileEngineVersion = ""
+// compileEngineVersion / compileEngineDirty are ldflags-injected at
+// build time; empty defaults force the runtime/debug fallback. Dirty
+// is string-typed because ldflags only sets string vars.
+var (
+	compileEngineVersion = ""
+	compileEngineDirty   = ""
+)
 
-// compileEngineDirty is overridden via `-ldflags "-X ..."` at build
-// time. String-typed because ldflags can only set string vars; empty
-// falls through to the VCS dirty flag.
-var compileEngineDirty = ""
-
-// EngineRef captures the engine identity that produced (or is replaying)
-// a ProgramBrief. The replay-skew check compares brief.EngineRef()
-// against EngineInfo() and surfaces any mismatch.
+// EngineRef captures the engine identity that produced (or is
+// replaying) a ProgramBrief. Version is a 40-hex git-SHA when wired,
+// else "unknown". Dirty=true means the SHA alone cannot reproduce.
 type EngineRef struct {
-	// Version is a 40-hex git-SHA when ldflags or VCS supply it, or "unknown" when neither is wired.
 	Version string
-	// Dirty reports uncommitted changes at build time — when true, the SHA alone cannot reproduce the build.
-	Dirty bool
+	Dirty   bool
 }
 
-// EngineInfo returns the current binary's engine identity. Priority:
-// ldflags > runtime/debug VCS > unknown. Resolved at call time (no
-// init() side effects) so tests that monkey-patch the package-level
-// overrides see the fresh value.
+// EngineInfo returns the current binary's engine identity (priority:
+// ldflags > runtime/debug VCS > unknown). Resolved at call time so
+// tests monkey-patching the package-level overrides see fresh values.
 func EngineInfo() EngineRef {
 	if compileEngineVersion != "" {
 		return EngineRef{
@@ -63,9 +59,8 @@ func EngineInfo() EngineRef {
 	return EngineRef{Version: "unknown", Dirty: false}
 }
 
-// parseDirtyFlag tolerates common truthy strings in build scripts.
-// Anything unparseable falls back to false so a typo never silently
-// flips a clean release to dirty.
+// parseDirtyFlag tolerates common truthy strings. Anything unparseable
+// falls back to false so a typo never silently flips a clean release.
 func parseDirtyFlag(s string) bool {
 	if s == "" {
 		return false

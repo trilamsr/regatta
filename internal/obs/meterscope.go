@@ -6,16 +6,14 @@ import (
 )
 
 // MeterScope is the typed alias for an OTel instrumentation scope name.
-// One const block below pins every scope regatta dashboards key on, so
-// a rename here is a one-line diff that touches every prod call site
+// Centralising the names lets a rename touch every prod call site
 // transitively — the inverse of the pre-Wave-B2 state where 13 string
 // literals could drift apart silently.
 type MeterScope string
 
-// MeterScope* are the canonical scope names. The string value of each
-// const MUST equal its historical otel.Meter("...") argument because
-// dashboard queries grep on that exact text; the
-// TestMeterScope_ConstsMatchHistoricalValues lint pins this invariant.
+// Canonical scope names. Each string value MUST equal its historical
+// otel.Meter("...") argument — dashboard queries grep on the exact
+// text; TestMeterScope_ConstsMatchHistoricalValues pins the invariant.
 const (
 	MeterScopeOrchestrator         MeterScope = "orchestrator"
 	MeterScopeScheduler            MeterScope = "scheduler"
@@ -32,18 +30,16 @@ const (
 	MeterScopeSubstrate            MeterScope = "orchestrator/state/substrate"
 )
 
-// Meter returns the global MeterProvider's meter bound to scope.
-// Centralizing this call lets the meter-scope lint enforce that
-// production code never embeds a raw string-literal scope name.
+// Meter returns the global MeterProvider's meter bound to scope. The
+// meter-scope lint enforces that production code never embeds a raw
+// string-literal scope name.
 func Meter(scope MeterScope) metric.Meter {
 	return otel.Meter(string(scope))
 }
 
 // ResolveMeter returns stored when non-nil, else the global provider's
-// meter at fallback scope. Encapsulates the "nil-falls-back-lazily"
-// pattern every Config.ResolveMeter helper previously open-coded so a
-// post-construct provider swap (test noop injection) wins on the next
-// call without per-package reinvention.
+// meter at fallback scope. Lazy fallback lets a post-construct provider
+// swap (test noop injection) win on the next call.
 func ResolveMeter(stored metric.Meter, fallback MeterScope) metric.Meter {
 	if stored != nil {
 		return stored

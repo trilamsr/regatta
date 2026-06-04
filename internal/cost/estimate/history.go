@@ -1,16 +1,10 @@
 // Package estimate — history.go: opt-in p95-of-recorded-spend
 // estimator gated by `safety.cost.estimation_strategy: history`
-// (spec §10 S1, #238). Default remains upper_bound; this is wired
-// ONLY when the operator flips the flag.
-//
-// Replay-safe (W9): p95 is a pure function of the Reader snapshot
-// (sorted-then-indexed quantile; no random sampling, no time.Now in
-// the estimator — Reader's injected clock is the only time source).
-//
-// Cold-start fallback: under MinSamples rows for the cohort,
-// Estimate delegates to Fallback (UpperBound behind a gate.Estimator
-// adapter) — the load-bearing escape hatch keeping the never-
-// undercount Waxell-$47K-trap defense intact.
+// (spec §10 S1, #238). Replay-safe (W9): p95 is a pure function of
+// the Reader snapshot — no random sampling, no time.Now. Cold-start
+// (samples < MinSamples) delegates to Fallback (UpperBound), the
+// escape hatch keeping the never-undercount Waxell-$47K-trap defense
+// intact.
 package estimate
 
 import (
@@ -26,11 +20,9 @@ import (
 
 // HistoryConfig wires a History estimator. Reader is the cohort-spend
 // source (concrete *spend.Reader — Wave E inlined the prior CohortReader
-// seam since only spend.Reader satisfied it and no test fake exists).
-// Fallback is the cold-start estimator (UpperBound behind a gate.Estimator
-// adapter in production wiring). MinSamples gates engagement; 10 per spec
-// §10 S1 + issue #238 acceptance. Period scopes the recency window;
-// defaults to 1h matching gate.SafetyCost.period().
+// seam since only spend.Reader satisfied it). Fallback is the
+// cold-start estimator. MinSamples=10 + Period=1h match spec §10 S1
+// + issue #238 acceptance.
 type HistoryConfig struct {
 	Reader     *spend.Reader
 	Fallback   gate.Estimator
@@ -83,11 +75,9 @@ func (h *History) Estimate(ctx context.Context, hint gate.EstHint, model string)
 	return p95(samples).USD(), nil
 }
 
-// p95 returns the nearest-rank 95th percentile on a local copy so
-// the caller's slice is not mutated. rank = ceil(0.95 × N); for N=20
-// → rank=19 → index 18. Deterministic — W9 replay-safe. Sort + index
-// is order-preserving on int64; integer comparisons keep the
-// percentile selection exact at the rank boundary.
+// p95 returns the nearest-rank 95th percentile on a local copy so the
+// caller's slice is not mutated. rank = ceil(0.95 × N). Integer compare
+// on int64 keeps the rank-boundary selection exact (W9 replay-safe).
 func p95(in []spend.USDMicro) spend.USDMicro {
 	if len(in) == 0 {
 		return 0
