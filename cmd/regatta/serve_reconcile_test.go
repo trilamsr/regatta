@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
+	"github.com/trilamsr/regatta/internal/testutil"
 )
 
 // reconcileTestYAML pins safety.cost with a short reconcile_interval so
@@ -89,17 +90,17 @@ func TestStartReconciler_LandsBudgetReconciledRowOnTick(t *testing.T) {
 		t.Fatal("startReconciler returned started=false; wiring did not fire")
 	}
 
-	// Wait until the goroutine writes the first row, then cancel.
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer waitCancel()
+	testutil.Eventually(t, waitCtx, 50*time.Millisecond, func() bool {
 		var n int
 		if err := db.SQL().QueryRowContext(ctx,
 			`SELECT COUNT(*) FROM substrate_events WHERE kind = 'budget_reconciled'`,
 		).Scan(&n); err == nil && n >= 1 {
-			break
+			return true
 		}
-		time.Sleep(50 * time.Millisecond)
-	}
+		return false
+	}, "reconciler did not write budget_reconciled row")
 	cancel()
 	select {
 	case <-done:

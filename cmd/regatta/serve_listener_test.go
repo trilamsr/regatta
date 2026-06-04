@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil"
 )
 
 // listenerHarness fans the bootListener seam under a t.TempDir DB so
@@ -53,7 +54,7 @@ func TestServe_UITrue_BindsListener(t *testing.T) {
 	if srv == nil {
 		t.Fatal("srv=nil with --ui=true")
 	}
-	addr, errChan := startListener(srv)
+	addr, errChan := startListener(t, srv)
 	t.Cleanup(func() {
 		_ = srv.Shutdown(context.Background())
 		<-errChan
@@ -109,7 +110,7 @@ func TestServe_GracefulShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bootListener: %v", err)
 	}
-	addr, errChan := startListener(srv)
+	addr, errChan := startListener(t, srv)
 
 	preResp, err := http.Get("http://" + addr + "/healthz")
 	if err != nil {
@@ -163,7 +164,7 @@ func TestServe_CallbackRouteRegisteredOnlyWhenUITrue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bootListener ui=true: %v", err)
 	}
-	addr, errChan := startListener(srvOn)
+	addr, errChan := startListener(t, srvOn)
 	t.Cleanup(func() {
 		_ = srvOn.Shutdown(context.Background())
 		<-errChan
@@ -182,7 +183,8 @@ func TestServe_CallbackRouteRegisteredOnlyWhenUITrue(t *testing.T) {
 // startListener spawns ListenAndServe in a goroutine and returns the
 // bound addr (after resolving :0) plus the error channel so the caller
 // can assert clean shutdown.
-func startListener(srv *http.Server) (string, chan error) {
+func startListener(t testing.TB, srv *http.Server) (string, chan error) {
+	t.Helper()
 	errChan := make(chan error, 1)
 	ln, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
@@ -193,7 +195,16 @@ func startListener(srv *http.Server) (string, chan error) {
 	go func() {
 		errChan <- srv.Serve(ln)
 	}()
-	// wait briefly for the goroutine to enter Serve
-	time.Sleep(20 * time.Millisecond)
-	return ln.Addr().String(), errChan
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	addr := ln.Addr().String()
+	testutil.Eventually(t, ctx, 5*time.Millisecond, func() bool {
+		c, derr := net.DialTimeout("tcp", addr, 50*time.Millisecond)
+		if derr != nil {
+			return false
+		}
+		_ = c.Close()
+		return true
+	}, "Serve goroutine did not accept on "+addr)
+	return addr, errChan
 }
