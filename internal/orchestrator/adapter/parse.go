@@ -36,6 +36,10 @@ func parseMarkdownItem(data []byte) (schemas.WorkItem, error) {
 	}
 	if v, ok := fm["kind"]; ok {
 		item.Kind = schemas.WorkItemKind(v)
+	} else {
+		// Spec_adapter.go:41 documents kind as `"feature" (default)`; omitting it
+		// must not strand downstream mapAdapterKind with an empty value (#866).
+		item.Kind = schemas.KindFeature
 	}
 	if v, ok := fm["status"]; ok {
 		item.Status = schemas.Status(v)
@@ -59,7 +63,7 @@ func parseMarkdownItem(data []byte) (schemas.WorkItem, error) {
 	if !validStatus(item.Status) {
 		return schemas.WorkItem{}, fmt.Errorf("markdown_catalog: invalid status %q", item.Status)
 	}
-	if item.Kind != "" && !validKind(item.Kind) {
+	if !validKind(item.Kind) {
 		return schemas.WorkItem{}, fmt.Errorf("markdown_catalog: invalid kind %q", item.Kind)
 	}
 
