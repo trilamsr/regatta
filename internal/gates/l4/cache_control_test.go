@@ -162,6 +162,41 @@ func TestL4Adapter_CacheTokensSurfaced(t *testing.T) {
 	}
 }
 
+// TestL4Adapter_NoMarker_FallsBackToUncached asserts a hot-reloaded template missing the marker degrades to a single uncached user message (#852).
+func TestL4Adapter_NoMarker_FallsBackToUncached(t *testing.T) {
+	prev := active.Load()
+	t.Cleanup(func() { active.Store(prev) })
+	flat, err := parseSlot("flat template no marker {{ .PRSHA }}")
+	if err != nil {
+		t.Fatalf("parseSlot: %v", err)
+	}
+	active.Store(flat)
+
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"{\"verdict\":\"pass\",\"findings\":[]}"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	a := &AnthropicAdapter{APIKey: "k", BaseURL: srv.URL, Client: srv.Client()}
+	if _, err := a.Invoke()(context.Background(), InvokeRequest{Model: "m", Input: Input{PRSHA: "z"}}); err != nil {
+		t.Fatalf("invoke: %v", err)
+	}
+	if _, hasSystem := got["system"]; hasSystem {
+		t.Errorf("payload.system must be absent when template lacks cache marker (fallback path)")
+	}
+	msgs, _ := got["messages"].([]any)
+	if len(msgs) != 1 {
+		t.Fatalf("messages: want 1, got %d", len(msgs))
+	}
+	content, _ := msgs[0].(map[string]any)["content"].(string)
+	if !strings.Contains(content, "z") {
+		t.Errorf("dynamic content missing PRSHA: %q", content)
+	}
+}
+
 func trunc(s string) string {
 	const n = 120
 	if len(s) <= n {
