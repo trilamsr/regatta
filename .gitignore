@@ -16,6 +16,7 @@ dist/*
 *.test
 *.out
 coverage.out
+go.work.sum
 
 # Node toolchain used only for `make build-tailwind`. The compiled
 # tailwind.min.css ships under internal/web/static/; node never runs on CI.
