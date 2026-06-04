@@ -10,9 +10,8 @@ const (
 	// node_output, fact, budget_reconciled, heartbeat.
 	StrategyLWW ReducerStrategy = "lww"
 
-	// StrategyAppend — every event as a distinct row. Suits
-	// approval_event (state-machine transitions), token_spend (SUM over
-	// window), gate_verdict (signed verdict chain).
+	// StrategyAppend — every event a distinct row. Suits approval_event,
+	// token_spend (SUM over window), gate_verdict (signed chain).
 	StrategyAppend ReducerStrategy = "append"
 
 	// StrategyWriteOnce — only the first event per (run, kind, key) is
@@ -22,7 +21,9 @@ const (
 
 // defaultReducer returns the spec §4 strategy for kind. Hardcoded per
 // spec — deviation requires re-spawning the design subagent
-// (feedback_spec_pattern_authority).
+// (feedback_spec_pattern_authority). Default arm fails-closed to
+// append; SQL CHECK on substrate_events.kind blocks unknown kinds at
+// INSERT, so the default should be unreachable.
 func defaultReducer(kind EventKind) ReducerStrategy {
 	switch kind {
 	case KindNodeOutput, KindFact, KindBudgetReconciled, KindHeartbeat:
@@ -33,9 +34,6 @@ func defaultReducer(kind EventKind) ReducerStrategy {
 		KindCostCapThrottled, KindCostCapResumed:
 		return StrategyAppend
 	default:
-		// Fail-closed to append so an override never silently drops
-		// data. SQL CHECK on substrate_events.kind blocks unknown kinds
-		// at INSERT time, so this path should be unreachable.
 		return StrategyAppend
 	}
 }
