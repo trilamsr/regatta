@@ -1,17 +1,9 @@
-// Package jsonscan provides an allocation-light walker for the
-// JSON-array-of-strings shape that work_items.depends_on_features
-// always carries — pulled out of state/ to break a future
-// import cycle when state is split (closes-part-of #795 #739).
+// Package jsonscan walks the JSON-array-of-strings shape used by work_items.depends_on_features; split out of state/ to break a future import cycle (#795 #739).
 package jsonscan
 
 import "fmt"
 
-// Scan walks a JSON array of strings and invokes f on each unquoted
-// element. The byte slice handed to f aliases raw for non-escaped
-// elements and must not be retained past f's return; escaped elements
-// receive a freshly allocated buffer. Supports \" and \\ escapes only —
-// other backslash sequences pass through verbatim, matching the
-// upstream marshaler's emit set for work-item IDs.
+// Scan invokes f on each element of a JSON string array; the slice aliases raw for unescaped elements (must not be retained past f's return) and supports only \" and \\ — the marshaler's emit set for work-item IDs.
 func Scan(raw []byte, f func(s []byte)) error {
 	i := 0
 	for i < len(raw) && (raw[i] == ' ' || raw[i] == '\t' || raw[i] == '\n' || raw[i] == '\r') {
@@ -58,10 +50,7 @@ func Scan(raw []byte, f func(s []byte)) error {
 	return nil
 }
 
-// Unescape collapses the two backslash sequences the work-item-ID
-// marshaler can emit (\" and \\) and passes every other byte through —
-// the work-item ID charset never contains unicode escapes, so the
-// general JSON-string decoder would be overkill.
+// Unescape collapses \" and \\ (the only sequences the work-item-ID marshaler emits) and passes every other byte through — work-item IDs never carry unicode escapes, so a full JSON decoder is overkill.
 func Unescape(s []byte) []byte {
 	out := make([]byte, 0, len(s))
 	for i := 0; i < len(s); i++ {
