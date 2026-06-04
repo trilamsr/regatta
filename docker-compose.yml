@@ -9,6 +9,15 @@
 # Stage 1 runbook lives at docs/operator/container.md. Stage 2 operator
 # runbook lives at docs/operator/docker-compose.md.
 #
+# Init-volume pattern: `regatta-data` is a named volume mounted at /data.
+# On first creation Docker leaves it root-owned, but the distroless image
+# runs as nonroot uid 65532 and would hit sqlite CANTOPEN (errno 14) on
+# first boot. The `regatta-init` service runs a one-shot `chown 65532:65532
+# /data` before `regatta` starts, gated by `service_completed_successfully`.
+# Bind-mount was considered + rejected: loses portability across operator
+# machines. Root-in-container was rejected: drops the distroless security
+# posture.
+#
 # Quickstart:
 #   docker compose up -d
 #   open http://localhost:3000   # Grafana — admin / admin
@@ -16,6 +25,16 @@
 #   open http://localhost:9093   # AlertManager UI
 
 services:
+  regatta-init:
+    image: busybox:1.37
+    container_name: regatta-init
+    command: ["sh", "-c", "chown 65532:65532 /data && chmod 0750 /data"]
+    volumes:
+      - regatta-data:/data
+    restart: "no"
+    networks:
+      - regatta-net
+
   regatta:
     build:
       context: .
@@ -51,6 +70,8 @@ services:
     depends_on:
       prometheus:
         condition: service_healthy
+      regatta-init:
+        condition: service_completed_successfully
 
   prometheus:
     image: prom/prometheus:v3.7.2
