@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
@@ -65,7 +68,7 @@ spec_adapter:
 					t.Fatalf("write: %v", err)
 				}
 			}
-			ad, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp})
+			ad, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, slog.New(slog.NewTextHandler(bytes.NewBuffer(nil), nil)))
 			if err != nil {
 				t.Fatalf("buildSpecAdapter: %v", err)
 			}
@@ -83,5 +86,72 @@ spec_adapter:
 				t.Errorf("StatusClosedResolved supported=%v; want %v", got, tc.wantStatusClosed)
 			}
 		})
+	}
+}
+
+// TestBuildSpecAdapter_LogsConfiguredType pins the #867 contract — every boot emits one INFO record naming the wired adapter so operators can confirm regatta.yaml took effect without log archaeology.
+func TestBuildSpecAdapter_LogsConfiguredType(t *testing.T) {
+	cases := []struct {
+		name     string
+		yaml     string
+		wantType string
+	}{
+		{
+			name: "github_issues_logs_type",
+			yaml: `version: 1
+repo:
+  host: github
+  owner: trilamsr
+  name: regatta
+spec_adapter:
+  type: github_issues
+  selector: "label:autonomous"
+` + wireSpecAdapterValidGateBlock,
+			wantType: "github_issues",
+		},
+		{
+			name:     "absent_yaml_logs_markdown_catalog_default",
+			yaml:     "",
+			wantType: "markdown_catalog",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			if tc.yaml != "" {
+				if err := os.WriteFile(filepath.Join(tmp, "regatta.yaml"), []byte(tc.yaml), 0o600); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+			}
+			buf := &bytes.Buffer{}
+			logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+			if _, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, logger); err != nil {
+				t.Fatalf("buildSpecAdapter: %v", err)
+			}
+			out := buf.String()
+			if !strings.Contains(out, "msg=adapter.configured") {
+				t.Fatalf("log missing adapter.configured record:\n%s", out)
+			}
+			if !strings.Contains(out, "type="+tc.wantType) {
+				t.Errorf("log missing type=%s:\n%s", tc.wantType, out)
+			}
+		})
+	}
+}
+
+// TestBuildSpecAdapter_SurfacesYAMLLoadError pins the #867 contract — a malformed regatta.yaml MUST surface a WARN record naming the failure instead of silently falling back to markdown_catalog (the silent-swallow behaviour that hid #867 from operator inspection).
+func TestBuildSpecAdapter_SurfacesYAMLLoadError(t *testing.T) {
+	tmp := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmp, "regatta.yaml"), []byte("not: valid: yaml: structure\n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	buf := &bytes.Buffer{}
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	if _, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, logger); err != nil {
+		t.Fatalf("buildSpecAdapter: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "msg=adapter.config_load_failed") {
+		t.Fatalf("log missing adapter.config_load_failed warn record (silent-swallow regression #867):\n%s", out)
 	}
 }
