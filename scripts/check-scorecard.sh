@@ -102,15 +102,23 @@ else
   exit 64
 fi
 
-# Category auto-skip when no scorecard is required. The release-notes
-# fence is the source of truth for PR type (pr-lint.yml validates it
-# upstream). [CHORE]/[DOCS]/[CI]/[NONE]/[CHANGE]/[REFACTOR] PRs ship
-# without a scorecard; we treat absence as pass for those.
+# Category short-circuit: the release-notes fence is the source of truth
+# for PR type (pr-lint.yml validates it upstream). [CHORE]/[DOCS]/[CI]/
+# [NONE]/[CHANGE]/[REFACTOR] PRs are exempt regardless of whether the
+# author pasted a partial/malformed scorecard skeleton (#853 — was
+# falling through scorecard parse and failing on uncited rows).
 category=$(printf '%s\n' "$body" | awk '
   /^```release-notes/ { capture=1; next }
   capture && /^```/    { exit }
   capture              { print }
 ' | grep -oE '\[[A-Z]+\]' | head -1 || true)
+
+case "$category" in
+  "[CHORE]"|"[DOCS]"|"[CI]"|"[NONE]"|"[CHANGE]"|"[REFACTOR]")
+    echo "check-scorecard: release-notes $category is exempt"
+    exit 0
+    ;;
+esac
 
 # Locate scorecard section. Match common header variants (case-insensitive).
 # Captures from the header until the next `##` heading or EOF.
@@ -126,21 +134,13 @@ section=$(printf '%s\n' "$body" | awk '
 ')
 
 if [ -z "$(printf '%s' "$section" | tr -d '[:space:]')" ]; then
-  case "$category" in
-    "[CHORE]"|"[DOCS]"|"[CI]"|"[NONE]"|"[CHANGE]"|"[REFACTOR]")
-      echo "check-scorecard: no scorecard section; release-notes $category is exempt"
-      exit 0
-      ;;
-    *)
-      echo "::error::No scorecard section found in PR body." >&2
-      echo "::error::NOTE: [CHORE]/[DOCS]/[CI]/[NONE]/[CHANGE]/[REFACTOR] PRs auto-skip the scorecard requirement, but ONLY when the release-notes prefix appears INSIDE a triple-backtick \`release-notes\` fenced block. If you intended a chore-class PR, wrap your release-notes line in a fence:" >&2
-      echo "::error::    \`\`\`release-notes" >&2
-      echo "::error::    [CHORE] <one-line summary>" >&2
-      echo "::error::    \`\`\`" >&2
-      echo "::error::Otherwise add a '## A+ Scorecard' (or 'Rubric Scorecard') section with cited criteria per docs/engineer/dispatch-templates/reviewer.md." >&2
-      exit 1
-      ;;
-  esac
+  echo "::error::No scorecard section found in PR body." >&2
+  echo "::error::NOTE: [CHORE]/[DOCS]/[CI]/[NONE]/[CHANGE]/[REFACTOR] PRs auto-skip the scorecard requirement, but ONLY when the release-notes prefix appears INSIDE a triple-backtick \`release-notes\` fenced block. If you intended a chore-class PR, wrap your release-notes line in a fence:" >&2
+  echo "::error::    \`\`\`release-notes" >&2
+  echo "::error::    [CHORE] <one-line summary>" >&2
+  echo "::error::    \`\`\`" >&2
+  echo "::error::Otherwise add a '## A+ Scorecard' (or 'Rubric Scorecard') section with cited criteria per docs/engineer/dispatch-templates/reviewer.md." >&2
+  exit 1
 fi
 
 # Scan every line in the scorecard section that carries an `[x]` mark.
@@ -205,16 +205,10 @@ $section
 EOF
 
 if [ "$total" -eq 0 ]; then
-  case "$category" in
-    "[CHORE]"|"[DOCS]"|"[CI]"|"[NONE]"|"[CHANGE]"|"[REFACTOR]")
-      echo "check-scorecard: scorecard section present but empty; $category exempt"
-      exit 0
-      ;;
-    *)
-      echo "::error::Scorecard section present but contains no [x] marks. Mark at least one criterion." >&2
-      exit 1
-      ;;
-  esac
+  # Exempt categories already short-circuited at top; here we know the
+  # PR is scorecard-required and the section has no [x] marks.
+  echo "::error::Scorecard section present but contains no [x] marks. Mark at least one criterion." >&2
+  exit 1
 fi
 
 if [ "${#missing[@]}" -gt 0 ]; then
