@@ -15,31 +15,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// TestEndToEnd_V2_ConditionalDAG drives the full conditional-DAG
-// pipeline in-process: BriefLoader.Sync materialises edges +
-// OutputsSchemas, Scheduler.Tick step-0 evaluates predicates, the
-// stub Spawner's Complete writes the journal + merges work_items.
-//
-// Topology (parent fixture: testdata/v2_briefs_e2e/PROG-2.md):
-//
-//	F-SCAN edges: predicated -> F-DEEP when out.severity == "high"
-//	F-SCAN default_next: F-QUICK (fires only when every predicated false)
-//	F-DEEP edges: unconditional -> F-QUICK (satisfies CheckReachability)
-//
-// Single predicated edge + a distinct default target plus a chaining
-// unconditional edge avoids the (program, from, to) UpsertEdges
-// collision class. With severity=high: F-DEEP merges first (predicate
-// fires), then F-DEEP->F-QUICK unconditional propagates and F-QUICK
-// also merges. The F-SCAN->F-QUICK default never fires because
-// nonDefaultAllFalse stays false after F-DEEP fires=true — proving
-// the fallback is gated on the non-default outcome, not unconditional.
-//
-// Bytes are deliberately not asserted on — HMAC + ProducedAt make
-// byte-equality brittle. Assertions cover shape: row counts, status
-// enums, edge.fired sum, journal content_sha presence.
-//
-// e2e gated by t.Short() per the MVP-1 convention so unit-test loops
-// stay sub-second.
+// TestEndToEnd_V2_ConditionalDAG asserts the conditional-DAG pipeline (Sync → Tick → Complete) propagates predicate fires and default fallback via row/status/journal shape.
 func TestEndToEnd_V2_ConditionalDAG(t *testing.T) {
 	if testing.Short() {
 		t.Skip("e2e test; skip with -short")
