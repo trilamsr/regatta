@@ -152,9 +152,7 @@ func TestConfig_ValidateAllInvariants(t *testing.T) {
 	}
 }
 
-// Validator MUST accumulate every defect via errors.Join so a single
-// CI run surfaces every misconfig. Asserting two sentinels arrive in
-// one joined error is the canonical regression for the accumulator.
+// TestConfig_Validate_AccumulatesErrors asserts Validate joins every defect (two sentinels in one error) so a single CI run surfaces every misconfig.
 func TestConfig_Validate_AccumulatesErrors(t *testing.T) {
 	c := validBase()
 	c.Quorum = 99
@@ -168,10 +166,7 @@ func TestConfig_Validate_AccumulatesErrors(t *testing.T) {
 	}
 }
 
-// Edge case: roles-only reviewer set; quorum must check against the
-// union of explicit reviewers + role-expanded reviewers. MVP resolves
-// roles via a static map handed in by the caller; if absent, Validate
-// treats Roles entries as opaque names that count toward the union.
+// TestConfig_Validate_RolesCountTowardQuorum asserts roles-only reviewer sets count toward quorum via union of reviewers + role-expansion (opaque names when no resolver).
 func TestConfig_Validate_RolesCountTowardQuorum(t *testing.T) {
 	c := Config{
 		Name:           "g1",
