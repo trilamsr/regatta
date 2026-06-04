@@ -10,6 +10,8 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 
 **Default simpler**: Pick the simplest viable option. Don't pre-build lint scripts / abstractions / tier systems for hypothetical drift. Anti-pattern: "what if 5 PRs/month land outside the list" — wait for the 5 PRs, not the lint. Three similar lines beat a premature abstraction. (`feedback_default_simpler`)
 
+- **Recognize session end**: "address N items" is a hint, not a contract. When non-phase-x non-soak-gated open issues drop to ≤2, report "actionable surface exhausted" + offer phase-x triage / wedge triage / stop. Don't fabricate items, don't re-touch swept files, don't build lint scripts for hypothetical drift. (`feedback_recognize_session_end`)
+
 ## Token economy (subagent-injection rules)
 
 - **Dispatch brief only**: implementer subagents receive per-task brief (spec §12 style), NOT full spec doc. Main thread keeps full spec for cross-cutting Qs. (`feedback_dispatch_brief_only`)
@@ -44,7 +46,6 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 - **PR body hygiene**: `gh pr create`/`gh pr edit` MUST use `--body-file <path>` (HEREDOC escapes backticks + silently breaks release-notes fence). Pre-push grep for triple-fence ` ```release-notes ` block presence. (`feedback_pr_body_hygiene`)
 - **Windows path tests**: when test assertions compare path strings, canonicalize BOTH sides the same way production code does — or platform-branch the test inputs. 8.3 short-names + `/etc`-literal paths break Windows CI. (`feedback_windows_path_tests`)
 - **pr-lint body-snapshot lag**: `pr-lint` workflow snapshots PR body at the triggering commit's event payload. Reruns use the STORED payload, not live body. Body-edit alone doesn't refresh. After fixing scorecard/release-notes errors in body, push an empty commit (`git commit --allow-empty -m "chore: refresh pr-lint snapshot" && git push`) to force a fresh trigger event. (`feedback_pr_lint_body_snapshot_lag`)
-- **Verify-CANCELLED + orphan test = goroutine leak**: when GitHub Actions verify job is CANCELLED at full job timeout (e.g. 15min) and the log shows `ok` for all packages followed by silent minutes then `##[error]The operation was canceled.` and `Terminate orphan process: pid (N) (sometest.test)`, root cause is a goroutine inside one test blocking on a channel that is closed only in a `defer` that never fires because the test func never returns. Fix with `select { case <-ch: case <-time.After(deadline): }`. (`feedback_ci_timeout_orphan_test_goroutine`)
 - **Scorecard citation tokens MUST be outside backticks**: `scripts/check-scorecard.sh` strips backtick-fenced spans before regex-scanning each `[x]` row. Tokens wrapped in backticks (TestX, path/to/file.go:42, #NNN) are INVISIBLE to the validator → row fails as uncited. Write bare on the same line: `Pin behavior at internal/foo/bar_test.go:42 (#NNN)`. Recurring offender on #780, #811, #815, #821. (`feedback_scorecard_citation_token_outside_backticks`)
 
 ## TDD + review
@@ -59,8 +60,8 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 - **Risk-tier findings**: fix inline OR file tracking issue + cite #. Never auto-approve with unaddressed Risk+. (`feedback_review_before_automerge`)
 - **Unaddressed load-bearing**: every load-bearing leftover (reviewer finding, spec deviation, future-wave dep sketched in prose) → tracking issue filed BEFORE merge. PR bodies are not durable. Universal rule, no PR-type exempt. (`feedback_unaddressed_load_bearing`)
 - **Audit before dispatch**: before dispatching an implementer for a plan-master task, verify the work isn't already on main: `git ls-tree -r origin/main --name-only | grep <expected-path>` OR `git log --oneline origin/main | grep '(#<task-issue>)'`. Plan-master issues may document already-shipped work; dispatching wastes subagent invocations. (`feedback_audit_main_before_implementing`)
-- **Validate empirically**: before recommending a CI/perf/memory change based on prior agent reports, run a local measurement. `/usr/bin/time -l go test -race ...` takes 1min and resolves the debate. Don't quote reviewer caution as truth. (`feedback_validate_before_ship`)
-- **Subagent output is a LEAD, not GROUND TRUTH**: investigator and reviewer subagents return plausible-but-wrong line numbers, "already shipped" claims, and false positives. Before dispatching an implementer from subagent findings, spot-check 2-3 `file:line` refs via `Read`; before quoting a reviewer's risk number, demand a 1-minute empirical measurement. (`feedback_subagent_output_verify`)
+- **Validate empirically + verify subagent output**: Before recommending CI/perf/memory changes OR dispatching action on subagent findings, run a local measurement (`/usr/bin/time -l go test -race ...` resolves debates in 1min) AND spot-check 2-3 file:line refs from investigator/reviewer reports. Subagent output is a LEAD, not GROUND TRUTH. (`feedback_validate_before_ship`, `feedback_subagent_output_verify`)
+- **Verify-CANCELLED + orphan test = goroutine leak**: when GitHub Actions verify job is CANCELLED at full job timeout (e.g. 15min) and the log shows `ok` for all packages followed by silent minutes then `##[error]The operation was canceled.` and `Terminate orphan process: pid (N) (sometest.test)`, root cause is a goroutine inside one test blocking on a channel that is closed only in a `defer` that never fires because the test func never returns. Fix with `select { case <-ch: case <-time.After(deadline): }`. (`feedback_ci_timeout_orphan_test_goroutine`)
 
 ## Worktree discipline
 
@@ -69,26 +70,16 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 - **Per-merge cleanup**: `git worktree remove --force` after merge.
 - **Force-twice clears locks**: `git worktree remove --force --force <path>` if lock persists.
 - **Post-removal hygiene**: `golangci-lint cache clean` after worktree removal (cache holds stale per-file analysis refs). prose-dup may also hold stale refs; verify script `exclude-dirs` current. (`feedback_worktree_discipline`, `feedback_post_worktree_removal_hygiene`)
-- **Rebase conflict resolution**: during `git rebase` replay, `--theirs` = the commit being replayed (your PR's work), `--ours` = main — counterintuitive vs `git merge` (INVERTED from merge intuition). Wrong choice silently drops PR work; lost #772 in 2026-06-03 session to this trap. Standard resolve (closes #779, `feedback_rebase_theirs_vs_ours`):
-  ```
-  git checkout --theirs <conflict-file>   # OR: regenerate via make specs-index for docs/engineer/specs/README.md
-  git add <file>
-  git rebase --continue
-  ```
-- **Sibling-stack rebase uses `--onto`**: a feature PR branched off another in-flight feature has no merge-base with origin/main. Plain `git rebase origin/main` replays the OTHER sibling's commits (potentially 90+ already-landed) and produces massive add/add conflicts. Verify merge-base first with `git merge-base origin/main HEAD`, then use `git rebase --onto origin/main <sibling-base> <pr-branch>`. (`feedback_rebase_onto_for_sibling_stacks`)
+- **Rebase conflict resolution**: During `git rebase origin/main`, `--theirs` = PR commit being replayed (counterintuitive vs merge); `--ours` = main. Wrong choice silently drops PR work (lost #772). Sibling-stack PRs (branched off another in-flight feature, no merge-base with main) MUST use `git rebase --onto origin/main <sibling-base> <pr-branch>` — plain `rebase origin/main` replays the sibling's commits as massive add/add conflicts. Verify merge-base first. Snippet: `git checkout --theirs <file>` → `git add <file>` → `git rebase --continue`. (`feedback_rebase_theirs_vs_ours`, `feedback_rebase_onto_for_sibling_stacks`)
 
 ## Dispatch (parallel subagent waves)
 
 - **Cap parallel implementers at 3-4** (shared API quota dies at 5+; heavy-context sessions cap at 2-3).
-- **Dispatch prompt MUST pin**: migration N (never let implementer pick — duplicate-version panic per `feedback_migration_number_lock`), output path slug (never let plan subagent pick — produces dup files per `feedback_plan_subagent_dup_files`), exact brief text.
+- **Dispatch prompt MUST pin**: migration N (never let implementer pick — duplicate-version panic), output path slug (never let plan subagent pick — produces dup files), exact brief text. (`feedback_migration_number_lock`, `feedback_plan_subagent_dup_files`)
 - **File-disjoint only** in parallel; sequence chained-output work.
 - **Shared-primitive owner**: scan composition roots (`cmd/regatta/serve.go`, `internal/orchestrator/state/machine.go`, `Makefile`, `docs/engineer/specs/README.md`) before dispatch; name OWNER for each shared primitive. (`feedback_parallel_safety`, `feedback_conflict_anticipation`)
 - **Pre-file shared followups** for cross-cutting items; pre-merge collision rebase.
 - **Cascade-rebase = design defect**: when ≥3 PRs go DIRTY simultaneously on shared-anchor changes, treat as design defect, not "normal merge math". Investigate the shared anchor (god-file, large composition root) — fix structurally (split files per #737 pattern) rather than absorbing rebase churn N times. (`feedback_cascade_rebase_root_cause`)
-
-## Session discipline
-
-- **"Address N items" is a hint, not a contract**: when non-phase-x non-soak-gated open issues drop to ≤2, report "actionable surface exhausted" + offer (a) phase-x reopen-trigger review, (b) wedge triage, (c) stop. Don't fabricate items — don't re-touch already-swept files, don't build lint scripts for hypothetical drift, don't dispatch implementers for already-shipped work. (`feedback_recognize_session_end`)
 
 ## Cross-cutting design / research
 
