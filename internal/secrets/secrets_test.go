@@ -372,7 +372,7 @@ func TestCache_SIGHUPSwapsSnapshotAtomically(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatalf("SIGHUP did not refresh snapshot within deadline")
 		}
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
 	}
 	cancel()
 	<-done

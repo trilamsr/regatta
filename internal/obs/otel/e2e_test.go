@@ -239,7 +239,7 @@ func waitForJaegerReady(t *testing.T, deadline time.Duration) {
 		if dialOK("localhost:"+jaegerOTLPPort) && dialOK("localhost:"+jaegerQueryPort) {
 			return
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
 	}
 	t.Fatalf("Jaeger not ready within %s", deadline)
 }
@@ -271,7 +271,7 @@ func pollJaegerForTrace(t *testing.T, traceID string, deadline time.Duration) ([
 		resp, err := http.Get(url)
 		if err != nil {
 			lastErr = err
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(500 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
@@ -283,7 +283,7 @@ func pollJaegerForTrace(t *testing.T, traceID string, deadline time.Duration) ([
 			}
 		}
 		lastErr = fmt.Errorf("status=%d body=%s", resp.StatusCode, strutil.Truncate(string(body), 200))
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
 	}
 	if len(names) > 0 {
 		return names, fmt.Errorf("incomplete span set (got %d, want ≥5): %v; last_err=%v", len(names), names, lastErr)

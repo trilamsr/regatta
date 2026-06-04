@@ -44,7 +44,7 @@ func TestReconciler_DrainsQueueAndCallsApprover(t *testing.T) {
 	// Wait up to 1s for the goroutine to drain.
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) && posts.Load() == 0 {
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(5 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
 	}
 	cancel()
 	<-r.Done()

@@ -249,7 +249,7 @@ def flush():
 for ln in sys.stdin:
     ln = ln.rstrip("\n")
     if ln.startswith("+++ "):
-        flush(); file, skip, streak = ln[6:], not ln.endswith(".go"), 0
+        flush(); file = ln[6:]; skip = (not file.endswith(".go")) or file.startswith("scripts/testdata/"); streak = 0
     elif ln.startswith("@@ "):
         flush(); streak = 0
         m = re.search(r"\+(\d+)", ln); lineno = int(m.group(1)) if m else 0

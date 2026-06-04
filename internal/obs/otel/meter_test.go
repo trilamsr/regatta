@@ -137,7 +137,7 @@ func TestMeterSetup_PrometheusExporterWiresOnEnvVar(t *testing.T) {
 				break
 			}
 		}
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
 	}
 	if !strings.Contains(body, "regatta_prom_counter") {
 		t.Errorf("Prometheus /metrics scrape missing regatta_prom_counter; body=%q", body)
