@@ -202,6 +202,43 @@ STUB
   if [ "$got" -ne 0 ]; then ok "$name"; else fail "$name" "expected non-zero exit on gh failure"; fi
 }
 
+# TestGenBootStatus_ExcludeLabelDropsMatchingIssues asserts --exclude-label
+# post-filters the priority block — used to suppress parking labels (phase-x)
+# without polluting the unfiltered gh query shape.
+case_exclude_label() {
+  local name="--exclude-label drops issues carrying that label"
+  local dir
+  dir=$(mktemp -d)
+  cp "$FIXTURE" "$dir/prompt.md"
+  mkdir -p "$dir/bin"
+  cat > "$dir/bin/gh" <<'STUB'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "pr list")
+    echo "[]"
+    ;;
+  "issue list")
+    cat <<'JSON'
+[{"number":810,"title":"keep me","labels":[{"name":"followup"}]},
+ {"number":811,"title":"drop me","labels":[{"name":"phase-x"}]},
+ {"number":812,"title":"also drop","labels":[{"name":"followup"},{"name":"phase-x"}]}]
+JSON
+    ;;
+  *) exit 2 ;;
+esac
+STUB
+  chmod +x "$dir/bin/gh"
+  PATH="$dir/bin:$PATH" bash "$GEN" --prompt "$dir/prompt.md" --exclude-label phase-x >/dev/null 2>&1
+  local content
+  content=$(cat "$dir/prompt.md")
+  local fail_reason=""
+  echo "$content" | grep -qF '#810' || fail_reason="${fail_reason}#810 (no phase-x) missing; "
+  echo "$content" | grep -qF '#811' && fail_reason="${fail_reason}#811 (phase-x) survived; "
+  echo "$content" | grep -qF '#812' && fail_reason="${fail_reason}#812 (phase-x+followup) survived; "
+  rm -rf "$dir"
+  if [ -z "$fail_reason" ]; then ok "$name"; else fail "$name" "$fail_reason"; fi
+}
+
 case_replaces_shipped
 case_replaces_priority
 case_idempotent
@@ -209,6 +246,7 @@ case_missing_markers
 case_preserves_outside
 case_escapes_hostile_titles
 case_fails_when_gh_fails
+case_exclude_label
 
 echo
 if [ "$fails" -gt 0 ]; then

@@ -4,14 +4,17 @@
 # hand-edit tax called out in feedback_boot_prompt_per_wave_refresh.
 #
 # Flags:
-#   --prompt <file>     prompt file to update (default:
-#                       docs/engineer/autonomous-session-prompt.md)
-#   --since <date>      cutoff for merged-PR query (default: 7 days ago,
-#                       YYYY-MM-DD)
-#   --label <name>      label filter for the priority issue query (default:
-#                       no filter — every open issue, capped at 30)
-#   --limit-prs <N>     cap merged-PR result count (default: 50)
-#   --limit-issues <N>  cap open-issue result count (default: 30)
+#   --prompt <file>          prompt file to update (default:
+#                            docs/engineer/autonomous-session-prompt.md)
+#   --since <date>           cutoff for merged-PR query (default: 7 days ago,
+#                            YYYY-MM-DD)
+#   --label <name>           label filter for the priority issue query (default:
+#                            no filter — every open issue, capped at 30)
+#   --exclude-label <name>   drop issues carrying this label from the priority
+#                            block (default: empty — no exclusion). Used to
+#                            suppress parking labels like phase-x.
+#   --limit-prs <N>          cap merged-PR result count (default: 50)
+#   --limit-issues <N>       cap open-issue result count (default: 30)
 #
 # Exit codes: 0 success; 1 missing markers in prompt; 2 flag/usage error.
 
@@ -20,18 +23,20 @@ set -euo pipefail
 prompt="docs/engineer/autonomous-session-prompt.md"
 since=""
 label=""
+exclude_label=""
 limit_prs=50
 limit_issues=30
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --prompt)        prompt="$2";        shift 2 ;;
-    --since)         since="$2";         shift 2 ;;
-    --label)         label="$2";         shift 2 ;;
-    --limit-prs)     limit_prs="$2";     shift 2 ;;
-    --limit-issues)  limit_issues="$2";  shift 2 ;;
+    --prompt)         prompt="$2";         shift 2 ;;
+    --since)          since="$2";          shift 2 ;;
+    --label)          label="$2";          shift 2 ;;
+    --exclude-label)  exclude_label="$2";  shift 2 ;;
+    --limit-prs)      limit_prs="$2";      shift 2 ;;
+    --limit-issues)   limit_issues="$2";   shift 2 ;;
     -h|--help)
-      sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "gen-boot-status: unknown flag: $1" >&2; exit 2 ;;
@@ -115,7 +120,7 @@ PY
 }
 
 render_priority() {
-  PRIORITY_JSON="$priority_json" python3 - <<'PY'
+  PRIORITY_JSON="$priority_json" EXCLUDE_LABEL="$exclude_label" python3 - <<'PY'
 import json, os
 
 def sanitize(s):
@@ -126,6 +131,14 @@ def sanitize(s):
     return s
 
 data = json.loads(os.environ.get("PRIORITY_JSON") or "[]")
+exclude = (os.environ.get("EXCLUDE_LABEL") or "").strip()
+# Post-filter (not `gh --search "-label:..."`) — keeps the stub-gh test
+# matrix one-shape and lets multiple excludes layer later via comma-split.
+if exclude:
+    data = [
+        r for r in data
+        if exclude not in {l.get("name", "") for l in (r.get("labels") or [])}
+    ]
 data.sort(key=lambda r: r.get("number", 0))
 if not data:
     print("- _No open priority issues._")
