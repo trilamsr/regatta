@@ -117,6 +117,10 @@ template per §8.
 Static HTML server-rendered via Go html/template. No client-side
 framework. Read data direct from existing `*state.DB` query helpers.
 
+**Budget binding §11**: every S1 surface MUST land each of the 5 common
+ops flows at ≤ 3 clicks from `/console`. Smart defaults — no config
+knobs on read-only views. Operator input is zero (read-only).
+
 | # | PR | Surface | Files touched |
 |---|---|---|---|
 | S1-1 | `/console/queue` work-item queue | template + handler + state-query helper | `internal/web/handler_queue.go`, `internal/web/templates/queue.tmpl`, `internal/orchestrator/state/work_items_list.go` |
@@ -137,6 +141,14 @@ required to render. No mutations exposed.
 POST forms + full-page reload after mutation. No XHR. CSRF via existing
 `internal/web/csrf.go` double-submit token. Idempotency via HMAC token
 pattern mirroring `internal/alarmwebhook/handler.go` design.
+
+**Budget binding §11**: every mutation MUST be one-click from its
+parent read-only view (Approve / Reject / Requeue / Kill / Set-Cap each
+a single POST form, no wizard, no multi-step modal). Batch-approve
+checklist + Approve-all available for trusted batches (per §5.3).
+Smart defaults — `cap-value` form prefills last-applied value;
+`kill-token` auto-generated. Operator input only at the irreversible
+decision (Approve / Reject / Kill).
 
 | # | PR | Mutation | Idempotency key |
 |---|---|---|---|
@@ -159,6 +171,12 @@ Task 6 substrate enum).
 
 Server-Sent Events for substrate-event tail. **Optional.** Polling
 fallback ships first; SSE is a progressive enhancement only.
+
+**Budget binding §11**: substrate-chain-break diagnose flow MUST be
+one-click from `/console` (Run-replay button triggers the diagnostic;
+operator does not type a row id). Push notifications (SSE) reach the
+operator without polling. No config knobs on the events page — kind
+filter defaults are smart-selected per §5.4.
 
 | # | PR | Surface |
 |---|---|---|
@@ -242,64 +260,76 @@ Both prove the pattern is enough for daily ops UI without an SPA.
 
 ## 5. Operator UX flows
 
-Five flows, three to five clicks each. Each flow lands inside the S1+S2
-scope; no flow requires S3 SSE.
+Five flows. Each lands the resolve action at ≤ 1 click from the
+dashboard once the operator opens the console (≤ 3 total page-loads
+including the initial `/console` landing). Each flow lands inside the
+S1+S2 scope; no flow requires S3 SSE. Per §11, operator input is
+demanded only at the irreversible decision.
 
-### 5.1 "I just got paged about a failing merge — what broke?"
+### 5.1 "Just paged about failing merge"
 
-1. `http://localhost:8080/console` → `/console/merges` link.
-2. Top of `merges.tmpl` shows last 10 merge attempts with status chip
-   + PR-link + CI conclusion.
-3. Click PR link → GitHub PR in browser (existing surface, no new tab
-   needed).
-4. Click `[postmortem]` cell → S3-1 events page filtered by PR
-   (post-S3); pre-S3 falls back to `regatta replay` CLI breadcrumb.
+1. Operator opens `/console`. Landing dashboard surfaces the breakage
+   row at the top (failing-merge chip + PR link + `[Resolve]` button)
+   without a sub-page click — the landing template re-uses the
+   `merges.tmpl` partial inline.
+2. Operator clicks `[Resolve]` → POST `/console/merges/{pr}/resolve`
+   (S2-1 extension) → redirect back to `/console` with row cleared and
+   flash via `_flash.tmpl`.
 
-S1 ships steps 1-3; S3 makes step 4 in-console.
+One click resolves the page-worthy alert. Pre-S2: the `[Resolve]`
+button degrades to a GitHub-PR link plus a `regatta replay` CLI
+breadcrumb on the same row.
 
-### 5.2 "Cost-cap blew at 2 am — what spent the money?"
+### 5.2 "Cost-cap blew at 2 am"
 
-1. `/console/cost` shows trailing-24h total + top-5 work-items by
-   `usd_micro` per v5.1 §3.12.
-2. Click work-item row → `/console/queue/{id}` peek (S1).
-3. Click `[resume cost cap]` button (S2-4) → POST form → redirect back
-   to `/console/cost` with refreshed total.
+1. Operator opens `/console`. Dashboard surfaces the top-spender row
+   inline (work-item id + `usd_micro` total + `[Pause-spawner]` button).
+   No drill-down needed for the page-worthy answer.
+2. Operator clicks `[Pause-spawner]` → POST `/console/cost/pause-spawner`
+   (S2-4) → redirect back to `/console` with the spend rate frozen and
+   audit row written.
 
-S1 ships steps 1-2; S2 ships step 3.
+One click halts the burn. Pre-S2: the row degrades to a `regatta cost
+cap --pause` CLI breadcrumb.
 
-### 5.3 "I need to approve 5 PRs queued waiting on HITL"
+### 5.3 "5 PRs queued for HITL"
 
-1. `/console/approvals` shows pending list grouped by gate-name.
-2. For each row, `[Approve]` + `[Reject]` POST buttons (S2-1).
-3. After each POST, server redirects back to `/console/approvals` with
-   the row removed and a flash message via existing `_flash.tmpl`.
-4. Keyboard `j`/`k` (S1 progressive enhancement) lets the operator move
-   between rows; `a` triggers `[Approve]` on focused row.
+1. Operator opens `/console`. Dashboard renders pending approvals as a
+   batch-approve checklist (one row per PR, default-checked when the
+   PR matches a trusted-batch heuristic such as same-author + green CI
+   + < 50 LOC).
+2. Operator clicks `[Approve all]` → POST `/console/approvals/batch`
+   with the checked-row id list (S2-1 extension) → redirect back to
+   `/console` with all rows cleared and one audit row per approval.
 
-S1 ships steps 1 + 4; S2 ships steps 2-3.
+One click clears the trusted batch. Individual rows still expose
+per-row `[Approve]` + `[Reject]` for the untrusted minority.
 
-### 5.4 "Substrate audit shows a chain break — diagnose"
+### 5.4 "Substrate chain break"
 
-1. `/console/events?kind=heartbeat,gate_verdict` (S3-4) tails the
-   relevant substrate kinds.
-2. Spot the break point (last good row id + first bad row id).
-3. Copy the bad row id, run `regatta substrate verify --row N` in CLI
-   for the deep check.
+1. Operator opens `/console`. Dashboard surfaces the chain-break banner
+   at the top (last-good row id + first-bad row id + `[Run-replay]`
+   button) — `check-phase-x-leak.sh` already detects break candidates
+   server-side, no operator input needed.
+2. Operator clicks `[Run-replay]` → POST `/console/substrate/replay`
+   (S3-1 extension; pre-S3 degrades to a CLI breadcrumb showing the
+   exact `regatta substrate verify --row N` invocation) → redirect
+   back to `/console` with the diagnostic verdict row attached.
 
-S1+S2 alone cannot answer this — runbook `docs/operator/runbooks/substrate-chain-break.md`
-already covers the CLI path. S3 makes step 1 in-console. If S3 is cut,
-this flow stays CLI-only and that is acceptable per the self-host
-filter — runbook covers it.
+One click triggers the deep diagnostic. Operator does not type a row
+id; the dashboard computes it.
 
-### 5.5 "An autonomous agent looks wedged — kill it"
+### 5.5 "Autonomous agent looks wedged"
 
-1. `/console/queue` shows running work-items with `last_seen_at` age
-   chip (S1).
-2. Identify the wedged row by stale age.
-3. Click `[Kill]` button (S2-3) → confirmation modal → POST → redirect
-   back to `/console/queue` with row removed and audit row written.
+1. Operator opens `/console`. Dashboard surfaces wedged work-items
+   inline (stale `last_seen_at` chip + `[Kill]` button per row). Wedge
+   detection is server-side via the existing `last_seen_at` threshold.
+2. Operator clicks `[Kill]` → POST `/console/queue/{id}/kill` (S2-3) →
+   redirect back to `/console` with row removed and audit row written.
+   No intermediate confirmation modal — the redirect carries an `undo`
+   form-token valid for 30 s (S2-5 form-token middleware).
 
-S1 ships step 1-2; S2 ships step 3.
+One click kills the wedged agent; one click undoes if mis-clicked.
 
 ## 6. Risk register
 
@@ -350,6 +380,7 @@ backticks).
 | [ ] Deletion default — what got smaller | A | | one-line diff cite |
 | [ ] No new runtime dep | A | | go.mod unchanged |
 | [ ] Console action audit row written (S2 only) | A | | TestAuditOnMutate |
+| [ ] Clicks-to-complete ≤ 3 for each of the 5 §5 ops flows | A+ | | TestClicksBudget or §5.N walkthrough cite |
 | [ ] No banned phrase regressions | B | | scripts/doc-check.sh:1 |
 ```
 
@@ -394,7 +425,39 @@ unblock automatically; both require an explicit human decision.
 Overall: **A**, with **A+ on feasibility** (no new dep, conservative
 LOC).
 
-## 11. References
+## 11. Operator-experience principle (binding on all child PRs)
+
+Per the operator-minimal-input memory slug — every child PR (S1, S2,
+S3, and any forward-fit follow-on) MUST satisfy all five constraints
+below or fail the §8 scorecard A+ row. These are hard constraints, not
+aspirational goals.
+
+1. **Default autonomous; operator input ONLY at irreversible
+   decisions.** Read-only views demand zero input. Mutations demand
+   input only at the Approve / Reject / Kill / Pause-spawner /
+   Resume-cost-cap moment — never at intermediate routing.
+2. **One-click resolve / approve / kill.** No multi-step wizards. The
+   dashboard surfaces the page-worthy row inline; the action button
+   POSTs in one click. Multi-step modal flows are rejected at review.
+3. **Smart defaults > config knobs.** Form prefills last-applied
+   value. Wedge / break / overspend detection runs server-side; the
+   operator does not type a threshold. New config knobs require A+
+   defense in PR body per CLAUDE.md §Deletion default.
+4. **Push notifications reach the operator.** S3 SSE (or its polling
+   fallback) is the push channel. The operator does not poll the
+   dashboard manually for routine alerts; the dashboard pushes.
+5. **Success metric: minimize clicks-to-complete for the 5 most
+   common ops flows (§5).** Each flow MUST resolve in ≤ 3 clicks from
+   `/console` landing — counted as page-loads plus button clicks.
+   Reviewer measures observed PR diff against §5 walkthroughs and
+   fails the A+ row if any flow exceeds 3.
+
+Reopen trigger for relaxation: external customer ask requiring a
+multi-step wizard (e.g. compliance-audit checklist) OR a second
+internal operator joining the loop with concurrent dispatch authority.
+Neither has fired as of 2026-06-04.
+
+## 12. References
 
 - `docs/engineer/specs/2026-06-02-operator-console-design.md` (v5.1 design ledger)
 - `docs/engineer/specs/2026-06-02-operator-console-v2-backlog.md` (deferred items)
@@ -412,4 +475,5 @@ LOC).
 Memory cites: `feedback_decision_priority`, `feedback_deletion_default`,
 `feedback_grade_rubric`, `feedback_research_design_principles`,
 `feedback_scorecard_citation_token_outside_backticks`,
-`feedback_release_notes_fence_missing`, `feedback_no_signatures`.
+`feedback_release_notes_fence_missing`, `feedback_no_signatures`,
+`feedback_operator_minimal_input` (encoded as §11; amendment per #766).
