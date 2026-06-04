@@ -11,6 +11,8 @@ import (
 
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
+	"github.com/trilamsr/regatta/internal/testutil"
 )
 
 // streamStarter is a ProcessStarter that writes the contents of a
@@ -50,9 +52,10 @@ func TestClaudeSpawn_StreamJsonOpensOperatorAndLLMSpans(t *testing.T) {
 		t.Fatalf("Spawn: %v", err)
 	}
 
-	deadline := time.Now().Add(10 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	var ops, llm int
-	for time.Now().Before(deadline) {
+	testutil.Eventually(t, ctx, 50*time.Millisecond, func() bool {
 		ops, llm = 0, 0
 		for _, sp := range sr.Ended() {
 			switch {
@@ -62,17 +65,8 @@ func TestClaudeSpawn_StreamJsonOpensOperatorAndLLMSpans(t *testing.T) {
 				llm++
 			}
 		}
-		if ops == 1 && llm == 1 {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if ops != 1 {
-		t.Fatalf("operator_invocation spans=%d, want 1", ops)
-	}
-	if llm != 1 {
-		t.Fatalf("chat spans=%d, want 1", llm)
-	}
+		return ops == 1 && llm == 1
+	}, "operator_invocation+chat spans did not both reach 1")
 
 	var parent, child sdktrace.ReadOnlySpan
 	for _, sp := range sr.Ended() {

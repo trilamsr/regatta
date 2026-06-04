@@ -17,7 +17,7 @@ func TestServe_RootHandlerWiredIntoBootListener(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bootListener: %v", err)
 	}
-	addr, errChan := startListener(srv)
+	addr, errChan := startListener(t, srv)
 	t.Cleanup(func() {
 		_ = srv.Shutdown(context.Background())
 		<-errChan

@@ -8,7 +8,7 @@ package main
 
 import (
 	"bytes"
-	"errors"
+	"context"
 	"io"
 	"net"
 	"net/http"
@@ -20,6 +20,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/testutil"
 )
 
 // TestServe_AuthzPolicyHotReload_OnSIGHUP asserts SIGHUP swaps an active policy bundle.
@@ -122,13 +124,9 @@ safety:
 	// readiness, and buildAuthorizer logs "authz reload: ready" inside
 	// that OnStart so this wait is the canonical pid-can-receive-SIGHUP
 	// signal.
-	if err := waitForLogLine(t, &stderrBuf, "authz reload: ready", 5*time.Second); err != nil {
-		t.Fatalf("reloader did not boot: %v\nstderr=%s", err, stderrBuf.String())
-	}
+	waitForLogLine(t, &stderrBuf, "authz reload: ready", 5*time.Second)
 	// Belt-and-braces: also confirm the listener is accepting connections.
-	if err := waitForHealthz("http://"+addr+"/healthz", 5*time.Second); err != nil {
-		t.Fatalf("healthz never ready: %v\nstderr=%s", err, stderrBuf.String())
-	}
+	waitForHealthz(t, "http://"+addr+"/healthz", 5*time.Second)
 
 	// Write a deterministically-distinct .rego under the policy dir so the
 	// bundle SHA changes from the embed.FS fallback. SIGHUP then drives
@@ -145,9 +143,7 @@ default decision := {"allow": true, "reason": "policy-from-disk-via-sighup"}
 		t.Fatalf("SIGHUP: %v", err)
 	}
 
-	if err := waitForLogLine(t, &stderrBuf, "reload: bundle swapped", 5*time.Second); err != nil {
-		t.Fatalf("reloader did not swap bundle after SIGHUP: %v\nstderr=%s", err, stderrBuf.String())
-	}
+	waitForLogLine(t, &stderrBuf, "reload: bundle swapped", 5*time.Second)
 	if !strings.Contains(stderrBuf.String(), "trigger=sighup") {
 		t.Errorf("expected trigger=sighup in log; stderr=%s", stderrBuf.String())
 	}
@@ -168,37 +164,32 @@ func freeAddr() (string, error) {
 // waitForHealthz polls /healthz until 200 OK or deadline. The URL is
 // test-controlled (127.0.0.1 with a fresh port) — gosec G107 silence is
 // the test-local trust boundary.
-func waitForHealthz(url string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
+func waitForHealthz(t testing.TB, url string, timeout time.Duration) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	testutil.Eventually(t, ctx, 50*time.Millisecond, func() bool {
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
-			return err
+			return false
 		}
 		resp, err := http.DefaultClient.Do(req)
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				return nil
-			}
+		if err != nil {
+			return false
 		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return errors.New("healthz timeout")
+		_ = resp.Body.Close()
+		return resp.StatusCode == http.StatusOK
+	}, "healthz timeout for "+url)
 }
 
 // waitForLogLine scans the (concurrently growing) buffer for needle.
-// Returns nil as soon as needle appears; error after timeout.
-func waitForLogLine(t *testing.T, buf *safeBuffer, needle string, timeout time.Duration) error {
+func waitForLogLine(t testing.TB, buf *safeBuffer, needle string, timeout time.Duration) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if strings.Contains(buf.String(), needle) {
-			return nil
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	return errors.New("log needle " + needle + " not seen within " + timeout.String())
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	testutil.Eventually(t, ctx, 50*time.Millisecond, func() bool {
+		return strings.Contains(buf.String(), needle)
+	}, "log needle "+needle+" not seen within "+timeout.String())
 }
 
 // safeBuffer is a mutex-guarded bytes.Buffer for concurrent reader+writer.
