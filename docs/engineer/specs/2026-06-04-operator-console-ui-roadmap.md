@@ -42,7 +42,7 @@ Applied to this roadmap:
 
 | Axis | Decision |
 |---|---|
-| UX | Operator daily ergonomics: zero-click landing showing what is paged-worthy now; ≤ 2 clicks to triage one alert. |
+| UX | Operator daily ergonomics: zero-click landing showing what is paged-worthy now; ≤ 1 click to triage one alert on the golden path (per §5a). |
 | Ease | No new runtime dep (no `htmx`, no `npm`, no SvelteKit). Server-render Go html/template + embed.FS already in tree at `internal/web/render.go:6`. |
 | Maintainability | Single binary embed via `//go:embed all:templates all:static` per `internal/web/server.go:19`. Vendored CSS only — passes `verify-vendored-assets` Makefile target at `Makefile:22`. |
 | Performance | Localhost-bound; sub-100 ms server-render budget per route. No SSR streaming needed at this scale. |
@@ -117,9 +117,10 @@ template per §8.
 Static HTML server-rendered via Go html/template. No client-side
 framework. Read data direct from existing `*state.DB` query helpers.
 
-**Budget binding §11**: every S1 surface MUST land each of the 5 common
-ops flows at ≤ 3 clicks from `/console`. Smart defaults — no config
-knobs on read-only views. Operator input is zero (read-only).
+**Budget binding §5a**: every S1 surface MUST land each of the 5 common
+ops flows at ≤ 1 click from `/console` on the golden path. Smart
+defaults — no config knobs on read-only views. Operator input is zero
+(read-only).
 
 | # | PR | Surface | Files touched |
 |---|---|---|---|
@@ -136,13 +137,15 @@ required to render. No mutations exposed.
 
 **Sizing:** 200-400 LOC per PR including tests.
 
+**Implementer dispatch briefs MUST cite §5a.**
+
 ### 3.2 S2 — Single-action mutations (4-7 child PRs)
 
 POST forms + full-page reload after mutation. No XHR. CSRF via existing
 `internal/web/csrf.go` double-submit token. Idempotency via HMAC token
 pattern mirroring `internal/alarmwebhook/handler.go` design.
 
-**Budget binding §11**: every mutation MUST be one-click from its
+**Budget binding §5a**: every mutation MUST be one-click from its
 parent read-only view (Approve / Reject / Requeue / Kill / Set-Cap each
 a single POST form, no wizard, no multi-step modal). Batch-approve
 checklist + Approve-all available for trusted batches (per §5.3).
@@ -167,12 +170,14 @@ Task 6 substrate enum).
 
 **Sizing:** 250-500 LOC per PR including handler + test + template.
 
+**Implementer dispatch briefs MUST cite §5a.**
+
 ### 3.3 S3 — Live feeds (3-5 child PRs)
 
 Server-Sent Events for substrate-event tail. **Optional.** Polling
 fallback ships first; SSE is a progressive enhancement only.
 
-**Budget binding §11**: substrate-chain-break diagnose flow MUST be
+**Budget binding §5a**: substrate-chain-break diagnose flow MUST be
 one-click from `/console` (Run-replay button triggers the diagnostic;
 operator does not type a row id). Push notifications (SSE) reach the
 operator without polling. No config knobs on the events page — kind
@@ -193,6 +198,8 @@ overruns budget.
 
 **Sizing:** 200-450 LOC per PR. S3-2 + S3-3 are the only PRs with
 real concurrency — they need a property test for the cursor edge cases.
+
+**Implementer dispatch briefs MUST cite §5a.**
 
 ### 3.4 Phase totals
 
@@ -260,11 +267,12 @@ Both prove the pattern is enough for daily ops UI without an SPA.
 
 ## 5. Operator UX flows
 
-Five flows. Each lands the resolve action at ≤ 1 click from the
-dashboard once the operator opens the console (≤ 3 total page-loads
-including the initial `/console` landing). Each flow lands inside the
-S1+S2 scope; no flow requires S3 SSE. Per §11, operator input is
-demanded only at the irreversible decision.
+Five flows. Each is a one-click flow once the operator opens the
+console: the page-worthy row surfaces inline on `/console`, the action
+button POSTs in exactly one click, and the redirect lands back on
+`/console`. Zero-click for the landing read (no drill-down to find the
+row). Each flow lands inside the S1+S2 scope; no flow requires S3 SSE.
+Per §5a, operator input is demanded only at the irreversible decision.
 
 ### 5.1 "Just paged about failing merge"
 
@@ -331,6 +339,52 @@ id; the dashboard computes it.
 
 One click kills the wedged agent; one click undoes if mis-clicked.
 
+## 5a. Operator-experience principle (binding on all child PRs)
+
+Per the operator-minimal-input memory slug (`feedback_operator_minimal_input`)
+— autonomous-defaults and minimal-input are hard constraints for every
+child PR in S1, S2, S3, and any forward-fit follow-on. A PR that
+violates any clause below fails review; these are not aspirational
+goals.
+
+**Hard line.** No decision is required from the operator at any
+irreversible step without a smart-default fallback. If the dashboard
+cannot compute a safe default for an irreversible action, the action
+ships behind a feature flag and is omitted from the surface — never
+exposed as a free-form prompt.
+
+1. **Default autonomous; operator input ONLY at irreversible
+   decisions.** Read-only views demand zero input. Mutations demand
+   input only at the Approve / Reject / Kill / Pause-spawner /
+   Resume-cost-cap moment — never at intermediate routing.
+2. **One-click resolve / approve / kill.** No multi-step wizards. The
+   dashboard surfaces the page-worthy row inline; the action button
+   POSTs in one click. Multi-step modal flows are rejected at review.
+3. **Smart defaults > config knobs.** Form prefills last-applied
+   value. Wedge / break / overspend detection runs server-side; the
+   operator does not type a threshold. New config knobs require A+
+   defense in PR body per CLAUDE.md §Deletion default.
+4. **Push notifications reach the operator.** S3 SSE (or its polling
+   fallback) is the push channel. The operator does not poll the
+   dashboard manually for routine alerts; the dashboard pushes.
+5. **Success metric: minimize clicks-to-complete for the 5 most
+   common ops flows (§5).** Each flow MUST resolve in ≤ 1 click from
+   `/console` landing for the golden path — counted as button clicks
+   after the landing render (the landing render is the zero-click
+   read). Reviewer measures observed PR diff against §5 walkthroughs
+   and fails the §8 A+ row if any golden-path flow exceeds 1 click.
+
+**Implementer dispatch briefs MUST cite §5a.** Every S1/S2/S3 child-PR
+dispatch brief opens with a `Pin: §5a operator-experience principle`
+line and inlines the five clauses; the reviewer rejects PRs whose
+dispatch brief omits the citation. See §3.1, §3.2, §3.3 footer
+pointers.
+
+Reopen trigger for relaxation: external customer ask requiring a
+multi-step wizard (e.g. compliance-audit checklist) OR a second
+internal operator joining the loop with concurrent dispatch authority.
+Neither has fired as of 2026-06-04.
+
 ## 6. Risk register
 
 | # | Risk | Severity | Mitigation |
@@ -380,7 +434,10 @@ backticks).
 | [ ] Deletion default — what got smaller | A | | one-line diff cite |
 | [ ] No new runtime dep | A | | go.mod unchanged |
 | [ ] Console action audit row written (S2 only) | A | | TestAuditOnMutate |
-| [ ] Clicks-to-complete ≤ 3 for each of the 5 §5 ops flows | A+ | | TestClicksBudget or §5.N walkthrough cite |
+| [ ] Clicks-to-complete ≤ 3 for each of the 5 §5 golden-path ops flows | B | | TestClicksBudget or §5.N walkthrough cite |
+| [ ] Clicks-to-complete ≤ 2 for each of the 5 §5 golden-path ops flows | A | | TestClicksBudget or §5.N walkthrough cite |
+| [ ] Clicks-to-complete ≤ 1 for each of the 5 §5 golden-path ops flows | A+ | | TestClicksBudget or §5.N walkthrough cite |
+| [ ] §5a operator-experience principle cited in dispatch brief | B | | dispatch-brief Pin: §5a line |
 | [ ] No banned phrase regressions | B | | scripts/doc-check.sh:1 |
 ```
 
@@ -425,37 +482,10 @@ unblock automatically; both require an explicit human decision.
 Overall: **A**, with **A+ on feasibility** (no new dep, conservative
 LOC).
 
-## 11. Operator-experience principle (binding on all child PRs)
+## 11. Operator-experience principle
 
-Per the operator-minimal-input memory slug — every child PR (S1, S2,
-S3, and any forward-fit follow-on) MUST satisfy all five constraints
-below or fail the §8 scorecard A+ row. These are hard constraints, not
-aspirational goals.
-
-1. **Default autonomous; operator input ONLY at irreversible
-   decisions.** Read-only views demand zero input. Mutations demand
-   input only at the Approve / Reject / Kill / Pause-spawner /
-   Resume-cost-cap moment — never at intermediate routing.
-2. **One-click resolve / approve / kill.** No multi-step wizards. The
-   dashboard surfaces the page-worthy row inline; the action button
-   POSTs in one click. Multi-step modal flows are rejected at review.
-3. **Smart defaults > config knobs.** Form prefills last-applied
-   value. Wedge / break / overspend detection runs server-side; the
-   operator does not type a threshold. New config knobs require A+
-   defense in PR body per CLAUDE.md §Deletion default.
-4. **Push notifications reach the operator.** S3 SSE (or its polling
-   fallback) is the push channel. The operator does not poll the
-   dashboard manually for routine alerts; the dashboard pushes.
-5. **Success metric: minimize clicks-to-complete for the 5 most
-   common ops flows (§5).** Each flow MUST resolve in ≤ 3 clicks from
-   `/console` landing — counted as page-loads plus button clicks.
-   Reviewer measures observed PR diff against §5 walkthroughs and
-   fails the A+ row if any flow exceeds 3.
-
-Reopen trigger for relaxation: external customer ask requiring a
-multi-step wizard (e.g. compliance-audit checklist) OR a second
-internal operator joining the loop with concurrent dispatch authority.
-Neither has fired as of 2026-06-04.
+Promoted to §5a (binding on all child PRs). See §5a for the five
+clauses and the dispatch-brief citation requirement.
 
 ## 12. References
 
