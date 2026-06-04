@@ -228,7 +228,7 @@ func defaultPromptBuilder(req Request) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "regatta worker: work item %s on lane %s (agent %d).\n\n",
 		req.WorkItemID, req.Lane, req.AgentID)
-	if body := strings.TrimSpace(req.ItemBody); body != "" {
+	if body := strings.TrimSpace(stripControlChars(req.ItemBody)); body != "" {
 		if bodyContainsSentinel(body) {
 			log.Printf("spawner: prompt builder rejected ItemBody for work item %s: sentinel collision detected", req.WorkItemID)
 			body = itemBodyRejectedBanner
@@ -272,6 +272,24 @@ func defaultPromptBuilder(req Request) string {
 // bodyContainsSentinel reports whether an untrusted body would let a hostile brief close the fence early; collision is rare and rejection is cheaper than escape logic.
 func bodyContainsSentinel(body string) bool {
 	return strings.Contains(body, itemBodyBeginSentinel) || strings.Contains(body, itemBodyEndSentinel)
+}
+
+// stripControlChars drops C0/C1 control codes (NUL, BEL, ESC, …) while keeping tab/newline/CR so a hostile ItemBody cannot smuggle ANSI/OSC escape sequences that rewrite the operator's tail terminal or hide tokens behind cursor moves.
+func stripControlChars(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch r {
+		case '\t', '\n', '\r':
+			b.WriteRune(r)
+			continue
+		}
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // execStarter is the production ProcessStarter. Stderr forwards to
