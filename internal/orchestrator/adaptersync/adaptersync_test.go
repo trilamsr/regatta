@@ -138,11 +138,7 @@ func TestSync_TombstonesMissingOnSecondTick(t *testing.T) {
 	}
 }
 
-// TestSync_SkipsUnmappableStatus pins the enum-mapping contract: an
-// upstream Status the universal queue does not recognize (the adapter
-// surface uses planned/in_progress/done; the queue uses planned/
-// running/pr_open/...) must be skipped with a slog warn, not silently
-// cast and pollute the DB.
+// TestSync_SkipsUnmappableStatus asserts unmappable adapter Status is skipped with slog warn, not cast.
 func TestSync_SkipsUnmappableStatus(t *testing.T) {
 	logs := captureLogs(t)
 	db := newSyncTestDB(t)
@@ -216,10 +212,7 @@ func TestSync_SkipsEmptyLane(t *testing.T) {
 	}
 }
 
-// TestSync_EmptyListSkipsTombstone documents the "empty adapter list
-// is NOT a directive to purge" invariant. Prior versions would wipe
-// every adapter row on a single zero-result poll — fatal if the
-// upstream tracker had a transient hiccup.
+// TestSync_EmptyListSkipsTombstone asserts empty adapter list does not purge rows (transient-poll guard).
 func TestSync_EmptyListSkipsTombstone(t *testing.T) {
 	logs := captureLogs(t)
 	db := newSyncTestDB(t)
@@ -249,9 +242,7 @@ func TestSync_EmptyListSkipsTombstone(t *testing.T) {
 	}
 }
 
-// TestSync_DedupsDuplicateIDsInSameTick asserts that an adapter
-// returning the same ID twice doesn't cause two upserts (last-write
-// wins is undefined behavior; we surface the bug instead).
+// TestSync_DedupsDuplicateIDsInSameTick asserts duplicate adapter IDs in one tick surface a bug, not two upserts.
 func TestSync_DedupsDuplicateIDsInSameTick(t *testing.T) {
 	logs := captureLogs(t)
 	db := newSyncTestDB(t)
@@ -278,11 +269,7 @@ func TestSync_DedupsDuplicateIDsInSameTick(t *testing.T) {
 	}
 }
 
-// TestSync_CascadeReconcilerConverges asserts the recovery path: when
-// a program archives but its children aren't archived (e.g. a prior
-// tick crashed mid-cascade), the next Sync reconciles the gap. The
-// reconciler is idempotent — re-running with no live children is a
-// no-op.
+// TestSync_CascadeReconcilerConverges asserts next Sync archives orphan children after a mid-cascade crash (idempotent).
 func TestSync_CascadeReconcilerConverges(t *testing.T) {
 	db := newSyncTestDB(t)
 	ctx := context.Background()
@@ -340,11 +327,7 @@ func TestSync_CascadeReconcilerConverges(t *testing.T) {
 	}
 }
 
-// TestSync_CascadeReconciler_EmitsPerChildEvent pins the rubric §6
-// contract: operators grep one log entry per cascade-archived child
-// (not one entry per parent). Old behavior emitted
-// adapter.cascade_reconciled once per orphan parent and lost the
-// child IDs in the noise.
+// TestSync_CascadeReconciler_EmitsPerChildEvent asserts one log entry per cascade-archived child, not per parent (rubric §6).
 func TestSync_CascadeReconciler_EmitsPerChildEvent(t *testing.T) {
 	logs := captureLogs(t)
 	db := newSyncTestDB(t)
@@ -397,8 +380,7 @@ func TestSync_CascadeReconciler_EmitsPerChildEvent(t *testing.T) {
 	}
 }
 
-// TestSync_LogFieldRenamedToCutoff pins the rename from "at" to
-// "cutoff" — operators grep tombstone logs by a stable key.
+// TestSync_LogFieldRenamedToCutoff asserts tombstone log field renamed from "at" to "cutoff" (stable grep key).
 func TestSync_LogFieldRenamedToCutoff(t *testing.T) {
 	logs := captureLogs(t)
 	db := newSyncTestDB(t)
