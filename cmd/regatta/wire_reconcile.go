@@ -1,4 +1,4 @@
-// serve_reconcile wires the cost-reconciler goroutine into serve startup.
+// wire_reconcile wires the cost-reconciler goroutine into serve startup.
 // The reconciler is opt-in: only an explicit `safety.cost.reconcile_interval`
 // in regatta.yaml fires the loop. Spec §3.4 line 224 + plan §3 "T4 exports
 // reconcile.Run(ctx) (long-loop)".

@@ -91,7 +91,7 @@ with a `Run(ctx, Config) error` entry point. `Config` carries:
 - meter handle for `regatta.pr.span_summary`.
 
 Wire from `cmd/regatta/serve.go` as one of the optional goroutines per
-the composition root pattern (see `cmd/regatta/serve_reconcile.go` for
+the composition root pattern (see `cmd/regatta/wire_reconcile.go` for
 the existing optional-goroutine shape).
 
 ## §8 Tests (when triggered)
