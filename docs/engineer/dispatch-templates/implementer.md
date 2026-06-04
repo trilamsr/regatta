@@ -135,3 +135,11 @@ INDEPENDENT REVIEW MEASURES vs A+ RUBRIC
    - Pre-push check: `bash scripts/check-scorecard.sh --body-file /tmp/pr-<branch>.md` to catch locally.
 
 6. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Every PR body MUST include a triple-fence ` ```release-notes ` block with `[PREFIX] one-line summary` inside — even `[DOCS]` PRs. Without the fence, `check-scorecard.sh` cannot read the category and falls through to the error branch reporting `Scorecard section present but contains no [x] marks`. The category-exempt branch only fires when the fence is present.
+
+7. **Rebase `--theirs` vs `--ours` is counterintuitive** (closes #779). During `git rebase` replay, git treats the rebase target (main) as `--ours` and the commit being replayed (your PR's work) as `--theirs` — opposite of `git merge` semantics where `--ours` = current branch. Lost #772 (~10 sites #760 migration) this way. Resolution snippet (also in `CLAUDE.md` §Worktree discipline "Rebase conflict resolution"):
+   ```
+   git checkout --theirs <conflict-file>   # OR: regenerate via make specs-index for docs/engineer/specs/README.md
+   git add <file>
+   git rebase --continue
+   ```
+   For generated indexes (`docs/engineer/specs/README.md`), prefer regen over `--theirs` so the file matches current source-of-truth.

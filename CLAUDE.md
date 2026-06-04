@@ -61,6 +61,12 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 - **Per-merge cleanup**: `git worktree remove --force` after merge.
 - **Force-twice clears locks**: `git worktree remove --force --force <path>` if lock persists.
 - **Post-removal hygiene**: `golangci-lint cache clean` after worktree removal (cache holds stale per-file analysis refs). prose-dup may also hold stale refs; verify script `exclude-dirs` current. (`feedback_worktree_discipline`, `feedback_post_worktree_removal_hygiene`)
+- **Rebase conflict resolution**: during `git rebase` replay, `--theirs` = the commit being replayed (your PR's work), `--ours` = main — counterintuitive vs `git merge`. Standard resolve (closes #779):
+  ```
+  git checkout --theirs <conflict-file>   # OR: regenerate via make specs-index for docs/engineer/specs/README.md
+  git add <file>
+  git rebase --continue
+  ```
 
 ## Dispatch (parallel subagent waves)
 
