@@ -1,6 +1,7 @@
 ---
 title: "MVR-3-T6 — LLM-authored JS runtime via goja (DW-superset Wave C piece 2)"
 status: active
+phase: x-forward-fit
 summary: "MVR-3-T6 / DW-superset Wave C piece 2: pure-Go JS runtime (`github.com/dop251/goja`, MIT) executing LLM-authored ES5.1 plan scripts inside a sandboxed bridge exposing exactly 5 verbs — `spawn` / `fanout` / `gather` / `approve` / `merge`. No FS, no net, no eval, no `Function` constructor, no host clock visibility. Each verb emits to the unified substrate (`workflow.<run_id>.<step>`); replay is byte-deterministic from `Date` snapshot + seeded `Math.random`. Spec carries 18 named test cases (8 sandbox-escape patterns) + 15 risks + 4-tier dep order (MVR-3-T5 CUE gate → W6 secret → W7 approver → W2-c2 merge)."
 ---
 

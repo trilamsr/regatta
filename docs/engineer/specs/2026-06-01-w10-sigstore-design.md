@@ -1,3 +1,9 @@
+---
+title: "MVP-4 W10 — Sigstore cosign + Rekor transparency log (design spec, v1)"
+status: skeleton-prefetch
+summary: "W10 attestation chain — deferred to Phase X per docs/engineer/briefs/2026-06-01-self-host-first.md §4 (no downstream verifier yet)."
+---
+
 # MVP-4 W10 — Sigstore cosign + Rekor transparency log (design spec, v1)
 
 _Author: design subagent, 2026-06-01. Scope: roadmap wedge W10 (MVP-4 rank #5). Source-of-truth_:

@@ -1,3 +1,9 @@
+---
+title: "MVP-4 W12 Billing (per-tenant USD rollup + Stripe metered-usage) — Design Spec"
+status: skeleton-prefetch
+summary: "W12 metered billing — deferred to Phase X per docs/engineer/briefs/2026-06-01-self-host-first.md §4 (no invoice recipient yet)."
+---
+
 # MVP-4 W12 Billing (per-tenant USD rollup + Stripe metered-usage) — Design Spec
 
 Status: ready for review

@@ -1,6 +1,7 @@
 ---
 title: "MVR-2 T1 — W7 Wave 2 htmx (DAG read view + reviewer-rich PR UI)"
 status: active
+phase: x-forward-fit
 summary: "Pre-fetch skeleton spec for MVR-2 T1. Extends MVR-1 T1 W7 Wave 1 dashboard with two new read surfaces: agent-DAG visualization and reviewer-comment-aware PR detail view. Still read-only (write paths stay CLI per Wave 1 constraint). Vendored htmx 2.0.x + Pico CSS. 3-4 wk effort band. SKELETON — full elaboration at MVR-2 dispatch time."
 ---
 

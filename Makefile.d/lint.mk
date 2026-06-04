@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify check-memory-citations check-memory-citations-test
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -15,6 +15,12 @@ check-memory-citations:  ## Fail if a feedback_* slug cited in CLAUDE.md/boot-pr
 
 check-memory-citations-test:  ## Fixture-driven test for check-memory-citations.sh (live-resolve → 0, broken slug → 1).
 	bash scripts/check-memory-citations_test.sh
+
+check-phase-x-leak:  ## Fail when an active spec names a Phase-X token (tenant_id/RBAC/Stripe/Sigstore/Rekor/blackboard/Temporal) without `phase: x-forward-fit` opt-in.
+	bash scripts/check-phase-x-leak.sh
+
+check-phase-x-leak-test:  ## Fixture-driven test for check-phase-x-leak.sh.
+	bash scripts/check-phase-x-leak_test.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh

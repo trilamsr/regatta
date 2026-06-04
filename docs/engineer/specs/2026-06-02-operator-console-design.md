@@ -1,5 +1,6 @@
 ---
 status: draft
+phase: x-forward-fit
 revision: v5.1 (verification-pass fixes folded: drop Sigstore v1; policy-class effect; plan-level nits)
 author: brainstorming-session (operator + 14 reviewer subagents across 4 rounds)
 date: 2026-06-02

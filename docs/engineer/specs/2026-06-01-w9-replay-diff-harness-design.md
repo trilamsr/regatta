@@ -1,3 +1,10 @@
+---
+title: "MVP-3 W9 — Replay + Diff Harness Design Spec"
+status: active
+phase: x-forward-fit
+summary: "W9 replay + diff harness — substrate-default DurableHistory only per Phase S2-T1 (Temporal-backed variant deferred to Phase X per brief §4)."
+---
+
 # MVP-3 W9 — Replay + Diff Harness Design Spec
 
 Status: ready for review

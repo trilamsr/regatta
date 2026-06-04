@@ -35,7 +35,7 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 ## CI gates (local pre-push)
 
 - **`make pre-push-check`** before every push (= `make check` + PR-body release-notes-block sanity).
-- **`make check`** = `doc-check doc-check-test prose-dup check-memory-citations check-memory-citations-test vet lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test`. Single source of truth.
+- **`make check`** = `doc-check doc-check-test prose-dup check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test vet lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test`. Single source of truth.
 - **`make ci-check`** = `check stale-todo`.
 - **Banned-phrase gate** (`scripts/doc-check.sh`): rejects `blazing[- ]fast`, `production[- ]grade`, `world[- ]class`, `seamless`, `cutting[- ]edge`, `state[- ]of[- ]the[- ]art`, and 5 more (11 total). Wrap literal token mentions in backticks. Reword hits to falsifiable claims (version pin, benchmark, named reference). (`feedback_ci_gates`)
 - **Banned-phrase doc-check + check-tdd opt-outs**: tag spec-only PRs with `[DOCS]`/`[CI]`/`[CHORE]` release-notes prefix to skip check-tdd. (`feedback_ci_gates`)
@@ -77,6 +77,8 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 ## Self-host filter (Phase context)
 
 Every wedge filtered by: "does the sole internal operator need this to dispatch regatta-the-binary at this repo unattended?" Keep → in scope. Defer → Phase X with reopen-trigger (external customer ask OR 30-day-green). Single-tenant, single-operator, single-repo, CLI-only, deterministic CI, human-merge via GH branch protection. No RBAC, no billing, no htmx UI, no Sigstore, no blackboard. (See `docs/engineer/briefs/2026-06-01-self-host-first.md` §1.)
+
+**Mechanical gate**: `scripts/check-phase-x-leak.sh` (in `make check`) walks `docs/engineer/specs/*.md`, reads YAML frontmatter `status:`, and fails closed when an active spec names a Phase-X token (`tenant_id`, `RBAC`, `Stripe`, `Sigstore`, `Rekor`, `blackboard`, `Temporal`) without `phase: x-forward-fit` opt-in. Skip statuses: `shipped`, `archived`, `superseded`, `skeleton-prefetch`. To declare intentional Phase-X awareness in an active spec, add `phase: x-forward-fit` (forward-fit seam) or `phase: x-prefetch` to the frontmatter.
 
 ## Branch protection state
 

@@ -1,5 +1,6 @@
 ---
 status: backlog
+phase: x-forward-fit
 companion_to: docs/engineer/specs/2026-06-02-operator-console-design.md
 date: 2026-06-02
 last_revised: 2026-06-03

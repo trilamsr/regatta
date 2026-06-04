@@ -1,3 +1,10 @@
+---
+title: "S3-T2 — substrate Phase B+C cutover (approvals only)"
+status: active
+phase: x-forward-fit
+summary: "Phase S3-T2: shadow-write + read-from-substrate cutover for approvals only. Forward-fits the W8 tenant_id seam without absorbing it."
+---
+
 # Spec: S3-T2 — substrate Phase B+C cutover (approvals only)
 
 _Author: design subagent, 2026-06-02. Source: `docs/engineer/briefs/2026-06-01-self-host-first.md` §3 S3-T2. Companion specs: `2026-06-01-unified-substrate-design.md` §3 (the four phases A → B → C → D), `2026-06-01-cost-governor-design.md` §A6 (Phase-B runbook hook). Memory: `feedback_research_design_principles`, `feedback_grade_rubric`, `feedback_pr_body_file_only`, `feedback_test_godoc_one_line`._

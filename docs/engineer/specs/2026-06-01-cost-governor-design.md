@@ -1,3 +1,10 @@
+---
+title: "MVP-4 Cost Governor (P8) — Design Spec"
+status: active
+phase: x-forward-fit
+summary: "Cost governor wedge — pre-call USD+token caps + Anthropic Usage API reconciliation. Forward-fits tenant_id + Stripe billing seams that activate in Phase X."
+---
+
 # MVP-4 Cost Governor (P8) — Design Spec
 
 Status: ready for review

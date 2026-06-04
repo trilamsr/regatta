@@ -1,3 +1,10 @@
+---
+title: "External-Effect Outbox Primitive — Design Spec"
+status: active
+phase: x-forward-fit
+summary: "External-effect outbox primitive — forward-fits Stripe/Sigstore/etc. exporters at the substrate seam; the exporters themselves stay Phase-X."
+---
+
 # External-Effect Outbox Primitive — Design Spec
 
 Status: ready for review
