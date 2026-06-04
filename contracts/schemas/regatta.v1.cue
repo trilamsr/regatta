@@ -64,8 +64,8 @@ import "list"
 	type: "github_issues" | "gitlab_issues" | "markdown_catalog" | "jira" | "linear" | "custom"
 
 	if type == "github_issues" || type == "gitlab_issues" {
-		selector:            string                  // e.g. "label:planned"
-		acceptance_section?: *"## Acceptance" | string
+		selector:            string                  // e.g. "label:autonomous"
+		acceptance_section?: *"## Acceptance criteria" | string
 	}
 	if type == "markdown_catalog" {
 		// Directory containing .regatta/items/*.md, relative to repo

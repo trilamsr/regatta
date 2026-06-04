@@ -36,3 +36,10 @@ func (stubGHClient) CreateIssue(_ context.Context, _, _ string, _ []string) (int
 	return 0, nil
 }
 func (stubGHClient) CommentOnIssue(_ context.Context, _ int, _ string) error { return nil }
+func (stubGHClient) ListIssuesByLabelPaginated(_ context.Context, _ string, _ ghclient.ListIssuesOpts) ([]ghclient.Issue, error) {
+	return nil, nil
+}
+func (stubGHClient) GetIssue(_ context.Context, _ int) (ghclient.Issue, error) {
+	return ghclient.Issue{}, nil
+}
+func (stubGHClient) EditIssueBody(_ context.Context, _ int, _ string) error { return nil }

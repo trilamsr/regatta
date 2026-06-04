@@ -21,6 +21,7 @@ const (
 	MeterScopeReaper               MeterScope = "reaper"
 	MeterScopeSpawner              MeterScope = "spawner"
 	MeterScopeAdaptersync          MeterScope = "adaptersync"
+	MeterScopeAdapterGitHubIssues  MeterScope = "adapter/github_issues"
 	MeterScopeAlarmwebhook         MeterScope = "alarmwebhook"
 	MeterScopeAlarmwebhookFallback MeterScope = "alarmwebhook-fallback"
 	MeterScopeObsTriggers          MeterScope = "obs/triggers"

@@ -76,6 +76,16 @@ func (f *fakeGitHub) CommentOnIssue(_ context.Context, number int, body string) 
 	return nil
 }
 
+func (f *fakeGitHub) ListIssuesByLabelPaginated(_ context.Context, _ string, _ ghclient.ListIssuesOpts) ([]ghclient.Issue, error) {
+	return nil, nil
+}
+
+func (f *fakeGitHub) GetIssue(_ context.Context, _ int) (ghclient.Issue, error) {
+	return ghclient.Issue{}, nil
+}
+
+func (f *fakeGitHub) EditIssueBody(_ context.Context, _ int, _ string) error { return nil }
+
 func loadSample(t *testing.T) []byte {
 	t.Helper()
 	data, err := os.ReadFile("testdata/alertmanager-sample.json")

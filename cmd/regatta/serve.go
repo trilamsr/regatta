@@ -22,7 +22,6 @@ import (
 
 	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/orchestrator"
-	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
@@ -172,7 +171,7 @@ func runServe(args []string) int {
 	}
 	defer func() { _ = db.Close() }()
 
-	ad, err := adapter.NewMarkdownCatalog(adapter.MarkdownCatalogConfig{Root: f.ItemsRoot})
+	ad, err := buildSpecAdapter(f)
 	if err != nil {
 		logger.Printf("adapter: %v", err)
 		return 2

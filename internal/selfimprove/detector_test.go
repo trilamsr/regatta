@@ -42,6 +42,16 @@ func (g *fakeGH) CommentOnIssue(_ context.Context, number int, body string) erro
 	return nil
 }
 
+func (g *fakeGH) ListIssuesByLabelPaginated(_ context.Context, _ string, _ ghclient.ListIssuesOpts) ([]ghclient.Issue, error) {
+	return nil, nil
+}
+
+func (g *fakeGH) GetIssue(_ context.Context, _ int) (ghclient.Issue, error) {
+	return ghclient.Issue{}, nil
+}
+
+func (g *fakeGH) EditIssueBody(_ context.Context, _ int, _ string) error { return nil }
+
 // buildGateFailEvents builds three same-fingerprint gate_fail rows so
 // R1 (same-gate-fail-repeats) fires deterministically.
 func buildGateFailEvents() []Event {
