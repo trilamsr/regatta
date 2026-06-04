@@ -6,6 +6,14 @@
 // *DB is safe for concurrent use. Open() caps *sql.DB at one connection
 // so writers serialize at the application layer rather than retry-
 // fighting sqlite's file lock (pinned by TestOpenCapsConnectionPoolAtOne).
+//
+// Package is split via the Option E hybrid pattern (plan #795, spec
+// 2026-06-04-state-package-split-design.md §4): *DB + 70+ receiver
+// methods stay here so the connection-pool / BEGIN-IMMEDIATE / clock
+// invariants survive; pure data types and free functions peel into
+// one-way subpackages (jsonscan, edgeagg, transitions, cycle,
+// approvals_shadow). Subpackages MUST NOT import state — enforced by
+// scripts/check-state-tier-order.sh in make check.
 package state
 
 import (
