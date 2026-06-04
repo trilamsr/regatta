@@ -286,6 +286,30 @@ func TestGitHubIssues_List_BodyMissingMarker_BackfillsOnce(t *testing.T) {
 	}
 }
 
+// TestGitHubIssues_List_BackfillEditFails_SkipsAndWarns pins SKIP semantic on marker write failure (#849).
+func TestGitHubIssues_List_BackfillEditFails_SkipsAndWarns(t *testing.T) {
+	iss := ghclient.Issue{
+		Number: 849,
+		Title:  "ITEM-849: backfill fail",
+		Body:   "no marker yet\n\n## Acceptance criteria\n- [planned] c1: x\n",
+		Labels: []string{"autonomous"},
+	}
+	gh := &fakeGH{listIssues: []ghclient.Issue{iss}, editErr: errors.New("403 permission denied")}
+	log := &captureLog{}
+	a := newAdapter(t, gh, log, time.Now)
+	items, err := a.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("expected SKIP on backfill failure, got %d projected items", len(items))
+	}
+	joined := strings.Join(log.Lines(), "\n")
+	if !strings.Contains(joined, "github_issues.skip") || !strings.Contains(joined, string(ReasonBackfillFailed)) {
+		t.Fatalf("missing skip warn payload: %s", joined)
+	}
+}
+
 // TestGitHubIssues_List_RateLimitWrapsErrRateLimited drives real ghclient.GHCLIClient via Runner fixture so stderr classifier (#848) reaches the adapter (closes #863).
 func TestGitHubIssues_List_RateLimitWrapsErrRateLimited(t *testing.T) {
 	resetAt := time.Now().Add(90 * time.Second).Unix()
