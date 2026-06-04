@@ -1,6 +1,7 @@
 ---
 title: "MVR-2 T6 — Substrate bridge for script-runs (DW-superset Wave B piece 4)"
 status: active
+phase: x-forward-fit
 summary: "Pre-fetch skeleton for MVR-2 T6. Every script step (DW-superset Wave B) emits a substrate event of kind=fact so script runs are replay-grade and signed-audit-grade — capabilities Claude Code Dynamic Workflows lacks. Reuses substrate v2 W1 fact-kind primitive — zero new substrate work. S (1 wk) effort. SKELETON."
 ---
 

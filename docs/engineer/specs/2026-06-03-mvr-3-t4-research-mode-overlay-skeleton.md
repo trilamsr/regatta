@@ -1,6 +1,6 @@
 ---
 title: "MVR-3-T4 Research-mode overlay (skeleton-tier pre-fetch)"
-status: active
+status: skeleton-prefetch
 summary: Pre-fetch skeleton for MVR-3-T4 research-mode overlay (WorkItem.kind=research discriminator + 4 methodology gates + nightly reproducibility cron); full spec re-spawns when MVR-3 trigger fires AND the publication-credible-audit-chain prerequisite (MVR-3-T1 Sigstore) has merged. Locks scope, prior-art, risks, test plan, dep-order.
 ---
 

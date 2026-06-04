@@ -1,3 +1,10 @@
+---
+title: "Observability metric-layer + operator-surface roadmap — Design Spec (converged)"
+status: active
+phase: x-forward-fit
+summary: "Observability roadmap — converged metric-layer + operator-surface plan. References Phase-X seams (Sigstore, blackboard) as forward-fits."
+---
+
 # Observability metric-layer + operator-surface roadmap — Design Spec (converged)
 
 Status: ready for review (converged)

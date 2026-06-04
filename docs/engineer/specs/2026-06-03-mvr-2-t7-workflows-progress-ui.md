@@ -1,6 +1,7 @@
 ---
 title: "MVR-2 T7 — /workflows progress UI (DW-superset Wave A piece 6)"
 status: active
+phase: x-forward-fit
 summary: "Pre-fetch skeleton for MVR-2 T7. Read-only `/ui/workflows/{script_id}` surface that streams live step-by-step progress of a script run. Reuses W7 htmx scaffold (Wave 1/2). Reads substrate fact events written by T6 substrate bridge. S (1-2 wk) effort. SKELETON."
 ---
 

@@ -1,6 +1,7 @@
 ---
 title: "Unified substrate v2"
 status: active
+phase: x-forward-fit
 summary: "Unified substrate v2 (events log only in Wave 1). 3 tasks. Ships AFTER W6 T1+T2+T5 merge. Policies primitive deferred to W8; blobs primitive deferred to W11. Phased read-side cutover; no atomic dual-write."
 ---
 

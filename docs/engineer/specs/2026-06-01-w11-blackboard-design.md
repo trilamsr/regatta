@@ -1,3 +1,9 @@
+---
+title: "MVP-4 W11 Blackboard — typed facts + reducers + CAS blobs"
+status: skeleton-prefetch
+summary: "W11 blackboard shared state — deferred to Phase X per docs/engineer/briefs/2026-06-01-self-host-first.md §4 (one concurrent operator; no shared-state contention yet)."
+---
+
 # Spec: MVP-4 W11 Blackboard — typed facts + reducers + CAS blobs
 
 _Author: design subagent, 2026-06-01. Source-of-truth dossier: `memory/wedge_blackboard.md`. Builds on `docs/engineer/specs/2026-06-01-unified-substrate-design.md` (substrate v2 events log shipped via T-S1 #224). Sequencing reference: `memory/wedge_roadmap_assessment.md` MVP-4 row #6._

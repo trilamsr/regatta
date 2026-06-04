@@ -1,3 +1,10 @@
+---
+title: "MVR-1-T3 / T5 — P3.8 SCM adapter (Gitea first) spec"
+status: active
+phase: x-forward-fit
+summary: "MVR-1-T3 / T5 SCM adapter (Gitea first). References tenant_id forward-fit at the SCM seam."
+---
+
 # MVR-1-T3 / T5 — P3.8 SCM adapter (Gitea first) spec
 
 Status: draft (design)

@@ -1,6 +1,7 @@
 ---
 title: "MVR-2 T5 — W7 Wave 3 htmx polish + docs"
 status: active
+phase: x-forward-fit
 summary: "Pre-fetch skeleton for MVR-2 T5. Final W7 wave: mobile-optimized layout, per-handler OTel spans, a11y pass on the DAG tree, operator docs (one-page how-to + screenshots), and the polish items deferred from Wave 1/2. S (1 wk) effort. Closes W7 work-line. SKELETON."
 ---
 

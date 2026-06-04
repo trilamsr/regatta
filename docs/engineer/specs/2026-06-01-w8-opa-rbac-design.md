@@ -1,3 +1,9 @@
+---
+title: "MVP-3 W8 — OPA RBAC + multi-tenant + policies primitive (design spec, v1)"
+status: skeleton-prefetch
+summary: "Full W8 RBAC + multi-tenant tenant_id propagation — Phase-X per docs/engineer/briefs/2026-06-01-self-host-first.md §4 (single operator, single tenant). Phase S3-T1 ships only the slim authorizer + policy hot-reload variant (see 2026-06-02-s3-t1-w8-opa-slim.md)."
+---
+
 # MVP-3 W8 — OPA RBAC + multi-tenant + `policies` primitive (design spec, v1)
 
 _Author: design subagent, 2026-06-01. Scope: roadmap wedge W8 (MVP-3 rank #3). Source-of-truth_:

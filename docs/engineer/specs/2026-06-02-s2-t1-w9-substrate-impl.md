@@ -1,3 +1,10 @@
+---
+title: "S2-T1 — W9 Replay+Diff Harness, Substrate-Default DurableHistory Impl Spec"
+status: active
+phase: x-forward-fit
+summary: "Phase S2-T1: substrate-default DurableHistory impl only. Compares against Temporal-backed alternative for rationale; the Temporal variant itself is Phase-X per brief §4."
+---
+
 # S2-T1 — W9 Replay+Diff Harness, Substrate-Default `DurableHistory` Impl Spec
 
 Status: ready for review

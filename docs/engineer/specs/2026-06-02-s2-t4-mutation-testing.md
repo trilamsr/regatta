@@ -1,3 +1,10 @@
+---
+title: "Phase-S S2-T4 — Mutation testing on cost-governor + scheduler (design spec, v1)"
+status: active
+phase: x-forward-fit
+summary: "Phase S2-T4 mutation testing on cost-governor + scheduler. References Phase-X seams (Stripe billing) only as forward-fit context."
+---
+
 # Phase-S S2-T4 — Mutation testing on cost-governor + scheduler (design spec, v1)
 
 _Author: design subagent, 2026-06-02. Scope: self-host-first brief Phase S2 task T4. Source-of-truth_:
