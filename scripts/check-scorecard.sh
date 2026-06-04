@@ -161,6 +161,7 @@ fi
 
 total=0
 missing=()
+missing_rows=0
 line_no=0
 while IFS= read -r line; do
   line_no=$((line_no + 1))
@@ -198,7 +199,12 @@ while IFS= read -r line; do
     if [ -z "$crit" ]; then crit="(unlabeled)"; fi
     # For lines with multiple [x] all sharing the line, surface each
     # uncited count. We treat the whole line as one offender row.
+    # Trim the row to a single literal line; collapse leading list markers
+    # so the operator sees the criterion text, not "- [x]" preamble noise.
+    row_text=$(printf '%s' "$line" | sed -E 's/^[[:space:]]*-?[[:space:]]*//')
     missing+=("line ${line_no}: ${count} [x] mark(s) uncited — criteria ${crit}— no Test*/file:line/#issue/N-A on row")
+    missing+=("    offending row: ${row_text}")
+    missing_rows=$((missing_rows + 1))
   fi
 done <<EOF
 $section
@@ -212,11 +218,16 @@ if [ "$total" -eq 0 ]; then
 fi
 
 if [ "${#missing[@]}" -gt 0 ]; then
-  echo "::error::Scorecard has uncited [x] marks (${#missing[@]} offending row(s) / ${total} total criteria scanned):" >&2
+  echo "::error::Scorecard has uncited [x] marks (${missing_rows} offending row(s) / ${total} total criteria scanned):" >&2
   for m in "${missing[@]}"; do
     echo "  - $m" >&2
   done
   echo "::error::Each [x] MUST cite Test*-name OR file:line OR #issue OR N/A rationale on the SAME line." >&2
+  echo "::error::Expected one of these token shapes on the same row:" >&2
+  echo "::error::  - Test name        e.g. TestFooHandlesEmpty | FuzzParse | BenchmarkApply" >&2
+  echo "::error::  - file:line anchor e.g. path/to/file.go:42 | docs/spec.md:17" >&2
+  echo "::error::  - issue ref        e.g. #1234 | (see #1234) | DEFERRED" >&2
+  echo "::error::  - N/A clause       e.g. N/A — pure CPU work, no labels" >&2
   exit 2
 fi
 
