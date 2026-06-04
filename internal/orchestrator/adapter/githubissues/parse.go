@@ -1,9 +1,4 @@
-// Package githubissues implements the schemas.SpecAdapter contract over
-// GitHub Issues labelled `autonomous`. Per MVR-1-T4 spec the adapter
-// consumes one discriminator label, parses an HTML-comment YAML metadata
-// block plus a `## Acceptance criteria` H2 section, and dedups via a
-// `<!-- regatta-dedup-key: <hex> -->` body marker. Projection is
-// deterministic; LLM inference is forbidden on this path (spec §6.2).
+// Package githubissues implements schemas.SpecAdapter over GitHub Issues labelled `autonomous` (MVR-1-T4); deterministic projection, LLM inference forbidden (spec §6.2).
 package githubissues
 
 import (
@@ -19,11 +14,9 @@ import (
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-// SkipReason enumerates the closed set of projection-skip causes per
-// spec §7.6; written into the WARN payload so operator-console can route.
+// SkipReason is the spec §7.6 closed-enum projection-skip cause.
 type SkipReason string
 
-// SkipReason values are the spec §7.6 closed enum.
 const (
 	ReasonBadIDPrefix          SkipReason = "bad_id_prefix"
 	ReasonDupIDPrefix          SkipReason = "dup_id_prefix"
@@ -32,21 +25,13 @@ const (
 	ReasonBackfillFailed       SkipReason = "body_marker_backfill_failed"
 )
 
-// AcceptanceHeading is the canonical H2 the parser anchors on; matches
-// markdown_catalog so operators port templates without rewriting.
-const AcceptanceHeading = "## Acceptance criteria"
-
-// AutonomousLabel is the single discriminator the adapter consumes; the
-// existing alarmwebhook + (post-F4) selfimprove producers tag with it.
-const AutonomousLabel = "autonomous"
-
-// DedupMarkerPrefix is the body line the adapter back-fills on first
-// sighting (spec §4.1); same convention as selfimprove dedup but
-// HTML-comment-wrapped so GH renders invisibly.
-const DedupMarkerPrefix = "<!-- regatta-dedup-key: "
-
-// DedupMarkerSuffix closes the body marker.
-const DedupMarkerSuffix = " -->"
+// AcceptanceHeading, AutonomousLabel, and the DedupMarker{Prefix,Suffix} pin the adapter's spec §2.3/§4.1 anchors.
+const (
+	AcceptanceHeading = "## Acceptance criteria"
+	AutonomousLabel   = "autonomous"
+	DedupMarkerPrefix = "<!-- regatta-dedup-key: "
+	DedupMarkerSuffix = " -->"
+)
 
 var (
 	idPrefixRE      = regexp.MustCompile(`^([A-Z][A-Z0-9_-]{1,40}):\s`)
@@ -56,8 +41,6 @@ var (
 	metadataBlockRE = regexp.MustCompile(`(?s)<!--regatta\s*\n(.*?)\n\s*-->`)
 )
 
-// projection is the per-issue extraction result; callers convert it into
-// a schemas.WorkItem at adapter boundary.
 type projection struct {
 	ID                 string
 	Title              string
@@ -69,15 +52,11 @@ type projection struct {
 	DedupKey           string
 }
 
-// parseIssueBody normalizes body bytes (CRLF→LF + NFC), extracts the
-// metadata block, dedup marker, and acceptance criteria. Returns a
-// SkipReason when projection cannot proceed; callers WARN-log the
-// payload per spec §7.6.
+// parseIssueBody normalizes body bytes (CRLF→LF + NFC) and extracts metadata, dedup marker, and acceptance criteria; SkipReason on projection failure (spec §7.6).
 func parseIssueBody(rawBody string) (projection, SkipReason, error) {
 	body := normalize(rawBody)
 	var p projection
 
-	// Metadata block — optional. Reject malformed YAML loud.
 	if loc := metadataBlockRE.FindStringSubmatchIndex(body); loc != nil {
 		raw := body[loc[2]:loc[3]]
 		var md map[string]string
@@ -95,12 +74,10 @@ func parseIssueBody(rawBody string) (projection, SkipReason, error) {
 		}
 	}
 
-	// Dedup marker — optional; back-fill responsibility is the adapter's.
 	if m := dedupMarkerLine.FindStringSubmatch(body); m != nil {
 		p.DedupKey = m[1]
 	}
 
-	// Acceptance section — two H2s is ambiguous, fail closed.
 	criteria, reason, err := parseCriteria(body)
 	if err != nil {
 		return projection{}, reason, err
@@ -111,9 +88,7 @@ func parseIssueBody(rawBody string) (projection, SkipReason, error) {
 	return p, "", nil
 }
 
-// parseCriteria extracts `## Acceptance criteria` bullets; returns
-// dup_acceptance_section when more than one H2 collides. Empty section
-// is NOT an error — spec §2.3 last row (soft-fail).
+// parseCriteria extracts `## Acceptance criteria` bullets; dup H2 ⇒ dup_acceptance_section, empty section soft-fails (spec §2.3).
 func parseCriteria(body string) ([]schemas.Criterion, SkipReason, error) {
 	lines := strings.Split(body, "\n")
 	seenHeading := 0
@@ -157,9 +132,7 @@ func parseCriteria(body string) ([]schemas.Criterion, SkipReason, error) {
 	return out, "", nil
 }
 
-// extractIDFromTitle returns the leading `^[A-Z][A-Z0-9_-]{1,40}:` prefix
-// and the title with prefix stripped; ok=false on observability-shaped
-// titles (e.g. "[self-improve] ..."), per spec §2.4.
+// extractIDFromTitle returns the leading `^[A-Z][A-Z0-9_-]{1,40}:` prefix + stripped title (spec §2.4); ok=false on observability-shaped titles.
 func extractIDFromTitle(title string) (id, stripped string, ok bool) {
 	m := idPrefixRE.FindStringSubmatchIndex(title)
 	if m == nil {
@@ -170,9 +143,7 @@ func extractIDFromTitle(title string) (id, stripped string, ok bool) {
 	return id, stripped, true
 }
 
-// computeDedupKey is `sha256_hex(<owner>/<repo>:<number>:<body_sha>)`
-// where body_sha hashes the normalized body with the dedup-marker line
-// elided so the back-fill write does not invalidate the key.
+// computeDedupKey is sha256_hex(`<owner>/<repo>:<number>:<body_sha>`); body_sha elides the dedup-marker line so back-fill stays idempotent.
 func computeDedupKey(owner, repo string, number int, body string) string {
 	stripped := stripDedupMarker(normalize(body))
 	bodySum := sha256.Sum256([]byte(stripped))
@@ -181,8 +152,7 @@ func computeDedupKey(owner, repo string, number int, body string) string {
 	return hex.EncodeToString(full[:])
 }
 
-// bodySourceSHA is the SourceRef.SHA used by L0 to anchor criterion-text
-// immutability across the adapter boundary.
+// bodySourceSHA is the SourceRef.SHA L0 uses to anchor criterion-text immutability across the adapter boundary.
 func bodySourceSHA(body string) string {
 	stripped := stripDedupMarker(normalize(body))
 	sum := sha256.Sum256([]byte(stripped))
@@ -218,9 +188,7 @@ func stripAcceptanceSection(body string) string {
 	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
-// withBackfilledMarker appends the dedup-key marker to a body that lacks
-// one; the call site fires gh issue edit on the result. Idempotent: a
-// body that already carries the marker round-trips unchanged.
+// withBackfilledMarker appends the dedup-key marker to body; idempotent on already-marked bodies.
 func withBackfilledMarker(body, key string) string {
 	if dedupMarkerLine.MatchString(body) {
 		return body

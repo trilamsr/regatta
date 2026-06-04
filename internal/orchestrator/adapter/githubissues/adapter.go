@@ -18,24 +18,19 @@ import (
 	"github.com/trilamsr/regatta/internal/obs"
 )
 
-// DefaultMinPoll is the spec §5.1 cadence ceiling: 30s vs markdown_catalog's
-// 5s — gh REST 5000-req/hour budget headroom for List + Get + producers.
+// DefaultMinPoll is the spec §5.1 gh REST-budget cadence ceiling.
 const DefaultMinPoll = 30 * time.Second
 
-// Repo names the owner/name pair the adapter scans; mirrors the YAML
-// repo block field shape so config wiring stays a one-line projection.
+// Repo is the owner/name pair the adapter scans.
 type Repo struct {
 	Owner string
 	Name  string
 }
 
-// Slug is the locator-prefix the SourceRef uses ("github://owner/name").
+// Slug returns the SourceRef locator prefix "owner/name".
 func (r Repo) Slug() string { return r.Owner + "/" + r.Name }
 
-// GitHubIssuesConfig configures a GH-Issues-backed schemas.SpecAdapter.
-// Required fields: Client, Repo. MinPoll defaults to DefaultMinPoll;
-// AcceptanceSection defaults to "## Acceptance criteria". Logger nil
-// silences WARN paths; Tracer nil falls back to the global provider.
+// GitHubIssuesConfig configures a GH-Issues-backed schemas.SpecAdapter; Client + Repo required, the rest default-fill in NewGitHubIssues.
 type GitHubIssuesConfig struct {
 	Client            ghclient.Client
 	Repo              Repo
@@ -44,19 +39,11 @@ type GitHubIssuesConfig struct {
 	MinPoll           time.Duration
 	Logger            func(format string, args ...any)
 	Tracer            trace.Tracer
-	// Meter is the OTel instrument factory; nil resolves to the global
-	// MeterProvider so adapter.list latency/skip counters wire through
-	// the W6 observability stack without per-call wiring. Paired with
-	// Tracer per the obs-lint tracer-meter-pair invariant.
-	Meter metric.Meter
-	// Clock seam pinned by tests; nil falls back to time.Now so the
-	// cache TTL works in production without a clock injection.
-	Clock func() time.Time
+	Meter             metric.Meter
+	Clock             func() time.Time
 }
 
-// NewGitHubIssues returns a schemas.SpecAdapter consuming GH Issues
-// labelled `autonomous`; returns an error when Client or Repo is unset
-// so misconfiguration fails at boot instead of nil-derefing on first List.
+// NewGitHubIssues returns a schemas.SpecAdapter consuming GH issues labelled `autonomous`; fails closed when Client or Repo is unset.
 func NewGitHubIssues(cfg GitHubIssuesConfig) (schemas.SpecAdapter, error) {
 	if cfg.Client == nil {
 		return nil, errors.New("githubissues: Config.Client is required")
@@ -89,23 +76,16 @@ func NewGitHubIssues(cfg GitHubIssuesConfig) (schemas.SpecAdapter, error) {
 	}, nil
 }
 
+// adapter caches List()'s ID→number map for cfg.MinPoll (spec §7.7) and dedups §7.8 collision comments by owner/repo:ID:day.
 type adapter struct {
-	cfg GitHubIssuesConfig
-	mu  sync.Mutex
-	// idToNumber caches the last List() ID→issue-number mapping; TTL is
-	// cfg.MinPoll from cachedAt. Get() consults it before issuing the
-	// bounded refetch path (spec §7.7).
-	idToNumber map[string]int
-	cachedAt   time.Time
-	// collisionLogged dedups §7.8 collision comments to once per
-	// (collisionKey) tuple per process; tuple is `owner/repo:ID:day`.
+	cfg             GitHubIssuesConfig
+	mu              sync.Mutex
+	idToNumber      map[string]int
+	cachedAt        time.Time
 	collisionLogged map[string]struct{}
 }
 
-// List paginates open `autonomous` issues, projects each one, and
-// returns a stable-by-ID slice. Skip-and-WARN bad projections; rate
-// limits wrap schemas.ErrRateLimited so the scheduler can back off the
-// adapter without blocking peers.
+// List projects open `autonomous` issues, skipping bad ones with WARN and surfacing collisions before projection per spec §7.8.
 func (a *adapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
 	ctx, span := a.cfg.Tracer.Start(ctx, "adapter.github_issues.list")
 	defer span.End()
@@ -121,8 +101,6 @@ func (a *adapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	// First pass: group by extracted ID prefix to detect collisions
-	// before projecting any of them.
 	idGroups := map[string][]ghclient.Issue{}
 	idable := make([]ghclient.Issue, 0, len(issues))
 	for _, iss := range issues {
@@ -141,7 +119,6 @@ func (a *adapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
 		idable = append(idable, iss)
 	}
 
-	// Surface collisions BEFORE projection so callers see neither half.
 	collided := map[string]bool{}
 	for id, group := range idGroups {
 		if len(group) > 1 {
@@ -162,9 +139,7 @@ func (a *adapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
 			a.warnSkip(iss.Number, reason)
 			continue
 		}
-		// Back-fill dedup marker on first sighting (spec §4.2). Single
-		// gh write per issue; tolerate write failure with WARN so a
-		// transient API hiccup does not block projection.
+		// Spec §4.2: tolerate back-fill write failure with WARN so a transient API hiccup does not block projection.
 		if p.DedupKey == "" {
 			key := computeDedupKey(a.cfg.Repo.Owner, a.cfg.Repo.Name, iss.Number, iss.Body)
 			newBody := withBackfilledMarker(normalize(iss.Body), key)
@@ -199,9 +174,7 @@ func (a *adapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
 	return out, nil
 }
 
-// Get resolves an ID via the List() cache; on miss-after-TTL the adapter
-// issues a bounded gh search-by-id rebuild (spec §7.7) before returning
-// ErrNotFound, so a stale cache never silently strands a request.
+// Get resolves an ID via the List() cache; on miss-after-TTL issues one search-by-id rebuild (spec §7.7) before returning ErrNotFound.
 func (a *adapter) Get(ctx context.Context, id schemas.WorkItemID) (schemas.WorkItem, error) {
 	a.mu.Lock()
 	num, hit := a.idToNumber[string(id)]
@@ -210,7 +183,6 @@ func (a *adapter) Get(ctx context.Context, id schemas.WorkItemID) (schemas.WorkI
 	if hit && !expired {
 		return a.fetchByNumber(ctx, id, num)
 	}
-	// Cache miss or expired — single search-by-id rebuild.
 	issues, err := a.cfg.Client.ListIssuesByLabelPaginated(ctx, AutonomousLabel, ghclient.ListIssuesOpts{State: "open"})
 	if err != nil {
 		return schemas.WorkItem{}, fmt.Errorf("github_issues get: %w", err)
@@ -277,15 +249,12 @@ func (a *adapter) projectIssue(iss ghclient.Issue) (schemas.WorkItem, error) {
 	return wi, nil
 }
 
-// UpdateStatus is intentionally a no-op for MVR-1 (spec §1.2). Returns
-// ErrAdapterUnsupported so the scheduler skips retry per F1; reopen
-// path: body-marker append, tracked as F1 §13.
+// UpdateStatus is the MVR-1 no-op (spec §1.2); F1 follow-up adds body-marker append.
 func (a *adapter) UpdateStatus(_ context.Context, _ schemas.WorkItemID, _ schemas.Status, _ string) error {
 	return fmt.Errorf("%w: github_issues UpdateStatus", schemas.ErrAdapterUnsupported)
 }
 
-// Capabilities reports github_issues feature flags; Webhook + BulkUpdate
-// stay false until F7 / F1 land respectively.
+// Capabilities reports github_issues feature flags; Webhook + BulkUpdate stay false until F7 / F1.
 func (a *adapter) Capabilities() schemas.Capabilities {
 	return schemas.Capabilities{
 		Webhook:         false,
@@ -299,16 +268,13 @@ func (a *adapter) Capabilities() schemas.Capabilities {
 	}
 }
 
-// warnSkip emits the spec §7.6 closed-enum payload via the configured
-// logger; INFO-level production sinks must NOT log raw body (spec §8.3).
+// warnSkip emits the spec §7.6 closed-enum WARN payload (no raw body per §8.3).
 func (a *adapter) warnSkip(issueNumber int, reason SkipReason) {
 	a.cfg.Logger("github_issues.skip adapter=github_issues repo=%s issue_number=%d reason=%s issue_url=https://github.com/%s/issues/%d",
 		a.cfg.Repo.Slug(), issueNumber, reason, a.cfg.Repo.Slug(), issueNumber)
 }
 
-// handleCollision logs ERROR + comments-on-both-issues per spec §7.8;
-// in-process dedup at the (collisionKey) tuple keeps the per-tick spam
-// bounded to one comment per issue per day.
+// handleCollision logs ERROR + comments-on-both-issues per spec §7.8 with per-(owner/repo:ID:day) in-process dedup.
 func (a *adapter) handleCollision(ctx context.Context, id string, group []ghclient.Issue) {
 	day := a.cfg.Clock().UTC().Format("2006-01-02")
 	for _, iss := range group {

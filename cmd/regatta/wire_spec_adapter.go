@@ -15,14 +15,13 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter/githubissues"
 )
 
-// ghIssueRaw is the gh CLI JSON shape; labels arrive as objects with a
-// `name` field rather than the flat string slice the adapter expects.
+// ghIssueRaw is the gh-CLI label-object JSON shape decoded into ghclient.Issue.
 type ghIssueRaw struct {
-	Number    int            `json:"number"`
-	Title     string         `json:"title"`
-	Body      string         `json:"body"`
-	Labels    []ghLabelRaw   `json:"labels"`
-	UpdatedAt time.Time      `json:"updatedAt"`
+	Number    int          `json:"number"`
+	Title     string       `json:"title"`
+	Body      string       `json:"body"`
+	Labels    []ghLabelRaw `json:"labels"`
+	UpdatedAt time.Time    `json:"updatedAt"`
 }
 
 type ghLabelRaw struct {
@@ -63,12 +62,7 @@ func flattenGHIssues(raws []ghIssueRaw) []ghclient.Issue {
 	return out
 }
 
-// buildSpecAdapter picks the schemas.SpecAdapter implementation based on
-// regatta.yaml::spec_adapter.type. The github_issues path wires a
-// gh-CLI-backed client (MVR-1-T4 spec §10.1) so persona-A operators can
-// drive the autonomous loop from their issue tracker without taking on a
-// new HTTP dep; markdown_catalog stays the default to preserve the
-// in-repo authoring workflow.
+// buildSpecAdapter dispatches the schemas.SpecAdapter by `regatta.yaml::spec_adapter.type` (MVR-1-T4 §10.1); markdown_catalog stays the default.
 func buildSpecAdapter(f serveFlags) (schemas.SpecAdapter, error) {
 	cfgPath := filepath.Join(f.RepoRoot, "regatta.yaml")
 	cfg, _ := validateconfig.LoadConfigFile(cfgPath)
@@ -87,11 +81,7 @@ func buildSpecAdapter(f serveFlags) (schemas.SpecAdapter, error) {
 	return adapter.NewMarkdownCatalog(adapter.MarkdownCatalogConfig{Root: f.ItemsRoot})
 }
 
-// ghCLIClient is the gh-CLI-subprocess backing for the github_issues
-// adapter; only the three new methods are implemented in this build —
-// alarm/selfimprove call paths route through the HTTP client at
-// internal/alarmwebhook/github.go. F-followup: unify when go-github
-// is adopted or the gh CLI surface widens.
+// ghCLIClient is the gh-CLI-subprocess ghclient.Client for the github_issues adapter; non-list/get methods stub-fail (alarm path uses the HTTP client).
 type ghCLIClient struct {
 	owner string
 	repo  string
@@ -110,10 +100,7 @@ func (c *ghCLIClient) CreateIssue(_ context.Context, _, _ string, _ []string) (i
 }
 
 func (c *ghCLIClient) CommentOnIssue(ctx context.Context, n int, body string) error {
-	// G204: argv-style exec.Command, no shell interpolation. Repo owner+name
-	// come from CUE-validated regatta.yaml; body is operator-supplied issue
-	// content the adapter does not interpret (spec §8.2 conditional-safety).
-	cmd := exec.CommandContext(ctx, "gh", "issue", "comment", fmt.Sprint(n), "--repo", c.owner+"/"+c.repo, "--body", body) //nolint:gosec // G204: argv-style, no shell
+	cmd := exec.CommandContext(ctx, "gh", "issue", "comment", fmt.Sprint(n), "--repo", c.owner+"/"+c.repo, "--body", body) //nolint:gosec // G204: argv-style, no shell; repo CUE-validated, body operator-supplied
 	return cmd.Run()
 }
 
