@@ -268,6 +268,8 @@ type Scheduler struct {
 	// docs/engineer/specs/2026-06-02-s3-t4-crash-recovery-property.md
 	// §3.3. Production wires nil.
 	WriteHook func(writeIndex int) error
+
+	backoff *recheckBackoff
 }
 
 // New constructs a Scheduler. Config is copied; later mutations to
@@ -314,6 +316,7 @@ func newScheduler(db schedulerDB, cfg Config) *Scheduler {
 	return &Scheduler{
 		db: db, cfg: cfg, log: log, tracer: tracer,
 		tickLatency: tickLatency, stepDuration: stepDuration,
+		backoff: newRecheckBackoffWithMeter(meter),
 	}
 }
 
@@ -433,6 +436,9 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 		{"persist", func() error {
 			rest, e := s.reserveOrphans(ctx, tc, occupancy, attempted)
 			reserved = append(reserved, rest...)
+			if s.backoff != nil {
+				s.backoff.Tick()
+			}
 			return e
 		}},
 	}
