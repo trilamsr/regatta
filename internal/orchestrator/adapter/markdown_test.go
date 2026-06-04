@@ -40,8 +40,7 @@ Body text.
 - [planned] c2: Second criterion
 `
 
-// TestMarkdown_LogsSkippedItems asserts malformed items are logged
-// instead of failing silently to a generic "not found" upstream.
+// TestMarkdown_LogsSkippedItems asserts malformed items are logged instead of failing silently upstream.
 func TestMarkdown_LogsSkippedItems(t *testing.T) {
 	dir := t.TempDir()
 	writeItem(t, dir, "good.md", sampleItem)

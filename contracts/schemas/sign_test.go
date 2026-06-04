@@ -161,8 +161,7 @@ func TestVerifyRejectsMissingSignature(t *testing.T) {
 	}
 }
 
-// TestSign_KidInMAC_PreventsCrossKidForgery asserts the MAC binds to
-// key_id so a swapped envelope kid does not cross-verify under a shared key.
+// TestSign_KidInMAC_PreventsCrossKidForgery asserts MAC binds key_id so swapped envelope kid does not cross-verify under shared key.
 func TestSign_KidInMAC_PreventsCrossKidForgery(t *testing.T) {
 	t.Parallel()
 	sharedKey := []byte("a-secret-key-for-testing-only-32")
@@ -191,8 +190,7 @@ func TestSign_KidInMAC_PreventsCrossKidForgery(t *testing.T) {
 	}
 }
 
-// TestVerify_RejectsNonStringSignatureFields asserts Verify fails fast
-// when alg / key_id / mac arrive as non-string values.
+// TestVerify_RejectsNonStringSignatureFields asserts Verify fails fast when alg/key_id/mac arrive as non-string values.
 func TestVerify_RejectsNonStringSignatureFields(t *testing.T) {
 	t.Parallel()
 	key := []byte("a-secret-key-for-testing-only-32")

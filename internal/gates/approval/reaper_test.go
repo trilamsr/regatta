@@ -569,10 +569,7 @@ func TestReaper_NilClockRejected(t *testing.T) {
 	}
 }
 
-// newTestReaperWithMidTxAbort builds a reaper whose per-row tx fires
-// abort right after the timed_out event is appended. Used by
-// TestReaper_AtomicityOnFailure to exercise the §3.2.1 rollback
-// contract — the assertion is that approvals.status stays pending.
+// newTestReaperWithMidTxAbort builds a reaper whose per-row tx aborts after timed_out append; exercises §3.2.1 rollback.
 func newTestReaperWithMidTxAbort(t *testing.T, db *state.DB, t0 time.Time, abort func(*sql.Tx) error) *Reaper {
 	t.Helper()
 	r, err := NewReaper(db, slog.New(slog.NewTextHandler(discardWriter{}, nil)), func() time.Time { return t0 })
