@@ -259,6 +259,22 @@ body_chore_partial_scorecard='```release-notes
 '
 run_case "chore-partial-scorecard-passes" 0 "exempt" "$body_chore_partial_scorecard"
 
+# Fixture (#854): uncited row failure must echo the offending row text on
+# stderr so operator does not have to re-grep the source. Pin against the
+# row prose "docs updated" so the assertion fails if the script only
+# surfaces a line number.
+run_case "uncited-row-text-emitted" 2 "docs updated" "$body_one_uncited"
+
+# Fixture (#854): uncited row failure must emit an expected-token-shape
+# hint listing the four valid citation shapes (Test*-name, path.ext:NN,
+# #NNN, N/A). Pin against the hint header "Expected".
+run_case "uncited-row-hint-emitted" 2 "Expected" "$body_one_uncited"
+
+# Fixture (#854): the hint must include a concrete example for each
+# shape so the operator can copy-paste. Pin against the file:line shape
+# token which is the most-easily-malformed citation form.
+run_case "uncited-row-hint-shows-file-line-example" 2 "path/to/file" "$body_one_uncited"
+
 # Fixture: --skip short-circuits without parsing.
 tmp_skip=$(mktemp); printf 'irrelevant body\n' > "$tmp_skip"
 out=$("$check" --skip 2>&1) && got_exit=0 || got_exit=$?
