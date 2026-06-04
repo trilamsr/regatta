@@ -391,7 +391,7 @@ Skip + WARN. The WARN log carries a structured payload that is the same shape su
 
 `reason` is one of a closed enum: `bad_id_prefix`, `dup_id_prefix`, `dup_acceptance_section`, `bad_metadata_yaml`, `body_marker_backfill_failed`.
 
-WHY structured payload: the operator who filed the issue needs a feedback loop — the existing operator-console v5.1 dashboard (per `2026-06-02-operator-console-design.md`) will render this once F20 wires substrate. Silent skip would leave the operator wondering why their issue is invisible. Test `TestGitHubIssues_Skip_RecordsObservation` (§11) asserts the payload schema verbatim.
+WHY structured payload: the operator who filed the issue needs a feedback loop — the existing operator-console v5.1 dashboard (per `2026-06-02-operator-console-design.md`) will render this once F20 wires substrate. Silent skip would leave the operator wondering why their issue is invisible. Test `TestGitHubIssues_Skip_WarnsWithPayloadSchema` (§11) asserts the payload schema verbatim.
 
 ### 7.7 Issue absent on `Get` (cache miss + refetch)
 
@@ -577,7 +577,7 @@ Tests inject a `ghclient.Client` fake reading from `testdata/`. Same shape as `i
 | `TestGitHubIssues_Get_NotFound_WrapsErrNotFound` | mock | Missing issue surfaces `ErrNotFound`. |
 | `TestGitHubIssues_Get_IDCollision_WrapsErrPermanent` | fixtures 592+595 | Two open issues sharing prefix surfaces `ErrPermanent` on `Get`. |
 | `TestGitHubIssues_Get_CacheMissAfterMinPoll_Refetches` | mock | Cache hit within `MinPoll` avoids gh call; expiry triggers exactly one refetch; failure → `ErrNotFound`. |
-| `TestGitHubIssues_Skip_RecordsObservation` | fixture 593 | Skip WARN payload matches `{adapter, repo, issue_number int, reason, issue_url}` schema verbatim. |
+| `TestGitHubIssues_Skip_WarnsWithPayloadSchema` | fixture 593 | Skip WARN payload matches `{adapter, repo, issue_number int, reason, issue_url}` schema verbatim. |
 | `TestGitHubIssues_UpdateStatus_AlwaysErrAdapterUnsupported` | mock | `UpdateStatus` returns `ErrAdapterUnsupported` for every input. |
 | `TestGitHubIssues_Capabilities_NoWebhookNoBulk_MinPoll30s` | mock | Capabilities zero for Webhook + BulkUpdate, MinPoll = 30s. |
 | `FuzzGitHubIssues_ParseMetadata_NoPanic` | mock | Random HTML-comment-bytes never panic the metadata parser. |
@@ -638,7 +638,7 @@ Reviewer dispatched 2026-06-04. Verdict: AUTHOR-REVISION-NEEDED. Findings table 
 | M3 | MED | Golden fixtures incomplete §11.1–§11.3: 20 test names vs 6 fixture files mismatch; §11.4 property test mock-or-live ambiguity. | 6-fixture list explicit; 14 mock-driven tests called out in §11.3 source column. Property test §11.4 mock-only with `gh ≥ 2.40` toolchain assertion. | **ADDRESSED §11.1 + §11.3 + §11.4** |
 | M4 | MED | Shell-injection defense §8.2 incomplete — adapter safe, but downstream (prompt-builder F9) can re-inject. | Conditional safety statement added: adapter safety is necessary-but-not-sufficient; both gates required. F9 cross-cut + PR #834 cited. | **ADDRESSED §8.2** |
 | L1 | LOW | Collision feedback §7.8 + §11.3 untested — spec says comment on both issues, no test name. | Test `TestGitHubIssues_List_DupIDPrefix_BothSkipped_CommentsOnBothIssues` added §11.3; assertion includes once-per-(ID, day) dedup. | **ADDRESSED §7.8 + §11.3** |
-| L2 | LOW | Skip-event payload §7.6 undefined — no schema. | Schema pinned §7.6: `{adapter, repo, issue_number int, reason, issue_url}`. `reason` is a closed enum. Test `TestGitHubIssues_Skip_RecordsObservation` asserts verbatim. | **ADDRESSED §7.6 + §11.3** |
+| L2 | LOW | Skip-event payload §7.6 undefined — no schema. | Schema pinned §7.6: `{adapter, repo, issue_number int, reason, issue_url}`. `reason` is a closed enum. Test `TestGitHubIssues_Skip_WarnsWithPayloadSchema` asserts verbatim. | **ADDRESSED §7.6 + §11.3** |
 | L3 | LOW | Cache-miss behavior §1.2 + §6.1 incomplete — `Get` refetch path unspecified. | §7.7 added: gh search-by-id refetch, TTL reset, `ErrNotFound` on miss. Test `TestGitHubIssues_Get_CacheMissAfterMinPoll_Refetches` added §11.3. | **ADDRESSED §7.7 + §11.3** |
 
 **Round-trip summary**: 10/10 fresh-slot findings addressed inline (CRITICAL: 1/1; HIGH: 2/2; MED: 4/4; LOW: 3/3). Two items deferred to F-followups (F20 substrate-write wiring; F21 markdown_catalog→github_issues migration runbook); both are non-load-bearing for the adapter itself (substrate is audit-only per §4.6; runbook is operator docs).
