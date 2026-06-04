@@ -30,7 +30,7 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 - **Long-term-benefit gate** — keep a comment only if removing it would leave a future reader confused about WHY. Sweep on push.
 - **Lint reconcile** — exported godocs MUST open with the symbol name AND capture WHY in 1 sentence: `// UpperBound is the inclusive ceiling enforced by the budget gate.` GOOD. `// UpperBound returns the upper bound.` BAD. (`feedback_comments_lint_reconcile`)
 - **Test/Fuzz/Benchmark godocs: 1 line max** — `scripts/doc-check.sh` test-godoc gate rejects multi-line. Collapse to `// TestX asserts O on I (#N).` (`feedback_test_godoc_one_line`)
-- **Comment budget enforcement** — dispatch prompts say "WHY not WHAT" but implementers drift; reviewer comment-sweep is the backstop. Recurring offender. (`feedback_comment_budget_enforcement`)
+- **Comment budget enforcement** — dispatch prompts say "WHY not WHAT" but implementers drift; reviewer comment-sweep is the backstop. Recurring offender. Implementer hard rules + reviewer MED-severity sweep live in `docs/engineer/dispatch-templates/implementer.md` §Comments: zero by default + `reviewer.md` lens 9. (`feedback_comment_budget_enforcement`)
 
 ## CI gates (local pre-push)
 
