@@ -232,12 +232,42 @@ Prereqs:
 - `regatta` binary on `$PATH` (either brew prefix is fine — the install
   command resolves the absolute path from `os.Executable`).
 
+### Env file
+
+launchd has no native `EnvironmentFile=` equivalent, so the rendered
+plist wraps `regatta serve` in `/bin/sh -lc 'set -a; . "<env-file>";
+set +a; exec ...'` — every restart re-sources the file so rotating
+`ANTHROPIC_API_KEY` is a single `chmod 600` edit, no plist re-render.
+
+Default paths:
+
+- `--user` install (default): `$HOME/.config/regatta/env`.
+- `--system` install: `/etc/regatta/env`.
+- `--env-file <path>` overrides both.
+
+Bootstrap the file before the first install:
+
+```sh
+mkdir -p "$HOME/.config/regatta"
+cat > "$HOME/.config/regatta/env" <<'EOF'
+ANTHROPIC_API_KEY=sk-ant-...
+GH_TOKEN=ghp_...
+EOF
+chmod 600 "$HOME/.config/regatta/env"
+```
+
+The installer WARNs (not fails) when the env-file is missing or its
+mode is not `0600` so a first-time install on a fresh laptop is not
+blocked — the operator may also set env via the launchd parent
+environment. `KeepAlive` restarts the agent on `.` source failure, so
+a missing file surfaces as a tight restart loop in `stderr.log`.
+
 The install path:
 
 1. Renders `dist/services/regatta.plist.tmpl` with binary path, working
-   directory, log dir, and PATH (ordered by the resolved binary's brew
-   prefix — `/opt/homebrew/bin` first on Apple Silicon,
-   `/usr/local/bin` first on Intel).
+   directory, log dir, env-file path, and PATH (ordered by the
+   resolved binary's brew prefix — `/opt/homebrew/bin` first on Apple
+   Silicon, `/usr/local/bin` first on Intel).
 2. Validates with `plutil -lint` (warns + falls back to a built-in
    text-schema check when `plutil` is not on `$PATH`).
 3. Writes `~/Library/LaunchAgents/com.regatta.serve.plist`.

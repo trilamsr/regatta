@@ -38,6 +38,7 @@ type Options struct {
 	Force      bool
 	NoCron     bool
 	HealthzURL string // operator override for post-bootstrap /healthz polling (#667); empty ⇒ DefaultHealthzURL
+	EnvFile    string // operator override for env-file path; empty ⇒ OS+mode default. launchd has no native EnvironmentFile, so on darwin the plist wraps `regatta serve` in `/bin/sh -lc` that sources this file (followup to #826).
 	Out        io.Writer
 	Err        io.Writer
 	Now        func() time.Time
@@ -127,6 +128,7 @@ func Install(opts Options) error {
 	if err != nil {
 		return fmt.Errorf("render: %w", err)
 	}
+	checkEnvFileHygiene(plan, opts.Err)
 	if opts.DryRun {
 		fpln(opts.Out, "=== plan ===")
 		fpf(opts.Out, "os:        %s\n", plan.OS)
@@ -135,6 +137,7 @@ func Install(opts Options) error {
 		fpf(opts.Out, "binary:    %s\n", plan.BinaryPath)
 		fpf(opts.Out, "workdir:   %s\n", plan.WorkingDir)
 		fpf(opts.Out, "logs:      %s\n", plan.LogDir)
+		fpf(opts.Out, "env-file:  %s\n", plan.EnvFile)
 		fpf(opts.Out, "healthz:   %s\n", ResolveHealthzURL(opts))
 		fpln(opts.Out, "=== rendered ===")
 		fpln(opts.Out, rendered)
@@ -264,6 +267,10 @@ func buildPlan(opts Options) (Plan, error) {
 			p.LogDir = "/var/log/regatta"
 		}
 		p.PathEnv = resolveMacPath(bin)
+		p.EnvFile = resolveDarwinEnvFile(opts, home)
+		if err := sanitizeEnvFile(p.EnvFile); err != nil {
+			return p, err
+		}
 	case osLinux:
 		p.UnitName = "regatta.service"
 		if opts.Mode == ModeUser {
@@ -279,11 +286,40 @@ func buildPlan(opts Options) (Plan, error) {
 		}
 		p.ConfigPath = "/etc/regatta/regatta.yaml"
 		p.EnvFile = "/etc/regatta/env"
+		if opts.EnvFile != "" {
+			p.EnvFile = opts.EnvFile
+		}
 		p.ReadWritePaths = p.WorkingDir + " " + p.LogDir
 	default:
 		return p, fmt.Errorf("unsupported OS %q (use container runbook docs/operator/container.md)", p.OS)
 	}
 	return p, nil
+}
+
+// resolveDarwinEnvFile picks the operator override, falling back to the
+// user-mode / system-mode default. launchd has no native EnvironmentFile
+// equivalent — the plist wraps `regatta serve` in `/bin/sh -lc` that
+// sources this path so ANTHROPIC_API_KEY + GH_TOKEN land in serve's env
+// (followup to #826).
+func resolveDarwinEnvFile(opts Options, home string) string {
+	if opts.EnvFile != "" {
+		return opts.EnvFile
+	}
+	if opts.Mode == ModeSystem {
+		return "/etc/regatta/env"
+	}
+	return filepath.Join(home, ".config", "regatta", "env")
+}
+
+// sanitizeEnvFile rejects characters that would break out of the
+// double-quoted shell sourcing string in the plist wrapper — `"`, `$`,
+// backtick, newline, null. Paths with spaces are fine because we
+// double-quote.
+func sanitizeEnvFile(p string) error {
+	if strings.ContainsAny(p, "\"$`\n\x00") {
+		return fmt.Errorf("env-file path %q contains a shell metacharacter (one of \" $ ` newline null) that would break the launchd sourcing wrapper", p)
+	}
+	return nil
 }
 
 // resolveMacPath picks the PATH ordering by inspecting the running
@@ -489,6 +525,24 @@ func writeCrontab(content string) error {
 	cmd := exec.Command("crontab", "-")
 	cmd.Stdin = strings.NewReader(content)
 	return cmd.Run()
+}
+
+// checkEnvFileHygiene WARN-only check on env-file presence + mode. Fail-open
+// because the operator may set env vars via shell before launchd loads, or
+// rely on a system-wide envd config — fail-closed would block first-time
+// installs on a fresh laptop.
+func checkEnvFileHygiene(plan Plan, errW io.Writer) {
+	if plan.EnvFile == "" {
+		return
+	}
+	info, err := os.Stat(plan.EnvFile)
+	if err != nil {
+		fpf(errW, "WARN: env-file %s missing — set ANTHROPIC_API_KEY + GH_TOKEN before the loop starts, or pre-create the file at chmod 0600\n", plan.EnvFile)
+		return
+	}
+	if info.Mode().Perm() != 0o600 {
+		fpf(errW, "WARN: env-file %s mode %#o — secrets are world/group readable; recommend `chmod 0600 %s`\n", plan.EnvFile, info.Mode().Perm(), plan.EnvFile)
+	}
 }
 
 // checkSecurityModule emits the SELinux / AppArmor advisory described
