@@ -131,11 +131,7 @@ func TestClaudeChildrenAndForget(t *testing.T) {
 	}
 }
 
-// TestClaudeSpawnKillRace hammers Spawn and KillAgent across the
-// same agent IDs from many goroutines. With -race the test fails if
-// either method touches s.children without the mutex; functionally
-// it asserts no goroutine panics and the final children map shape
-// is internally consistent.
+// TestClaudeSpawnKillRace asserts -race-clean concurrent Spawn/KillAgent on shared IDs (s.children mutex).
 func TestClaudeSpawnKillRace(t *testing.T) {
 	cs, _, _ := newClaudeHarness(t)
 
