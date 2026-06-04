@@ -197,7 +197,7 @@ Makefile                            # ADD: lint-web-template-html, lint-hx-sync,
 | `GET` | `/approve/{approval_id}/diff` | Full diff stream (Transfer-Encoding: chunked) with 1 MiB hard cap + redaction notice (I2). Only used when `_diff.tmpl` overflows the 8 KiB cap. | same as approval page | `Cache-Control: no-store` |
 | `GET` | `/runs/{run_id}` | Read-only work-items + edges HTML list (S1). Filter via `?state=` + `?lane=`. Polls itself via htmx every 5 s. | HMAC cookie (token-gated, strict — open-q 9.7) | `Cache-Control: no-store` |
 | `GET` | `/runs/{run_id}/cost` | Cost panel partial (single SUM of `kind='token_spend'`). Htmx swap target. | inherits parent | `Cache-Control: no-store` (R6 — the approval-page consumer cannot tolerate a 2 s lie) |
-| `GET` | `/healthz` | Liveness: `200 OK\nok\n`. No DB query. | none | `Cache-Control: no-store` |
+| `GET` | `/healthz` | Liveness: `200 OK` + JSON readiness envelope (`{"status": "ok", "checks": {...}}` per supervisor spec §3.5). Plaintext shim dropped post-PR #721. | none | `Cache-Control: no-store` |
 | `GET` | `/ui/static/*` | embed.FS assets (htmx.min.js, tailwind.min.css). | none | `Cache-Control: public, max-age=86400, immutable` |
 | `POST` | `/api/approval/callback` | Wave-1 `InteractiveNotifier.CallbackRoute()` — **wired in W7.0** to the same listener. Concrete impl returns a route+handler that calls into `approval.DecideTx`. | HMAC token in POST body | `Cache-Control: no-store` |
 
