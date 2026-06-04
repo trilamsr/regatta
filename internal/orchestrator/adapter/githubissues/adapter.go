@@ -139,12 +139,13 @@ func (a *adapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
 			a.warnSkip(iss.Number, reason)
 			continue
 		}
-		// Spec §4.2: tolerate first-sighting backfill failure with WARN; mutation detection deferred to F20 (#850).
+		// Spec §4.2: SKIP on backfill write failure — projecting marker-less would dup-spawn next tick (#849).
 		if p.DedupKey == "" {
 			key := computeDedupKey(a.cfg.Repo.Owner, a.cfg.Repo.Name, iss.Number, iss.Body)
 			newBody := withBackfilledMarker(normalize(iss.Body), key)
 			if err := a.cfg.Client.EditIssueBody(ctx, iss.Number, newBody); err != nil {
 				a.warnSkip(iss.Number, ReasonBackfillFailed)
+				continue
 			}
 		}
 		wi := schemas.WorkItem{

@@ -243,6 +243,7 @@ Storage / lifecycle:
 - On first `List` sighting of an issue whose body lacks the marker (or carries the placeholder), the adapter computes the key and back-fills via a single `gh issue edit <n> --body-file -` call. WHY a single backfill write: gh CLI is the only write surface (§10.1), so the adapter trades one-time write quota for permanent dedup determinism.
 - On subsequent `List` ticks the adapter reads the marker; in-process `map[dedup_key]issue_number` accumulates across the tick.
 - On collision (two open issues, same key) → WARN + comment-on-both-issues (§7.8). Operator filed dup.
+- **Backfill write failure → SKIP issue + WARN with `body_marker_backfill_failed` (#849).** The prior-draft wording "tolerate write failure with WARN so a transient API hiccup does not block projection" is replaced. WHY SKIP: projecting a marker-less work item silently dup-spawns next tick (no oracle to dedup against) until the write surface recovers. Auth/permission failures (the dominant cause — gh token lacks `Issues: Write`) fail every tick, not once, so projection would loop. SKIP fails loudly, operator fixes the scope, items resume on next List. Body-hash idempotency in downstream consumers is not a substitute — the dedup oracle is the body marker (§4.1), and §4.1 names it as single-source. Test pin: `TestGitHubIssues_List_BackfillEditFails_SkipsAndWarns` at `internal/orchestrator/adapter/githubissues/adapter_test.go`.
 
 ### 4.3 Body-mutated-mid-flight policy: re-queue, not fail-closed
 
