@@ -1,11 +1,6 @@
 package schemas
 
-// Secret wraps key material so accidental logging or JSON-encoding
-// redacts to "[REDACTED]" instead of leaking the raw bytes. Use as
-// the env-to-process boundary type; convert to []byte only at the
-// HMAC seam. Stringer, GoStringer, json.Marshaler, and
-// encoding.TextMarshaler are all implemented to enforce redaction
-// on every formatter Go ships with.
+// Secret wraps key material so accidental logging or JSON-encoding redacts to "[REDACTED]" instead of leaking raw bytes; convert to []byte only at the HMAC seam. Stringer/GoStringer/json.Marshaler/encoding.TextMarshaler all redact.
 type Secret []byte
 
 const redactedLiteral = "[REDACTED]"
