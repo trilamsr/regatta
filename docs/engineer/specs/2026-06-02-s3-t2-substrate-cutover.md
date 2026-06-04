@@ -1,6 +1,7 @@
 ---
 title: "S3-T2 — substrate Phase B+C cutover (approvals only)"
-status: active
+status: shipped
+shipped_at: 2026-06-04
 phase: x-forward-fit
 summary: "Phase S3-T2: shadow-write + read-from-substrate cutover for approvals only. Forward-fits the W8 tenant_id seam without absorbing it."
 ---
