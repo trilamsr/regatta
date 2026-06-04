@@ -8,9 +8,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 )
 
-// TestRecheckBackoff_BacksOffAfterKFailures asserts that 10 consecutive
-// transient fetch failures for the same orphan id produce <=3 warn-eligible
-// admit decisions (K=3 budget; remaining 7 ticks suppressed by N=10 backoff) (#773).
+// TestRecheckBackoff_BacksOffAfterKFailures asserts 10 failing ticks admit at most K=3 (#773).
 func TestRecheckBackoff_BacksOffAfterKFailures(t *testing.T) {
 	b := newRecheckBackoff()
 	const id = "wi-1"
@@ -29,8 +27,7 @@ func TestRecheckBackoff_BacksOffAfterKFailures(t *testing.T) {
 	}
 }
 
-// TestRecheckBackoff_SuccessResetsBudget asserts a success clears the
-// failure counter so the next transient hit gets the full K budget again (#773).
+// TestRecheckBackoff_SuccessResetsBudget asserts RecordSuccess clears the failure budget (#773).
 func TestRecheckBackoff_SuccessResetsBudget(t *testing.T) {
 	b := newRecheckBackoff()
 	const id = "wi-1"
@@ -49,8 +46,7 @@ func TestRecheckBackoff_SuccessResetsBudget(t *testing.T) {
 	}
 }
 
-// TestRecheckBackoff_PerOrphanIsolation asserts one orphan's backoff
-// state does not bleed across ids (#773).
+// TestRecheckBackoff_PerOrphanIsolation asserts backoff state is keyed per id (#773).
 func TestRecheckBackoff_PerOrphanIsolation(t *testing.T) {
 	b := newRecheckBackoff()
 	for i := 0; i < 3; i++ {
@@ -65,8 +61,7 @@ func TestRecheckBackoff_PerOrphanIsolation(t *testing.T) {
 	}
 }
 
-// TestRecheckBackoff_BackoffExpiresAfterNTicks asserts the orphan is
-// re-admitted after N ticks elapse from entering backoff (#773).
+// TestRecheckBackoff_BackoffExpiresAfterNTicks asserts re-admit after N Tick() calls elapse (#773).
 func TestRecheckBackoff_BackoffExpiresAfterNTicks(t *testing.T) {
 	b := newRecheckBackoff()
 	const id = "wi-1"
@@ -74,7 +69,6 @@ func TestRecheckBackoff_BackoffExpiresAfterNTicks(t *testing.T) {
 		b.Admit(id)
 		b.RecordFailure(id)
 	}
-	// Now in backoff. Advance N ticks via Tick().
 	for i := 0; i < recheckBackoffTicks; i++ {
 		if b.Admit(id) {
 			t.Fatalf("admit at suppressed tick %d; want false until N elapses", i)
@@ -86,9 +80,7 @@ func TestRecheckBackoff_BackoffExpiresAfterNTicks(t *testing.T) {
 	}
 }
 
-// TestRecheckBackoff_UnavailableCounterIncrements asserts the meter
-// counter regatta.scheduler.gate_recheck_unavailable bumps once per
-// RecordFailure (#773 operator-surface).
+// TestRecheckBackoff_UnavailableCounterIncrements asserts gate_recheck_unavailable bumps per RecordFailure (#773).
 func TestRecheckBackoff_UnavailableCounterIncrements(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
@@ -120,9 +112,7 @@ func TestRecheckBackoff_UnavailableCounterIncrements(t *testing.T) {
 	}
 }
 
-// TestRecheckBackoff_WarnOnceOnEntry asserts the helper signals
-// "just entered backoff" only on the Kth failure, not on subsequent
-// suppressed ticks — so the caller emits one warn, not N (#773).
+// TestRecheckBackoff_WarnOnceOnEntry asserts RecordFailure returns true exactly once per backoff entry (#773).
 func TestRecheckBackoff_WarnOnceOnEntry(t *testing.T) {
 	b := newRecheckBackoff()
 	const id = "wi-1"
@@ -131,7 +121,6 @@ func TestRecheckBackoff_WarnOnceOnEntry(t *testing.T) {
 		if !b.Admit(id) {
 			continue
 		}
-		// caller would Fetch; assume fail.
 		entered := b.RecordFailure(id)
 		if entered {
 			warns++
