@@ -65,7 +65,7 @@ func (d *DB) readApprovalEventsFromSubstrate(ctx context.Context, approvalID, ru
 	for _, ev := range all {
 		p, err := approvals_shadow.ParseSubstrateApprovalPayload(ev.PayloadJSON)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("state: substrate read approval %q: %w", approvalID, err)
 		}
 		if p.ApprovalID != approvalID {
 			continue

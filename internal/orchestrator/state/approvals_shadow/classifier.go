@@ -31,6 +31,8 @@ func BuildShadowPayload(approvalID, transition, actor, tokenJTI string) (json.Ra
 }
 
 // ShadowNonce derives the substrate UNIQUE(run_id, written_by, nonce) replay key from event identity; tokenJTI lives in payload, not the column, per spec §3.5.
+// INVARIANT: order must match buildApprovalShadowPayload call-sites in
+// approvals_shadow.go. Reordering args silently breaks replay determinism.
 func ShadowNonce(approvalID, transition, tokenJTI string, ts time.Time) string {
 	h := sha256.Sum256([]byte(approvalID + "|" + transition + "|" + tokenJTI + "|" + ts.UTC().Format("20060102T150405.000000000Z")))
 	return hex.EncodeToString(h[:16])
@@ -60,6 +62,10 @@ func SanitizeWrittenBy(actor string) string {
 	return out
 }
 
+// ParseSubstrateApprovalPayload decodes a shadow-write payload into primitive
+// fields. The subpackage takes primitive params (not state.ApprovalEvent) to
+// break the importer-cycle risk per spec §6 R1; this projection drops opaque
+// Payload / event_id, which the caller re-maps.
 func ParseSubstrateApprovalPayload(payload []byte) (ApprovalEventFields, error) {
 	var f ApprovalEventFields
 	if err := json.Unmarshal(payload, &f); err != nil {
