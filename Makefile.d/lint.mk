@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-scorecard-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-scorecard-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -63,9 +63,6 @@ verify-vendored-assets:  ## Assert on-disk SHA-256 of internal/web/static/htmx.m
 			exit 1; \
 		fi; \
 		echo "verify-vendored-assets: htmx.min.js sha256 ok ($$ON_DISK)"'
-
-vet:  ## Run go vet.
-	go vet ./...
 
 lint:  ## Run golangci-lint via the module's tool directive.
 	go tool golangci-lint run ./...

@@ -1,6 +1,10 @@
 # Test + benchmark + mutation targets. Hot — touched by every new property test.
 .PHONY: go-check go-check-full property-test property-test-full crash-recovery-property-full mutation-test mutation-test-install bench cover
 
+# Property test set — single source of truth for property-test + property-test-full.
+PROPERTY_TESTS := TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty|TestSchedulerCrashRecoveryProperty|TestSpendCrashRecoveryProperty|TestReaperCrashRecoveryProperty|TestBridge_PrimitiveAttrRoundTrip_Property
+PROPERTY_PKGS := ./internal/orchestrator/state/... ./internal/orchestrator/scheduler/... ./internal/cost/spend/... ./internal/gates/approval/... ./internal/obs/otel/...
+
 go-check:  ## Build and test every Go package with the race detector. PHASE-S-RELAX: -short during self-host window; full sweep via `make go-check-full`.
 	go build -buildvcs=false ./...
 	go test -short -race ./...
@@ -9,15 +13,12 @@ go-check-full:  ## Full race sweep without -short. Run weekly + before any tag. 
 	go build -buildvcs=false ./...
 	go test -race ./...
 
-property-test:  ## Run rapid property tests. PHASE-S-RELAX: 50 checks in CI/local; spec-mandated 200 via `make property-test-full`. Single invocation lets `go test` schedule packages in parallel (-p N); measured peak RSS ~410MB.
-	go test -race -run 'TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty|TestSchedulerCrashRecoveryProperty|TestSpendCrashRecoveryProperty|TestReaperCrashRecoveryProperty|TestBridge_PrimitiveAttrRoundTrip_Property' ./internal/orchestrator/state/... ./internal/orchestrator/scheduler/... ./internal/cost/spend/... ./internal/gates/approval/... ./internal/obs/otel/... -rapid.checks=50
+# Single -p N invocation; peak RSS ~410MB measured locally.
+property-test:  ## Run rapid property tests. PHASE-S-RELAX: 50 checks in CI/local; spec-mandated 200 via `make property-test-full`.
+	go test -race -run '$(PROPERTY_TESTS)' $(PROPERTY_PKGS) -rapid.checks=50
 
-property-test-full:  ## Full 200/2000-check property sweep. Run weekly + before any tag. PHASE-S-RELAX restoration target — fold back into `property-test` at end of self-host phase (memory/feedback_gate_relaxation_phase_s).
-	go test -race -run 'TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty' ./internal/orchestrator/state/... -rapid.checks=200
-	go test -race -run 'TestSchedulerCrashRecoveryProperty' ./internal/orchestrator/scheduler/... -rapid.checks=2000 -timeout=5m
-	go test -race -run 'TestSpendCrashRecoveryProperty' ./internal/cost/spend/... -rapid.checks=200
-	go test -race -run 'TestReaperCrashRecoveryProperty' ./internal/gates/approval/... -rapid.checks=200
-	go test -race -run 'TestBridge_PrimitiveAttrRoundTrip_Property' ./internal/obs/otel/... -rapid.checks=200
+property-test-full:  ## Full 200-check property sweep. Run weekly + before any tag. PHASE-S-RELAX restoration target — fold back into `property-test` at end of self-host phase (memory/feedback_gate_relaxation_phase_s).
+	go test -race -run '$(PROPERTY_TESTS)' $(PROPERTY_PKGS) -rapid.checks=200
 
 crash-recovery-property-full:  ## 2000-case crash-recovery property sweep. Nightly CI target; spec §3.4. ≤90s wallclock budget.
 	go test -race -run 'TestSchedulerCrashRecoveryProperty' ./internal/orchestrator/scheduler/... -rapid.checks=2000 -timeout=5m
