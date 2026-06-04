@@ -416,6 +416,17 @@ Test `TestGitHubIssues_List_DupIDPrefix_BothSkipped_CommentsOnBothIssues` (§11)
 
 Reopen: collision-auto-resolve (pick lower issue number) gated on operator opt-in flag. Not in MVR-1.
 
+### 7.9 Mid-flight edit detection on `Get` (DEFINITIVE, closes #850)
+
+§4.3 ships the re-queue policy: the next `List` recomputes the dedup key from the edited body and the scheduler should see `ErrSourceMutated` on its in-flight `Get`. The detection signal is `ghclient.Issue.UpdatedAt`:
+
+1. `List` records `idToUpdatedAt[id] = iss.UpdatedAt` alongside `idToNumber[id]` on every projection (cache-snapshot timestamp).
+2. `Get` calls `GetIssue(number)`, compares `iss.UpdatedAt` to the snapshot. Drift → `fmt.Errorf("%w: %s updated_at <snap>→<live>", schemas.ErrSourceMutated, id)`.
+3. Equal `UpdatedAt` → project normally.
+4. Zero-value timestamps on either side (no snapshot yet, or upstream omitted the field) → no mutation signal — the caller falls through to projection. Tombstone / not-found semantics (§7.1, §7.7) still apply on miss.
+
+WHY `UpdatedAt`, not body-hash diff: `UpdatedAt` is the single observable GH increments on every issue-edit event (body, title, labels, assignees). Hashing only the body would miss title/label edits that L0 SHA invariant does NOT cover. The signal is one timestamp comparison — cheaper than re-hashing the body on every `Get`. Test pin: `TestGitHubIssues_GetMidflightBodyEdit_ReturnsErrSourceMutated` at internal/orchestrator/adapter/githubissues/adapter_test.go (#850); negative pin: `TestGitHubIssues_GetUnchangedUpdatedAt_ReturnsWorkItem`.
+
 ## 8. Security + trust boundary
 
 ### 8.1 Token scopes
