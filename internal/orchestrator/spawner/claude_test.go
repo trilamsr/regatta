@@ -296,6 +296,34 @@ func TestDefaultPromptBuilderAttemptedInjectionInBodyDoesNotEscape(t *testing.T)
 	}
 }
 
+// TestDefaultPromptBuilder_NamesScorecardCitationFormats asserts the prompt enumerates accepted scorecard citation tokens so workers don't guess (#851).
+func TestDefaultPromptBuilder_NamesScorecardCitationFormats(t *testing.T) {
+	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-CITE", Lane: "server"})
+	for _, want := range []string{"Test*-name", "path/to/file.ext:NN", "#NNN", "N/A"} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt missing accepted-citation token %q: %q", want, prompt)
+		}
+	}
+}
+
+// TestDefaultPromptBuilder_NamesRejectedCitationForms asserts the prompt names prose-only + commit-sha-alone forms as REJECTED so workers don't paste them (#851).
+func TestDefaultPromptBuilder_NamesRejectedCitationForms(t *testing.T) {
+	prompt := defaultPromptBuilder(Request{AgentID: 2, WorkItemID: "WORK-REJ", Lane: "server"})
+	for _, want := range []string{"prose-only", "commit shas alone"} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt missing rejected-citation warning %q: %q", want, prompt)
+		}
+	}
+}
+
+// TestDefaultPromptBuilder_ShowsReleaseNotesFenceSyntax asserts the prompt prints the literal release-notes fence syntax workers must paste (#851).
+func TestDefaultPromptBuilder_ShowsReleaseNotesFenceSyntax(t *testing.T) {
+	prompt := defaultPromptBuilder(Request{AgentID: 3, WorkItemID: "WORK-FENCE", Lane: "server"})
+	if !contains(prompt, "```release-notes") {
+		t.Fatalf("prompt missing release-notes fence syntax: %q", prompt)
+	}
+}
+
 // TestDefaultPromptBuilderEmptyItemBodyFallsBackToStubLine asserts the builder degrades to identifier line when ItemBody is empty.
 func TestDefaultPromptBuilderEmptyItemBodyFallsBackToStubLine(t *testing.T) {
 	prompt := defaultPromptBuilder(Request{AgentID: 3, WorkItemID: "WORK-Z", Lane: "docs"})
