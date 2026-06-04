@@ -213,9 +213,32 @@ func (s *ClaudeSpawner) WorktreeManager() *WorktreeManager { return s.wm }
 // factory landed without booting a subprocess.
 func (s *ClaudeSpawner) Config() ClaudeSpawnerConfig { return s.cfg }
 
+// defaultPromptBuilder produces the rich worker prompt. CLAUDE.md auto-loads
+// in the worktree so universal rules need not be duplicated — this template
+// pins per-dispatch context (item brief) and cites the load-bearing slugs
+// the worker most often drifts on (TDD-first, WHY-not-WHAT, deletion default,
+// PR-body hygiene, A+ scorecard citation gate).
 func defaultPromptBuilder(req Request) string {
-	return fmt.Sprintf("regatta: work item %s on lane %s (agent %d). Follow the repo's acceptance criteria and open a PR when CI is green.",
+	var b strings.Builder
+	fmt.Fprintf(&b, "regatta worker: work item %s on lane %s (agent %d).\n\n",
 		req.WorkItemID, req.Lane, req.AgentID)
+	if body := strings.TrimSpace(req.ItemBody); body != "" {
+		b.WriteString("## Item brief (verbatim from `.regatta/items/`)\n\n")
+		b.WriteString(body)
+		b.WriteString("\n\n")
+	}
+	b.WriteString("## Discipline (anchors into CLAUDE.md)\n\n")
+	b.WriteString("- TDD: failing test FIRST per CLAUDE.md feedback_tdd_discipline.\n")
+	b.WriteString("- Comments: WHY-not-WHAT per CLAUDE.md feedback_comments_discipline.\n")
+	b.WriteString("- Deletion default: every PR answers \"what got smaller?\" per CLAUDE.md feedback_deletion_default.\n")
+	b.WriteString("- PR hygiene: --body-file always, release-notes fence required per CLAUDE.md feedback_pr_body_hygiene.\n")
+	b.WriteString("- A+ scorecard required for [FIX]/[FEATURE]/[PERF] release-notes per CLAUDE.md per-criterion citation gate.\n\n")
+	b.WriteString("## PR shape contract\n\n")
+	b.WriteString("Open ONE PR for this work_item. Title format: `<type>: <short>`. ")
+	b.WriteString("Body sections: Summary / Root cause / Test plan / release-notes fence. ")
+	b.WriteString("Reviewer-skip per feedback_review_proportional applies for docs/scripts-only <20 LoC.\n\n")
+	b.WriteString("Begin now. Do not summarize the brief back.\n")
+	return b.String()
 }
 
 // execStarter is the production ProcessStarter. Stderr forwards to

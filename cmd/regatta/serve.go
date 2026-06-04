@@ -260,6 +260,8 @@ func runServe(args []string) int {
 		DB:                db,
 		Scheduler:         sched,
 		Spawner:           set.Spawner,
+		ItemBody:          buildItemBodyLoader(f.RepoRoot, slogger),
+		RepoRoot:          f.RepoRoot,
 		DBPath:            f.DBPath,
 		PollInterval:      f.PollDur,
 		TickInterval:      f.TickDur,

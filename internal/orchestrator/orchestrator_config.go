@@ -22,6 +22,14 @@ type BriefLoader interface {
 	Sync(ctx context.Context, pollStartedAt time.Time) error
 }
 
+// ItemBodyLoader returns the raw markdown brief for workItemID so
+// ScheduleOnce can populate spawner.Request.ItemBody before Spawn. Nil
+// or a (",false") return drops back to the identifier-only prompt
+// without blocking the spawn — a missing brief MUST NOT strand the
+// reservation. Implementations sit in cmd/regatta/serve.go for the
+// production wiring; tests stub with a closure over an in-memory map.
+type ItemBodyLoader func(ctx context.Context, workItemID string) (body string, ok bool)
+
 // Config holds tunables and dependencies for an Orchestrator, wired via
 // construction-time DI so tests can swap any seam without touching
 // internal helpers.
@@ -40,6 +48,12 @@ type Config struct {
 
 	// Spawner launches the reserved agents. Required.
 	Spawner spawner.Spawner
+
+	// ItemBody resolves the per-dispatch markdown brief. Nil = identifier-only prompt (regression-safe).
+	ItemBody ItemBodyLoader
+
+	// RepoRoot is the absolute repo path the worker subprocess targets; threaded into spawner.Request.RepoRoot. Empty in unit tests.
+	RepoRoot string
 
 	// DBPath is the on-disk sqlite path; the process-level lockfile derives as <dbPath>.lock.
 	DBPath string

@@ -440,3 +440,52 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 		t.Fatal("Run did not return after context cancel")
 	}
 }
+
+// TestScheduleOnceThreadsItemBodyAndRepoRootIntoSpawnRequest asserts ItemBody+RepoRoot land on spawner.Request via the ItemBody loader seam.
+func TestScheduleOnceThreadsItemBodyAndRepoRootIntoSpawnRequest(t *testing.T) {
+	ctx := context.Background()
+	o, stub, _, dir := newHarness(t, 1)
+	o.cfg.RepoRoot = dir
+	o.cfg.ItemBody = func(_ context.Context, workItemID string) (string, bool) {
+		return "BODY-FOR-" + workItemID, true
+	}
+
+	if err := o.PollOnce(ctx); err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+	if err := o.ScheduleOnce(ctx); err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+	calls := stub.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("spawner calls=%d, want 1", len(calls))
+	}
+	got := calls[0]
+	if got.ItemBody != "BODY-FOR-"+got.WorkItemID {
+		t.Fatalf("ItemBody=%q, want BODY-FOR-%s", got.ItemBody, got.WorkItemID)
+	}
+	if got.RepoRoot != dir {
+		t.Fatalf("RepoRoot=%q, want %q", got.RepoRoot, dir)
+	}
+}
+
+// TestScheduleOnceMissingItemBodyStillSpawns asserts a (",false") loader return logs a warn and proceeds without ItemBody.
+func TestScheduleOnceMissingItemBodyStillSpawns(t *testing.T) {
+	ctx := context.Background()
+	o, stub, _, _ := newHarness(t, 1)
+	o.cfg.ItemBody = func(context.Context, string) (string, bool) { return "", false }
+
+	if err := o.PollOnce(ctx); err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+	if err := o.ScheduleOnce(ctx); err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+	calls := stub.Calls()
+	if len(calls) != 1 {
+		t.Fatalf("spawner calls=%d, want 1", len(calls))
+	}
+	if calls[0].ItemBody != "" {
+		t.Fatalf("ItemBody=%q, want empty on miss", calls[0].ItemBody)
+	}
+}

@@ -57,6 +57,18 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 		if wi, werr := o.db.GetWorkItem(ctx, a.WorkItemID); werr == nil && wi.ParentProgramID != "" {
 			dagID = wi.ParentProgramID
 		}
+		var itemBody string
+		if o.cfg.ItemBody != nil {
+			if body, ok := o.cfg.ItemBody(ctx, a.WorkItemID); ok {
+				itemBody = body
+			} else {
+				// WARN on miss; the prompt degrades but the spawn proceeds.
+				o.log.Warn("orchestrator.item_body_missing",
+					string(obs.KeyWorkItemID), a.WorkItemID,
+					string(obs.KeyAgentID), a.ID,
+				)
+			}
+		}
 		result, err := o.spawner.Spawn(ctx, spawner.Request{
 			AgentID:    a.ID,
 			WorkItemID: a.WorkItemID,
@@ -64,6 +76,8 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 			OperatorID: fmt.Sprintf("agent-%d", a.ID),
 			DAGID:      dagID,
 			RunID:      fmt.Sprintf("agent-%d", a.ID),
+			ItemBody:   itemBody,
+			RepoRoot:   o.cfg.RepoRoot,
 		})
 		if err != nil {
 			_, _ = o.db.TransitionAgent(ctx, a.ID, state.AgentCrashed, state.AgentMutation{})
