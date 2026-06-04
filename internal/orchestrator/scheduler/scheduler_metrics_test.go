@@ -24,6 +24,7 @@ var expectedSteps = []string{
 	"gate_l0",
 	"gate_l4",
 	"persist",
+	"poll_adapters",
 	"reaper",
 }
 

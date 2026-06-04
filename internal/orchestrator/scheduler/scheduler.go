@@ -158,6 +158,12 @@ type Config struct {
 	RecheckBackoffK             int
 	RecheckBackoffSuppressTicks int
 	RecheckBackoffStaleTicks    int
+
+	// Adapters are the registered SpecAdapters the scheduler polls per
+	// tick, honouring each adapter's Capabilities().MinPollInterval so a
+	// rate-budgeted source (github_issues=30s) is not hammered by the
+	// orchestrator's faster default cadence (#847).
+	Adapters []schemas.SpecAdapter
 }
 
 // ResolveMeter returns Meter or a lazily-resolved global fallback.
@@ -233,6 +239,13 @@ type Scheduler struct {
 	WriteHook func(writeIndex int) error
 
 	backoff *recheckBackoff
+
+	// lastPoll tracks the most recent adapter.List attempt per registered
+	// adapter (success OR error) so Tick honours Capabilities().MinPollInterval
+	// without re-polling every tick — including the rate-limit-error case
+	// where retrying inside the budget window worsens the throttle (#847).
+	// Indexed by Config.Adapters slot to keep the key total + cheap.
+	lastPoll []time.Time
 }
 
 // New constructs a Scheduler. Config is copied; later mutations to
@@ -278,7 +291,8 @@ func newScheduler(db schedulerDB, cfg Config) *Scheduler {
 	return &Scheduler{
 		db: db, cfg: cfg, log: log, tracer: tracer,
 		tickLatency: tickLatency, stepDuration: stepDuration,
-		backoff: newRecheckBackoffWithMeter(meter),
+		backoff:  newRecheckBackoffWithMeter(meter),
+		lastPoll: make([]time.Time, len(cfg.Adapters)),
 	}
 }
 
@@ -320,6 +334,10 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 		name string
 		fn   func() error
 	}{
+		{"poll_adapters", func() error {
+			s.pollAdaptersHonouringMinPoll(ctx)
+			return nil
+		}},
 		{"fold", func() error {
 			if s.cfg.Evaluator == nil {
 				return nil
@@ -414,6 +432,29 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 		}
 	}
 	return reserved, nil
+}
+
+// pollAdaptersHonouringMinPoll calls List on each registered adapter
+// whose Capabilities().MinPollInterval has elapsed since its last poll
+// attempt (zero-value lastPoll always polls — first tick fires).
+// lastPoll updates on error too so a flapping rate-limited adapter is
+// not re-tried inside the budget window. List results are dropped here:
+// adaptersync owns adapter→state mirroring; this seam exists so the
+// scheduler enforces per-adapter cadence so a rate-budgeted source
+// (github_issues=30s) is not hammered at the orchestrator's faster
+// tick rate (#847).
+func (s *Scheduler) pollAdaptersHonouringMinPoll(ctx context.Context) {
+	now := s.cfg.Clock()
+	for i, ad := range s.cfg.Adapters {
+		minPoll := ad.Capabilities().MinPollInterval
+		if !s.lastPoll[i].IsZero() && now.Sub(s.lastPoll[i]) < minPoll {
+			continue
+		}
+		if _, err := ad.List(ctx); err != nil {
+			s.log.Warn("scheduler.adapter_poll_failed", "adapter_index", i, "err", err)
+		}
+		s.lastPoll[i] = now
+	}
 }
 
 // tickCtx threads the per-tick WriteHook counter through substrate
