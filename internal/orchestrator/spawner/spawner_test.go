@@ -76,11 +76,7 @@ func TestStubConcurrentSafe(t *testing.T) {
 	}
 }
 
-// TestSpawner_WritesJournalBeforeMerge pins the spec §3.9 atomicity
-// contract: Complete must write the outputs journal entry and only
-// then mark the work_item merged. Scheduler tick step-0 reads
-// ListPendingEdgesFromMerged and then GetLatestOutput — the journal
-// row must exist when the work_item is first observed at status=merged.
+// TestSpawner_WritesJournalBeforeMerge pins spec §3.9: Complete writes outputs journal before marking merged.
 func TestSpawner_WritesJournalBeforeMerge(t *testing.T) {
 	ctx := context.Background()
 	db := openSpawnerTestDB(t)
@@ -161,11 +157,7 @@ func TestSpawnerComplete_NilClockFallsBackToTimeNow(t *testing.T) {
 	}
 }
 
-// TestSpawnerComplete_AtomicJournalAndMerge mutation-verifies the
-// order: if AppendOutput fails the transition must NOT happen.
-// Without journal-first ordering a scheduler tick could see
-// status=merged on a work_item whose outputs row never materialised,
-// stalling edge eval (ErrJournalNotFound spin per spec §3.9 trap-list).
+// TestSpawnerComplete_AtomicJournalAndMerge asserts AppendOutput failure blocks merge transition (spec §3.9).
 func TestSpawnerComplete_AtomicJournalAndMerge(t *testing.T) {
 	ctx := context.Background()
 	db := openSpawnerTestDB(t)
