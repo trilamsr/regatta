@@ -159,6 +159,31 @@ assert_contains "$out" "wt-merged.*force-twice" "locked removal uses force-twice
 [ "$ok" = "1" ] && { echo "PASS: --apply --force removes locked merged worktree"; pass=$((pass+1)); }
 teardown_fixture
 
+# Case 7: squash-merged branch must be flagged. Branch tip is NOT an ancestor
+# of origin/main (new SHA on main), but every commit on the branch has an
+# equivalent change already on main. `git cherry origin/main <head>` returns
+# only `-` lines in that case. Regression for #719: dogfood reported 0
+# candidates while 7 worktrees were on squash-merged branches.
+setup_fixture
+cd "$work_dir"
+git checkout -q -b feature-squash
+echo squash-content > squash.txt
+git add squash.txt
+git commit -q -m squash-work
+git push -q -u origin feature-squash
+git checkout -q main
+git merge -q --squash feature-squash
+git commit -q -m "squashed feature (#999)"
+git push -q origin main
+git worktree add -q "$tmp/wt-squash" feature-squash
+out=$(bash "$script" 2>&1) && got_exit=0 || got_exit=$?
+ok=1
+assert_contains "$out" "would remove .*wt-squash" "dry-run flags squash-merged worktree for removal" || ok=0
+assert_absent   "$out" "kept .*wt-squash.*\(unmerged\)" "squash-merged worktree must not be reported as unmerged" || ok=0
+[ "$got_exit" = "0" ] || { echo "FAIL: dry-run exit=$got_exit want 0"; failed=$((failed+1)); ok=0; }
+[ "$ok" = "1" ] && { echo "PASS: squash-merged worktree flagged for removal (#719)"; pass=$((pass+1)); }
+teardown_fixture
+
 echo
 echo "worktree-gc_test.sh: $pass passed, $failed failed"
 [ "$failed" -eq 0 ]
