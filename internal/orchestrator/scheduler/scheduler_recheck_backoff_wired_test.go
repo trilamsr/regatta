@@ -54,13 +54,13 @@ func TestScheduler_OrphanRecheck_BackoffKicksIn(t *testing.T) {
 	// K=3 ticks: GetWorkItem called each tick, all fail; orphan stays
 	// pending each time (fail-closed). Tick 4+ admit must be suppressed
 	// so GetWorkItem call count stops climbing.
-	for i := 0; i < recheckBackoffK; i++ {
+	for i := 0; i < recheckBackoffDefaultK; i++ {
 		if _, err := sch.Tick(ctx); err != nil {
 			t.Fatalf("tick %d: %v", i, err)
 		}
 	}
-	if fdb.calls != recheckBackoffK {
-		t.Fatalf("after K=%d failure ticks GetWorkItem calls=%d; want %d", recheckBackoffK, fdb.calls, recheckBackoffK)
+	if fdb.calls != recheckBackoffDefaultK {
+		t.Fatalf("after K=%d failure ticks GetWorkItem calls=%d; want %d", recheckBackoffDefaultK, fdb.calls, recheckBackoffDefaultK)
 	}
 
 	// Next tick: backoff window engaged, Admit=false, GetWorkItem MUST
@@ -68,7 +68,7 @@ func TestScheduler_OrphanRecheck_BackoffKicksIn(t *testing.T) {
 	if _, err := sch.Tick(ctx); err != nil {
 		t.Fatalf("post-K tick: %v", err)
 	}
-	if fdb.calls != recheckBackoffK {
-		t.Fatalf("post-backoff tick GetWorkItem calls=%d; want %d (backoff must suppress fetch)", fdb.calls, recheckBackoffK)
+	if fdb.calls != recheckBackoffDefaultK {
+		t.Fatalf("post-backoff tick GetWorkItem calls=%d; want %d (backoff must suppress fetch)", fdb.calls, recheckBackoffDefaultK)
 	}
 }
