@@ -35,6 +35,9 @@ PHASE DEPLOY — Production deploy of regatta-the-binary [READY — operator ins
   Env vars: ANTHROPIC_API_KEY · GH_TOKEN · REGATTA_BRIEF_HMAC_KEYS (optional, markdown-only).
   Acceptance: regatta serve running 24/7 against this repo. **This is the next operator-side gate — every downstream phase blocks on it.**
 
+PHASE MVR-1-T4 — Autonomous-loop CLOSED [SHIPPED 2026-06-04 #846]
+  github_issues spec adapter consumes `[autonomous]`-labelled issues → projects to work_items → scheduler dispatches → workers spawn → L4 reviews → automerge. End-to-end loop closure: alarm_webhook + self-improve detector file issues, this adapter eats them, regatta dispatches itself. Precondition for GREEN-CLOCK to start cleanly post-DEPLOY.
+
 PHASE GREEN-CLOCK — 30-day-green trigger [BLOCKED on DEPLOY]
   Metric: ≥10 PRs/day green-merge ≥30 consecutive days unattended. Each green-merge from regatta-the-binary increments the day-count. Operator intervention (manual merge) resets to day-0. Trigger fires → unlocks Phase X. **Day-0 starts only after Phase DEPLOY operator action.**
 
@@ -75,16 +78,23 @@ PHASE X — External-buyer wedges [DEFERRED]
 OPEN FOLLOWUPS (sweep when between phase items, ≤5 trivial PRs/session cap)
 
 <!-- BEGIN auto-priority -->
-- #753 [PERF] scheduler/filter: bench generic monomorphization cost (#704 R2)
-- #758 [CI-followup] add scorecard pre-validation in implementer dispatch + pre-push hook
-- #759 [followup] comment-density: 238 existing prod .go files exceed 5% (G4 scoped gate-add-only)
-- #760 [G3-followup] migrate 10 polling time.Sleep sites to testutil.Eventually
-- #766 [DESIGN-D-followup] operator-console UI roadmap — amend with minimal-input principle
-- #773 [703-followup] R3 GetWorkItem transient error in orphan recheck: no backoff, next tick hammers same orphan
-- #776 [703-followup] R2 fetchWorkItemForRecheck fail-open vs fail-closed semantics
-- #777 [velocity-followup] gopls LSP diagnostic noise from cross-worktree files
-- #778 [velocity-followup] pre-PR scorecard pre-validation hook
-- #779 [velocity-followup] document --theirs vs --ours rebase strategy in dispatch templates
+- #796 [PLAN] cost-governor #727 — child-PR roadmap
+- #832 [WEDGE] Self-improve W4.5: inefficiency + meta-improvement detector rules (R6-R11)
+- #837 [REVIEWER #834] HIGH security: prompt-injection on ItemBody in defaultPromptBuilder
+- #838 [REVIEWER #834] MEDIUM correctness: symlink-escape in wire_itembody loader
+- #839 [REVIEWER #834] MEDIUM test-coverage: edge cases in wire_itembody loader
+- #840 [REVIEWER MVR-1-T4 spec] LOW: scheduler MinPoll-honour integration test as pre-merge gate
+- #841 [REVIEWER MVR-1-T4 spec] LOW: rename TestGitHubIssues_Skip_RecordsObservation for clarity
+- #842 [REVIEWER MVR-1-T4 spec] LOW: amend godoc-requirement scope in A+ rubric self-rate
+- #847 [FOLLOWUP #846] F19: scheduler consume Capabilities().MinPollInterval per-adapter cadence
+- #849 [REVIEWER #846] MEDIUM: backfill-failure semantics ambiguous (skip vs project-without-marker)
+- #850 [REVIEWER #846] MEDIUM: ErrSourceMutated mid-flight edit detection missing
+- #852 [PERF] L4 reviewer prompt cache via Anthropic API cache_control (token reduction)
+- #854 [DX] check-scorecard.sh: emit offending line content + found-vs-expected tokens hint
+- #855 [DX] dispatch template: pin scorecard row criterion labels (a/b/c/A1/B1)
+- #858 [TEST-UMBRELLA] E2E + integration test harnesses post-#846 loop closure
+- #860 docs: fix scorecard evidence in PR #843 — alpine→busybox
+- #861 docs: clarify init-container pattern is Linux-specific (not os-agnostic)
 <!-- END auto-priority -->
 
 - RISK followups — strategic-design closeout: #423 #424 #426 #427 all CLOSED 2026-06-03; no open RISK trackers remain in this slice.
@@ -95,56 +105,56 @@ OPEN FOLLOWUPS (sweep when between phase items, ≤5 trivial PRs/session cap)
 Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -200`. Per feedback_boot_prompt_per_wave_refresh, entries >2 waves old are pruned; older shipped wedges live in git history only.
 
 <!-- BEGIN auto-shipped -->
-- #693 feat(lint-substrate-queries): walk BinaryExpr concat chains for substrate queries (#234)
-- #694 perf(substrate): F1 fast-path skips signedPayload round-trip (#216)
-- #695 [CHORE] dispatch-templates: harden scorecard backtick + release-notes-fence traps
-- #696 fix(test): absorb linux CI variance in spawner span-recorder poll
-- #697 fix(scheduler): re-check approval gate in reservation loop (closes #167)
-- #698 refactor(scheduler): consolidate apply{Approval,Cost,L4}Gate into shared filter.Apply (#251)
-- #699 [FEAT] obs/lint: Tracer+Meter pair grep-invariant gate (closes #509)
-- #701 [DOCS] operator console v5.1 spec + v2 backlog (customer-0 dual-principal)
-- #707 [CHORE] docker-compose UI default + boot prompt wave refresh
-- #708 [FEATURE] operator-console S0 plan + MVR-1-T1 pointer update (boot-prompt + roadmap)
-- #710 [CHORE] collapse multi-line Test/Fuzz/Benchmark godocs
-- #711 [DOCS] specs: status frontmatter + skeleton-prefetch/superseded sections
-- #712 [CHANGE] prwatch: delete deprecated BranchRenameThreshold const alias
-- #713 [DOCS] boot-prompt purge + check-memory-citations gate + 5 broken slug cite fixes
-- #716 [CHORE] add scripts/worktree-gc.sh — dry-run-default GC for merged agent worktrees
-- #717 [REFACTOR] unify GitHubClient/GHClient under internal/ghclient.Client
-- #718 [REFACTOR] collapse otel.Meter literals via obs.Meter factory (Wave B2)
-- #721 [CHANGE] health: delete W7.0 plaintext shim — /healthz always returns JSON
-- #723 [CI] scripts/check-phase-x-leak.sh — mechanical self-host filter gate
-- #732 [DOCS] purge bare TBD placeholders + add check-tbd gate
-- #733 [REFACTOR] testutil: add Eventually helper + migrate 5 high-flake polling sites
-- #734 [REFACTOR] Wave E: inline single-impl interfaces (LLMClient/EventSource/CohortReader/BridgeOption); delete dead estimate.Estimator
-- #737 [REFACTOR] split cmd/regatta/serve.go (1068→394 LOC) into per-subsystem wire_*.go siblings
-- #740 [CI] add htmx to Phase-X leak token list (#724)
-- #742 [CHORE] scripts/gen-boot-status.sh: auto-regen boot-prompt shipped/priority blocks from gh
-- #743 [DOCS] dispatch-templates: enforce comment-zero-by-default + MED-sev reviewer sweep
-- #744 [CHORE] cmd/regatta: rename serve_*.go wiring siblings to wire_*.go (#738)
-- #745 [CI] check-memory-citations: ship CI-portable fixture (closes #714)
-- #746 [DOCS] reconcile getting-started + w7 spec with JSON-only /healthz (closes #722)
-- #747 [CI] check-scorecard.sh: count backtick-wrapped citations (closes #741)
-- #748 [FIX] substrate: wrap schemas.ErrUnverifiable to match docstring (closes #715)
-- #749 [CI] check-tbd: tighten HTML-comment whitelist (closes #735)
-- #750 [CHORE] scripts/worktree-gc: detect squash-merged via git cherry (closes #719)
-- #751 [DOCS] mvr-2-t6 spec: replace active tenant validator with DefaultTenantID seam (closes #725)
-- #752 [REFACTOR] testutil+tests: EventuallyT + AssertStable; close 3 #733-skipped polling sites
-- #754 [FIX] scheduler: rev L4GateResolver to L4Scope shape + cross-pass property (closes #704)
-- #755 [CI] obs/lint: close 3 Tracer/Meter pair gaps + stale-guard test (closes #706)
-- #756 [FIX] authz/reload: handle root-Remove before shouldHandleEvent filter (#702)
-- #757 [FIX] substrate fast-path: pointer→value HMAC key cache; drop SigMAC alias (closes #700)
-- #761 [DOCS] design-c: sequenced cutover spec for BudgetReconciledPayload float deprecation (#709)
-- #762 [REFACTOR] consolidate test-DB helpers into internal/testutil/statetest
-- #763 [CI] scripts/check-comment-density: enforce 5pct ceiling on new prod .go in PR diff
-- #764 [DOCS] specs: state/ god-package split design (Option E hybrid) (#739)
-- #765 [DOCS] specs: operator-console UI phase-S roadmap (S1->S2->S3)
-- #767 [DOCS] design-b: approvals_shadow cutover sequence (#720 blocker)
-- #768 [REFACTOR] substrate Sweeper/SweepFullChain + health heartbeat pool: caller-injected *sql.DB (G2)
-- #770 [CI] add check-no-bare-sleep gate; annotate 10 polling sites (#760)
-- #771 [CI] check-release-notes-local: add REFACTOR + FIX to allowlist
-- #774 [FIX] cost-backfill: 4 adversarial-review findings (R1-R4) (closes #705)
-- #775 [FIX] scheduler: cost+L4 orphan recheck, getter-missing warn, preserve reserved-on-err (closes #703 R1,R2,R4)
+- #784 [REFACTOR] secrets test: migrate SIGHUP refresh poll to testutil.Eventually (#760)
+- #785 [REFACTOR] migrate obs/otel test polling sites (4x) to EventuallyT (#760)
+- #786 chore(scripts): gen-boot-status --exclude-label phase-x to suppress parking issues
+- #787 [REFACTOR] migrate authz/policies/reload test polling sites (3x) to Eventually (#760)
+- #788 [REFACTOR] orchestrator: migrate merge+review test polling sites (2x) to Eventually (#760)
+- #789 [FIX] scheduler: fetchWorkItemForRecheck getter-missing -> fail-closed (closes #776)
+- #790 [PERF] scheduler: bench filter.Apply monomorphization + binary-size delta (closes #753)
+- #791 [CHORE] sweep WHAT-narration from top-10 comment-density offenders (closes-part-of #759)
+- #792 feat(scheduler): per-orphan recheck-backoff helper + meter counter (closes-part-of #773)
+- #798 ci(scorecard): exempt [REFACTOR] from required scorecard (fixes #784 #785 #787 #788 pr-lint)
+- #799 [CHORE] collapse multi-line test godocs in internal/gates/l0/ to 1 line
+- #800 chore(program): collapse multi-line test godocs to 1 line per CLAUDE.md
+- #801 chore: collapse multi-line test godocs + goimports reorder (4 pkgs)
+- #802 [CHORE] collapse multi-line test godocs in internal/orchestrator/adaptersync/
+- #803 [CHORE] sweep WHAT-narration from 3 density violators (round 2, closes-part-of #759)
+- #804 [CHORE] collapse multi-line test godocs in scheduler + state
+- #805 [CI] cost-governor: 7-day soak script for budget_reconciled emission (closes-part-of #796)
+- #806 [FIX] cost-gov: schema-pin Anthropic response decoder + quarterly runbook (closes #277)
+- #808 [REFACTOR] state: extract jsonscan/ pure-function subpackage (closes-part-of #795 #739)
+- #809 [REFACTOR] state: extract edgeagg/ pure subpackage + aliases (closes-part-of #795 T2)
+- #810 [REFACTOR] state: extract transitions/ pure subpackage (closes-part-of #795 T3)
+- #811 [FIX] cost-gov soak: 5 MED hardening fixes (closes #807)
+- #812 [REFACTOR] state: extract cycle/ pure DFS subpackage (closes-part-of #795 T4; cc #88)
+- #813 [FEAT] scheduler: expose recheckBackoff K/N via Config (closes #794)
+- #814 [FEAT] scheduler: wire recheckBackoff helper into orphan recheck (closes #793 closes-part-of #773)
+- #815 [REFACTOR] state: extract approvals_shadow/ pure config + classifier (closes-part-of #795 T5)
+- #816 [CI] state: tier-order CI gate + Package godoc (closes #795 #739)
+- #817 chore: sweep WHAT-narration round 3 (10 files, closes-part-of #759)
+- #819 fix(scheduler): align test files with #813 K/N config + #814 ctx signature (root-cause fix for broken main)
+- #820 chore: collapse 10 multi-line test godocs to 1 line (round 4)
+- #821 [FIX] approvals_shadow: invariant comment + error wrap + reword godoc (closes #818)
+- #822 chore: sweep WHAT-narration round 4 (closes-part-of #759)
+- #823 [CHORE] sweep WHAT-narration round 5 (closes-part-of #759)
+- #824 chore: sweep WHAT-narration round 6 (closes-part-of #759)
+- #825 chore: add go.work to scope gopls to primary checkout (closes #777)
+- #826 chore: gitignore .env files for secret hygiene
+- #827 fix: pr-lint diagnostic — explain [CHORE]/[DOCS] fence-required skip rule
+- #829 chore: archive 3 status:shipped specs (consolidation safe sweep)
+- #830 [FIX] macOS install-service plist loads .env file (closes followup to #826)
+- #831 ci: drop redundant vet + parallel property tests + cache audit (10-15% verify speedup)
+- #834 fix: enrich worker PromptBuilder with item body + discipline reminders
+- #835 [CHORE] CLAUDE.md: 4 process-discipline rules from 2026-06-04 session
+- #836 [CHORE] CLAUDE.md: 7 process/debug/git rules from memory consolidation
+- #843 fix(compose): pre-chown regatta-data vol for distroless nonroot uid 65532
+- #844 docs(native-deploy): apply audit patches — 24h stop criteria, .env on macOS, regatta.yaml, smoke-dispatch, rollback
+- #845 [CHORE] CLAUDE.md: consolidate 5 reviewer findings from #836
+- #846 feat(adapter): github_issues spec adapter — auto-consume autonomous GH issues (MVR-1-T4)
+- #856 fix: enrich worker prompt with scorecard citation format catalogue (#834 + closes #851)
+- #857 fix(scorecard): short-circuit [CHORE]/[DOCS]/[CI]/[NONE]/[CHANGE]/[REFACTOR] before parse (closes #853)
+- #862 chore: codify 7 session rules + 2 docker notes to CLAUDE.md + autonomous-prompt + native-deploy
 <!-- END auto-shipped -->
 
 - **2026-06-03 Wave SHIPPED** (~60+ PRs across PHASE-AUTONOMY + OBS final drains + MVR specs + memory/scorecard infra + post-merge reliability+UX polish):
@@ -209,6 +219,7 @@ AUTONOMOUS-LOOP CADENCE
 - **TaskCreate usage** (`feedback_task_create_usage`): use for ≥4 discrete dispatches, multi-wave roadmap, crash-prone work. Skip for single-pass audits, 1-2 step atomic edits, Q&A.
 - **Boot-prompt per-wave refresh** (`feedback_boot_prompt_per_wave_refresh`): after wave merges, edit PRIORITY + "Already shipped" sections; open `docs(engineer):` PR with automerge. Drop entries >2 waves old.
 - **Self-improvement** (`feedback_self_improvement`): when session friction observed (slow ops, repeated lookups, ambiguous dispatch prompts), self-diagnose root cause + ship fix in same session. Authority granted 2026-06-02.
+- **Meta-codify repeat directives** (`feedback_meta_codify_repeat_directives`): when operator repeats a directive ≥2 times in same session AND it's not yet codified in CLAUDE.md / autonomous-prompt / dispatch templates → file as memory rule THIS session AND queue codification PR. Detection: explicit `remember X` / `always do X` / `every time X` phrasing OR ≥2 reminders for same behavior. Route by rule type — universal → CLAUDE.md, autonomous-loop-only → this prompt, role-specific → dispatch-templates/{implementer,reviewer,designer}.md. Batch ≥3 rules per PR per `feedback_drop_ceremony`. Anti-pattern: writing memory rule, never queuing repo codification → next session's subagents re-trap.
 
 AUTOMERGE GATING
 - **Review before automerge** (`feedback_review_before_automerge`): automerge fires ONLY when (1) independent reviewer ran on current head (not stale rev) AND (2) every Risk-tier+ finding addressed (inline-fix OR tracking issue #).
