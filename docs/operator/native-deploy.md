@@ -518,12 +518,18 @@ a host shell into the container.
 
 ### Compose-vol nonroot uid (`CANTOPEN` on first boot)
 
+OS scope: Linux container hosts only. On Docker Desktop (macOS /
+Windows) the VM transparently translates volume ownership through the
+gRPC-FUSE / virtiofs share, so first-boot writes from uid 65532 succeed
+without any chown. The init container still runs there but performs a
+no-op.
+
 The named volume `regatta-data` is mounted into `/data` for the
-distroless nonroot user (uid 65532). First-create ownership is `root`,
-so sqlite returns `CANTOPEN` until the volume is chowned. The compose
-file ships an init container that runs `chown 65532:65532 /data` once
-before `regatta` starts. Idempotent on subsequent `docker compose up`.
-See #843 root cause.
+distroless nonroot user (uid 65532). On Linux hosts the first-create
+ownership is `root`, so sqlite returns `CANTOPEN` until the volume is
+chowned. The compose file ships an init container that runs
+`chown 65532:65532 /data` once before `regatta` starts. Idempotent on
+subsequent `docker compose up`. See #843 root cause.
 
 ## Rollback escape hatches
 

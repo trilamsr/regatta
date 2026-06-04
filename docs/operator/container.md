@@ -100,14 +100,18 @@ commands resolve against the bind-mounted repo.
 
 The entrypoint runs as UID 65532. Bind-mount host directories must
 either be world-writable or owned by UID 65532 / a group the host
-shares with 65532. The simplest pattern on Linux:
+shares with 65532.
+
+OS scope: chown is load-bearing only on Linux container hosts. On
+Docker Desktop (macOS / Windows) the VM's file-sharing layer
+(gRPC-FUSE / virtiofs) translates ownership transparently — no chown
+needed.
+
+The simplest pattern on Linux:
 
 ```sh
 sudo chown -R 65532:65532 ./path-to-repo
 ```
-
-On macOS Docker Desktop, file-sharing translates ownership
-transparently — no chown needed.
 
 ### Environment
 
@@ -161,8 +165,13 @@ shell to fall back to and several binaries refuse uid 0.
 ### `regatta` exits immediately with no log
 
 Check `/data` is writable by UID 65532 — sqlite needs O_RDWR on the
-DB path. If the named volume was created with root ownership, fix it
-from a one-shot helper container that does have a shell:
+DB path.
+
+OS scope: root-owned named volumes are a Linux-host concern. Docker
+Desktop (macOS / Windows) hosts named volumes inside the VM and the
+share layer remaps ownership to the container uid transparently. If
+you are on Linux and the named volume was created with root ownership,
+fix it from a one-shot helper container that does have a shell:
 
 ```sh
 docker run --rm -v regatta-data:/data alpine \
