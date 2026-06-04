@@ -10,32 +10,28 @@ import (
 	"github.com/trilamsr/regatta/internal/ghclient"
 )
 
-// EventSource yields the substrate events the detector scans. Tests
-// fake it with in-memory slices; production wires a SQLite reader
-// over `substrate_events` (spec §4.1) — deferred to W3-substrate land
-// since W4's correctness gate is the rule + dedup logic, not the read
-// path.
-type EventSource interface {
-	Fetch(ctx context.Context, since time.Time, kinds []string) ([]Event, error)
-}
+// EventFetcher is the function shape that yields substrate events for
+// the detector to scan. Tests pass an in-memory closure; production
+// wires SQLEventSource.Fetch over `substrate_events` (spec §4.1).
+type EventFetcher func(ctx context.Context, since time.Time, kinds []string) ([]Event, error)
 
 // Detector is the single-pass orchestrator: load events, scatter to
 // rules, dedup against open GH issues, file/comment per finding.
 // Apply=false runs in dry-run mode (prints findings, no GH writes) —
 // the CLI default per spec §8.1.
 type Detector struct {
-	Rules   []Rule
-	Source  EventSource
-	GH      ghclient.Client
-	Clock   func() time.Time
-	Label   string
-	Apply   bool
+	Rules  []Rule
+	Source EventFetcher
+	GH     ghclient.Client
+	Clock  func() time.Time
+	Label  string
+	Apply  bool
 }
 
 // NewDetector returns a detector wired with the five MVP rules and
 // the operator's GH adapter. Clock defaults to time.Now; tests inject
 // a fixed clock so window math is deterministic.
-func NewDetector(src EventSource, gh ghclient.Client, apply bool) *Detector {
+func NewDetector(src EventFetcher, gh ghclient.Client, apply bool) *Detector {
 	return &Detector{
 		Rules:  DefaultRules(),
 		Source: src,
@@ -64,7 +60,7 @@ func (d *Detector) Run(ctx context.Context, window time.Duration) (*RunResult, e
 	since := now.Add(-window)
 
 	kinds := unionKinds(d.Rules)
-	events, err := d.Source.Fetch(ctx, since, kinds)
+	events, err := d.Source(ctx, since, kinds)
 	if err != nil {
 		return nil, fmt.Errorf("selfimprove: fetch events: %w", err)
 	}

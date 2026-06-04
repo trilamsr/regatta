@@ -108,7 +108,7 @@ func TestBridge_PrimitiveAttrRoundTrip_Property(t *testing.T) {
 		lp, mem := newTestProvider()
 		defer func() { _ = lp.Shutdown(context.Background()) }()
 
-		bridge := obsotel.NewBridgeHandler(primary, "regatta-prop", obsotel.WithLoggerProvider(lp))
+		bridge := obsotel.NewBridgeHandler(primary, "regatta-prop", lp)
 		lg := slog.New(bridge)
 
 		lg.LogAttrs(context.Background(), slog.LevelInfo, "round-trip", asSlogAttrs(gens)...)

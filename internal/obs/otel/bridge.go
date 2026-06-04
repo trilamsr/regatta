@@ -20,44 +20,18 @@ import (
 	otellog "go.opentelemetry.io/otel/log"
 )
 
-// BridgeOption customises NewBridgeHandler. Mirrors otelslog.Option
-// without re-exporting it, so the contrib import stays inside this
-// package.
-type BridgeOption interface {
-	apply(*bridgeConfig)
-}
-
-type bridgeConfig struct {
-	provider otellog.LoggerProvider
-}
-
-type bridgeOptionFunc func(*bridgeConfig)
-
-func (f bridgeOptionFunc) apply(c *bridgeConfig) { f(c) }
-
-// WithLoggerProvider pins the LoggerProvider the bridge emits to. Unset
-// falls back to the global (noop until Setup runs) — preserves the
-// spec §3.2 zero-cost-when-unconfigured invariant.
-func WithLoggerProvider(p otellog.LoggerProvider) BridgeOption {
-	return bridgeOptionFunc(func(c *bridgeConfig) { c.provider = p })
-}
-
 // NewBridgeHandler fans every record to primary AND OTel via otelslog.
-// nil primary falls back to a stderr text handler so callers wiring
-// the root logger before Setup completes never nil-deref. The
-// component name is forwarded as otelslog's InstrumentationScope —
-// operators filter OTel logs by it.
-func NewBridgeHandler(primary slog.Handler, component string, opts ...BridgeOption) slog.Handler {
+// nil primary falls back to a stderr text handler so callers wiring the
+// root logger before Setup completes never nil-deref. nil provider falls
+// back to the global LoggerProvider (noop until Setup runs) — preserves
+// spec §3.2's zero-cost-when-unconfigured invariant.
+func NewBridgeHandler(primary slog.Handler, component string, provider otellog.LoggerProvider) slog.Handler {
 	if primary == nil {
 		primary = slog.NewTextHandler(os.Stderr, nil)
 	}
-	var cfg bridgeConfig
-	for _, o := range opts {
-		o.apply(&cfg)
-	}
 	var oslogOpts []otelslog.Option
-	if cfg.provider != nil {
-		oslogOpts = append(oslogOpts, otelslog.WithLoggerProvider(cfg.provider))
+	if provider != nil {
+		oslogOpts = append(oslogOpts, otelslog.WithLoggerProvider(provider))
 	}
 	return &bridgeHandler{
 		primary: primary,

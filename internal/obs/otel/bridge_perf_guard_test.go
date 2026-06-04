@@ -43,7 +43,7 @@ func TestBridge_Handle_BothLegs_OverheadUnder5Micros(t *testing.T) {
 		lp, _ := newBenchProvider()
 		defer func() { _ = lp.Shutdown(context.Background()) }()
 
-		bridge := obsotel.NewBridgeHandler(primary, "regatta-bench", obsotel.WithLoggerProvider(lp))
+		bridge := obsotel.NewBridgeHandler(primary, "regatta-bench", lp)
 		lg := slog.New(bridge)
 		attrs := typicalAttrs(5)
 		ctx := context.Background()

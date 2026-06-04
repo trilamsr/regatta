@@ -87,7 +87,7 @@ func runSelfImproveScan(args []string) int {
 	// that constructor is exposed here, --apply errors so the operator
 	// is never surprised by a silent no-op.
 	fmt.Fprintln(os.Stderr, "regatta self-improve scan --apply: substrate event source wired; GH adapter wiring pending W1 hand-off — running scan in dry-print mode")
-	d := selfimprove.NewDetector(src, nil, false)
+	d := selfimprove.NewDetector(src.Fetch, nil, false)
 	res, err := d.Run(ctx, *since)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "regatta self-improve scan: %v\n", err)
