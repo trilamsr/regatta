@@ -196,6 +196,58 @@ func TestDefaultPromptBuilderCarriesIdentifiers(t *testing.T) {
 	}
 }
 
+// TestDefaultPromptBuilderInjectsItemBodyAndDisciplineAnchors asserts the rich-template output on ItemBody + reminder + PR-shape inputs.
+func TestDefaultPromptBuilderInjectsItemBodyAndDisciplineAnchors(t *testing.T) {
+	body := "## Acceptance criteria\n- [planned] c1: distinctive-body-marker-9f3a load-bearing line"
+	prompt := defaultPromptBuilder(Request{
+		AgentID:    7,
+		WorkItemID: "WORK-Y",
+		Lane:       "self-host",
+		ItemBody:   body,
+	})
+	// Identifiers + item body excerpt.
+	for _, want := range []string{"7", "WORK-Y", "self-host", "distinctive-body-marker-9f3a"} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt missing %q: %q", want, prompt)
+		}
+	}
+	// Five discipline anchors cite CLAUDE.md by slug.
+	for _, slug := range []string{
+		"feedback_tdd_discipline",
+		"feedback_comments_discipline",
+		"feedback_deletion_default",
+		"feedback_pr_body_hygiene",
+		"per-criterion citation gate",
+	} {
+		if !contains(prompt, slug) {
+			t.Fatalf("prompt missing discipline anchor %q", slug)
+		}
+	}
+	// PR-shape contract surfaces.
+	for _, want := range []string{"release-notes", "Test plan", "Summary", "Root cause", "feedback_review_proportional"} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt missing PR-shape token %q", want)
+		}
+	}
+	// End-of-prompt directive.
+	if !contains(prompt, "Begin now") {
+		t.Fatalf("prompt missing begin-now directive: %q", prompt)
+	}
+}
+
+// TestDefaultPromptBuilderEmptyItemBodyFallsBackToStubLine asserts the builder degrades to identifier line when ItemBody is empty.
+func TestDefaultPromptBuilderEmptyItemBodyFallsBackToStubLine(t *testing.T) {
+	prompt := defaultPromptBuilder(Request{AgentID: 3, WorkItemID: "WORK-Z", Lane: "docs"})
+	for _, want := range []string{"WORK-Z", "docs", "3"} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt missing %q: %q", want, prompt)
+		}
+	}
+	if contains(prompt, "## Acceptance criteria") {
+		t.Fatalf("empty-body prompt should not include item body section: %q", prompt)
+	}
+}
+
 func contains(s, sub string) bool {
 	for i := 0; i+len(sub) <= len(s); i++ {
 		if s[i:i+len(sub)] == sub {
