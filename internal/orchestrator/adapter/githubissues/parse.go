@@ -14,9 +14,10 @@ import (
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-// SkipReason is the spec §7.6 closed-enum projection-skip cause.
+// SkipReason is the spec §7.6 closed-enum projection-skip cause; values below are the WARN payload tokens.
 type SkipReason string
 
+// ReasonBadIDPrefix and siblings are the spec §7.6 SkipReason values.
 const (
 	ReasonBadIDPrefix          SkipReason = "bad_id_prefix"
 	ReasonDupIDPrefix          SkipReason = "dup_id_prefix"
