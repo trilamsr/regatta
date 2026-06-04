@@ -1,6 +1,7 @@
 package substrate_test
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -36,7 +37,7 @@ func TestSubstrate_NonceMismatchRejected_Verifier(t *testing.T) {
 	}
 
 	err := substrate.Verify(e, testKeyring())
-	if !substrate.IsUnverifiable(err) {
-		t.Fatalf("Verify: err=%v want IsUnverifiable", err)
+	if !errors.Is(err, substrate.ErrUnverifiable) {
+		t.Fatalf("Verify: err=%v want ErrUnverifiable", err)
 	}
 }

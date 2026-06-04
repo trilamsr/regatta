@@ -6,7 +6,12 @@
 // docs/engineer/specs/2026-06-01-unified-substrate-design.md.
 package substrate
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+
+	"github.com/trilamsr/regatta/contracts/schemas"
+)
 
 // ErrInvalidPayload — per-kind typed-payload validator rejected the
 // payload (validator dispatch table in validate.go).
@@ -32,7 +37,7 @@ var ErrTenantRequired = errors.New("substrate: tenant_id required (use DefaultTe
 
 // ErrUnverifiable wraps contracts/schemas.ErrUnverifiable so callers
 // can errors.Is at the substrate boundary without importing schemas.
-var ErrUnverifiable = errors.New("substrate: signature unverifiable")
+var ErrUnverifiable = fmt.Errorf("%w: substrate signature unverifiable", schemas.ErrUnverifiable)
 
 // DefaultTenantID is the explicit per-process constant for single-
 // tenant deployments — spec R3 forbids a SQL DEFAULT on tenant_id.
