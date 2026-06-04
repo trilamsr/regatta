@@ -271,7 +271,7 @@ func TestCostBackfill_WorkItemIDHasRandomSuffix(t *testing.T) {
 		t.Fatalf("work_item_id suffix=%q (len %d), want 8-hex", suffix, len(suffix))
 	}
 	for _, c := range suffix {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			t.Fatalf("work_item_id suffix=%q has non-hex char %q", suffix, c)
 		}
 	}
