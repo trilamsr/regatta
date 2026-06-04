@@ -212,9 +212,15 @@ func AppendEvent(ctx context.Context, tx *sql.Tx, e Event, key []byte, keyID str
 // validate, clock, supersedes cycle-check, replay, metric — are
 // identical to AppendEvent. Spec §7 + §12 F1 (#216).
 //
-// preCanonPayload MUST be canon.CanonicaliseJSON(e.PayloadJSON); the
-// contract is caller-trusted (Verify catches drift downstream). Cold
-// callers should keep using AppendEvent.
+// preCanonPayload MUST be canon.CanonicaliseJSON(e.PayloadJSON). The
+// contract is caller-trusted: a non-canonical payload produces a MAC
+// that fails Verify (#700 R7/R8). Cold callers should keep using
+// AppendEvent.
+//
+// Concurrency: sync.Pool is goroutine-safe; each goroutine borrows its
+// own fastScratch for the duration of the call, so concurrent writers
+// with different (key, keyID) pairs each rebind their borrowed scratch
+// and emit independent MACs (#700 R1).
 func AppendEventCanonicalized(ctx context.Context, tx *sql.Tx, e Event, preCanonPayload []byte, key []byte, keyID string) error {
 	if e.TenantID == "" {
 		return ErrTenantRequired
