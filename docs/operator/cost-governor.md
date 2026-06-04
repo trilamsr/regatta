@@ -257,12 +257,13 @@ Step-by-step.
    ```
    Repeat with `usage_report` for `/tmp/usage-live.json`.
 3. Diff the field set against `internal/cost/reconcile/testdata/anthropic_cost_2026_06_01_01h.json`
-   and `..._usage_...json`:
+   and `..._usage_...json`. Symmetric diff catches both renames (key
+   missing from one side) and additions (key only on live side):
    ```
-   jq -r '.data[0] | keys[]' /tmp/cost-live.json | sort > /tmp/live.keys
-   jq -r '.data[0] | keys[]' internal/cost/reconcile/testdata/anthropic_cost_2026_06_01_01h.json | sort > /tmp/fixture.keys
-   diff /tmp/fixture.keys /tmp/live.keys
+   diff <(jq -r '.data[0] | keys[]' /tmp/cost-live.json | sort) \
+        <(jq -r '.data[0] | keys[]' internal/cost/reconcile/testdata/anthropic_cost_2026_06_01_01h.json | sort)
    ```
+   Any non-empty diff = drift; rerun for the usage fixture too.
 4. On any diff: update `expectedCostBucketFields` /
    `expectedUsageBucketFields` in `schema_pin.go`, the matching
    decoder struct tags in `client.go`, and the testdata fixture —
