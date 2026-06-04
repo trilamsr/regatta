@@ -15,6 +15,7 @@ include Makefile.d/build.mk
 include Makefile.d/items.mk
 include Makefile.d/agent.mk
 include Makefile.d/hooks.mk
+include Makefile.d/boot-status.mk
 
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
