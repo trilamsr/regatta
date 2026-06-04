@@ -12,8 +12,14 @@
 #                                    # also retry locked worktrees with --force --force.
 #
 # Skips: primary checkout, cwd, any worktree on `main`. Branch-merged check
-# uses `git merge-base --is-ancestor <wt-head> origin/<default-branch>`, so
-# squash-merges and fast-forwards both qualify.
+# is two-stage:
+#   1. Ancestry: `git merge-base --is-ancestor <head> origin/<default-branch>`
+#      catches fast-forwards + true merges (branch tip reachable from main).
+#   2. Patch-equivalence: `git cherry origin/<default-branch> <branch>` catches
+#      squash-merges and rebases — `-` prefix means the commit is already on
+#      main as a different SHA. Branch qualifies when every cherry line is `-`
+#      (or output is empty: zero unique commits ahead of main). Fix for #719:
+#      ancestry-only missed 7 squash-merged worktrees on a 11-worktree dogfood.
 #
 # Exit codes: 0 in dry-run always; 0 on clean --apply; non-zero only if
 # --apply failed to remove a flagged candidate.
@@ -90,6 +96,16 @@ while IFS='|' read -r wt branch head; do
   else
     # is-ancestor: 0 = ancestor (merged), 1 = not. Other = error.
     if git merge-base --is-ancestor "$head" "refs/remotes/origin/$default_branch" 2>/dev/null; then
+      candidates+=("$wt")
+      continue
+    fi
+    # Squash-merge / rebase fallback: `git cherry` compares patch-id, so a
+    # commit re-applied as a different SHA on main still shows as `-`. Branch
+    # qualifies only when there is no `+` line (every commit is on main).
+    # Empty output (zero commits ahead) also qualifies. `branch` is `refs/heads/...`;
+    # cherry accepts the full ref directly.
+    if cherry_out=$(git cherry "refs/remotes/origin/$default_branch" "$branch" 2>/dev/null) \
+        && ! grep -q '^+' <<<"$cherry_out"; then
       candidates+=("$wt")
       continue
     fi
