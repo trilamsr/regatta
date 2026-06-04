@@ -126,7 +126,7 @@ INDEPENDENT REVIEW MEASURES vs A+ RUBRIC
 
 3. **Comment-noise gate trip-traps** per #333 followup. Regex was tightened in #371; if it still over-matches your prose, hyphenate the matching token (`reviewer-Request` / `reviewer-JSON`) or lowercase the following capital. Banner regex rejects `# --- Section ---` — use plain `# Section.` instead.
 
-4. **GH base-sha drift workaround** per #343 (root-cause fix #347 merged): if check-tdd flags a file that isn't in your diff, the workflow's BASE_SHA env was stale. Now resolved live via `git merge-base`. If you still see ghost flags, add `[DOCS]` / `[CI]` / `[CHORE]` category prefix to the release-notes block to opt out.
+4. **GH base-sha drift workaround** per #343 (root-cause fix #347 merged): if check-tdd flags a file that isn't in your diff, the workflow's BASE_SHA env was stale. Now resolved live via `git merge-base`. If you still see ghost flags, add `[DOCS]` / `[CI]` / `[CHORE]` / `[REFACTOR]` category prefix to the release-notes block to opt out. The full scorecard-exempt set is `[CHORE]` / `[DOCS]` / `[CI]` / `[NONE]` / `[CHANGE]` / `[REFACTOR]` (enforced by `scripts/check-scorecard.sh`).
 
 5. **Scorecard citation tokens MUST be OUTSIDE backticks** per `feedback_scorecard_citation_token_outside_backticks`. `scripts/check-scorecard.sh` strips inline-backtick spans before regex-scanning rows for citation tokens. Tokens wrapped in backticks are INVISIBLE to the validator.
    - Bad row: `| [x] Test passes | A | TestXyz_DoesThing in internal/foo/bar_test.go:42 |` with the cite tokens wrapped in backticks.

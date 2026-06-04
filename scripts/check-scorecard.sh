@@ -18,7 +18,7 @@
 #
 # Exemptions (skip the gate):
 #   - PR body has no scorecard section AND release-notes category is
-#     [CHORE] / [DOCS] / [CI] / [NONE].
+#     [CHORE] / [DOCS] / [CI] / [NONE] / [CHANGE] / [REFACTOR].
 #   - --skip flag passed (caller-side decision, used by CI when category
 #     is exempt).
 #
@@ -104,8 +104,8 @@ fi
 
 # Category auto-skip when no scorecard is required. The release-notes
 # fence is the source of truth for PR type (pr-lint.yml validates it
-# upstream). [CHORE]/[DOCS]/[CI]/[NONE]/[CHANGE] PRs ship without a
-# scorecard; we treat absence as pass for those.
+# upstream). [CHORE]/[DOCS]/[CI]/[NONE]/[CHANGE]/[REFACTOR] PRs ship
+# without a scorecard; we treat absence as pass for those.
 category=$(printf '%s\n' "$body" | awk '
   /^```release-notes/ { capture=1; next }
   capture && /^```/    { exit }
@@ -127,7 +127,7 @@ section=$(printf '%s\n' "$body" | awk '
 
 if [ -z "$(printf '%s' "$section" | tr -d '[:space:]')" ]; then
   case "$category" in
-    "[CHORE]"|"[DOCS]"|"[CI]"|"[NONE]"|"[CHANGE]")
+    "[CHORE]"|"[DOCS]"|"[CI]"|"[NONE]"|"[CHANGE]"|"[REFACTOR]")
       echo "check-scorecard: no scorecard section; release-notes $category is exempt"
       exit 0
       ;;
@@ -201,7 +201,7 @@ EOF
 
 if [ "$total" -eq 0 ]; then
   case "$category" in
-    "[CHORE]"|"[DOCS]"|"[CI]"|"[NONE]"|"[CHANGE]")
+    "[CHORE]"|"[DOCS]"|"[CI]"|"[NONE]"|"[CHANGE]"|"[REFACTOR]")
       echo "check-scorecard: scorecard section present but empty; $category exempt"
       exit 0
       ;;
