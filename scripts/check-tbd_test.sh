@@ -15,6 +15,12 @@
 #   C. `TBD` with same-line `#NNN` citation          -> exit 0
 #   D. `TBD` inside `<!-- TODO(#NNN) -->` comment    -> exit 0
 #   E. bare `TBD` inside ```release-notes fence      -> exit 0 (operator scratch)
+#   F. `TBD` outside comment but `#NNN` inside a    -> exit 1 (regex tightening)
+#      sibling HTML comment on a later line
+#   G. bare `TBD` inside a non-release-notes fence   -> exit 1 (only release-notes
+#      fence is exempt; spec-content fences enforced)
+#   H. status:skeleton-prefetch frontmatter + TBD    -> exit 1 (check-tbd ignores
+#      frontmatter; status-based skip is local to check-phase-x-leak)
 set -uo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -59,6 +65,13 @@ run_case "B-bare-tbd-fails"                     1 "$FIXTURES/bare-tbd.md" \
 run_case "C-tbd-with-issue-passes"              0 "$FIXTURES/tbd-with-issue.md"
 run_case "D-tbd-in-html-comment-passes"         0 "$FIXTURES/tbd-in-html-comment.md"
 run_case "E-tbd-in-release-notes-fence-passes"  0 "$FIXTURES/tbd-in-release-notes-fence.md"
+run_case "F-tbd-outside-comment-issue-inside-fails" 1 \
+  "$FIXTURES/tbd-outside-comment-with-issue-inside.md" \
+  "tbd-outside-comment-with-issue-inside\.md.*TBD"
+run_case "G-tbd-in-non-release-fence-fails"     1 "$FIXTURES/tbd-in-non-release-fence.md" \
+  "tbd-in-non-release-fence\.md.*TBD"
+run_case "H-tbd-in-skeleton-prefetch-fails"     1 "$FIXTURES/tbd-in-skeleton-prefetch.md" \
+  "tbd-in-skeleton-prefetch\.md.*TBD"
 
 echo "---"
 echo "passes=$passes fails=$fails"
