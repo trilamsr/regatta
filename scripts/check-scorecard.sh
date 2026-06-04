@@ -132,7 +132,12 @@ if [ -z "$(printf '%s' "$section" | tr -d '[:space:]')" ]; then
       exit 0
       ;;
     *)
-      echo "::error::No scorecard section found in PR body. [FEATURE]/[FIX]/[PERF] require '## A+ Scorecard' (or 'Rubric Scorecard') with cited criteria." >&2
+      echo "::error::No scorecard section found in PR body." >&2
+      echo "::error::NOTE: [CHORE]/[DOCS]/[CI]/[NONE]/[CHANGE]/[REFACTOR] PRs auto-skip the scorecard requirement, but ONLY when the release-notes prefix appears INSIDE a triple-backtick \`release-notes\` fenced block. If you intended a chore-class PR, wrap your release-notes line in a fence:" >&2
+      echo "::error::    \`\`\`release-notes" >&2
+      echo "::error::    [CHORE] <one-line summary>" >&2
+      echo "::error::    \`\`\`" >&2
+      echo "::error::Otherwise add a '## A+ Scorecard' (or 'Rubric Scorecard') section with cited criteria per docs/engineer/dispatch-templates/reviewer.md." >&2
       exit 1
       ;;
   esac
