@@ -6,44 +6,188 @@
 package lint_test
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/trilamsr/regatta/internal/testutil/reporoot"
 )
 
-// knownGap tracks structs intentionally exempt from the Tracer+Meter
-// pair invariant pending their per-struct retrofit. Each entry MUST
-// cite the tracking issue (#509 is the umbrella) and is removed when
-// that struct gains its Meter sibling. New Tracer-bearing structs
-// MUST land with Meter — the allowlist is closed to drift, not
-// open-ended; CI fails on any violation outside this set.
 var knownGap = map[string]string{
-	"internal/authz/opa.go:Config":                            "#509",
-	"internal/authz/policies/reload/reloader.go:Reloader":     "#509",
-	"internal/cost/gate/gate.go:Config":                       "#509",
-	"internal/cost/reconcile/tick.go:Config":                  "#509",
-	"internal/gates/approval/gate.go:Gate":                    "#509",
-	"internal/gates/l4/reload.go:Reloader":                    "#509",
+	"internal/authz/opa.go:Config":                                    "#509",
+	"internal/authz/policies/reload/reloader.go:Reloader":             "#509",
+	"internal/cost/gate/gate.go:Config":                               "#509",
+	"internal/cost/reconcile/tick.go:Config":                          "#509",
+	"internal/gates/approval/gate.go:Gate":                            "#509",
+	"internal/gates/l4/reload.go:Reloader":                            "#509",
 	"internal/orchestrator/adapter/markdown.go:MarkdownCatalogConfig": "#509",
-	"internal/orchestrator/prwatch/prwatch.go:Config":         "#509",
-	"internal/orchestrator/spawner/claude.go:ClaudeSpawnerConfig": "#509",
+	"internal/orchestrator/prwatch/prwatch.go:Config":                 "#509",
+	"internal/orchestrator/spawner/claude.go:ClaudeSpawnerConfig":     "#509",
 }
 
 // TestTracerMeterPair_EveryTracerHasMeter asserts every struct carrying a `Tracer trace.Tracer` field also carries `Meter metric.Meter` (#509).
 func TestTracerMeterPair_EveryTracerHasMeter(t *testing.T) {
 	repoRoot := reporoot.Must(t)
-	fset := token.NewFileSet()
-	var violations []string
-	seen := map[string]struct{}{}
-
 	walkRoot := filepath.Join(repoRoot, "internal")
-	err := filepath.WalkDir(walkRoot, func(path string, d fs.DirEntry, walkErr error) error {
+	violations, seen, stale, err := lintTracerMeterPair(walkRoot, repoRoot, knownGap)
+	if err != nil {
+		t.Fatalf("walk internal/: %v", err)
+	}
+	if len(violations) > 0 {
+		t.Fatalf("Tracer-without-Meter violations (%d) — every Tracer-bearing struct MUST carry a Meter sibling (#509):\n  %s",
+			len(violations), strings.Join(violations, "\n  "))
+	}
+	for _, key := range stale {
+		t.Errorf("knownGap stale: %s (%s) no longer violates — remove from allowlist", key, knownGap[key])
+	}
+	_ = seen
+}
+
+// TestTracerMeterPair_DetectsEmbeddedTracer asserts an embedded type that carries Tracer-without-Meter is flagged (#706 R1).
+func TestTracerMeterPair_DetectsEmbeddedTracer(t *testing.T) {
+	root := filepath.Join("testdata", "r1_embedded")
+	violations, _, _, err := lintTracerMeterPair(root, root, nil)
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if !containsViolation(violations, "EmbedsLeakyInner") {
+		t.Fatalf("expected EmbedsLeakyInner flagged via embedded LeakyInner, got: %v", violations)
+	}
+	if containsViolation(violations, "EmbedsInnerOK") {
+		t.Fatalf("EmbedsInnerOK embeds Inner which has both — must not flag, got: %v", violations)
+	}
+}
+
+// TestTracerMeterPair_DetectsAliasTracer asserts a field typed as a local alias of trace.Tracer is flagged (#706 R2).
+func TestTracerMeterPair_DetectsAliasTracer(t *testing.T) {
+	root := filepath.Join("testdata", "r2_alias")
+	violations, _, _, err := lintTracerMeterPair(root, root, nil)
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if !containsViolation(violations, "WithAliasLeaky") {
+		t.Fatalf("expected WithAliasLeaky flagged via MyTracer alias, got: %v", violations)
+	}
+	if containsViolation(violations, "WithAliasOK") {
+		t.Fatalf("WithAliasOK has both aliases — must not flag, got: %v", violations)
+	}
+}
+
+// TestTracerMeterPair_StaleAllowlistEntryFails asserts an allowlist key pointing to a non-existent struct is reported stale (#706 R3).
+func TestTracerMeterPair_StaleAllowlistEntryFails(t *testing.T) {
+	root := filepath.Join("testdata", "r3_stale")
+	allow := map[string]string{
+		"testdata/r3_stale/pkgc/empty.go:DoesNotExist": "#706",
+	}
+	_, _, stale, err := lintTracerMeterPair(root, root, allow)
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if len(stale) == 0 {
+		t.Fatalf("expected stale entry for DoesNotExist, got none")
+	}
+	if !strings.Contains(stale[0], "DoesNotExist") {
+		t.Fatalf("expected stale to cite DoesNotExist, got %q", stale[0])
+	}
+}
+
+// TestTracerMeterPair_StaleAllowlistEntryFiresOnRetrofit asserts an allowlist key whose struct no longer leaks is reported stale (#706 R3).
+func TestTracerMeterPair_StaleAllowlistEntryFiresOnRetrofit(t *testing.T) {
+	root := filepath.Join("testdata", "r1_embedded")
+	allow := map[string]string{
+		"testdata/r1_embedded/pkga/embedded.go:Inner": "#706",
+	}
+	_, _, stale, err := lintTracerMeterPair(root, root, allow)
+	if err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	found := false
+	for _, s := range stale {
+		if strings.Contains(s, "Inner") && !strings.Contains(s, "LeakyInner") && !strings.Contains(s, "EmbedsInner") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected stale entry for Inner (has both fields), got %v", stale)
+	}
+}
+
+func containsViolation(vs []string, structName string) bool {
+	for _, v := range vs {
+		if strings.Contains(v, "struct "+structName+" ") {
+			return true
+		}
+	}
+	return false
+}
+
+func lintTracerMeterPair(walkRoot, relRoot string, allow map[string]string) (violations []string, seen map[string]struct{}, stale []string, err error) {
+	seen = map[string]struct{}{}
+	fset := token.NewFileSet()
+
+	pkgs, walkErr := loadStructIndex(walkRoot, fset)
+	if walkErr != nil {
+		return nil, nil, nil, walkErr
+	}
+
+	for _, pkg := range pkgs {
+		for _, st := range pkg.structs {
+			hasTracer, hasMeter := pkgHasPair(pkg, st.spec.Name.Name, map[string]bool{})
+			if !hasTracer || hasMeter {
+				continue
+			}
+			pos := fset.Position(st.spec.Pos())
+			rel, rerr := filepath.Rel(relRoot, pos.Filename)
+			if rerr != nil {
+				rel = pos.Filename
+			}
+			rel = filepath.ToSlash(rel)
+			key := rel + ":" + st.spec.Name.Name
+			seen[key] = struct{}{}
+			if _, ok := allow[key]; ok {
+				continue
+			}
+			violations = append(violations,
+				fmt.Sprintf("%s: struct %s carries Tracer trace.Tracer but no Meter metric.Meter sibling",
+					pos.String(), st.spec.Name.Name))
+		}
+	}
+
+	for key := range allow {
+		if _, ok := seen[key]; !ok {
+			stale = append(stale, key)
+		}
+	}
+	sort.Strings(stale)
+	sort.Strings(violations)
+	return violations, seen, stale, nil
+}
+
+type structEntry struct {
+	spec *ast.TypeSpec
+	st   *ast.StructType
+}
+
+type pkgIndex struct {
+	dir     string
+	structs map[string]structEntry
+	aliases map[string]aliasTarget
+}
+
+type aliasTarget struct {
+	pkg, name string
+	localRef  string
+}
+
+func loadStructIndex(root string, fset *token.FileSet) (map[string]*pkgIndex, error) {
+	pkgs := map[string]*pkgIndex{}
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -57,79 +201,125 @@ func TestTracerMeterPair_EveryTracerHasMeter(t *testing.T) {
 		if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			return err
+		dir := filepath.Dir(path)
+		pkg := pkgs[dir]
+		if pkg == nil {
+			pkg = &pkgIndex{dir: dir, structs: map[string]structEntry{}, aliases: map[string]aliasTarget{}}
+			pkgs[dir] = pkg
+		}
+		f, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
+		if perr != nil {
+			return perr
 		}
 		ast.Inspect(f, func(n ast.Node) bool {
 			ts, ok := n.(*ast.TypeSpec)
 			if !ok {
 				return true
 			}
-			st, ok := ts.Type.(*ast.StructType)
-			if !ok || st.Fields == nil {
+			if st, ok := ts.Type.(*ast.StructType); ok {
+				pkg.structs[ts.Name.Name] = structEntry{spec: ts, st: st}
 				return true
 			}
-			hasTracer, hasMeter := false, false
-			for _, field := range st.Fields.List {
-				if !isFieldType(field, "trace", "Tracer") && !isFieldType(field, "metric", "Meter") {
-					continue
-				}
-				for _, name := range field.Names {
-					switch name.Name {
-					case "Tracer":
-						if isFieldType(field, "trace", "Tracer") {
-							hasTracer = true
-						}
-					case "Meter":
-						if isFieldType(field, "metric", "Meter") {
-							hasMeter = true
-						}
+			if ts.Assign != token.NoPos {
+				if sel, ok := ts.Type.(*ast.SelectorExpr); ok {
+					if id, ok := sel.X.(*ast.Ident); ok {
+						pkg.aliases[ts.Name.Name] = aliasTarget{pkg: id.Name, name: sel.Sel.Name}
 					}
+				} else if id, ok := ts.Type.(*ast.Ident); ok {
+					pkg.aliases[ts.Name.Name] = aliasTarget{localRef: id.Name}
 				}
-			}
-			if hasTracer && !hasMeter {
-				pos := fset.Position(ts.Pos())
-				rel, err := filepath.Rel(repoRoot, pos.Filename)
-				if err != nil {
-					rel = pos.Filename
-				}
-				rel = filepath.ToSlash(rel)
-				key := rel + ":" + ts.Name.Name
-				seen[key] = struct{}{}
-				if _, ok := knownGap[key]; ok {
-					return true
-				}
-				violations = append(violations,
-					pos.String()+": struct "+ts.Name.Name+" carries Tracer trace.Tracer but no Meter metric.Meter sibling")
 			}
 			return true
 		})
 		return nil
 	})
 	if err != nil {
-		t.Fatalf("walk internal/: %v", err)
+		return nil, err
 	}
-	if len(violations) > 0 {
-		t.Fatalf("Tracer-without-Meter violations (%d) — every Tracer-bearing struct MUST carry a Meter sibling (#509):\n  %s",
-			len(violations), strings.Join(violations, "\n  "))
-	}
-	for key, ref := range knownGap {
-		if _, hit := seen[key]; !hit {
-			t.Errorf("knownGap stale: %s (%s) no longer violates — remove from allowlist", key, ref)
-		}
-	}
+	return pkgs, nil
 }
 
-// isFieldType reports whether f.Type is the selector pkg.name.
-func isFieldType(f *ast.Field, pkg, name string) bool {
-	sel, ok := f.Type.(*ast.SelectorExpr)
-	if !ok {
-		return false
+func pkgHasPair(pkg *pkgIndex, structName string, visiting map[string]bool) (hasTracer, hasMeter bool) {
+	if visiting[structName] {
+		return false, false
 	}
-	pkgIdent, ok := sel.X.(*ast.Ident)
+	entry, ok := pkg.structs[structName]
 	if !ok {
-		return false
+		return false, false
 	}
-	return pkgIdent.Name == pkg && sel.Sel.Name == name
+	visiting[structName] = true
+	defer delete(visiting, structName)
+
+	if entry.st.Fields == nil {
+		return false, false
+	}
+	for _, field := range entry.st.Fields.List {
+		if len(field.Names) == 0 {
+			embeddedName := embeddedTypeName(field.Type)
+			if embeddedName == "" {
+				continue
+			}
+			et, em := pkgHasPair(pkg, embeddedName, visiting)
+			hasTracer = hasTracer || et
+			hasMeter = hasMeter || em
+			continue
+		}
+		t, m := fieldMatches(pkg, field)
+		hasTracer = hasTracer || t
+		hasMeter = hasMeter || m
+	}
+	return hasTracer, hasMeter
+}
+
+func embeddedTypeName(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.Ident:
+		return t.Name
+	case *ast.StarExpr:
+		if id, ok := t.X.(*ast.Ident); ok {
+			return id.Name
+		}
+	}
+	return ""
+}
+
+func fieldMatches(pkg *pkgIndex, field *ast.Field) (hasTracer, hasMeter bool) {
+	for _, name := range field.Names {
+		switch name.Name {
+		case "Tracer":
+			if exprResolvesTo(pkg, field.Type, "trace", "Tracer") {
+				hasTracer = true
+			}
+		case "Meter":
+			if exprResolvesTo(pkg, field.Type, "metric", "Meter") {
+				hasMeter = true
+			}
+		}
+	}
+	return hasTracer, hasMeter
+}
+
+func exprResolvesTo(pkg *pkgIndex, expr ast.Expr, pkgName, typeName string) bool {
+	switch t := expr.(type) {
+	case *ast.SelectorExpr:
+		id, ok := t.X.(*ast.Ident)
+		if !ok {
+			return false
+		}
+		return id.Name == pkgName && t.Sel.Name == typeName
+	case *ast.Ident:
+		alias, ok := pkg.aliases[t.Name]
+		if !ok {
+			return false
+		}
+		if alias.pkg == pkgName && alias.name == typeName {
+			return true
+		}
+		if alias.localRef != "" {
+			if next, ok := pkg.aliases[alias.localRef]; ok {
+				return next.pkg == pkgName && next.name == typeName
+			}
+		}
+	}
+	return false
 }
