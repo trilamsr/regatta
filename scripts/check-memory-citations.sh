@@ -2,8 +2,10 @@
 # check-memory-citations.sh - fail when a `feedback_*` slug cited in
 # CLAUDE.md, the autonomous-session prompt, or the dispatch templates
 # does not resolve to a real file under MEMORY_DIR (or its archive/
-# subdir). Path-configurable via MEMORY_DIR so CI can point at a
-# fixture tree; defaults to the operator's project memory dir.
+# subdir). Defaults to the checked-in CI-portable fixture under
+# scripts/testdata/memory/ so CI runners + fresh clones exercise the
+# gate without the operator's per-machine memory dir. Operators override
+# via MEMORY_DIR to point at their real `~/.claude/projects/<hash>/memory/`.
 #
 # Why this gate: per CLAUDE.md, slug citations are how agents reach
 # operator memory. A dangling slug breaks the citation chain silently
@@ -15,7 +17,7 @@ set -uo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd -- "$SCRIPT_DIR/.." && pwd)
 
-: "${MEMORY_DIR:=$HOME/.claude/projects/-Users-treedesk-Desktop-Projects-regatta/memory}"
+: "${MEMORY_DIR:=$REPO_ROOT/scripts/testdata/memory}"
 : "${EXTRA_DOC:=}"
 
 SOURCES=(
