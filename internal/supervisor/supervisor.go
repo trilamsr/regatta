@@ -326,7 +326,7 @@ func sanitizeEnvFile(p string) error {
 // double-quoted `/bin/sh -lc` wrapper embedding WorkingDir + BinaryPath
 // on macOS — `"`, `$`, backtick, newline, null, plus `\` for parity with
 // the EnvFile sanitizer. field names the rejected struct field for
-// operator-facing diagnostics (PR #830 adversarial review).
+// operator-facing diagnostics.
 func sanitizeShellPath(field, p string) error {
 	if strings.ContainsAny(p, "\"$`\n\x00\\") {
 		return fmt.Errorf("%s path %q contains a shell metacharacter (one of \" $ ` \\ newline null) that would break the launchd sourcing wrapper", field, p)

@@ -354,7 +354,7 @@ func TestPlistRender_EnvFile_RejectsShellMetacharacters(t *testing.T) {
 	}
 }
 
-// TestPlistRender_RejectsMetacharsInWorkingDir asserts $HOME-derived WorkingDir with shell metachars is rejected (PR #830 adversarial review).
+// TestPlistRender_RejectsMetacharsInWorkingDir asserts $HOME-derived WorkingDir with shell metachars is rejected.
 func TestPlistRender_RejectsMetacharsInWorkingDir(t *testing.T) {
 	for _, bad := range []string{`/Users/op$IFS"/regatta`, "/Users/op\nrc/regatta", "/Users/op`whoami`/regatta", `/Users/op\regatta`} {
 		opts, _ := newDarwinOpts(t)
@@ -372,7 +372,7 @@ func TestPlistRender_RejectsMetacharsInWorkingDir(t *testing.T) {
 	}
 }
 
-// TestPlistRender_RejectsMetacharsInBinaryPath asserts BinaryPath with shell metachars is rejected (PR #830 adversarial review).
+// TestPlistRender_RejectsMetacharsInBinaryPath asserts BinaryPath with shell metachars is rejected.
 func TestPlistRender_RejectsMetacharsInBinaryPath(t *testing.T) {
 	for _, bad := range []string{`/usr/bin/regatta";rm -rf /`, "/usr/bin/regatta\nFOO=BAR", "/usr/bin/regatta`id`", `/usr/bin/regatta$HOME`} {
 		opts, _ := newDarwinOpts(t)
@@ -389,7 +389,7 @@ func TestPlistRender_RejectsMetacharsInBinaryPath(t *testing.T) {
 	}
 }
 
-// TestPlistRender_AcceptsPathWithSpaces asserts spaces in WorkingDir survive double-quoted shell wrapper (PR #830 adversarial review).
+// TestPlistRender_AcceptsPathWithSpaces asserts spaces in WorkingDir survive double-quoted shell wrapper.
 func TestPlistRender_AcceptsPathWithSpaces(t *testing.T) {
 	opts, _ := newDarwinOpts(t)
 	opts.DryRun = true
