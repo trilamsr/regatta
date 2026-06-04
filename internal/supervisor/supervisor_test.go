@@ -254,6 +254,210 @@ func TestSanitizePath_RejectsNewlineInjection(t *testing.T) {
 	}
 }
 
+// TestPlistRender_EnvFile_SourcingWrapper asserts macOS plist wraps exec in `/bin/sh -lc` env-sourcing (followup #826).
+func TestPlistRender_EnvFile_SourcingWrapper(t *testing.T) {
+	opts, _ := newDarwinOpts(t)
+	opts.DryRun = true
+	opts.EnvFile = "/tmp/regatta-test.env"
+	buf := &bytes.Buffer{}
+	opts.Out = buf
+	if err := Install(opts); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	got := buf.String()
+	for _, want := range []string{
+		"<string>/bin/sh</string>",
+		"<string>-lc</string>",
+		`set -a; . "/tmp/regatta-test.env"; set +a; exec`,
+		"/opt/homebrew/bin/regatta",
+		"serve --repo",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("rendered plist missing %q; got:\n%s", want, got)
+		}
+	}
+}
+
+// TestPlistRender_EnvFile_DefaultUserPath asserts opts.EnvFile defaults to $HOME/.config/regatta/env on macOS user mode.
+func TestPlistRender_EnvFile_DefaultUserPath(t *testing.T) {
+	opts, home := newDarwinOpts(t)
+	opts.DryRun = true
+	buf := &bytes.Buffer{}
+	opts.Out = buf
+	if err := Install(opts); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	want := filepath.Join(home, ".config", "regatta", "env")
+	if !strings.Contains(buf.String(), want) {
+		t.Errorf("expected default env path %q in rendered plist; got:\n%s", want, buf.String())
+	}
+}
+
+// TestPlistRender_EnvFile_DefaultSystemPath asserts macOS system-mode env-file defaults to /etc/regatta/env.
+func TestPlistRender_EnvFile_DefaultSystemPath(t *testing.T) {
+	opts, _ := newDarwinOpts(t)
+	opts.Mode = ModeSystem
+	opts.DryRun = true
+	buf := &bytes.Buffer{}
+	opts.Out = buf
+	if err := Install(opts); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if !strings.Contains(buf.String(), "/etc/regatta/env") {
+		t.Errorf("expected /etc/regatta/env default; got:\n%s", buf.String())
+	}
+}
+
+// TestPlistRender_EnvFile_QuotesPathForShell asserts the env-file path is double-quoted to survive spaces.
+func TestPlistRender_EnvFile_QuotesPathForShell(t *testing.T) {
+	opts, _ := newDarwinOpts(t)
+	opts.DryRun = true
+	opts.EnvFile = "/Users/op name/regatta/env"
+	buf := &bytes.Buffer{}
+	opts.Out = buf
+	if err := Install(opts); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if !strings.Contains(buf.String(), `. "/Users/op name/regatta/env"`) {
+		t.Errorf("env-file path not double-quoted; got:\n%s", buf.String())
+	}
+}
+
+// TestPlistRender_EnvFile_OverrideWinsOverDefault asserts explicit opts.EnvFile suppresses the user-mode default.
+func TestPlistRender_EnvFile_OverrideWinsOverDefault(t *testing.T) {
+	opts, _ := newDarwinOpts(t)
+	opts.DryRun = true
+	opts.EnvFile = "/custom/path/env"
+	buf := &bytes.Buffer{}
+	opts.Out = buf
+	if err := Install(opts); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "/custom/path/env") {
+		t.Errorf("override env-file missing; got:\n%s", out)
+	}
+	if strings.Contains(out, ".config/regatta/env") {
+		t.Errorf("override should suppress default; got:\n%s", out)
+	}
+}
+
+// TestPlistRender_EnvFile_RejectsShellMetacharacters asserts env-file paths with shell metachars are rejected.
+func TestPlistRender_EnvFile_RejectsShellMetacharacters(t *testing.T) {
+	for _, bad := range []string{`/tmp/x"$(rm)"`, "/tmp/x\nFOO=BAR", `/tmp/x\evil/env`} {
+		opts, _ := newDarwinOpts(t)
+		opts.DryRun = true
+		opts.EnvFile = bad
+		if err := Install(opts); err == nil {
+			t.Errorf("expected rejection for %q", bad)
+		}
+	}
+}
+
+// TestPlistRender_RejectsMetacharsInWorkingDir asserts $HOME-derived WorkingDir with shell metachars is rejected.
+func TestPlistRender_RejectsMetacharsInWorkingDir(t *testing.T) {
+	for _, bad := range []string{`/Users/op$IFS"/regatta`, "/Users/op\nrc/regatta", "/Users/op`whoami`/regatta", `/Users/op\regatta`} {
+		opts, _ := newDarwinOpts(t)
+		opts.DryRun = true
+		opts.HomeDir = bad
+		opts.EnvFile = "/tmp/regatta-test.env"
+		err := Install(opts)
+		if err == nil {
+			t.Errorf("expected rejection for HomeDir=%q", bad)
+			continue
+		}
+		if !strings.Contains(err.Error(), "working-dir") && !strings.Contains(err.Error(), "WorkingDir") {
+			t.Errorf("error should name WorkingDir field; got %q for input %q", err.Error(), bad)
+		}
+	}
+}
+
+// TestPlistRender_RejectsMetacharsInBinaryPath asserts BinaryPath with shell metachars is rejected.
+func TestPlistRender_RejectsMetacharsInBinaryPath(t *testing.T) {
+	for _, bad := range []string{`/usr/bin/regatta";rm -rf /`, "/usr/bin/regatta\nFOO=BAR", "/usr/bin/regatta`id`", `/usr/bin/regatta$HOME`} {
+		opts, _ := newDarwinOpts(t)
+		opts.DryRun = true
+		opts.Binary = bad
+		err := Install(opts)
+		if err == nil {
+			t.Errorf("expected rejection for Binary=%q", bad)
+			continue
+		}
+		if !strings.Contains(err.Error(), "binary") && !strings.Contains(err.Error(), "Binary") {
+			t.Errorf("error should name BinaryPath field; got %q for input %q", err.Error(), bad)
+		}
+	}
+}
+
+// TestPlistRender_AcceptsPathWithSpaces asserts spaces in WorkingDir survive double-quoted shell wrapper.
+func TestPlistRender_AcceptsPathWithSpaces(t *testing.T) {
+	opts, _ := newDarwinOpts(t)
+	opts.DryRun = true
+	opts.HomeDir = "/Users/op name"
+	opts.EnvFile = "/tmp/regatta-test.env"
+	buf := &bytes.Buffer{}
+	opts.Out = buf
+	if err := Install(opts); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	want := `exec "/opt/homebrew/bin/regatta" serve --repo "/Users/op name/.local/share/regatta/repo"`
+	if !strings.Contains(buf.String(), want) {
+		t.Errorf("expected double-quoted spaced WorkingDir; got:\n%s", buf.String())
+	}
+}
+
+// TestPreInstallEnvFileCheck_MissingFile_Warns asserts missing env-file emits WARN not error (fail-open).
+func TestPreInstallEnvFileCheck_MissingFile_Warns(t *testing.T) {
+	opts, _ := newDarwinOpts(t)
+	opts.EnvFile = filepath.Join(t.TempDir(), "missing.env")
+	errBuf := &bytes.Buffer{}
+	opts.Err = errBuf
+	if err := Install(opts); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if !strings.Contains(errBuf.String(), "env-file") || !strings.Contains(errBuf.String(), "missing") {
+		t.Errorf("expected WARN about missing env-file; got:\n%s", errBuf.String())
+	}
+}
+
+// TestPreInstallEnvFileCheck_LooseModeWarns asserts env-file mode != 0600 emits a hygiene WARN.
+func TestPreInstallEnvFileCheck_LooseModeWarns(t *testing.T) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, "env")
+	if err := os.WriteFile(envPath, []byte("ANTHROPIC_API_KEY=x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	opts, _ := newDarwinOpts(t)
+	opts.EnvFile = envPath
+	errBuf := &bytes.Buffer{}
+	opts.Err = errBuf
+	if err := Install(opts); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if !strings.Contains(errBuf.String(), "0600") {
+		t.Errorf("expected mode-hygiene WARN; got:\n%s", errBuf.String())
+	}
+}
+
+// TestPreInstallEnvFileCheck_TightModeSilent asserts a 0600 env-file produces no WARN noise.
+func TestPreInstallEnvFileCheck_TightModeSilent(t *testing.T) {
+	dir := t.TempDir()
+	envPath := filepath.Join(dir, "env")
+	if err := os.WriteFile(envPath, []byte("ANTHROPIC_API_KEY=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opts, _ := newDarwinOpts(t)
+	opts.EnvFile = envPath
+	errBuf := &bytes.Buffer{}
+	opts.Err = errBuf
+	if err := Install(opts); err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	if strings.Contains(errBuf.String(), "env-file") {
+		t.Errorf("clean install should not WARN; got:\n%s", errBuf.String())
+	}
+}
+
 // TestInstallService_DryRun_WritesNothing covers spec §3.8 --dry-run.
 func TestInstallService_DryRun_WritesNothing(t *testing.T) {
 	opts, home := newDarwinOpts(t)
