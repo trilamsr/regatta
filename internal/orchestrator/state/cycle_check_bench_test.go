@@ -52,10 +52,7 @@ func seedDenseDAG(b *testing.B, db *state.DB, depth, fanout int) state.WorkItem 
 	}
 }
 
-// BenchmarkCycleCheck measures CycleCheck against dense layered DAGs.
-// shape is (depth, fanout): a 10x10 DAG has 100 existing nodes and 100
-// incoming dep edges on the candidate — the worst case for the
-// scan-then-DFS approach.
+// BenchmarkCycleCheck measures CycleCheck against dense layered DAGs at (depth, fanout) shapes.
 func BenchmarkCycleCheck(b *testing.B) {
 	shapes := []struct {
 		depth, fanout int

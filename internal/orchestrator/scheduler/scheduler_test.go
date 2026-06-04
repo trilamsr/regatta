@@ -312,14 +312,7 @@ func TestTickHotspotsSortedAcquisition(t *testing.T) {
 	}
 }
 
-// TestResolveLocksSorts mutation-verifies the sort.Strings call in
-// scheduler.resolveLocks. Removing the sort would let the resolver's
-// emitted order leak into TryAcquireLocks, breaking the cross-agent
-// deadlock-safety property from docs/design.md §Concurrency &
-// soft-lock policy. An integration test through Tick + ListLocks
-// cannot distinguish a sorted insert from an unsorted insert because
-// sqlite returns rows by name regardless of insertion order, so this
-// test calls the unexported resolveLocks directly.
+// TestResolveLocksSorts mutation-verifies sort.Strings in scheduler.resolveLocks for cross-agent deadlock safety.
 func TestResolveLocksSorts(t *testing.T) {
 	db := statetest.OpenDB(t)
 	sch := New(db, Config{

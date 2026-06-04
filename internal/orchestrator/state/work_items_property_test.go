@@ -15,11 +15,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// TestListSpawnable_PropertyTopologicalReady (Grade-A DoD per spec §6):
-// for any DAG of n≤8 nodes, ListSpawnable returns exactly the set of
-// nodes whose dependencies are all in status='merged'. We generate
-// random DAGs, mark a random subset as merged, then assert the
-// returned set equals the topological-ready subset of planned nodes.
+// TestListSpawnable_PropertyTopologicalReady asserts ListSpawnable equals the topological-ready subset over random DAGs of n≤8 nodes (spec §6 Grade-A DoD).
 func TestListSpawnable_PropertyTopologicalReady(t *testing.T) {
 	tmp := t.TempDir()
 	var checkID atomic.Int64

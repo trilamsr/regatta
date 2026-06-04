@@ -11,12 +11,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 )
 
-// TestSubstrate_EventKindEnumMatchesSQLCheck pins spec §6 / §9 A-tier N1: Go EventKind constants ↔ SQL CHECK kind whitelist parity.
-//
-// Scans every migration whose body declares a `CHECK (kind IN (...))`
-// clause on substrate_events and takes the highest-numbered migration's
-// list as canonical — recreate-rename migrations (0012 widens 0006)
-// supersede the original whitelist. Spec §6 N1.
+// TestSubstrate_EventKindEnumMatchesSQLCheck asserts Go EventKind ↔ SQL CHECK whitelist parity (spec §6 N1).
 func TestSubstrate_EventKindEnumMatchesSQLCheck(t *testing.T) {
 	t.Parallel()
 
