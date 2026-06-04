@@ -1,36 +1,20 @@
 // Package rejectionrouter wakes agents on rejecting AI-gate verdicts
 // and escalates to a human after K rejections.
 //
-// Wiring per docs/design.md §Orchestrator shape, item 5
-// (RejectionRouter) and §Failure modes ("AI reviewer rejects K=3
-// times → label `needs-human`"):
+// Per docs/design.md §Orchestrator item 5 + §Failure modes: each Tick
+// scans `gate_rejected` rows newer than the cursor, transitions the
+// matching `gates_running` agent to `gates_failed` with one atomic
+// IncrementRejection, and at rejection_count==K transitions to
+// `escalated`, releases locks, appends an `escalated` event, and
+// invokes PRLabeler with `needs-human`. Stale rejections (pr_sha
+// mismatch) are dropped — only rejections newer than the agent's last
+// commit count. The respawn path (gates_failed → running) lives
+// elsewhere.
 //
-//  1. Tick scans the events table for `gate_rejected` rows newer than
-//     the cursor.
-//  2. For each event whose payload `pr_sha` matches the agent's
-//     current PRSHA AND whose agent is in `gates_running`, the agent
-//     is transitioned to `gates_failed` with rejection_count++ (one
-//     atomic TransitionAgent call via AgentMutation.IncrementRejection).
-//  3. When rejection_count reaches K (default 3) the agent is
-//     transitioned `gates_failed → escalated`, its locks are released
-//     so Orchestrator.Heartbeat stops touching it, an `escalated`
-//     event is appended, and the configured PRLabeler is invoked to
-//     label the PR `needs-human`.
-//
-// Stale rejections (pr_sha mismatch — the agent has pushed a new
-// commit since the gate ran) are dropped: the design anchor is
-// "rejecting GateResult newer than the agent's last commit", so older
-// shas do not count.
-//
-// Out of scope: the wake-and-retry transition (gates_failed → running)
-// is owned by the agent-respawn path, not this router. This router
-// only translates rejection events into counter+state writes and
-// triggers escalation when the counter crosses K.
-//
-// The cursor is in-memory. On restart it begins at 0 and the
-// idempotency guards above ensure the only effect of replay is a
-// possibly-redundant labeler call — the counter is gated by state
-// (`gates_running`) so replay cannot double-increment a settled agent.
+// The cursor is in-memory: restart begins at 0. Replay is safe because
+// the gates_running state guard prevents double-increment; the only
+// possible duplicate effect is a redundant labeler call, which is
+// idempotent at the GitHub layer.
 package rejectionrouter
 
 import (
@@ -46,72 +30,53 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// PRLabeler attaches a label to the PR that backs an agent. The
-// concrete implementation (GHLabeler) resolves agentID → branch → PR
-// number → `gh pr edit --add-label`; tests use a fake. The interface
-// takes agentID rather than work_item_id because work_item_id is
-// brief-derived (e.g. "F-1") and bears no relation to any GitHub PR
-// number — see issue #476 for the failure mode the prior shape caused.
-// nil-safe: New() substitutes a no-op so callers without a PR surface
-// (in-process tests, simulators) still work.
+// PRLabeler attaches a label to the PR backing an agent. Takes agentID
+// (not work_item_id) because work_item_id is brief-derived (e.g. "F-1")
+// and bears no relation to any GitHub PR number — see #476. New()
+// substitutes a no-op when nil so in-process callers still work.
 type PRLabeler interface {
 	AddLabel(ctx context.Context, agentID int64, label string) error
 }
 
-// Config holds the deps + tunables for a Router. DB is required;
-// everything else has a sensible default.
+// Config holds Router deps + tunables; DB is required, everything else
+// has a default applied in New.
 type Config struct {
-	// DB is the orchestrator state store. Required.
 	DB *state.DB
 
-	// K is the rejection cap that triggers escalation. <=0 defaults to
-	// 3 per docs/design.md §Failure modes.
+	// K defaults to 3 (docs/design.md §Failure modes) when <=0.
 	K int
 
-	// Labeler is invoked when an agent escalates. Nil falls back to a
-	// no-op so callers that have not wired the PR surface still get
-	// the state transition + audit event.
+	// Labeler nil ⇒ no-op fallback so callers without a PR surface
+	// still get the state transition + audit event.
 	Labeler PRLabeler
 
-	// EscalationLabel is the label applied on escalation. Empty
-	// defaults to "needs-human" per docs/design.md.
+	// EscalationLabel empty ⇒ "needs-human" per docs/design.md.
 	EscalationLabel string
 
-	// BatchLimit caps the number of events processed per Tick. <=0
-	// defaults to 256 so a backlog cannot starve other tickers.
+	// BatchLimit caps events per Tick so a backlog cannot starve other
+	// tickers. <=0 ⇒ 256.
 	BatchLimit int
 
-	// Logger is the structured-event sink. Nil falls back to
-	// slog.Default().
 	Logger *slog.Logger
 
-	// Meter is the OTel instrument factory for label-failure telemetry.
-	// Nil resolves to otel.Meter(scopeName) at Router.New so a global
-	// MeterProvider Setup (or a noop when Setup was skipped) wins by
-	// default. Mirrors the W6 Config.Tracer + Config.Meter pattern used
-	// across cost/spend + gates/l4 so callers stay on one DI seam.
+	// Meter nil ⇒ otel.Meter(scopeName) at Router.New so the global
+	// MeterProvider Setup wins by default. Mirrors the W6 Config.Tracer
+	// + Config.Meter DI seam used across cost/spend + gates/l4.
 	//
-	// Router.New consumes this by wrapping the configured Labeler with
-	// a metric-emitting decorator — every PRLabeler implementation gets
-	// LabelFailureMetricName emission without having to thread a meter
-	// into its own constructor (issue #499 — orphan field).
+	// Router.New wraps the configured Labeler with a metric-emitting
+	// decorator so every PRLabeler impl surfaces LabelFailureMetricName
+	// without threading a meter into its own constructor (#499).
 	Meter metric.Meter
 }
 
+// Event kinds the router reads (gate_rejected) and appends
+// (escalated, labeled).
 const (
-	// EventKindGateRejected is the events.kind value written by gate
-	// runners when a verdict comes back rejecting. The router watches
-	// for this kind exclusively.
 	EventKindGateRejected = "gate_rejected"
+	EventKindEscalated    = "escalated"
 
-	// EventKindEscalated is appended when the router escalates an
-	// agent past K rejections.
-	EventKindEscalated = "escalated"
-
-	// EventKindLabeled is appended once the PRLabeler.AddLabel call
-	// for an escalation succeeds. Its existence is the idempotency
-	// marker the labeler-retry sweep checks: an agent in `escalated`
-	// state with no `labeled` event still needs its PR labeled.
+	// EventKindLabeled marks idempotency for the labeler-retry sweep:
+	// an `escalated` agent with no `labeled` event still needs labeling.
 	EventKindLabeled = "labeled"
 
 	defaultK             = 3
@@ -125,16 +90,15 @@ type Router struct {
 	cursor int64
 	log    *slog.Logger
 
-	// txHook fires inside the escalation tx between the gates_failed
-	// write and the escalated/release-locks/event-record writes. Tests
-	// pin the atomic-rollback contract via export_test.SetTxHook (see
-	// issue #477); production paths leave it nil.
+	// txHook fires inside the escalation tx between gates_failed write
+	// and the escalated/release-locks/event-record writes. Tests pin
+	// the atomic-rollback contract via export_test.SetTxHook (#477);
+	// production paths leave it nil.
 	txHook func(*sql.Tx) error
 }
 
-// New constructs a Router. The cursor starts at 0; first Tick scans
-// every gate_rejected row from the beginning of the events table —
-// agent-state guards make replay idempotent.
+// New constructs a Router with the cursor at 0 — first Tick scans
+// every gate_rejected row; agent-state guards make replay idempotent.
 func New(cfg Config) *Router {
 	if cfg.K <= 0 {
 		cfg.K = defaultK
@@ -148,11 +112,9 @@ func New(cfg Config) *Router {
 	if cfg.Labeler == nil {
 		cfg.Labeler = noopLabeler{}
 	}
-	// Wrap the configured labeler so every AddLabel error increments
-	// LabelFailureMetricName on the resolved meter. Wrapping at the
-	// Router boundary (rather than inside each PRLabeler impl) makes
-	// Config.Meter authoritative for telemetry routing — fakes,
-	// GHLabeler, and noopLabeler all surface the same counter shape.
+	// Wrap at the Router boundary (not per-impl) so Config.Meter is the
+	// single authoritative DI knob for telemetry routing — fakes,
+	// GHLabeler, and noopLabeler share the same counter shape.
 	cfg.Labeler = &metricLabeler{
 		inner:       cfg.Labeler,
 		instruments: newInstruments(cfg.resolveMeter()),
@@ -164,25 +126,18 @@ func New(cfg Config) *Router {
 	return &Router{cfg: cfg, log: log}
 }
 
-// gateRejectedPayload is the JSON shape this router reads from the
-// events table. Only pr_sha is load-bearing — the rest is audit
-// context the gate runner already wrote.
+// gateRejectedPayload is the JSON shape read from the events table.
+// Only pr_sha is load-bearing — the rest is audit context.
 type gateRejectedPayload struct {
 	PRSHA string `json:"pr_sha"`
 }
 
-// Tick processes the next batch of gate_rejected events newer than
-// the cursor, then sweeps any agent left in `escalated` state without
-// a corresponding `labeled` event so a prior labeler failure is
-// retried. Per-event state errors propagate; the cursor advances only
-// past events that were applied (or correctly skipped) so the next
-// Tick retries the failing event.
-//
-// State transitions are durable before the labeler call so the
-// counter cannot regress on retry. The labeler is idempotent in
-// practice (gh's `--add-label` is a no-op when the label is already
-// attached); the `labeled` audit row is the marker that lets the
-// sweep stop after success.
+// Tick processes the next batch of gate_rejected events past the
+// cursor, then sweeps escalated agents missing a `labeled` event so a
+// prior labeler failure is retried. State transitions are durable
+// before the labeler call so the counter cannot regress on retry; the
+// `labeled` audit row is the marker that lets the sweep terminate.
+// Per-event errors stall the cursor so the next Tick retries.
 func (r *Router) Tick(ctx context.Context) error {
 	events, err := r.cfg.DB.ListEventsByKindSince(ctx, EventKindGateRejected, r.cursor, r.cfg.BatchLimit)
 	if err != nil {
@@ -191,7 +146,6 @@ func (r *Router) Tick(ctx context.Context) error {
 	var firstErr error
 	for _, ev := range events {
 		if err := r.handle(ctx, ev); err != nil {
-			// Cursor stays put — next Tick retries this event.
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -205,17 +159,11 @@ func (r *Router) Tick(ctx context.Context) error {
 	return firstErr
 }
 
-// sweepUnlabeled retries the labeler for every escalated agent that
-// has no `labeled` audit row yet. The SQL-level NOT EXISTS filter (via
-// ListEscalatedUnlabeled) collapses the prior N+1 round-trip pattern
-// (list-all + per-row lookup) into a single index-driven scan and caps
-// emitted rows at BatchLimit — so the number of *labeler calls* per
-// Tick is bounded by BatchLimit regardless of how many escalated rows
-// accumulate. See issue #478. The outer index probe still scales with
-// the terminal escalated set (one idx_events_agent lookup per row
-// until LIMIT is reached), but each probe is O(log E) and runs
-// in-process via SQLite, not over the network like the labeler calls
-// that #478 was actually about.
+// sweepUnlabeled retries the labeler for every escalated agent without
+// a `labeled` audit row. ListEscalatedUnlabeled's SQL-level NOT EXISTS
+// collapses the prior N+1 round-trip into one index-driven scan and
+// caps labeler calls per Tick at BatchLimit regardless of escalated
+// backlog (#478).
 func (r *Router) sweepUnlabeled(ctx context.Context) error {
 	escalated, err := r.cfg.DB.ListEscalatedUnlabeled(ctx, r.cfg.BatchLimit)
 	if err != nil {
@@ -236,14 +184,11 @@ func (r *Router) sweepUnlabeled(ctx context.Context) error {
 	return nil
 }
 
-// handle applies the per-event side-effects: idempotency guard +
-// increment+transition + optional escalation. Returns nil for events
-// the router correctly drops (stale sha, agent not in gates_running,
-// missing agent_id).
+// handle applies per-event side-effects. Returns nil for events the
+// router correctly drops (stale sha, agent not in gates_running,
+// missing agent_id) so the cursor can advance.
 func (r *Router) handle(ctx context.Context, ev state.Event) error {
 	if !ev.AgentID.Valid {
-		// Adapter-level event, not tied to an agent — nothing to
-		// route. Advance the cursor.
 		return nil
 	}
 	agentID := ev.AgentID.Int64
@@ -251,8 +196,7 @@ func (r *Router) handle(ctx context.Context, ev state.Event) error {
 	var payload gateRejectedPayload
 	if ev.PayloadJSON != "" {
 		if err := json.Unmarshal([]byte(ev.PayloadJSON), &payload); err != nil {
-			// Malformed payload — log and skip rather than wedge the
-			// daemon on a single bad row.
+			// Skip rather than wedge the daemon on a single bad row.
 			r.log.Warn("rejectionrouter.payload_unmarshal",
 				"event_id", ev.ID, "err", err.Error())
 			return nil
@@ -261,35 +205,28 @@ func (r *Router) handle(ctx context.Context, ev state.Event) error {
 
 	agent, err := r.cfg.DB.GetAgent(ctx, agentID)
 	if err != nil {
-		// Agent row vanished (compaction / FK cascade in some future
-		// migration) — log + skip; the event is durable, the agent is
-		// not.
+		// Agent row vanished (FK cascade in some future migration) —
+		// the event is durable, the agent is not.
 		r.log.Warn("rejectionrouter.agent_missing",
 			"event_id", ev.ID, "agent_id", agentID, "err", err.Error())
 		return nil
 	}
 
 	if agent.State != state.AgentGatesRunning {
-		// Either already routed (gates_failed/escalated), already
-		// withdrawn, or rejection landed pre-gate. Drop.
 		return nil
 	}
 	if payload.PRSHA == "" || agent.PRSHA == "" || payload.PRSHA != agent.PRSHA {
 		// Stale rejection per design.md ("newer than the agent's last
-		// commit"). The agent has pushed a new sha since the gate ran;
-		// the next sha's gate run will produce a fresh event.
+		// commit"); the next sha's gate run produces a fresh event.
 		return nil
 	}
 
-	// One tx covers the increment-and-transition AND, when the
-	// counter crosses K, the escalated transition + lock release +
-	// audit append. Issue #477: pre-fix the second transition ran in
-	// its own tx, so a sqlite-busy on the second write left the agent
-	// stranded at gates_failed with rejection_count=K — the cursor
-	// then advanced past the event because the next Tick's state
-	// check dropped the now-non-gates_running row. Atomic commit
-	// means a mid-tx fault rolls back the counter too, and the next
-	// Tick retries the same event from scratch.
+	// One tx covers increment-and-transition AND, when the counter
+	// crosses K, the escalated transition + lock release + audit
+	// append. #477: pre-fix the second transition ran in its own tx,
+	// so a sqlite-busy on the second write stranded the agent at
+	// gates_failed with rejection_count=K while the cursor advanced
+	// past the event. Atomic commit rolls back the counter on fault.
 	var (
 		updated   *state.Agent
 		escalated *state.Agent
@@ -304,8 +241,8 @@ func (r *Router) handle(ctx context.Context, ev state.Event) error {
 		if a.RejectionCount < r.cfg.K {
 			return nil
 		}
-		// Test seam — surfaces sqlite-busy / mid-tx errors that would
-		// otherwise be impossible to reproduce deterministically.
+		// Test seam — surfaces sqlite-busy / mid-tx errors otherwise
+		// impossible to reproduce deterministically.
 		if r.txHook != nil {
 			if err := r.txHook(tx); err != nil {
 				return err
@@ -319,17 +256,16 @@ func (r *Router) handle(ctx context.Context, ev state.Event) error {
 		if _, err := r.cfg.DB.ReleaseAgentLocksTx(ctx, tx, agentID); err != nil {
 			return err
 		}
-		// Audit row appended inside the same tx so it is observable
-		// iff the escalation committed. The labeler call lives
-		// outside the tx — sweepUnlabeled retries it on failure.
+		// Audit row inside the tx so it is observable iff escalation
+		// committed; the labeler call lives outside — sweepUnlabeled
+		// retries on failure.
 		return r.cfg.DB.RecordEventTx(ctx, tx, agentID, EventKindEscalated,
 			fmt.Sprintf(`{"rejection_count":%d,"k":%d}`, esc.RejectionCount, r.cfg.K))
 	})
 	if txErr != nil {
 		if errors.Is(txErr, state.ErrInvalidTransition) {
 			// Race: agent moved out of gates_running between our read
-			// and the transition. Drop the event — the new state owns
-			// the verdict.
+			// and the transition — new state owns the verdict.
 			return nil
 		}
 		return fmt.Errorf("rejectionrouter: escalation tx: %w", txErr)
