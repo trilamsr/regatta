@@ -64,6 +64,9 @@ run_case "F-missing-status-leak-fails"   1 "$FIXTURES/spec-missing-status-leak.m
   "spec-missing-status-leak\.md.*blackboard"
 run_case "G-active-forward-fit-allowed"  0 "$FIXTURES/spec-active-forward-fit.md"
 run_case "H-active-fenced-only-allowed"  0 "$FIXTURES/spec-active-fenced-mention.md"
+run_case "I-active-htmx-leak-fails"      1 "$FIXTURES/spec-active-htmx-leak.md" \
+  "spec-active-htmx-leak\.md.*htmx"
+run_case "J-htmx-forward-fit-allowed"    0 "$FIXTURES/spec-forward-fit-htmx-allowed.md"
 
 echo "---"
 echo "passes=$passes fails=$fails"

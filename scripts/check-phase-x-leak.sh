@@ -4,7 +4,7 @@
 # CLAUDE.md §Self-host filter + docs/engineer/briefs/2026-06-01-self-host-first.md
 # §1 + §4 say: defer Phase-X scope (multi-tenant `tenant_id`, RBAC, Stripe
 # metered billing, Sigstore/Rekor attestation, blackboard CAS, Temporal
-# workflow engine) until an external paying customer asks. Without a gate,
+# workflow engine, htmx UI) until an external paying customer asks. Without a gate,
 # the filter is prose-only and Phase-X scope creeps into active specs via
 # forward-fit prose. This gate fails the build when an `active` spec names
 # a Phase-X token outside an opt-in escape hatch.
@@ -47,14 +47,15 @@ if [ ! -d "$SPECS_DIR" ]; then
 fi
 
 # Phase-X tokens pinned to the self-host brief §1 + §4. Word-boundary regex
-# (case-insensitive). `Temporal` matches only when capitalized (lowercase
-# `temporal` is generic time-domain prose; `Temporal` is the Workflow engine
-# product). Same heuristic for `Sigstore` / `Stripe` / `Rekor` — product names
-# the brief itself spells with leading caps.
+# (case-sensitive — `grep -E` default). `Temporal` matches only when capitalized
+# (lowercase `temporal` is generic time-domain prose; `Temporal` is the Workflow
+# engine product). Same heuristic for `Sigstore` / `Stripe` / `Rekor` — product
+# names the brief itself spells with leading caps.
 #
 # `tenant_id` is matched lower_snake_case because that is the SQL column +
 # attribute spelling the brief calls out; the prose word "tenant" alone is
-# not in scope.
+# not in scope. `htmx` is matched lowercase because that is the brief's spelling
+# ("No htmx UI needed" §1) and the upstream library's own casing.
 phase_x_tokens=(
   '\btenant_id\b'
   '\bRBAC\b'
@@ -63,6 +64,7 @@ phase_x_tokens=(
   '\bRekor\b'
   '\bblackboard\b'
   '\bTemporal\b'
+  '\bhtmx\b'
 )
 # Single regex for the grep pass.
 tokens_union=$(IFS='|'; echo "${phase_x_tokens[*]}")
@@ -171,7 +173,7 @@ if [ "$leaks" -gt 0 ]; then
   printf '%s' "$leak_lines" | sed 's/^/  - /'
   echo
   echo "Self-host filter (CLAUDE.md + docs/engineer/briefs/2026-06-01-self-host-first.md §1):"
-  echo "  Phase-X scope (tenant_id, RBAC, Stripe, Sigstore, Rekor, blackboard, Temporal)"
+  echo "  Phase-X scope (tenant_id, RBAC, Stripe, Sigstore, Rekor, blackboard, Temporal, htmx)"
   echo "  defers until an external paying customer asks. Active specs that touch these"
   echo "  tokens must declare intent via frontmatter \`phase: x-forward-fit\`."
   exit 1
