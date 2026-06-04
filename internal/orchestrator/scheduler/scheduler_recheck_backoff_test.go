@@ -139,14 +139,14 @@ func TestRecheckBackoff_RespectsConfigK_N(t *testing.T) {
 		if !b.Admit(id) {
 			t.Fatalf("strike %d: Admit=false; want true (under K=5)", i)
 		}
-		if entered := b.RecordFailure(id); entered {
+		if entered := b.RecordFailure(context.Background(), id); entered {
 			t.Fatalf("strike %d: enteredBackoff=true; want false (K=5 not yet hit)", i)
 		}
 	}
 	if !b.Admit(id) {
 		t.Fatalf("5th strike: Admit=false; want true (still under K=5 pre-record)")
 	}
-	if !b.RecordFailure(id) {
+	if !b.RecordFailure(context.Background(), id) {
 		t.Fatalf("5th strike: enteredBackoff=false; want true (hits K=5)")
 	}
 	for i := 0; i < 7; i++ {
@@ -178,8 +178,8 @@ func TestRecheckBackoff_DefaultsMatchLegacyConstants(t *testing.T) {
 func TestRecheckBackoff_StaleTicksEvictsIdleEntries(t *testing.T) {
 	b := newRecheckBackoffWithConfig(recheckBackoffConfig{K: 3, SuppressTicks: 10, StaleTicks: 4})
 	const id = "wi-1"
-	b.RecordFailure(id)
-	b.RecordFailure(id)
+	b.RecordFailure(context.Background(), id)
+	b.RecordFailure(context.Background(), id)
 	for i := 0; i < 4; i++ {
 		b.Tick()
 	}
