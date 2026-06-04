@@ -86,7 +86,7 @@ status: planned
 
 ## Acceptance criteria
 
-- [planned] c1: `GET /healthz` returns 200 with body `ok`
+- [planned] c1: `GET /healthz` returns 200 + JSON readiness envelope
 - [planned] c2: handler test under internal/server/...
 - [planned] c3: route wired in cmd/server/main.go
 EOF
