@@ -27,6 +27,9 @@ func buildItemBodyLoader(repoRoot string, slogger *slog.Logger) func(ctx context
 	}
 }
 
+// maxItemBodyBytes caps a single brief at 256KB so prompt-bloat (and downstream token cost) stays bounded; oversize files fall through to the WARN-and-degrade path.
+const maxItemBodyBytes = 256 * 1024
+
 func scanItemsForID(dir, workItemID string, slogger *slog.Logger) (string, bool) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -43,7 +46,24 @@ func scanItemsForID(dir, workItemID string, slogger *slog.Logger) (string, bool)
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
-		// #nosec G304 — path = flag-constrained repoRoot + fixed .regatta/items + dir entry; same trust boundary as adapter/markdown.go.
+		info, err := os.Lstat(path)
+		if err != nil {
+			continue
+		}
+		// Symlinks could redirect reads to ~/.ssh/id_rsa or any out-of-tree secret, so the loader refuses to follow them at all.
+		if info.Mode()&os.ModeSymlink != 0 {
+			if slogger != nil {
+				slogger.Warn("item_body_loader.symlink_skipped", "path", path)
+			}
+			continue
+		}
+		if info.Size() > maxItemBodyBytes {
+			if slogger != nil {
+				slogger.Warn("item_body_loader.oversize_skipped", "path", path, "bytes", info.Size(), "cap", maxItemBodyBytes)
+			}
+			continue
+		}
+		// #nosec G304 — path = flag-constrained repoRoot + fixed .regatta/items + dir entry; Lstat above rejects symlinks before this read.
 		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
