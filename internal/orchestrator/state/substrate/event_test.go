@@ -73,7 +73,7 @@ func TestSubstrate_NonceMismatchRejected(t *testing.T) {
 	e.Nonce = fixedNonce(0xff)
 
 	err := substrate.Verify(e, testKeyring())
-	if !substrate.IsUnverifiable(err) {
+	if !errors.Is(err, substrate.ErrUnverifiable) {
 		t.Fatalf("Verify: err=%v want ErrUnverifiable", err)
 	}
 }
@@ -188,7 +188,7 @@ func TestSubstrate_CrossRunReplayRejected(t *testing.T) {
 	e.RunID = "run-Y"
 
 	err := substrate.Verify(e, testKeyring())
-	if !substrate.IsUnverifiable(err) {
+	if !errors.Is(err, substrate.ErrUnverifiable) {
 		t.Fatalf("Verify across run: err=%v want ErrUnverifiable", err)
 	}
 }

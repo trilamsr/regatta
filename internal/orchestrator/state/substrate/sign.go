@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"hash"
 	"strconv"
@@ -323,11 +322,3 @@ func appendJSONStringASCII(dst []byte, s string) []byte {
 // maxKeyIDLenFast mirrors contracts/schemas.maxKeyIDLen — local copy
 // avoids importing schemas for one int constant.
 const maxKeyIDLenFast = 1 << 20
-
-// IsUnverifiable lets callers errors.Is across the substrate /
-// contracts/schemas package boundary. Both sentinels wrap the same
-// underlying "signature does not match" concept; collapsing them in
-// callers avoids forcing every consumer to import both packages.
-func IsUnverifiable(err error) bool {
-	return errors.Is(err, ErrUnverifiable) || errors.Is(err, schemas.ErrUnverifiable)
-}
