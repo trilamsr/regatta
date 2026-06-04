@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+# gen-boot-status.sh - regenerate auto-shipped + auto-priority blocks in the
+# autonomous-session boot prompt from live gh queries. Kills the per-wave
+# hand-edit tax called out in feedback_boot_prompt_per_wave_refresh.
+#
+# What it does:
+#   1. Queries `gh pr list --state merged` since cutoff date (default 7 days).
+#   2. Queries `gh issue list --state open` for tracking issues; optionally
+#      filtered by --label.
+#   3. Splices the rendered bullet lists between marker pairs in the prompt:
+#         <!-- BEGIN auto-shipped --> ... <!-- END auto-shipped -->
+#         <!-- BEGIN auto-priority --> ... <!-- END auto-priority -->
+#      Anything outside the markers is preserved byte-for-byte.
+#   4. Idempotent: a second run on the same gh output produces no diff.
+#
+# Flags:
+#   --prompt <file>     prompt file to update (default:
+#                       docs/engineer/autonomous-session-prompt.md)
+#   --since <date>      cutoff for merged-PR query (default: 7 days ago,
+#                       YYYY-MM-DD)
+#   --label <name>      label filter for the priority issue query (default:
+#                       no filter — every open issue, capped at 30)
+#   --limit-prs <N>     cap merged-PR result count (default: 50)
+#   --limit-issues <N>  cap open-issue result count (default: 30)
+#
+# Exit codes: 0 success; 1 missing markers in prompt; 2 flag/usage error.
+
+set -euo pipefail
+
+prompt="docs/engineer/autonomous-session-prompt.md"
+since=""
+label=""
+limit_prs=50
+limit_issues=30
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --prompt)        prompt="$2";        shift 2 ;;
+    --since)         since="$2";         shift 2 ;;
+    --label)         label="$2";         shift 2 ;;
+    --limit-prs)     limit_prs="$2";     shift 2 ;;
+    --limit-issues)  limit_issues="$2";  shift 2 ;;
+    -h|--help)
+      sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+      exit 0
+      ;;
+    *) echo "gen-boot-status: unknown flag: $1" >&2; exit 2 ;;
+  esac
+done
+
+if [ -z "$since" ]; then
+  # Default: 7 days ago. macOS/BSD date and GNU date differ on flag syntax.
+  if date -v-7d +%Y-%m-%d >/dev/null 2>&1; then
+    since=$(date -v-7d +%Y-%m-%d)
+  else
+    since=$(date -d '7 days ago' +%Y-%m-%d)
+  fi
+fi
+
+if [ ! -f "$prompt" ]; then
+  echo "gen-boot-status: prompt file does not exist: $prompt" >&2
+  exit 2
+fi
+
+# Guard rails: refuse to splice if either marker pair is missing. Better to
+# fail loudly than silently produce a no-op.
+need_markers=(
+  "<!-- BEGIN auto-shipped -->"
+  "<!-- END auto-shipped -->"
+  "<!-- BEGIN auto-priority -->"
+  "<!-- END auto-priority -->"
+)
+for m in "${need_markers[@]}"; do
+  if ! grep -qF "$m" "$prompt"; then
+    echo "gen-boot-status: missing marker in $prompt: $m" >&2
+    exit 1
+  fi
+done
+
+# --- Queries ---------------------------------------------------------------
+# gh prints JSON arrays; python3 turns them into deterministic bullet lists.
+
+shipped_json=$(gh pr list \
+  --state merged \
+  --search "merged:>$since" \
+  --json number,title,mergedAt \
+  -L "$limit_prs" 2>/dev/null || echo "[]")
+
+if [ -n "$label" ]; then
+  priority_json=$(gh issue list \
+    --state open \
+    --label "$label" \
+    --json number,title,labels \
+    -L "$limit_issues" 2>/dev/null || echo "[]")
+else
+  priority_json=$(gh issue list \
+    --state open \
+    --json number,title,labels \
+    -L "$limit_issues" 2>/dev/null || echo "[]")
+fi
+
+# --- Render ----------------------------------------------------------------
+render_shipped() {
+  python3 - <<PY
+import json, sys
+data = json.loads('''$shipped_json''' or '[]')
+# Sort by PR number ascending — stable irrespective of mergedAt jitter.
+data.sort(key=lambda r: r.get("number", 0))
+if not data:
+    print("- _No merged PRs in window._")
+else:
+    for r in data:
+        n = r.get("number", 0)
+        title = (r.get("title") or "").replace("\n", " ").strip()
+        print(f"- #{n} {title}")
+PY
+}
+
+render_priority() {
+  python3 - <<PY
+import json, sys
+data = json.loads('''$priority_json''' or '[]')
+data.sort(key=lambda r: r.get("number", 0))
+if not data:
+    print("- _No open priority issues._")
+else:
+    for r in data:
+        n = r.get("number", 0)
+        title = (r.get("title") or "").replace("\n", " ").strip()
+        labels = ",".join(sorted(l.get("name","") for l in (r.get("labels") or [])))
+        suffix = f" [{labels}]" if labels else ""
+        print(f"- #{n} {title}{suffix}")
+PY
+}
+
+shipped_block=$(render_shipped)
+priority_block=$(render_priority)
+
+# --- Splice ----------------------------------------------------------------
+# Python single-pass splice keeps marker lines intact and replaces only the
+# bytes between them. Anything outside the marker pairs is preserved.
+new_content=$(python3 - "$prompt" <<PY
+import sys, io
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    text = fh.read()
+
+shipped = """$shipped_block"""
+priority = """$priority_block"""
+
+def splice(text, begin, end, payload):
+    i = text.find(begin)
+    j = text.find(end, i)
+    if i < 0 or j < 0:
+        raise SystemExit(f"missing markers: {begin} / {end}")
+    # Preserve the BEGIN line + a single trailing newline before payload,
+    # and the END line as-is. Payload is sandwiched on its own lines.
+    head = text[: i + len(begin)]
+    tail = text[j:]
+    return head + "\n" + payload.rstrip("\n") + "\n" + tail
+
+text = splice(text, "<!-- BEGIN auto-shipped -->",  "<!-- END auto-shipped -->",  shipped)
+text = splice(text, "<!-- BEGIN auto-priority -->", "<!-- END auto-priority -->", priority)
+sys.stdout.write(text)
+PY
+)
+
+# Write only if content changed — preserves mtime when boot status stable.
+current=$(cat "$prompt")
+if [ "$current" = "$new_content" ]; then
+  echo "gen-boot-status: $prompt already up to date"
+  exit 0
+fi
+
+printf '%s' "$new_content" > "$prompt"
+echo "gen-boot-status: wrote $prompt"
