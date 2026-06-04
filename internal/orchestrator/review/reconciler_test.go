@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/testutil"
 )
 
 // TestReconciler_DrainsQueueAndCallsApprover pins #623 — enqueued verdicts reach the Approver in order.
@@ -41,11 +42,11 @@ func TestReconciler_DrainsQueueAndCallsApprover(t *testing.T) {
 	if err := r.Enqueue(Verdict{Outcome: schemas.VerdictPass, PRNumber: 300, HeadSHA: "s300", Model: "m"}); err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
-	// Wait up to 1s for the goroutine to drain.
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) && posts.Load() == 0 {
-		time.Sleep(5 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
-	}
+	waitCtx, waitCancel := context.WithTimeout(ctx, time.Second)
+	defer waitCancel()
+	testutil.Eventually(t, waitCtx, 5*time.Millisecond, func() bool {
+		return posts.Load() > 0
+	}, "reconciler never drained Verdict into Approver")
 	cancel()
 	<-r.Done()
 	if posts.Load() != 1 {

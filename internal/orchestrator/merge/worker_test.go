@@ -10,6 +10,7 @@ import (
 
 	"github.com/trilamsr/regatta/internal/orchestrator/merge"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil"
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
@@ -32,20 +33,12 @@ func TestWorker_DrainsQueueAndExecutes(t *testing.T) {
 	if !w.Enqueue(merge.MergeRequest{AgentID: a.ID, PRNumber: 42, HeadSHA: "sha"}) {
 		t.Fatalf("enqueue failed on empty queue")
 	}
-	// Spin-wait for ExecuteMerge to land; bounded so a stuck worker
-	// surfaces as test failure rather than hang.
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
+	waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
+	defer waitCancel()
+	testutil.Eventually(t, waitCtx, 10*time.Millisecond, func() bool {
 		got, _ := db.GetAgent(ctx, a.ID)
-		if got != nil && got.State == state.AgentDone {
-			break
-		}
-		time.Sleep(10 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
-	}
-	got, _ := db.GetAgent(ctx, a.ID)
-	if got.State != state.AgentDone {
-		t.Fatalf("state=%s, want done (worker drain incomplete)", got.State)
-	}
+		return got != nil && got.State == state.AgentDone
+	}, "worker drain incomplete: agent never reached Done")
 	w.Stop()
 	wg.Wait()
 }
