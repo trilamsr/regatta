@@ -155,3 +155,17 @@ func TestBuildSpecAdapter_SurfacesYAMLLoadError(t *testing.T) {
 		t.Fatalf("log missing adapter.config_load_failed warn record (silent-swallow regression #867):\n%s", out)
 	}
 }
+
+// TestBuildSpecAdapter_MissingYAMLStaysSilent pins the negative half of the #867 diagnostic contract — a zero-config deployment (no regatta.yaml on disk) MUST NOT emit adapter.config_load_failed because file-not-present is the documented happy path, not a misconfiguration.
+func TestBuildSpecAdapter_MissingYAMLStaysSilent(t *testing.T) {
+	tmp := t.TempDir()
+	buf := &bytes.Buffer{}
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	if _, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, logger); err != nil {
+		t.Fatalf("buildSpecAdapter: %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "adapter.config_load_failed") {
+		t.Fatalf("zero-config deployment emitted spurious config_load_failed warn:\n%s", out)
+	}
+}

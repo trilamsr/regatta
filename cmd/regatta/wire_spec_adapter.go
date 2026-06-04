@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"path/filepath"
 
@@ -12,12 +14,12 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter/githubissues"
 )
 
-// buildSpecAdapter dispatches the schemas.SpecAdapter by `regatta.yaml::spec_adapter.type` (MVR-1-T4 §10.1). The slogger pin is load-bearing: pre-#867 the LoadConfigFile error path was silently swallowed, so a malformed regatta.yaml would fall back to markdown_catalog with no operator-visible signal that github_issues had been dropped. Every boot now emits one adapter.configured INFO record so operators can confirm the wired type without log archaeology, and yaml-load failures surface a WARN record naming the parse error.
+// buildSpecAdapter dispatches the schemas.SpecAdapter by `regatta.yaml::spec_adapter.type` (MVR-1-T4 §10.1). The slogger pin is load-bearing: pre-#867 the LoadConfigFile error path was silently swallowed, so a malformed regatta.yaml would fall back to markdown_catalog with no operator-visible signal that github_issues had been dropped. Every boot now emits one adapter.configured INFO record so operators can confirm the wired type without log archaeology, and yaml-load failures (file present but malformed) surface a WARN record naming the parse error. A missing regatta.yaml stays silent — zero-config deployments are the documented happy path.
 func buildSpecAdapter(f serveFlags, logger *slog.Logger) (schemas.SpecAdapter, error) {
 	cfgPath := filepath.Join(f.RepoRoot, "regatta.yaml")
 	cfg, loadErr := validateconfig.LoadConfigFile(cfgPath)
-	if loadErr != nil {
-		logger.Warn("adapter.config_load_failed", "path", cfgPath, "err", loadErr.Error())
+	if loadErr != nil && !errors.Is(loadErr, fs.ErrNotExist) {
+		logger.Warn("adapter.config_load_failed", "path", cfgPath, "err", loadErr)
 	}
 	if cfg != nil && cfg.SpecAdapter != nil && cfg.SpecAdapter.Type == validateconfig.SpecAdapterTypeGitHubIssues {
 		if cfg.Repo == nil || cfg.Repo.Owner == "" || cfg.Repo.Name == "" {
