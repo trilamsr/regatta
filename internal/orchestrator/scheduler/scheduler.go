@@ -175,6 +175,22 @@ type Config struct {
 	// operator-observable-equivalent to pre-c2.
 	MergeCoordinator *merge.Coordinator
 	MergeWorker      *merge.Worker
+
+	// RecheckBackoffK is the per-orphan fetch-failure budget before the
+	// recheck gate enters its suppression window (#794). Zero falls back
+	// to the legacy K=3 default; values <1 clamp.
+	RecheckBackoffK int
+
+	// RecheckBackoffSuppressTicks is the recheck-gate suppression-window
+	// length once an orphan trips the K budget (#794). Zero falls back
+	// to the legacy N=10 default; values <1 clamp.
+	RecheckBackoffSuppressTicks int
+
+	// RecheckBackoffStaleTicks is the idle-eviction grace for sub-K
+	// entries — bounds map growth when a flapping orphan never reaches
+	// the K threshold (#794). Zero falls back to the default 20; values
+	// below K clamp.
+	RecheckBackoffStaleTicks int
 }
 
 // ResolveMeter returns the configured meter or falls back lazily so a
@@ -182,6 +198,16 @@ type Config struct {
 // next call.
 func (c Config) ResolveMeter() metric.Meter {
 	return obs.ResolveMeter(c.Meter, obs.MeterScopeScheduler)
+}
+
+// recheckBackoffConfig projects Config's RecheckBackoff* knobs onto the
+// helper-local struct (#794). Clamping lives in resolveRecheckBackoffConfig.
+func (c Config) recheckBackoffConfig() recheckBackoffConfig {
+	return recheckBackoffConfig{
+		K:             c.RecheckBackoffK,
+		SuppressTicks: c.RecheckBackoffSuppressTicks,
+		StaleTicks:    c.RecheckBackoffStaleTicks,
+	}
 }
 
 // schedulerDB is the seam between Scheduler and state.DB so crash-
