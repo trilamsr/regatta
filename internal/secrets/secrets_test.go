@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/testutil"
 )
 
 // TestValue_StructHasNoExportedFields asserts the reflect-walk invariant that protects against future fields breaking redaction (R8).
@@ -363,17 +365,12 @@ func TestCache_SIGHUPSwapsSnapshotAtomically(t *testing.T) {
 	if err := syscall.Kill(syscall.Getpid(), syscall.SIGHUP); err != nil {
 		t.Fatalf("kill SIGHUP: %v", err)
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	for {
+	waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
+	testutil.Eventually(t, waitCtx, 5*time.Millisecond, func() bool {
 		v2, _, _ := c.Get(KeyAnthropic)
-		if string(v2.Bytes()) != first {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("SIGHUP did not refresh snapshot within deadline")
-		}
-		time.Sleep(5 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
-	}
+		return string(v2.Bytes()) != first
+	}, "SIGHUP did not refresh snapshot within deadline")
+	waitCancel()
 	cancel()
 	<-done
 }
