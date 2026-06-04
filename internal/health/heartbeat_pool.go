@@ -2,20 +2,19 @@ package health
 
 import (
 	"database/sql"
+	"errors"
 )
 
-// OpenHeartbeatPool returns a dedicated *sql.DB whose pool is pinned to
-// one connection — spec §3.5 fix #7. Stalls in the main pool can never
-// starve the heartbeat writer; staleness then honestly signals wedge.
-//
-// Caller owns Close; the pool is read in the writer goroutine only.
-func OpenHeartbeatPool(driver, dsn string) (*sql.DB, error) {
-	db, err := sql.Open(driver, dsn)
-	if err != nil {
-		return nil, err
+// ConfigureHeartbeatPool pins db to the single-connection pool spec §3.5
+// fix #7 requires so stalls in the main pool can never starve the
+// heartbeat writer. Composition root owns the sql.Open; this function
+// only sets pool limits on the injected handle.
+func ConfigureHeartbeatPool(db *sql.DB) error {
+	if db == nil {
+		return errors.New("health: ConfigureHeartbeatPool requires non-nil db")
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxIdleTime(0)
-	return db, nil
+	return nil
 }

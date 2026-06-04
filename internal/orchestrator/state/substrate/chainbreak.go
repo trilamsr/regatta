@@ -1,9 +1,9 @@
 // OBS Wave-B T2 background HMAC chain-break sweeper. Read-path Verify
 // catches breaks the moment a reducer touches the row; this sweeper
 // covers the "row never read again" case for the last-24h hot window.
-// Self-host single-binary sqlite means one DB file; the sweeper opens
-// a SECOND connection in read-only WAL mode so it never competes with
-// the writer for the WAL lock.
+// Self-host single-binary sqlite means one DB file; the caller injects
+// a SECOND read-only connection so the sweeper never competes with the
+// writer for the WAL lock — see ReadOnlyDSN for the recommended DSN.
 //
 // Why a separate connection: sqlite WAL mode allows concurrent readers
 // AND one writer, but the writer holds the WAL header lock for ≤10 ms
@@ -24,16 +24,25 @@ import (
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
+// ReadOnlyDSN is the sqlite DSN substrate's chain-walkers expect: WAL
+// journal, PRAGMA query_only, mode=ro. Composition roots build the
+// read-only *sql.DB with this DSN and inject it into SweeperConfig.RODB
+// / FullChainConfig.RODB.
+func ReadOnlyDSN(dbPath string) string {
+	return fmt.Sprintf("file:%s?_journal_mode=WAL&_query_only=1&mode=ro", dbPath)
+}
+
 // SweeperConfig tunes the background HMAC sweeper. Zero values pick
 // the spec §4 defaults (1h interval, 24h window, 1000-row batch with
 // 50ms inter-batch pause). Tests inject tighter values; prod takes
 // defaults so the sweeper stays inside the < 10% throughput-degradation
 // bench bound (BenchmarkSubstrate_AppendUnderSweeperLoad).
 type SweeperConfig struct {
-	// DBPath is the absolute path to the substrate sqlite file. The
-	// sweeper opens its own read-only connection here so the writer's
-	// pool sees zero new contention.
-	DBPath string
+	// RODB is the caller-injected read-only handle. Composition root
+	// owns the open + close lifecycle; substrate borrows it for the
+	// duration of the Sweeper. Open with substrate.ReadOnlyDSN so the
+	// PRAGMA query_only guarantee holds.
+	RODB *sql.DB
 
 	// Keyring resolves SigKeyID → HMAC key. Reuses the same shape
 	// Verify() takes so callers do not maintain two keyring objects.
@@ -111,32 +120,16 @@ type Sweeper struct {
 	closeErr  error
 }
 
-// NewSweeper opens a read-only WAL connection to cfg.DBPath and returns
-// a Sweeper ready for Start. The read-only pool sets PRAGMA query_only
-// = ON so even a programming-error write from this connection returns
-// an error rather than blocking the writer's WAL lock.
-//
-// Why _journal_mode=WAL even on read-only: sqlite drivers default to
-// rollback-journal mode for fresh connections; explicit WAL keeps the
-// reader on the same journal mode the writer uses, so readers see
-// committed writes through the WAL frame rather than blocking on a
-// rollback-journal lock.
+// NewSweeper wraps the caller-injected RODB in a Sweeper ready for Start.
+// The caller owns RODB's open/close; substrate does NOT close it on
+// Sweeper.Close so composition roots can reuse the same RO handle across
+// multiple sweepers / audits.
 func NewSweeper(cfg SweeperConfig) (*Sweeper, error) {
-	if cfg.DBPath == "" {
-		return nil, fmt.Errorf("substrate: sweeper requires DBPath")
+	if cfg.RODB == nil {
+		return nil, fmt.Errorf("substrate: sweeper requires RODB")
 	}
 	cfg = cfg.withDefaults()
-	dsn := fmt.Sprintf("file:%s?_journal_mode=WAL&_query_only=1&mode=ro", cfg.DBPath)
-	db, err := sql.Open("sqlite", dsn)
-	if err != nil {
-		return nil, fmt.Errorf("substrate: sweeper open read-only DB: %w", err)
-	}
-	// Cap the pool at 1 so the sweeper's verify loop never opens a
-	// second file descriptor against the same file (sqlite handles
-	// concurrent readers, but one fd is enough for this workload and
-	// shrinks the inode-cache footprint).
-	db.SetMaxOpenConns(1)
-	return &Sweeper{cfg: cfg, roDB: db}, nil
+	return &Sweeper{cfg: cfg, roDB: cfg.RODB}, nil
 }
 
 // Start spawns the sweeper goroutine. Returns immediately; the loop
@@ -161,10 +154,10 @@ func (s *Sweeper) Start(ctx context.Context) {
 }
 
 // Close stops the sweeper and waits for the goroutine to exit.
-// Idempotent and safe pre-Start: if Start was never called, Close
-// just shuts the read-only DB handle and returns. #640 — without the
-// started-guard, Close blocked forever on a done channel the goroutine
-// would never close.
+// Idempotent and safe pre-Start. #640 — without the started-guard,
+// Close blocked forever on a done channel the goroutine would never
+// close. The caller-injected RODB is NOT closed here; composition root
+// owns its lifecycle.
 func (s *Sweeper) Close() error {
 	s.closeOnce.Do(func() {
 		s.mu.Lock()
@@ -175,9 +168,6 @@ func (s *Sweeper) Close() error {
 		if started {
 			cancel()
 			<-done
-		}
-		if s.roDB != nil {
-			s.closeErr = s.roDB.Close()
 		}
 	})
 	return s.closeErr

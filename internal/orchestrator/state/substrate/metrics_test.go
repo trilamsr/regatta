@@ -286,8 +286,14 @@ func TestT2_ChainSweeper_DetectsBreak_LogsOnly(t *testing.T) {
 		t.Fatalf("UPDATE sig_mac: %v", err)
 	}
 
+	ro, err := sql.Open("sqlite", substrate.ReadOnlyDSN(path))
+	if err != nil {
+		t.Fatalf("open ro: %v", err)
+	}
+	t.Cleanup(func() { _ = ro.Close() })
+	ro.SetMaxOpenConns(1)
 	sw, err := substrate.NewSweeper(substrate.SweeperConfig{
-		DBPath:          path,
+		RODB:            ro,
 		Keyring:         testKeyring(),
 		Interval:        time.Hour,
 		Window:          24 * time.Hour,
@@ -318,8 +324,14 @@ func TestT2_ChainSweeper_ExitsOnContextCancel(t *testing.T) {
 	defer cleanup()
 
 	_, path := openMigratedFileDB(t)
+	ro, err := sql.Open("sqlite", substrate.ReadOnlyDSN(path))
+	if err != nil {
+		t.Fatalf("open ro: %v", err)
+	}
+	t.Cleanup(func() { _ = ro.Close() })
+	ro.SetMaxOpenConns(1)
 	sw, err := substrate.NewSweeper(substrate.SweeperConfig{
-		DBPath:   path,
+		RODB:     ro,
 		Keyring:  testKeyring(),
 		Interval: 10 * time.Millisecond,
 		Window:   24 * time.Hour,
