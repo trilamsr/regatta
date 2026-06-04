@@ -198,7 +198,7 @@ func TestReloader_ConcurrentSighupAndFsnotifyStoreConsistent(t *testing.T) {
 				)
 				writeRego(t, dir, "approval.rego", body)
 				n++
-				time.Sleep(5 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
+				time.Sleep(5 * time.Millisecond) // allow-sleep: producer rate-limit, not polling for a condition
 			}
 		}()
 	}
@@ -212,7 +212,7 @@ func TestReloader_ConcurrentSighupAndFsnotifyStoreConsistent(t *testing.T) {
 			default:
 			}
 			_ = syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
-			time.Sleep(10 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
+			time.Sleep(10 * time.Millisecond) // allow-sleep: SIGHUP storm pacer, not polling for a condition
 		}
 	}()
 
@@ -387,14 +387,11 @@ func startReloader(t *testing.T, r *reload.Reloader, ctx context.Context) {
 
 func waitForRevisionChange(t *testing.T, az *authz.OPAAuthorizer, before string, timeout time.Duration) {
 	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if az.CurrentRevision(authz.DefaultTenant) != before {
-			return
-		}
-		time.Sleep(20 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
-	}
-	t.Fatalf("revision unchanged after %s (was %q)", timeout, before)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	testutil.Eventually(t, ctx, 20*time.Millisecond, func() bool {
+		return az.CurrentRevision(authz.DefaultTenant) != before
+	}, fmt.Sprintf("revision unchanged (was %q)", before))
 }
 
 func waitForReloadResult(t *testing.T, ch <-chan reload.Result, timeout time.Duration) reload.Result {
