@@ -59,9 +59,7 @@ func TestAppendOutput_NewAttempt(t *testing.T) {
 	}
 }
 
-// TestAppendOutput_RejectsInvalidJSON pins the integrity contract: the
-// journal must refuse non-JSON payloads at write time rather than store
-// uncanonical bytes that later break predicate eval (Risk 4, spec §7).
+// TestAppendOutput_RejectsInvalidJSON asserts the journal refuses non-JSON payloads at write time (spec §7 Risk 4).
 func TestAppendOutput_RejectsInvalidJSON(t *testing.T) {
 	db := newWorkItemsTestDB(t)
 	seedWorkItem(t, db, "F-BAD")
@@ -102,10 +100,7 @@ func TestGetLatestOutput_ErrJournalNotFound(t *testing.T) {
 	}
 }
 
-// TestAppendOutput_TwoWorkItems_SamePayload_OK enforces spec §7 risk 11:
-// the migration intentionally omits UNIQUE(content_sha) so two work_items
-// that emit byte-identical payloads (common under the stub spawner) do
-// not collide.
+// TestAppendOutput_TwoWorkItems_SamePayload_OK asserts no UNIQUE(content_sha) collision across work_items with byte-identical payloads (spec §7 risk 11).
 func TestAppendOutput_TwoWorkItems_SamePayload_OK(t *testing.T) {
 	db := newWorkItemsTestDB(t)
 	seedWorkItem(t, db, "F-A")

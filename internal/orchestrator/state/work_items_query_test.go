@@ -193,10 +193,7 @@ func TestCycleCheck_RejectsSelfLoop(t *testing.T) {
 	}
 }
 
-// TestListArchivedProgramsWithLiveChildren_ReturnsOrphanedParents
-// pins the AdapterSync reconciler contract: archived programs whose
-// children weren't cascade-archived (e.g. prior tick crashed mid-
-// sweep) MUST surface here so the reconciler can converge them.
+// TestListArchivedProgramsWithLiveChildren_ReturnsOrphanedParents asserts archived programs with non-cascaded live children surface for AdapterSync reconciliation.
 func TestListArchivedProgramsWithLiveChildren_ReturnsOrphanedParents(t *testing.T) {
 	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	db := queryTestDBAt(t, now)
@@ -292,10 +289,7 @@ func TestMaxUpdatedAtForBriefChildren_Empty(t *testing.T) {
 	}
 }
 
-// TestListSpawnable_HonoursFiredEdges pins the W4-A contract: a
-// planned row with an inbound work_item_edges row must NOT be
-// spawnable until that edge fires. Once MarkEdgeFired flips it to
-// 'true', the row surfaces.
+// TestListSpawnable_HonoursFiredEdges asserts a planned row with an inbound edge is non-spawnable until MarkEdgeFired flips it (W4-A).
 func TestListSpawnable_HonoursFiredEdges(t *testing.T) {
 	db := newQueryTestDB(t)
 	ctx := context.Background()
@@ -345,12 +339,7 @@ func TestListSpawnable_HonoursFiredEdges(t *testing.T) {
 	}
 }
 
-// TestListSpawnable_DefaultNextOnAllFalse covers the diamond-join /
-// default-next path: every inbound edge resolved (no 'pending'), and
-// the row qualifies because at least one inbound carries
-// on_skip='ignore' — the ListSpawnable disjunct that lets a
-// default-next target spawn even when its predicate fired false on
-// some branches.
+// TestListSpawnable_DefaultNextOnAllFalse asserts a default-next target spawns when all inbound edges resolved and at least one carries on_skip='ignore'.
 func TestListSpawnable_DefaultNextOnAllFalse(t *testing.T) {
 	db := newQueryTestDB(t)
 	ctx := context.Background()

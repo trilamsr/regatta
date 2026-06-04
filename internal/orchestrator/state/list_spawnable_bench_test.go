@@ -81,10 +81,7 @@ func seedSpawnableFixture(b *testing.B, db *state.DB, n, chainEvery int) {
 	}
 }
 
-// BenchmarkListSpawnable times the join-based spawnable query at the
-// sizes scheduler.Tick consumes it. The fixture mixes merged + planned
-// rows plus inbound edges so the WHERE's three-way disjunct (no edges
-// / fired=true / default-next escape) all see realistic input.
+// BenchmarkListSpawnable times the join-based spawnable query at scheduler.Tick sizes against mixed merged+planned+inbound-edge fixtures.
 func BenchmarkListSpawnable(b *testing.B) {
 	sizes := []int{10, 100, 1000}
 	for _, n := range sizes {

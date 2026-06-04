@@ -44,13 +44,7 @@ func newClockedTestDB(t *testing.T, now *time.Time) *DB {
 	return db
 }
 
-// TestOpenCapsConnectionPoolAtOne pins the load-bearing contract that
-// fixes the SQLITE_BUSY flake: Open() must cap *sql.DB's pool at one
-// connection so writers serialize at the app layer. Without this, a
-// burst of concurrent Recover() goroutines contends on sqlite's file
-// lock and busy_timeout retries fight per-connection instead of
-// queueing globally. If a future refactor removes the cap, this test
-// fails immediately rather than re-introducing the flake quietly.
+// TestOpenCapsConnectionPoolAtOne pins Open() capping *sql.DB pool at 1 so writers serialize at the app layer (fixes SQLITE_BUSY flake).
 func TestOpenCapsConnectionPoolAtOne(t *testing.T) {
 	db := newTestDB(t)
 	if got := db.SQL().Stats().MaxOpenConnections; got != 1 {
@@ -58,11 +52,7 @@ func TestOpenCapsConnectionPoolAtOne(t *testing.T) {
 	}
 }
 
-// TestOpenWithClock_BindsAtConstructor proves the clock is fixed at
-// constructor time and that mutating tests can advance it through a
-// captured closure variable. Production code uses Open() which binds
-// time.Now; tests use OpenWithClock to inject a controllable source.
-// SetClock no longer exists.
+// TestOpenWithClock_BindsAtConstructor proves OpenWithClock fixes the clock at constructor time and mutating tests advance it via closure.
 func TestOpenWithClock_BindsAtConstructor(t *testing.T) {
 	clock := time.Unix(1_700_000_000, 0).UTC()
 	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)",
@@ -136,10 +126,7 @@ func TestUpsertPendingIdempotent(t *testing.T) {
 	}
 }
 
-// TestUpsertPendingTracksLaneChange pins down the contract that a
-// spec-source lane change is reflected on the existing agent row.
-// Without this, a markdown item moved from `server` to `client` lane
-// would stay in the original lane forever, defeating per-lane caps.
+// TestUpsertPendingTracksLaneChange pins UpsertPending reflecting a spec-source lane change on the existing agent row (per-lane caps).
 func TestUpsertPendingTracksLaneChange(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()

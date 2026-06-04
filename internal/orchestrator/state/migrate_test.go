@@ -58,11 +58,7 @@ func TestMigrate_IdempotentOnSecondCall(t *testing.T) {
 	}
 }
 
-// TestMigrate_NoIfNotExistsInGooseManagedDDL pins the contract:
-// goose tracks applied versions, so IF NOT EXISTS in CREATE TABLE /
-// CREATE INDEX defeats version-tracking — a half-applied migration
-// becomes invisible on the next run. The regression keeps the
-// migration files honest forever.
+// TestMigrate_NoIfNotExistsInGooseManagedDDL pins goose-managed DDL: no IF NOT EXISTS in CREATE TABLE/INDEX.
 func TestMigrate_NoIfNotExistsInGooseManagedDDL(t *testing.T) {
 	migDir := "migrations"
 	entries, err := os.ReadDir(migDir)
