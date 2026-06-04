@@ -1,11 +1,7 @@
-// Package transitions is the pure-data agent + work-item edge table
-// consumed by state.TransitionAgentTx. One-direction: MUST NOT import
-// state (docs/engineer/specs/2026-06-04-state-package-split-design.md §4.2).
+// Package transitions is the pure-data agent + work-item edge tables consumed by state (one-direction: never imports state); see specs/2026-06-04-state-package-split-design.md §4.2.
 package transitions
 
-// AgentEdges is the agent state-machine adjacency map (docs/design.md §378).
-// Keys are string forms of state.AgentState; crashed→pending is the
-// merge-recovery requeue edge (PHASE AUTONOMY §11 W2 c0).
+// AgentEdges is the agent state-machine adjacency map (docs/design.md §378); crashed→pending is the merge-recovery requeue edge.
 var AgentEdges = map[string]map[string]struct{}{
 	"pending": {
 		"pending":   {},
@@ -46,9 +42,7 @@ var AgentEdges = map[string]map[string]struct{}{
 	"escalated": {},
 }
 
-// WorkItemEdges documents the work_items.status edges exercised by the
-// scheduler (spec §3.1). SQL CAS in TransitionWorkItem is the hard
-// enforcement layer; this table is advisory + future-enforcement-ready.
+// WorkItemEdges documents scheduler-exercised work_items.status edges (spec §3.1); SQL CAS in TransitionWorkItem stays the hard enforcement, this table is advisory.
 var WorkItemEdges = map[string]map[string]struct{}{
 	"planned": {
 		"running":  {},
