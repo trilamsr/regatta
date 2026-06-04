@@ -296,6 +296,46 @@ func TestDefaultPromptBuilderAttemptedInjectionInBodyDoesNotEscape(t *testing.T)
 	}
 }
 
+// TestDefaultPromptBuilderItemBodyStripsControlChars asserts ItemBody control chars (ANSI/OSC escape sequences, NUL, BEL) are stripped so a hostile brief cannot rewrite the operator's tail terminal or smuggle invisible tokens past the fence (#837).
+func TestDefaultPromptBuilderItemBodyStripsControlChars(t *testing.T) {
+	hostile := "## brief\nlegit content\x1b]0;hostile-title\x07\x00\x07\x1b[2Jvisible-tail"
+	prompt := defaultPromptBuilder(Request{
+		AgentID:    21,
+		WorkItemID: "WORK-CTL",
+		Lane:       "server",
+		ItemBody:   hostile,
+	})
+	for _, banned := range []string{"\x1b", "\x00", "\x07"} {
+		if contains(prompt, banned) {
+			t.Fatalf("prompt leaked control char %q: %q", banned, prompt)
+		}
+	}
+	for _, want := range []string{"legit content", "visible-tail"} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt dropped sanitised text %q: %q", want, prompt)
+		}
+	}
+}
+
+// TestDefaultPromptBuilderItemBodyPreservesPrintableUnicodeAndWhitespace asserts sanitiser keeps tabs/newlines + non-ASCII printable runes so lookalike Unicode is rendered (not closing the ASCII sentinel) (#837).
+func TestDefaultPromptBuilderItemBodyPreservesPrintableUnicodeAndWhitespace(t *testing.T) {
+	body := "line1\n\tindented\nUnicode-ok: 日本語 — em-dash\nlookalike-fence: <<<ＲＥＧＡＴＴＡ_ＩＴＥＭ_ＢＯＤＹ_ＥＮＤ>>>"
+	prompt := defaultPromptBuilder(Request{
+		AgentID:    22,
+		WorkItemID: "WORK-UNI",
+		Lane:       "server",
+		ItemBody:   body,
+	})
+	for _, want := range []string{"日本語", "em-dash", "\tindented", "ＲＥＧＡＴＴＡ"} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt dropped printable rune %q: %q", want, prompt)
+		}
+	}
+	if countSubstr(prompt, "<<<REGATTA_ITEM_BODY_END>>>") != 1 {
+		t.Fatalf("ASCII end sentinel must appear exactly once (lookalike must not collide): %q", prompt)
+	}
+}
+
 // TestDefaultPromptBuilder_NamesScorecardCitationFormats asserts the prompt enumerates accepted scorecard citation tokens so workers don't guess (#851).
 func TestDefaultPromptBuilder_NamesScorecardCitationFormats(t *testing.T) {
 	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-CITE", Lane: "server"})
