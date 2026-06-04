@@ -13,32 +13,25 @@ import (
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-// ErrInvalidPayload — per-kind typed-payload validator rejected the
-// payload (validator dispatch table in validate.go).
+// ErrInvalidPayload — per-kind typed-payload validator rejected the payload (validator dispatch in validate.go).
 var ErrInvalidPayload = errors.New("substrate: invalid payload for kind")
 
-// ErrReplay — the UNIQUE(run_id, written_by, nonce) index made replay
-// structurally impossible at the DB layer; the error path lets callers
-// distinguish writer-replay from generic INSERT failure.
+// ErrReplay — UNIQUE(run_id, written_by, nonce) caught a replay at the DB layer.
 var ErrReplay = errors.New("substrate: replay detected (run_id, written_by, nonce collision)")
 
-// ErrSupersedesCycle — Kahn's topo-sort inside the insert tx caught a
-// cycle in the same-run supersedes graph. Spec §8 R7.
+// ErrSupersedesCycle — Kahn's topo-sort inside the insert tx caught a cycle (spec §8 R7).
 var ErrSupersedesCycle = errors.New("substrate: supersedes graph would cycle")
 
 // ErrClockRegression — sqlite CHECK can't see session state, so the
 // e.WrittenAt < lastWrittenAt guard lives in AppendEvent under a
-// sync.Mutex. Spec §8 I2.
+// sync.Mutex (spec §8 I2).
 var ErrClockRegression = errors.New("substrate: clock regression (written_at < lastWrittenAt)")
 
-// ErrTenantRequired — schema NOT NULL accepts the empty string; the
-// Go-level DefaultTenantID is the explicit, auditable default.
+// ErrTenantRequired — schema NOT NULL accepts the empty string; DefaultTenantID is the explicit, auditable default.
 var ErrTenantRequired = errors.New("substrate: tenant_id required (use DefaultTenantID for single-tenant)")
 
-// ErrUnverifiable wraps contracts/schemas.ErrUnverifiable so callers
-// can errors.Is at the substrate boundary without importing schemas.
+// ErrUnverifiable wraps schemas.ErrUnverifiable so callers can errors.Is at the substrate boundary without importing schemas.
 var ErrUnverifiable = fmt.Errorf("%w: substrate signature unverifiable", schemas.ErrUnverifiable)
 
-// DefaultTenantID is the explicit per-process constant for single-
-// tenant deployments — spec R3 forbids a SQL DEFAULT on tenant_id.
+// DefaultTenantID is the explicit per-process constant for single-tenant deployments — spec R3 forbids a SQL DEFAULT on tenant_id.
 const DefaultTenantID = "default"
