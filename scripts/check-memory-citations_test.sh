@@ -34,6 +34,36 @@ run_case() {
   fi
 }
 
+run_case_unset_mem_dir() {
+  # run_case_unset_mem_dir <case-name> <expected-exit>
+  # Exercises the script's default MEMORY_DIR (no env override). This is the
+  # CI-portability path: bare invocation must resolve every live slug against
+  # the checked-in fixture tree, NOT silently no-op on operator-path absence.
+  # HOME=/nonexistent guarantees the legacy operator-path cannot resolve;
+  # only the shipped scripts/testdata/memory/ default keeps the gate live.
+  local name="$1" want_exit="$2"
+  local got_exit out
+  out=$(env -u MEMORY_DIR -u EXTRA_DOC HOME=/nonexistent bash "$CHECK" 2>&1)
+  got_exit=$?
+  local skipped=0
+  if printf '%s' "$out" | grep -q "skipping; treat as portable-CI no-op"; then
+    skipped=1
+  fi
+  if [ "$got_exit" -eq "$want_exit" ] && [ "$skipped" -eq 0 ]; then
+    passes=$((passes + 1))
+    echo "ok   $name (exit=$got_exit, non-vacuous)"
+  else
+    fails=$((fails + 1))
+    failed_names+=("$name")
+    if [ "$skipped" -eq 1 ]; then
+      echo "FAIL $name: vacuous skip (MEMORY_DIR default not CI-portable)"
+    else
+      echo "FAIL $name: want exit=$want_exit got=$got_exit"
+    fi
+    printf '%s\n' "$out" | sed 's/^/  | /'
+  fi
+}
+
 # Build a clean fixture memory dir mirroring every live slug cited in the
 # repo doc surfaces. The script enumerates citations from CLAUDE.md +
 # autonomous-session-prompt.md + the four dispatch templates, then resolves
@@ -67,6 +97,12 @@ bad_doc=$(mktemp)
 printf 'See feedback_this_slug_does_not_exist for context.\n' > "$bad_doc"
 run_case "broken-slug-detected" 1 "$tmp_bad" "$bad_doc"
 rm -rf "$tmp_bad" "$bad_doc"
+
+# Case C: no MEMORY_DIR env → script must default to the shipped fixture and
+# still resolve every cited slug → exit 0. This is the CI-portability gate
+# (#714): the operator-default path is absent on CI runners, so the prior
+# behavior silently no-op'd. The default now points at scripts/testdata/memory/.
+run_case_unset_mem_dir "ci-portable-default-fixture-resolves" 0
 
 echo "---"
 echo "passes=$passes fails=$fails"
