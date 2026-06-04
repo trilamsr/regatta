@@ -1,4 +1,4 @@
-// serve_secrets.go bridges internal/secrets into the serve boot path
+// wire_secrets.go bridges internal/secrets into the serve boot path
 // per PHASE-AUTONOMY W6 §5. Resolved values are exported into the
 // process env so the legacy env-var readers (loadBriefKeyring at
 // :486, audit signer at :271, LLM dispatcher, GitHub client) consume
