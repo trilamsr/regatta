@@ -516,14 +516,10 @@ func TestReconciler_Network5xx_KeepsTickingAndNeverPanics(t *testing.T) {
 			t.Fatalf("Tick #%d err=%v want ErrUpstreamPersistent5xx", i, err)
 		}
 	}
-	// httptest server may keep transient handler goroutines around
-	// briefly; give the runtime a couple of GC passes + a short
-	// settle window so the no-leak invariant is structural (delta
-	// remains bounded), not race-y (delta exactly zero).
-	runtime.GC()
-	time.Sleep(50 * time.Millisecond)
-	runtime.GC()
-	after := runtime.NumGoroutine()
+	// httptest may park transient handler goroutines briefly; GC +
+	// Gosched until the count stops shrinking so the no-leak invariant
+	// is structural (delta bounded), not race-y (delta exactly zero).
+	after := gcSettleGoroutines()
 	if delta := after - before; delta > 5 {
 		t.Errorf("goroutine delta=%d want <= 5 (no per-tick growth)", delta)
 	}
@@ -803,4 +799,23 @@ func (m slogMulti) WithGroup(name string) slog.Handler {
 		out[i] = h.WithGroup(name)
 	}
 	return out
+}
+
+// gcSettleGoroutines drives GC + Gosched until runtime.NumGoroutine stops
+// shrinking across two consecutive samples, returning the settled count.
+// Replaces a bare time.Sleep settle window with a state-driven loop bounded
+// by a hard pass cap so a true leak cannot loop forever.
+func gcSettleGoroutines() int {
+	const maxPasses = 32
+	prev := runtime.NumGoroutine()
+	for i := 0; i < maxPasses; i++ {
+		runtime.GC()
+		runtime.Gosched()
+		cur := runtime.NumGoroutine()
+		if cur >= prev {
+			return cur
+		}
+		prev = cur
+	}
+	return prev
 }
