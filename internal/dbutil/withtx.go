@@ -1,9 +1,8 @@
 // Package dbutil holds tiny *sql.DB-shaped helpers shared by callers
-// that do not import internal/orchestrator/state — keeps the
-// inline-BeginTx + defer-Rollback + Commit dance in one place so a
-// forgotten Rollback (resource leak) or forgotten Commit (silent
-// rollback) cannot regress per-callsite. Mirrors the (*state.DB).WithTx
-// method for the state-internal call sites.
+// that do not import internal/orchestrator/state. Keeps the inline-
+// BeginTx + defer-Rollback + Commit dance in one place so a forgotten
+// Rollback (resource leak) or Commit (silent rollback) cannot regress
+// per-callsite. Mirrors (*state.DB).WithTx for state-internal sites.
 package dbutil
 
 import (
@@ -12,21 +11,18 @@ import (
 	"fmt"
 )
 
-// Beginner is the minimal BeginTx surface WithTx needs. *sql.DB
-// satisfies it; tests inject counting wrappers (see cel_decider) to
-// assert one-tx invariants without sniffing internal state.
+// Beginner is the minimal BeginTx surface WithTx needs; *sql.DB
+// satisfies it. Tests inject counting wrappers to assert one-tx
+// invariants without sniffing internal state.
 type Beginner interface {
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 }
 
-// WithTx runs fn inside a single transaction opened on db. Commits on
-// nil return, rolls back on any non-nil return or panic. Sentinel
-// errors from fn pass through unwrapped so callers can errors.Is
-// against package sentinels (mirrors state.DB.WithTx's contract).
-//
-// A panic inside fn propagates through the deferred Rollback, so a
-// process crashing mid-tx leaves no half-built rows behind. WithTx
-// does not recover the panic.
+// WithTx runs fn inside a single transaction; commits on nil return,
+// rolls back on any non-nil return or panic. Sentinel errors from fn
+// pass through unwrapped so callers can errors.Is against package
+// sentinels. A panic propagates through the deferred Rollback —
+// WithTx does not recover.
 func WithTx(ctx context.Context, db Beginner, fn func(*sql.Tx) error) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {

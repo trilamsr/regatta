@@ -1,13 +1,9 @@
-// Package schemas defines the canonical interfaces a SpecAdapter must satisfy.
-//
-// This file is the normative contract referenced by docs/design.md §Spec contract.
-// Two independent implementations of SpecAdapter must be interchangeable; the
-// orchestrator does not reach behind the interface for any source-specific
-// behavior.
-//
-// Status: draft v1. Breaking changes bump the major version; new optional
-// methods bump the minor version. The wire protocol for the `custom` adapter
-// is also versioned (see CustomAdapterRequest.Version).
+// Package schemas defines the canonical SpecAdapter contract referenced
+// by docs/design.md §Spec contract. Two independent implementations
+// must be interchangeable; the orchestrator never reaches behind the
+// interface for source-specific behavior. Breaking changes bump major;
+// new optional methods bump minor. The custom-adapter wire protocol is
+// independently versioned (see CustomAdapterRequest.Version).
 package schemas
 
 import (
@@ -16,61 +12,45 @@ import (
 	"time"
 )
 
-// SpecAdapter is the abstraction over every supported source of planned work:
-// github_issues, gitlab_issues, markdown_catalog, jira, linear, custom.
-//
-// Implementations MUST:
-//   - Honor context cancellation; return ctx.Err() on timeout.
-//   - Be idempotent: identical List() inputs return identical WorkItem slices
-//     when the upstream source is unchanged.
-//   - Handle pagination internally; List returns the full result set.
-//   - Surface upstream rate-limit signals as ErrRateLimited wrapping a
-//     RateLimitHint with the suggested retry time.
-//   - Never mutate a WorkItem's AcceptanceCriteria[*].Text; L0 enforces this
-//     at the diff layer, but adapters must not provide a write path either.
+// SpecAdapter abstracts every supported source of planned work
+// (github_issues, gitlab_issues, markdown_catalog, jira, linear,
+// custom). Implementations MUST honor context cancellation, be
+// idempotent across identical inputs, paginate internally, surface
+// rate-limit signals as ErrRateLimited wrapping RateLimitHint, and
+// never expose a write path for Criterion.Text (L0 enforces immutable
+// acceptance-criteria text at the diff layer).
 type SpecAdapter interface {
-	// List returns every WorkItem the adapter is configured to surface.
-	// Filtering by status, label, etc. is configured at adapter construction.
 	List(ctx context.Context) ([]WorkItem, error)
 
-	// Get fetches a single WorkItem by ID.
 	Get(ctx context.Context, id WorkItemID) (WorkItem, error)
 
-	// UpdateStatus transitions a WorkItem's top-level status field. The
-	// citation is the human-readable evidence string (e.g. "test=TestFoo,
-	// file=src/foo.go:42, commit=abcd1234").
-	//
-	// Implementations MUST be idempotent: calling UpdateStatus with the same
-	// (id, status, citation) twice produces the same end state and never
-	// errors. Targets outside the Status enum (StatusPlanned,
-	// StatusInProgress, StatusDone, StatusClosedResolved) MUST return
-	// ErrInvalidStatus.
+	// UpdateStatus transitions a WorkItem's top-level status.
+	// Citation is human-readable evidence (e.g.
+	// "test=TestFoo,file=src/foo.go:42,commit=abcd1234").
+	// MUST be idempotent on identical (id, status, citation). Targets
+	// outside the Status enum MUST return ErrInvalidStatus.
 	UpdateStatus(ctx context.Context, id WorkItemID, status Status, citation string) error
 
-	// Capabilities reports the adapter's supported features. Used by the
-	// orchestrator to enable/disable downstream behavior (e.g. webhook
-	// subscription vs polling).
 	Capabilities() Capabilities
 }
 
 // WorkItem is the canonical unit of work the fleet operates on.
-// See schemas/work_item.schema.json for the JSON form (snake_case).
+// See schemas/work_item.schema.json for the JSON (snake_case) form.
 type WorkItem struct {
 	ID                 WorkItemID   `json:"id"`
-	Kind               WorkItemKind `json:"kind,omitempty"` // "feature" (default) | "program"; "program" routes through the planner before spawning
+	Kind               WorkItemKind `json:"kind,omitempty"` // "feature" (default) | "program" routes through planner
 	Title              string       `json:"title"`
 	Body               string       `json:"body,omitempty"`
 	AcceptanceCriteria []Criterion  `json:"acceptance_criteria"`
-	Dependencies       []WorkItemID `json:"dependencies,omitempty"` // topological order; cycles MUST be reported via ErrDependencyCycle on List
-	Lane               LaneID       `json:"lane,omitempty"`         // empty string means the default lane
+	Dependencies       []WorkItemID `json:"dependencies,omitempty"` // topological order; cycles MUST surface as ErrDependencyCycle on List
+	Lane               LaneID       `json:"lane,omitempty"`         // empty = default lane
 	Status             Status       `json:"status"`
-	LinkedArtifact     string       `json:"linked_artifact,omitempty"` // URL or repo-relative path to deeper context (RFC, design doc, ADR)
-	Source             SourceRef    `json:"source"`                    // points to the immutable source-of-truth for L0 to verify
+	LinkedArtifact     string       `json:"linked_artifact,omitempty"`
+	Source             SourceRef    `json:"source"` // L0 uses this to verify immutability
 }
 
-// WorkItemKind discriminates leaf features from programs. Programs
-// route through the planner before spawning. See docs/design.md
-// §Programs.
+// WorkItemKind discriminates leaf features from programs; programs
+// route through the planner before spawning (docs/design.md §Programs).
 type WorkItemKind string
 
 // WorkItemKind values; the only legal payload of WorkItem.Kind.
@@ -79,29 +59,28 @@ const (
 	KindProgram WorkItemKind = "program"
 )
 
-// Criterion is one acceptance criterion under a WorkItem.
+// Criterion is one acceptance criterion under a WorkItem; Text is
+// immutable post-publication (L0 enforces byte-equality after UTF-8
+// NFC normalization).
 type Criterion struct {
-	ID    string         `json:"id"`    // stable within a WorkItem; format adapter-defined
-	Text  string         `json:"text"`  // immutable post-publication; L0 enforces byte-equality after UTF-8 NFC normalization
+	ID    string         `json:"id"`
+	Text  string         `json:"text"`
 	State CriterionState `json:"state,omitempty"`
 }
 
 // WorkItemID uniquely identifies a WorkItem within a spec source.
 type WorkItemID string
 
-// LaneID names a lane that a WorkItem participates in.
+// LaneID names a lane a WorkItem participates in.
 type LaneID string
 
 // Status names a WorkItem's lifecycle state.
 type Status string
 
 // Status values; the only legal payload of WorkItem.Status.
-//
-// StatusClosedResolved is a terminal status distinct from StatusDone:
-// it marks items resolved via supersession (e.g. consolidated into a
-// parent brief, made moot by an upstream change) rather than via the
-// agent state-machine completing the work. adaptersync filters it out
-// the same way as StatusDone — terminal states never enqueue.
+// StatusClosedResolved is terminal-via-supersession (e.g. consolidated
+// into a parent brief), distinct from StatusDone (agent reached done);
+// adaptersync filters both out the same — terminal never re-enqueues.
 const (
 	StatusPlanned        Status = "planned"
 	StatusInProgress     Status = "in_progress"
@@ -112,10 +91,8 @@ const (
 // CriterionState names a Criterion's lifecycle state.
 type CriterionState string
 
-// CriterionState values; the only legal payload of Criterion.State.
-// CriterionClosed mirrors StatusClosedResolved at the criterion level —
-// the bullet is terminal but was resolved via supersession, not via the
-// agent reaching the done state.
+// CriterionClosed mirrors StatusClosedResolved at the bullet level —
+// terminal via supersession, not via the agent reaching done.
 const (
 	CriterionPlanned    CriterionState = "planned"
 	CriterionInProgress CriterionState = "in_progress"
@@ -123,27 +100,26 @@ const (
 	CriterionClosed     CriterionState = "closed"
 )
 
-// SourceRef is the immutable pointer L0 uses to verify a criterion has not
-// been mutated. For file-backed adapters (markdown_catalog), Kind="file" and
-// SHA is the commit SHA the WorkItem was read at. For API-backed adapters,
-// Kind="issue"|"ticket" and SHA is an opaque ETag or version string.
+// SourceRef is the immutable pointer L0 uses to verify a criterion has
+// not been mutated. File-backed: Kind="file", SHA=commit SHA at read.
+// API-backed: Kind="issue"|"ticket", SHA=opaque ETag/version string.
 type SourceRef struct {
-	Kind    string `json:"kind"`    // "file" | "issue" | "ticket"
-	Locator string `json:"locator"` // file path with line range, or external system ID
+	Kind    string `json:"kind"`
+	Locator string `json:"locator"`
 	SHA     string `json:"sha"`
 }
 
-// Capabilities reports per-adapter feature flags. Defaults are zero-valued
-// (no extra capabilities).
+// Capabilities reports per-adapter feature flags; zero value = no
+// extra capabilities.
 type Capabilities struct {
-	Webhook           bool          // adapter can push updates instead of polling
-	BulkUpdate        bool          // adapter supports atomic multi-item UpdateStatus
-	MinPollInterval   time.Duration // adapter's recommended floor when polling
-	SupportedStatuses []Status      // adapters MAY support a subset (e.g. read-only)
+	Webhook           bool
+	BulkUpdate        bool
+	MinPollInterval   time.Duration
+	SupportedStatuses []Status
 }
 
-// RateLimitHint travels with ErrRateLimited; the orchestrator uses RetryAfter
-// to schedule the next poll without thrashing.
+// RateLimitHint travels with ErrRateLimited; the orchestrator uses
+// RetryAfter to schedule the next poll without thrashing.
 type RateLimitHint struct {
 	RetryAfter time.Duration
 	Reset      time.Time
@@ -161,41 +137,28 @@ var (
 	ErrAdapterUnsupported = errors.New("regatta: operation unsupported by this adapter")
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Custom-adapter wire protocol
-// ─────────────────────────────────────────────────────────────────────────────
-//
-// The `custom` adapter shells out to an executable on PATH (specified by
-// `regatta.yaml: spec_adapter.command`). Communication is JSON-over-stdio.
-//
-// Each invocation:
-//   stdin:  one CustomAdapterRequest object (newline-terminated)
-//   stdout: one CustomAdapterResponse object (newline-terminated)
-//   stderr: free-form diagnostic text (logged but ignored for verdict)
-//
-// Exit codes:
-//   0  success (response payload on stdout)
-//   1  transient failure (ErrTransient; retried with exponential backoff)
-//   2  permanent failure (ErrPermanent; surfaced to operator)
-//   3  rate limited (ErrRateLimited; stderr MAY include "retry_after_seconds=N")
-//   4  invalid request (operator misconfigured the adapter; treated as permanent)
-//
-// Default timeout: 30s. Configurable via `spec_adapter.timeout_seconds`.
-// SIGTERM at timeout + 5s; SIGKILL at timeout + 10s.
+// Custom-adapter wire protocol: shells out to an executable on PATH
+// (regatta.yaml: spec_adapter.command). JSON-over-stdio, one
+// request/response per invocation, newline-terminated. Exit codes:
+//   0 success / 1 ErrTransient (retried w/ backoff) / 2 ErrPermanent
+//   3 ErrRateLimited (stderr MAY carry "retry_after_seconds=N")
+//   4 invalid request (treated as permanent — operator misconfig).
+// Timeout default 30s (spec_adapter.timeout_seconds);
+// SIGTERM at +5s, SIGKILL at +10s.
 
 // CustomAdapterRequest is the stdin payload sent to a `custom` adapter.
 type CustomAdapterRequest struct {
-	Version int    `json:"version"` // protocol version; current = 1
-	Op      string `json:"op"`      // "list" | "get" | "update_status" | "capabilities"
-	ID      string `json:"id,omitempty"`
-	Status  string `json:"status,omitempty"`
+	Version  int    `json:"version"` // protocol version; current = 1
+	Op       string `json:"op"`      // "list" | "get" | "update_status" | "capabilities"
+	ID       string `json:"id,omitempty"`
+	Status   string `json:"status,omitempty"`
 	Citation string `json:"citation,omitempty"`
 }
 
 // CustomAdapterResponse is the stdout payload returned by a `custom` adapter.
 type CustomAdapterResponse struct {
-	Version int       `json:"version"`
-	Items   []WorkItem `json:"items,omitempty"`
-	Item    *WorkItem  `json:"item,omitempty"`
+	Version      int           `json:"version"`
+	Items        []WorkItem    `json:"items,omitempty"`
+	Item         *WorkItem     `json:"item,omitempty"`
 	Capabilities *Capabilities `json:"capabilities,omitempty"`
 }
