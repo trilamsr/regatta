@@ -245,6 +245,20 @@ body_prose_xspan_in_scorecard='```release-notes
 '
 run_case "prose-xspan-in-scorecard-not-counted" 0 "scorecard: 1/1 criteria cited" "$body_prose_xspan_in_scorecard"
 
+# Fixture (#853): [CHORE] with malformed/partial scorecard (uncited [x])
+# must still short-circuit on category-exempt BEFORE the parse — implementer
+# pastes a scorecard skeleton into a chore PR; today the parser flags
+# uncited rows and fails before reaching the exempt branch.
+body_chore_partial_scorecard='```release-notes
+[CHORE] tidy
+```
+## A+ Scorecard
+
+- [x] (a) vibes
+- [x] (b) more vibes
+'
+run_case "chore-partial-scorecard-passes" 0 "exempt" "$body_chore_partial_scorecard"
+
 # Fixture: --skip short-circuits without parsing.
 tmp_skip=$(mktemp); printf 'irrelevant body\n' > "$tmp_skip"
 out=$("$check" --skip 2>&1) && got_exit=0 || got_exit=$?
