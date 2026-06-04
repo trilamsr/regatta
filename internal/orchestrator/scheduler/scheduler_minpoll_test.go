@@ -13,8 +13,6 @@ import (
 
 // TestScheduler_HonoursMinPoll_Integration pins the cross-boundary contract: scheduler MUST call adapter.List ≤ ceil(tickCount / minPoll·tickInterval) times across N ticks (#840, blocks #847).
 func TestScheduler_HonoursMinPoll_Integration(t *testing.T) {
-	t.Skip("blocked on #847 — scheduler MinPoll consumer impl not yet wired; un-skip when Config.Adapters seam lands")
-
 	const (
 		tickCount    = 3
 		tickInterval = time.Second
@@ -32,11 +30,9 @@ func TestScheduler_HonoursMinPoll_Integration(t *testing.T) {
 	ad := &countingMinPollAdapter{minPoll: minPoll}
 
 	sch := New(db, Config{
-		Clock: clockFn,
-		// Adapters: []schemas.SpecAdapter{ad}, // SEAM PENDING #847
+		Clock:    clockFn,
+		Adapters: []schemas.SpecAdapter{ad},
 	})
-	_ = sch
-	_ = ad
 
 	ctx := context.Background()
 	for i := 0; i < tickCount; i++ {
