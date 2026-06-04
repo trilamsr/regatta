@@ -29,14 +29,22 @@ if ! command -v sqlite3 >/dev/null 2>&1; then
   exit 2
 fi
 
-now_ms=$(( $(date +%s) * 1000 ))
+# SOAK_NOW_MS env override pins the "now" timestamp to the test driver's
+# clock — single source for both fixture INSERTs and bucket reads,
+# defends against an NTP midnight-UTC jump landing between them.
+if [ -n "${SOAK_NOW_MS:-}" ]; then
+  now_ms=$SOAK_NOW_MS
+else
+  now_ms=$(( $(date +%s) * 1000 ))
+fi
 day_ms=$(( 24 * 3600 * 1000 ))
 
 gaps=0
 for i in $(seq 0 6); do
   hi=$(( now_ms - i * day_ms ))
   lo=$(( hi - day_ms ))
-  count=$(sqlite3 "$REGATTA_DB" "SELECT COUNT(*) FROM substrate_events WHERE kind='budget_reconciled' AND written_at > $lo AND written_at <= $hi;" 2>/dev/null)
+  printf -v query "SELECT COUNT(*) FROM substrate_events WHERE kind='budget_reconciled' AND written_at > %d AND written_at <= %d;" "$lo" "$hi"
+  count=$(sqlite3 "$REGATTA_DB" "$query" 2>/dev/null)
   if [ -z "$count" ]; then
     echo "cost-governor-soak: query failed for bucket ending $(date -u -r $(( hi / 1000 )) +%Y-%m-%dT%H:%MZ)" >&2
     exit 2

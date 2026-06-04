@@ -145,6 +145,13 @@ all 7 buckets covered; exit 1 = at least one bucket empty (stderr
 names the gap date); exit 2 = DB/sqlite3 access error. Fixtures in
 `scripts/cost_governor_soak_test.sh`.
 
+`REGATTA_DB` MUST be an absolute path under `/var/lib/regatta/` (or
+equivalent regatta-owned data dir) and the file MUST be owned by the
+`regatta` user with mode `0640` or tighter. Relative paths resolve
+against `pwd` and a symlink swap between resolution and `sqlite3` open
+would point the soak read at an attacker-chosen DB. Pre-flight:
+`stat -c '%U %a' "$REGATTA_DB"` returns `regatta 640` (or stricter).
+
 ## Soft caps — WARN by default, opt-in downgrade
 
 `soft_pct` (default 80) sets the warn-line. Crossing `soft_pct × cap`
