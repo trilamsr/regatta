@@ -275,6 +275,29 @@ run_case "uncited-row-hint-emitted" 2 "Expected" "$body_one_uncited"
 # token which is the most-easily-malformed citation form.
 run_case "uncited-row-hint-shows-file-line-example" 2 "path/to/file" "$body_one_uncited"
 
+# Fixture (#855): labeled-row uncited error surfaces the label so
+# operators don't have to count rows. Pins both `(a)`-form lowercase
+# parens AND `B1`/`A1`/`A+1`-form tier-letter+digit labels.
+body_labeled_uncited_parens='```release-notes
+[FEATURE] thing
+```
+## A+ Scorecard
+
+- [x] (a) build green — TestBuild
+- [x] (b) vibes only no cite
+'
+run_case "labeled-uncited-parens-surfaces-label" 2 "(b)" "$body_labeled_uncited_parens"
+
+body_labeled_uncited_tier='```release-notes
+[FEATURE] thing
+```
+## A+ Scorecard
+
+- [x] B1 build green — TestBuild
+- [x] A+1 deletion defense vibes only
+'
+run_case "labeled-uncited-tier-surfaces-label" 2 "A+1" "$body_labeled_uncited_tier"
+
 # Fixture: --skip short-circuits without parsing.
 tmp_skip=$(mktemp); printf 'irrelevant body\n' > "$tmp_skip"
 out=$("$check" --skip 2>&1) && got_exit=0 || got_exit=$?

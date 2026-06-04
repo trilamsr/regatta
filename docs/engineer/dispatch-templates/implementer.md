@@ -53,6 +53,23 @@ A+ SCORECARD
 - PR body MUST include `## A+ Rubric Scorecard` section. Each B/A/A+ criterion from `<SPEC-PATH>` marked PASS/FAIL/N-A + one-line evidence + claimed tier. Per `feedback_grade_rubric`.
 - PHASE-S-RELAX: required only when `<PR-TYPE>` ∈ {feat}. Refactor / chore / docs / ci skip the scorecard.
 - CITATION GATE: every `[x]` on a criterion row MUST carry a `Test*`-name OR `file:line` OR `#issue` OR `N/A — <rationale>` on the SAME line. `scripts/check-scorecard.sh` enforces in pr-lint; vibes-grading fails CI. Pre-push: `bash scripts/check-scorecard.sh --body-file <body>` exit 0.
+- LABEL GATE: every scorecard row MUST open with a criterion label — `(a)`/`(b)`/`(c)`-form lowercase parens OR `B1`/`B2`/`A1`/`A2`/`A+1`/`A+2`-form tier-letter+digit. Uncited rows emit `criteria (unlabeled)` in `scripts/check-scorecard.sh` errors when labels are absent — operator must count rows to identify the offender. Per `feedback_grade_rubric` sub-rule. Copy-paste canonical block below.
+
+CANONICAL SCORECARD BLOCK (copy-paste, fill cites):
+```markdown
+## A+ Rubric Scorecard
+
+- [ ] B1 — RED-first: failing test landed before fix (commit-sha-or-file:line)
+- [ ] B2 — Gates green: `make ci-check` exit 0 (path/to/cicheck.log:N OR N/A — exempt)
+- [ ] A1 — Root cause fixed not symptom (file.go:NN)
+- [ ] A2 — Operator-facing diagnostic added (file.go:NN OR Test*-name)
+- [ ] A+1 — Deletion answer: net LoC + defense (#NNN OR N/A — pure addition w/ defense in body)
+- [ ] A+2 — Comments WHY-not-WHAT (file.go:NN OR `scripts/check-comment-density.sh` exit 0)
+- [ ] A+3 — File-disjoint scope per brief (#NNN OR N/A — solo dispatch)
+
+Claimed tier: **B** | **A** | **A+** (delete the rest)
+```
+Citation tokens MUST be bare (NOT backticks) per `feedback_scorecard_citation_token_outside_backticks`. Replace `(file:line)` slots with bare `path/to/file.go:42` or bare `TestFooBar` or bare `#NNNN`.
 
 DOC-CHECK
 - Pre-push grep banned phrases — token list (11 entries) lives in `scripts/doc-check.sh` (`banned_tokens` array). Reword hits to falsifiable claims (version pin, benchmark, named reference). Per `CLAUDE.md` §CI gates "Banned-phrase gate".
