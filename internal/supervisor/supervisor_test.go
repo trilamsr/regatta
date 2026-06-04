@@ -254,10 +254,7 @@ func TestSanitizePath_RejectsNewlineInjection(t *testing.T) {
 	}
 }
 
-// TestPlistRender_EnvFile_SourcingWrapper asserts macOS plist wraps the binary
-// invocation in `/bin/sh -lc 'set -a; . <env>; set +a; exec <bin> serve ...'` so
-// launchd injects ANTHROPIC_API_KEY + GH_TOKEN from the operator's .env file —
-// launchd has no native EnvironmentFile equivalent (closes followup to #826).
+// TestPlistRender_EnvFile_SourcingWrapper asserts macOS plist wraps exec in `/bin/sh -lc` env-sourcing (followup #826).
 func TestPlistRender_EnvFile_SourcingWrapper(t *testing.T) {
 	opts, _ := newDarwinOpts(t)
 	opts.DryRun = true
@@ -281,9 +278,7 @@ func TestPlistRender_EnvFile_SourcingWrapper(t *testing.T) {
 	}
 }
 
-// TestPlistRender_EnvFile_DefaultUserPath asserts opts.EnvFile defaults to
-// $HOME/.config/regatta/env when caller omits it on macOS user-mode install
-// (parity with Linux's /etc/regatta/env default).
+// TestPlistRender_EnvFile_DefaultUserPath asserts opts.EnvFile defaults to $HOME/.config/regatta/env on macOS user mode.
 func TestPlistRender_EnvFile_DefaultUserPath(t *testing.T) {
 	opts, home := newDarwinOpts(t)
 	opts.DryRun = true
@@ -298,8 +293,7 @@ func TestPlistRender_EnvFile_DefaultUserPath(t *testing.T) {
 	}
 }
 
-// TestPlistRender_EnvFile_DefaultSystemPath asserts macOS system-mode falls back
-// to /etc/regatta/env so root-installed agents land on the same path as Linux.
+// TestPlistRender_EnvFile_DefaultSystemPath asserts macOS system-mode env-file defaults to /etc/regatta/env.
 func TestPlistRender_EnvFile_DefaultSystemPath(t *testing.T) {
 	opts, _ := newDarwinOpts(t)
 	opts.Mode = ModeSystem
@@ -314,9 +308,7 @@ func TestPlistRender_EnvFile_DefaultSystemPath(t *testing.T) {
 	}
 }
 
-// TestPlistRender_EnvFile_QuotesPathForShell asserts the env-file path is
-// double-quoted in the sourced shell command — a path with a space MUST not
-// split-word into multiple `.` arguments and break launchd boot.
+// TestPlistRender_EnvFile_QuotesPathForShell asserts the env-file path is double-quoted to survive spaces.
 func TestPlistRender_EnvFile_QuotesPathForShell(t *testing.T) {
 	opts, _ := newDarwinOpts(t)
 	opts.DryRun = true
@@ -331,8 +323,7 @@ func TestPlistRender_EnvFile_QuotesPathForShell(t *testing.T) {
 	}
 }
 
-// TestPlistRender_EnvFile_OverrideWinsOverDefault asserts an explicit
-// opts.EnvFile beats the user-mode default fallback.
+// TestPlistRender_EnvFile_OverrideWinsOverDefault asserts explicit opts.EnvFile suppresses the user-mode default.
 func TestPlistRender_EnvFile_OverrideWinsOverDefault(t *testing.T) {
 	opts, _ := newDarwinOpts(t)
 	opts.DryRun = true
@@ -351,9 +342,7 @@ func TestPlistRender_EnvFile_OverrideWinsOverDefault(t *testing.T) {
 	}
 }
 
-// TestPlistRender_EnvFile_RejectsShellMetacharacters asserts the env-file path
-// is sanitised against shell-injection — operator-supplied paths containing
-// `"` or `$` would otherwise break out of the sourcing string.
+// TestPlistRender_EnvFile_RejectsShellMetacharacters asserts env-file paths with shell metachars are rejected.
 func TestPlistRender_EnvFile_RejectsShellMetacharacters(t *testing.T) {
 	for _, bad := range []string{`/tmp/x"$(rm)"`, "/tmp/x\nFOO=BAR"} {
 		opts, _ := newDarwinOpts(t)
@@ -365,9 +354,7 @@ func TestPlistRender_EnvFile_RejectsShellMetacharacters(t *testing.T) {
 	}
 }
 
-// TestPreInstallEnvFileCheck_MissingFile_Warns asserts a missing env-file
-// surfaces a WARN (not a fail) — operator may set env via shell before launchd
-// loads the agent; fail-closed would block first-time installs.
+// TestPreInstallEnvFileCheck_MissingFile_Warns asserts missing env-file emits WARN not error (fail-open).
 func TestPreInstallEnvFileCheck_MissingFile_Warns(t *testing.T) {
 	opts, _ := newDarwinOpts(t)
 	opts.EnvFile = filepath.Join(t.TempDir(), "missing.env")
@@ -381,9 +368,7 @@ func TestPreInstallEnvFileCheck_MissingFile_Warns(t *testing.T) {
 	}
 }
 
-// TestPreInstallEnvFileCheck_LooseModeWarns asserts mode != 0600 on the
-// env-file emits a hygiene WARN — secrets readable by other users is a leak
-// vector worth a one-line nudge.
+// TestPreInstallEnvFileCheck_LooseModeWarns asserts env-file mode != 0600 emits a hygiene WARN.
 func TestPreInstallEnvFileCheck_LooseModeWarns(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, "env")
@@ -402,8 +387,7 @@ func TestPreInstallEnvFileCheck_LooseModeWarns(t *testing.T) {
 	}
 }
 
-// TestPreInstallEnvFileCheck_TightModeSilent asserts a 0600 env-file passes
-// without WARN noise so well-configured operators see a clean install log.
+// TestPreInstallEnvFileCheck_TightModeSilent asserts a 0600 env-file produces no WARN noise.
 func TestPreInstallEnvFileCheck_TightModeSilent(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, "env")

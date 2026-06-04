@@ -24,10 +24,7 @@ func TestInstallServiceHealthzURLFlag(t *testing.T) {
 	}
 }
 
-// TestInstallServiceEnvFileFlag asserts --env-file flows through to the
-// supervisor and surfaces in the rendered macOS plist sourcing wrapper so
-// ANTHROPIC_API_KEY + GH_TOKEN reach `regatta serve` under launchd (followup
-// to #826: launchd has no native EnvironmentFile equivalent).
+// TestInstallServiceEnvFileFlag asserts --env-file flag threads into the macOS plist sourcing wrapper (followup #826).
 func TestInstallServiceEnvFileFlag(t *testing.T) {
 	var out, errBuf bytes.Buffer
 	code := runInstallServiceTo(&out, &errBuf, []string{
