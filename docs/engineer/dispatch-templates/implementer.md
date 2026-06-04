@@ -10,6 +10,27 @@ Code-writing subagent. Substitute `<VARS>` then paste into Task dispatch.
 - `<MEMORY-RULES>` — comma-separated `feedback_*` filenames to cite.
 - `<PR-TYPE>` — `feat` | `fix` | `refactor` | `chore` | `docs` | `ci` (drives scorecard + reviewer skip).
 
+## Comments: zero by default
+
+Write NO comments unless removing the comment would leave a future reader confused about WHY. A clear name + signature + types document the WHAT.
+
+Hard rules (reviewer rejects on hit):
+- No restating the symbol name in its own godoc ("// Foo returns a Foo.").
+- No restating the signature ("// Bar takes an int and returns a string.").
+- No section banners (`// ====`, `// ----`, `// *** Setup ***`).
+- No multi-paragraph implementation narration.
+- No untagged TODO/FIXME/XXX/HACK (cite `#NNN` on same line or omit).
+- No commented-out code blocks.
+- No comments referencing the current PR / wave / reviewer ("// added in #732", "// per Wave-D split", "// reviewer finding #2").
+- Test/Fuzz/Benchmark godocs: 1 line max (CLAUDE.md gate).
+
+Allowed (WHY-only):
+- Exported godoc: symbol name + WHY in 1 sentence ("// UpperBound is the inclusive ceiling enforced by the budget gate.").
+- Non-obvious invariant or workaround that would surprise a reader ("// HACK: pin random seed to keep golden-file stable across go versions.").
+- Cross-file contract reference ("// Pairs with internal/X.Foo — drift here breaks ZZ.").
+
+Net comment-density of any new prod `.go` file should be ≤ 5% of LOC. If higher, prepare to justify in PR body OR cut.
+
 ## Preamble blocks (paste verbatim)
 
 WORKTREE (harness-managed — do NOT create your own)

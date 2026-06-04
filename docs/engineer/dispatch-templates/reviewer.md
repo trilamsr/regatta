@@ -35,7 +35,13 @@ LENSES (apply in order)
 6. Doc-check + release-notes — banned phrases (`scripts/doc-check.sh` 11-token list), release-notes fence present.
 7. Subagent verification — re-run `make pre-push-check`; ~10% lie rate on "make check clean" per `feedback_subagent_verification`.
 8. Load-bearing leftovers — every unaddressed load-bearing item → tracking issue filed + cited in PR body per `feedback_unaddressed_load_bearing`. PHASE-S-RELAX: Risk-tier+ only during self-host window.
-9. **Comment sweep** — inspect every added/modified comment per `feedback_reviewer_comment_trim`. Flag each: version-ref (`// added in v2.3`, `// PR #N`), what-not-why (`// loops over items`), banner (`// --- Section ---`), untagged deferred-debt marker without bug-link (per `scripts/stale-todo.sh`), commented-out code, AI signatures (`Co-Authored-By`, `Generated with`). Output `## Comment sweep` section listing offenders by `path:line`; if zero, state `## Comment sweep: clean` explicitly (silence = failure).
+9. **Comment sweep (MED severity)** — inspect every added/modified comment per `feedback_reviewer_comment_trim` + `feedback_comment_budget_enforcement`. Severity rules:
+   - **MED** on any implementer-template hard-rule hit (see `implementer.md` §Comments: zero by default): name-restating godoc, signature-restating godoc, section banner, multi-paragraph narration, untagged TODO/FIXME/XXX/HACK, current-PR/wave/reviewer references, multi-line Test/Fuzz/Benchmark godoc, AI signature.
+   - **HIGH** on commented-out code blocks.
+   - **REJECT** the PR (block-on-findings) when >5 instances of MED-tier comment violations appear in the diff additions.
+   - **Density check**: for every new prod `.go` file ≥ 100 LOC in the diff, compute `comment_lines / total_LOC` and report % vs CLAUDE.md ≤ 5% target. Over → MED finding with the density figure.
+   - Scan the diff additions for WHAT-narration explicitly; do not infer from the PR description.
+   - Output `## Comment sweep` section listing offenders by `path:line` with severity tag, OR `## Comment sweep: clean` if zero. Silence = failure.
 
 RUN LOCAL LINTS (do not infer from PR description)
 - Fetch branch + run `bash scripts/doc-check.sh` (banned phrases, broken links, comment-noise, test-godoc).
