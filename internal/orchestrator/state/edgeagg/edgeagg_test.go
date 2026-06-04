@@ -3,6 +3,12 @@ package edgeagg
 import (
 	"database/sql"
 	"testing"
+
+	// Blank import so this test binary registers rapid's -rapid.checks
+	// flag — `make property-test` walks ./internal/orchestrator/state/...
+	// and the dbtest/substrate siblings already do this for the same
+	// reason.
+	_ "pgregory.net/rapid"
 )
 
 // TestBuildAggregate converts raw SQL scan outputs into EdgeFromAggregate (#795 T2).
