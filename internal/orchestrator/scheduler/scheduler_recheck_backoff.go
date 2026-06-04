@@ -8,27 +8,65 @@ import (
 	"go.opentelemetry.io/otel/metric"
 )
 
-const recheckBackoffK = 3
-const recheckBackoffTicks = 10
+const (
+	recheckBackoffDefaultK             = 3
+	recheckBackoffDefaultSuppressTicks = 10
+	recheckBackoffDefaultStaleTicks    = 20
+)
+
+// recheckBackoffTicks is the legacy in-package alias retained for the
+// pre-#794 `TestRecheckBackoff_BackoffExpiresAfterNTicks` cross-ref;
+// runtime path consults b.suppressTicks so Config overrides flow
+// through (#794).
+const recheckBackoffTicks = recheckBackoffDefaultSuppressTicks
+
+// recheckBackoffConfig is the tuple of operator-tunable knobs threaded
+// from scheduler.Config into the per-orphan backoff helper (#794).
+type recheckBackoffConfig struct {
+	K             int
+	SuppressTicks int
+	StaleTicks    int
+}
 
 // recheckBackoff is the per-orphan K-strike fetch-failure budget +
-// N-tick suppression window for fetchWorkItemForRecheck (#773).
+// N-tick suppression window for fetchWorkItemForRecheck (#773). Stale
+// idle entries (failures>0 but not suppressed) evict after staleTicks
+// to bound map growth (#794).
 type recheckBackoff struct {
-	mu          sync.Mutex
-	entries     map[string]*recheckEntry
-	unavailable metric.Int64Counter
+	mu            sync.Mutex
+	entries       map[string]*recheckEntry
+	unavailable   metric.Int64Counter
+	k             int
+	suppressTicks int
+	staleTicks    int
 }
 
 type recheckEntry struct {
 	failures      int
 	suppressTicks int
+	idleTicks     int
 }
 
 func newRecheckBackoff() *recheckBackoff {
-	return &recheckBackoff{entries: make(map[string]*recheckEntry)}
+	return newRecheckBackoffWithConfig(recheckBackoffConfig{})
 }
 
 func newRecheckBackoffWithMeter(meter metric.Meter) *recheckBackoff {
+	return newRecheckBackoffWithMeterAndConfig(meter, recheckBackoffConfig{})
+}
+
+func newRecheckBackoffWithConfig(cfg recheckBackoffConfig) *recheckBackoff {
+	cfg = resolveRecheckBackoffConfig(cfg)
+	return &recheckBackoff{
+		entries:       make(map[string]*recheckEntry),
+		k:             cfg.K,
+		suppressTicks: cfg.SuppressTicks,
+		staleTicks:    cfg.StaleTicks,
+	}
+}
+
+func newRecheckBackoffWithMeterAndConfig(meter metric.Meter, cfg recheckBackoffConfig) *recheckBackoff {
+	cfg = resolveRecheckBackoffConfig(cfg)
 	if meter == nil {
 		meter = obs.Meter(obs.MeterScopeSchedulerFallback)
 	}
@@ -36,7 +74,32 @@ func newRecheckBackoffWithMeter(meter metric.Meter) *recheckBackoff {
 	if err != nil {
 		c, _ = obs.Meter(obs.MeterScopeSchedulerFallback).Int64Counter("regatta.scheduler.gate_recheck_unavailable")
 	}
-	return &recheckBackoff{entries: make(map[string]*recheckEntry), unavailable: c}
+	return &recheckBackoff{
+		entries:       make(map[string]*recheckEntry),
+		unavailable:   c,
+		k:             cfg.K,
+		suppressTicks: cfg.SuppressTicks,
+		staleTicks:    cfg.StaleTicks,
+	}
+}
+
+// resolveRecheckBackoffConfig clamps invalid knob values to defaults so
+// a partial or zero-value Config never produces a no-op gate or
+// unbounded entry growth (#794).
+func resolveRecheckBackoffConfig(cfg recheckBackoffConfig) recheckBackoffConfig {
+	if cfg.K < 1 {
+		cfg.K = recheckBackoffDefaultK
+	}
+	if cfg.SuppressTicks < 1 {
+		cfg.SuppressTicks = recheckBackoffDefaultSuppressTicks
+	}
+	if cfg.StaleTicks < cfg.K {
+		cfg.StaleTicks = recheckBackoffDefaultStaleTicks
+		if cfg.StaleTicks < cfg.K {
+			cfg.StaleTicks = cfg.K
+		}
+	}
+	return cfg
 }
 
 func (b *recheckBackoff) incr(ctx context.Context) {
@@ -68,8 +131,9 @@ func (b *recheckBackoff) RecordFailure(id string) (enteredBackoff bool) {
 		b.entries[id] = e
 	}
 	e.failures++
-	if e.failures == recheckBackoffK {
-		e.suppressTicks = recheckBackoffTicks
+	e.idleTicks = 0
+	if e.failures == b.k {
+		e.suppressTicks = b.suppressTicks
 		return true
 	}
 	return false
@@ -90,6 +154,11 @@ func (b *recheckBackoff) Tick() {
 			if e.suppressTicks == 0 {
 				delete(b.entries, id)
 			}
+			continue
+		}
+		e.idleTicks++
+		if e.idleTicks >= b.staleTicks {
+			delete(b.entries, id)
 		}
 	}
 }
