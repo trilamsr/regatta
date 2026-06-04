@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-scorecard-test
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-scorecard-test check-comment-density check-comment-density-test
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -30,6 +30,12 @@ check-tbd-test:  ## Fixture-driven test for check-tbd.sh.
 
 check-scorecard-test:  ## Fixture-driven test for check-scorecard.sh (citation gate; #741 backtick-strip regression guard).
 	bash scripts/check-scorecard_test.sh
+
+check-comment-density:  ## Fail when a NEW prod .go file in the PR diff exceeds 5% comment density (#743 §Comments).
+	bash scripts/check-comment-density.sh
+
+check-comment-density-test:  ## Fixture-driven test for check-comment-density.sh (clean / dense / allowlisted / test-file / existing-file).
+	bash scripts/check-comment-density_test.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh
