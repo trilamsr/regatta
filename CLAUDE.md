@@ -8,6 +8,8 @@ When a rule cites `feedback_<slug>`, the slug names a per-operator memory file k
 
 UX > ease > performance > best-practices > speed > velocity. Long-term > short-term. NEVER ask user — spawn review subagent + decide via these rules. Tool-checkable facts: verify, never ask. (`feedback_decision_priority`, `feedback_verify_before_asking`)
 
+**Default simpler**: Pick the simplest viable option. Don't pre-build lint scripts / abstractions / tier systems for hypothetical drift. Anti-pattern: "what if 5 PRs/month land outside the list" — wait for the 5 PRs, not the lint. Three similar lines beat a premature abstraction. (`feedback_default_simpler`)
+
 ## Token economy (subagent-injection rules)
 
 - **Dispatch brief only**: implementer subagents receive per-task brief (spec §12 style), NOT full spec doc. Main thread keeps full spec for cross-cutting Qs. (`feedback_dispatch_brief_only`)
@@ -41,6 +43,7 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 - **Banned-phrase doc-check + check-tdd opt-outs**: tag spec-only PRs with `[DOCS]`/`[CI]`/`[CHORE]` release-notes prefix to skip check-tdd. (`feedback_ci_gates`)
 - **PR body hygiene**: `gh pr create`/`gh pr edit` MUST use `--body-file <path>` (HEREDOC escapes backticks + silently breaks release-notes fence). Pre-push grep for triple-fence ` ```release-notes ` block presence. (`feedback_pr_body_hygiene`)
 - **Windows path tests**: when test assertions compare path strings, canonicalize BOTH sides the same way production code does — or platform-branch the test inputs. 8.3 short-names + `/etc`-literal paths break Windows CI. (`feedback_windows_path_tests`)
+- **pr-lint body-snapshot lag**: `pr-lint` workflow snapshots PR body at the triggering commit's event payload. Reruns use the STORED payload, not live body. Body-edit alone doesn't refresh. After fixing scorecard/release-notes errors in body, push an empty commit (`git commit --allow-empty -m "chore: refresh pr-lint snapshot" && git push`) to force a fresh trigger event. (`feedback_pr_lint_body_snapshot_lag`)
 
 ## TDD + review
 
@@ -53,6 +56,8 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 - **Spec pattern authority**: implementer deviation → re-spawn design subagent. NEVER let implementer pick pattern. (`feedback_spec_pattern_authority`)
 - **Risk-tier findings**: fix inline OR file tracking issue + cite #. Never auto-approve with unaddressed Risk+. (`feedback_review_before_automerge`)
 - **Unaddressed load-bearing**: every load-bearing leftover (reviewer finding, spec deviation, future-wave dep sketched in prose) → tracking issue filed BEFORE merge. PR bodies are not durable. Universal rule, no PR-type exempt. (`feedback_unaddressed_load_bearing`)
+- **Audit before dispatch**: before dispatching an implementer for a plan-master task, verify the work isn't already on main: `git ls-tree -r origin/main --name-only | grep <expected-path>` OR `git log --oneline origin/main | grep '(#<task-issue>)'`. Plan-master issues may document already-shipped work; dispatching wastes subagent invocations. (`feedback_audit_main_before_implementing`)
+- **Validate empirically**: before recommending a CI/perf/memory change based on prior agent reports, run a local measurement. `/usr/bin/time -l go test -race ...` takes 1min and resolves the debate. Don't quote reviewer caution as truth. (`feedback_validate_before_ship`)
 
 ## Worktree discipline
 
