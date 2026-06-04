@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-scorecard-test check-comment-density check-comment-density-test
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-scorecard-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -36,6 +36,12 @@ check-comment-density:  ## Fail when a NEW prod .go file in the PR diff exceeds 
 
 check-comment-density-test:  ## Fixture-driven test for check-comment-density.sh (clean / dense / allowlisted / test-file / existing-file).
 	bash scripts/check-comment-density_test.sh
+
+check-no-bare-sleep:  ## Fail when a *_test.go file carries `time.Sleep` lexically nested inside a `for` block without `// allow-sleep:` directive (#760 migration target: testutil.Eventually).
+	bash scripts/check-no-bare-sleep.sh
+
+check-no-bare-sleep-test:  ## Fixture-driven test for check-no-bare-sleep.sh.
+	bash scripts/check-no-bare-sleep_test.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh

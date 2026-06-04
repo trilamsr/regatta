@@ -198,7 +198,7 @@ func TestReloader_ConcurrentSighupAndFsnotifyStoreConsistent(t *testing.T) {
 				)
 				writeRego(t, dir, "approval.rego", body)
 				n++
-				time.Sleep(5 * time.Millisecond)
+				time.Sleep(5 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
 			}
 		}()
 	}
@@ -212,7 +212,7 @@ func TestReloader_ConcurrentSighupAndFsnotifyStoreConsistent(t *testing.T) {
 			default:
 			}
 			_ = syscall.Kill(syscall.Getpid(), syscall.SIGHUP)
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
 		}
 	}()
 
@@ -392,7 +392,7 @@ func waitForRevisionChange(t *testing.T, az *authz.OPAAuthorizer, before string,
 		if az.CurrentRevision(authz.DefaultTenant) != before {
 			return
 		}
-		time.Sleep(20 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
 	}
 	t.Fatalf("revision unchanged after %s (was %q)", timeout, before)
 }

@@ -40,7 +40,7 @@ func TestWorker_DrainsQueueAndExecutes(t *testing.T) {
 		if got != nil && got.State == state.AgentDone {
 			break
 		}
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond) // allow-sleep: tracked in #760, migrate to testutil.Eventually
 	}
 	got, _ := db.GetAgent(ctx, a.ID)
 	if got.State != state.AgentDone {
