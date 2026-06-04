@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil"
 	"github.com/trilamsr/regatta/internal/testutil/gitenv"
 	_ "modernc.org/sqlite"
 )
@@ -108,17 +110,11 @@ status: planned
 		if proc, err := os.FindProcess(pid); err == nil {
 			_ = proc.Signal(syscall.SIGKILL)
 		}
-		// Give the kernel a moment to reap; then assert the
-		// process is gone. Best-effort; a stuck child is logged but
-		// not failed (the test temp dir cleanup handles the rest).
-		deadline := time.Now().Add(time.Second)
-		for time.Now().Before(deadline) {
-			if err := syscall.Kill(pid, 0); err != nil {
-				return
-			}
-			time.Sleep(20 * time.Millisecond)
-		}
-		t.Logf("warning: shim pid %d still alive at cleanup", pid)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		testutil.EventuallyT(t, ctx, 20*time.Millisecond, func() bool {
+			return syscall.Kill(pid, 0) != nil
+		}, fmt.Sprintf("shim pid %d still alive at cleanup", pid))
 	})
 }
 

@@ -97,11 +97,13 @@ func TestClaudeSpawn_LegacyStdout_NoLLMSpan(t *testing.T) {
 		t.Fatalf("Spawn: %v", err)
 	}
 
-	time.Sleep(200 * time.Millisecond)
-	for _, sp := range sr.Ended() {
-		if strings.HasPrefix(sp.Name(), "chat ") {
-			t.Fatalf("legacy stdout opened chat span: %q", sp.Name())
+	testutil.AssertStable(t, 20*time.Millisecond, 10, func() bool {
+		for _, sp := range sr.Ended() {
+			if strings.HasPrefix(sp.Name(), "chat ") {
+				return false
+			}
 		}
-	}
+		return true
+	}, "legacy stdout opened a chat span")
 }
 
