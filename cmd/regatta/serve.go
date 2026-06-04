@@ -1,20 +1,17 @@
-// serve wires the orchestrator daemon; spawner selection, scheduler-side
-// evaluator/schema adapters, and the brief keyring loader are all
-// serve-only concerns and ship together here.
+// serve wires the orchestrator daemon; per-subsystem build helpers
+// (spawner, scheduler, keyring, web, authz, config) ship in sibling
+// wire_*.go files so this file stays the boot orchestration root —
+// flag parsing, signal/ctx wiring, listener bind, and shutdown order.
 package main
 
 import (
 	"context"
-	"database/sql"
-	"encoding/hex"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -23,32 +20,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/trilamsr/regatta/contracts/schemas"
-	"github.com/trilamsr/regatta/internal/authz"
-	"github.com/trilamsr/regatta/internal/authz/policies/disk"
-	"github.com/trilamsr/regatta/internal/authz/policies/embedded"
-	"github.com/trilamsr/regatta/internal/authz/policies/reload"
 	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
-	"github.com/trilamsr/regatta/internal/config"
-	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
-	"github.com/trilamsr/regatta/internal/cost/spend"
-	"github.com/trilamsr/regatta/internal/gates/approval"
-	"github.com/trilamsr/regatta/internal/health"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
-	"github.com/trilamsr/regatta/internal/orchestrator/merge"
-	"github.com/trilamsr/regatta/internal/orchestrator/prwatch"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
-	"github.com/trilamsr/regatta/internal/orchestrator/review"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
-	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 	"github.com/trilamsr/regatta/internal/program"
 	"github.com/trilamsr/regatta/internal/secrets"
-	"github.com/trilamsr/regatta/internal/web"
 )
 
 // defaultListenerAddr matches spec §1.3 — `--addr` default is `:8080`.
@@ -130,58 +112,9 @@ func (l laneCapsFlag) Set(s string) error {
 }
 
 func runServe(args []string) int {
-	fs := flag.NewFlagSet(subcmdServe, flag.ExitOnError)
-	dbPath := fs.String("db", "regatta.db", "Path to sqlite state DB")
-	itemsRoot := fs.String("items-root", ".", "Repo root containing .regatta/items/*.md (overrides regatta.yaml spec_adapter.root when set explicitly)")
-	tickOnce := fs.Bool("tick-once", false, "Run one poll+schedule cycle and exit")
-	pollDur := fs.Duration("poll", 30*time.Second, "SpecAdapter poll interval")
-	tickDur := fs.Duration("tick", 5*time.Second, "Scheduler tick interval")
-	heartDur := fs.Duration("heartbeat", 60*time.Second, "Lock heartbeat interval")
-	lockTTL := fs.Duration("lock-ttl", 15*time.Minute, "Hotspot lock heartbeat lease")
-	spawnerName := fs.String("spawner", "stub", "Spawner backend: stub | claude")
-	repoRoot := fs.String("repo", ".", "Repo root for the claude spawner (worktrees live under <repo>/.regatta/worktrees)")
-	claudeBin := fs.String("claude", "claude", "Path to the claude binary (used when -spawner=claude)")
-	baseRef := fs.String("base-ref", "HEAD", "Git ref a new agent worktree branches from")
-	laneCaps := laneCapsFlag{}
-	fs.Var(laneCaps, "lane", "Per-lane concurrency cap, repeatable (e.g. -lane server:1)")
-	logFormat := logFormatFlag(defaultLogFormat)
-	fs.Var(&logFormat, "log-format", "Structured-log handler: text | json")
-	addr := fs.String("addr", defaultListenerAddr, "HTTP listener bind address when --ui=true")
-	ui := fs.Bool("ui", true, "Boot the operator HTTP listener; --ui=false skips bind entirely")
-	noPRWatch := fs.Bool("no-pr-watch", false, "[smoke-test only] disable the PR watcher; running agents stay in 'running' forever (issue #526)")
-	// PHASE AUTONOMY §11 W2 c2: default OFF so the c2 wiring lands
-	// without changing operator-observable behavior; once the scheduler-
-	// side gates_pass hook ships (c3+), flipping this to true closes the
-	// autonomous-loop merge gap.
-	autoMerge := fs.Bool("auto-merge", false, "Enable autonomous gh-pr-merge worker (PHASE AUTONOMY §11 W2 c2)")
-	publicURL := fs.String("public-url", "", "Public URL operators reach the listener via (e.g. https://regatta.example.com). Reverse-proxy deployments MUST set this so OriginCheck matches the external hostname instead of the inner pod r.Host (#304).")
-	_ = fs.Parse(args)
+	f := parseServeFlags(args)
 
-	publicHost, publicURLErr := parsePublicURL(*publicURL)
-
-	// Resolution priority for the adapter items-root (spec
-	// docs/engineer/specs/2026-06-02-s1-t1-self-host-regatta-yaml.md §5):
-	//   1. explicit --items-root flag wins;
-	//   2. else regatta.yaml spec_adapter.root (markdown_catalog only);
-	//   3. else the flag default ".".
-	// flag.Visit reports only flags the operator passed; the default
-	// value never visits, so an absent --items-root falls through to
-	// the yaml field if one is declared.
-	itemsRootExplicit := false
-	fs.Visit(func(f *flag.Flag) {
-		if f.Name == "items-root" {
-			itemsRootExplicit = true
-		}
-	})
-	if !itemsRootExplicit {
-		if yamlRoot, ok := loadMarkdownCatalogRoot(*repoRoot); ok {
-			resolved := yamlRoot
-			if !filepath.IsAbs(resolved) {
-				resolved = filepath.Join(*repoRoot, resolved)
-			}
-			*itemsRoot = resolved
-		}
-	}
+	publicHost, publicURLErr := parsePublicURL(f.PublicURL)
 
 	logger := log.New(os.Stderr, "regatta: ", log.LstdFlags|log.Lmicroseconds)
 	if publicURLErr != nil {
@@ -190,7 +123,7 @@ func runServe(args []string) int {
 	}
 	// logFormat was validated at Parse-time; the err branch fires only
 	// if logFormatFlag.Set and newLogHandler ever drift.
-	handler, err := newLogHandler(string(logFormat), os.Stderr)
+	handler, err := newLogHandler(string(f.LogFormat), os.Stderr)
 	if err != nil {
 		logger.Printf("log-format: %v", err)
 		return 2
@@ -224,7 +157,7 @@ func runServe(args []string) int {
 
 	// Loud-at-boot before any DB open (spec §1.3 open-q 9.8): refuse to
 	// start the listener when its HMAC key dependency is missing.
-	if err := preflightUIBoot(*ui); err != nil {
+	if err := preflightUIBoot(f.UI); err != nil {
 		logger.Printf("%v", err)
 		return 2
 	}
@@ -232,14 +165,14 @@ func runServe(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	db, err := state.Open(ctx, state.DSN(*dbPath))
+	db, err := state.Open(ctx, state.DSN(f.DBPath))
 	if err != nil {
 		logger.Printf("open db: %v", err)
 		return 2
 	}
 	defer func() { _ = db.Close() }()
 
-	ad, err := adapter.NewMarkdownCatalog(adapter.MarkdownCatalogConfig{Root: *itemsRoot})
+	ad, err := adapter.NewMarkdownCatalog(adapter.MarkdownCatalogConfig{Root: f.ItemsRoot})
 	if err != nil {
 		logger.Printf("adapter: %v", err)
 		return 2
@@ -247,13 +180,13 @@ func runServe(args []string) int {
 
 	costKeyring, costKeyID := loadBriefKeyringWithActive()
 	costKey := costKeyring[costKeyID]
-	set, err := buildSpawner(*spawnerName, *repoRoot, *claudeBin, *baseRef, slogger, db, costKey, costKeyID)
+	set, err := buildSpawner(f.SpawnerName, f.RepoRoot, f.ClaudeBin, f.BaseRef, slogger, db, costKey, costKeyID)
 	if err != nil {
 		logger.Printf("spawner: %v", err)
 		return 2
 	}
 
-	briefsDir := filepath.Join(*repoRoot, ".regatta", "programs")
+	briefsDir := filepath.Join(f.RepoRoot, ".regatta", "programs")
 	if err := os.MkdirAll(briefsDir, 0o750); err != nil {
 		logger.Printf("mkdir briefs dir: %v", err)
 		return 2
@@ -288,12 +221,12 @@ func runServe(args []string) int {
 		logger.Printf("brief loader: %v", err)
 		return 2
 	}
-	gate, gateResolver, err := buildApprovalGate(db, *repoRoot, clock, slogger)
+	gate, gateResolver, err := buildApprovalGate(db, f.RepoRoot, clock, slogger)
 	if err != nil {
 		logger.Printf("approval gates: %v", err)
 		return 2
 	}
-	costCapEnf, err := buildCostCapEnforcer(db, *repoRoot, clock, slogger)
+	costCapEnf, err := buildCostCapEnforcer(db, f.RepoRoot, clock, slogger)
 	if err != nil {
 		logger.Printf("cost cap: %v", err)
 		return 2
@@ -302,15 +235,15 @@ func runServe(args []string) int {
 	// can pick up Coordinator+Worker from Config. Coordinator is always
 	// installed (drives Reconcile); Worker is nil when --auto-merge=false
 	// so OnGatesPass stays a no-op by default.
-	mergeCoord, mergeWorker, err := buildMergeWiring(db, *autoMerge, slogger)
+	mergeCoord, mergeWorker, err := buildMergeWiring(db, f.AutoMerge, slogger)
 	if err != nil {
 		logger.Printf("merge wiring: %v", err)
 		return 2
 	}
 
 	sched := scheduler.New(db, scheduler.Config{
-		LaneCaps:         map[string]int(laneCaps),
-		LockTTL:          *lockTTL,
+		LaneCaps:         map[string]int(f.LaneCaps),
+		LockTTL:          f.LockTTL,
 		Evaluator:        schedulerEvaluator{evaluator},
 		OutputsSchemas:   outputsSchemaResolverFor(loader),
 		Gate:             gate,
@@ -327,11 +260,11 @@ func runServe(args []string) int {
 		DB:                db,
 		Scheduler:         sched,
 		Spawner:           set.Spawner,
-		DBPath:            *dbPath,
-		PollInterval:      *pollDur,
-		TickInterval:      *tickDur,
-		HeartbeatInterval: *heartDur,
-		LockTTL:           *lockTTL,
+		DBPath:            f.DBPath,
+		PollInterval:      f.PollDur,
+		TickInterval:      f.TickDur,
+		HeartbeatInterval: f.HeartDur,
+		LockTTL:           f.LockTTL,
 		Logger:            slogger,
 		Clock:             clock,
 	})
@@ -351,30 +284,9 @@ func runServe(args []string) int {
 	// shows up.
 	o.SetRejectionRouter(buildRejectionRouter(db, rejectionrouter.GHLabeler{}, slogger))
 
-	// PRWatcher drives the running→pr_open transition via gh CLI
-	// head-SHA polling. Spec docs/engineer/specs/2026-06-02-orchestrator-pr-watcher.md
-	// + cluster fixes for issues #520, #521, #522, #526. --no-pr-watch
-	// keeps the daemon bootable in smoke-test fixtures that have no
-	// GitHub remote; production always wires the Watcher.
-	if !*noPRWatch && set.Worktrees != nil {
-		watcher, err := prwatch.New(prwatch.Config{
-			DB:           db,
-			BranchFn:     set.Worktrees.BranchFor,
-			Lister:       prwatch.NewGHCLILister(),
-			VersionProbe: prwatch.NewGHCLIVersionProbe(),
-			Logger:       slogger,
-		})
-		if err != nil {
-			logger.Printf("pr-watch: %v", err)
-			return 2
-		}
-		if err := watcher.Start(ctx); err != nil {
-			logger.Printf("pr-watch: %v", err)
-			return 2
-		}
-		o.SetPRWatcher(watcher)
-	} else {
-		slogger.Info("orchestrator.starting", "pr_watch_enabled", false)
+	if err := startPRWatcher(ctx, o, db, set, f.NoPRWatch, slogger); err != nil {
+		logger.Printf("%v", err)
+		return 2
 	}
 
 	// PHASE AUTONOMY §11 W2 c2: install the merge coordinator built
@@ -385,44 +297,11 @@ func runServe(args []string) int {
 	if mergeCoord != nil {
 		o.SetMergeCoordinator(mergeCoord)
 	}
-	var mergeWorkerDone chan struct{}
-	if mergeWorker != nil {
-		mergeWorkerDone = make(chan struct{})
-		go func() {
-			defer close(mergeWorkerDone)
-			mergeWorker.Run(ctx)
-		}()
-		defer func() {
-			mergeWorker.Stop()
-			<-mergeWorkerDone
-		}()
-	}
+	defer startMergeWorker(ctx, mergeWorker)()
 
-	// W7 (PHASE-AUTONOMY): construct the L4-as-review Approver when the
-	// operator has wired the reviewer-bot two-identity model. Empty env
-	// keeps the Approver nil so default-off behaviour matches the spec
-	// (regatta.yaml::gates.l4_posts_review opt-in). The verdict-event
-	// subscription seam lands when the gate-event substrate stream
-	// exposes a typed subscribe — for now the value is available to
-	// dependants via the field set on the orchestrator config.
-	if rev, err := buildReviewApprover(slogger); err != nil {
-		logger.Printf("review approver: %v", err)
+	if err := startReviewReconciler(ctx, slogger); err != nil {
+		logger.Printf("%v", err)
 		return 2
-	} else if rev != nil {
-		slogger.Info("review.approver_ready",
-			"reviewer", os.Getenv("GH_USER_REVIEWER"),
-			"author_bot", os.Getenv("GH_USER_BOT"))
-		// #623: spin the in-process Reconciler. L4-side producers Enqueue
-		// signed Verdicts; Run serializes the Approver's GH calls. The
-		// substrate-bound subscriber is a follow-on once the gate_verdict
-		// payload extends to carry PR + HeadSHA.
-		rec, err := review.NewReconciler(review.ReconcilerConfig{Approver: rev, Logger: slogger})
-		if err != nil {
-			logger.Printf("review reconciler: %v", err)
-			return 2
-		}
-		go rec.Run(ctx)
-		_ = rec // verdict-producer plumbing lands when L4 emits PR-bound verdicts; see #623.
 	}
 
 	if err := o.Recover(ctx); err != nil {
@@ -436,15 +315,15 @@ func runServe(args []string) int {
 	// without touching boot code. Hydrate failure is fail-loud because a
 	// broken authz bundle MUST surface at boot — a serve that runs with
 	// an unhydrated store would deny every request mid-evaluation.
-	authzr, err := buildAuthorizer(ctx, *repoRoot, slogger)
+	authzr, err := buildAuthorizer(ctx, f.RepoRoot, slogger)
 	if err != nil {
 		logger.Printf("authz: %v", err)
 		return 2
 	}
 
 	httpSrv, err := bootListener(listenerConfig{
-		UI:         *ui,
-		Addr:       *addr,
+		UI:         f.UI,
+		Addr:       f.Addr,
 		DB:         db,
 		Keyring:    approvaltoken.MapKeyring(loadBriefKeyring()),
 		Clock:      clock,
@@ -474,7 +353,7 @@ func runServe(args []string) int {
 	// SIGINT/SIGTERM exits the goroutine; the deferred wait pins graceful
 	// shutdown — `regatta serve` does not return until the reconciler
 	// has cleanly stopped (bounded by reconcilerShutdownBudget).
-	reconcileSettings := loadCostReconcileSettingsFor(*repoRoot)
+	reconcileSettings := loadCostReconcileSettingsFor(f.RepoRoot)
 	reconcileDone, reconcileStarted := startReconciler(ctx, reconcileWiring{
 		DB:                db,
 		Key:               costKey,
@@ -497,25 +376,11 @@ func runServe(args []string) int {
 	// The handler ships in internal/alarmwebhook; both this in-process
 	// path and cmd/regatta-alarm-webhook drive the same Serve helper so
 	// behaviour stays byte-equal. Disabled when listen_addr is empty.
-	startAlarmWebhook(ctx, *repoRoot, slogger)
+	startAlarmWebhook(ctx, f.RepoRoot, slogger)
 
-	if *tickOnce {
-		if err := o.PollOnce(ctx); err != nil {
-			logger.Printf("poll: %v", err)
-			return 1
-		}
-		if err := o.ScheduleOnce(ctx); err != nil {
-			logger.Printf("schedule: %v", err)
-			return 1
-		}
-		// Mirror the Run loop order so `--tick-once` is a faithful
-		// single-shot rehearsal of one daemon tick.
-		if err := o.RouteRejections(ctx); err != nil {
-			logger.Printf("route rejections: %v", err)
-			return 1
-		}
-		if err := o.ReapTerminal(ctx); err != nil {
-			logger.Printf("reap: %v", err)
+	if f.TickOnce {
+		if err := runTickOnce(ctx, o); err != nil {
+			logger.Printf("%v", err)
 			return 1
 		}
 		return 0
@@ -526,543 +391,4 @@ func runServe(args []string) int {
 		return 1
 	}
 	return 0
-}
-
-// schedulerEvaluator adapts a *program.EdgeEvaluator to the scheduler-
-// side EdgeEvaluator interface. The scheduler seam types schema as
-// `any` so it never imports program; the production evaluator types it
-// as *program.OutputsSchema. The adapter unboxes the any back to the
-// concrete type, defaulting to nil when the resolver missed (matching
-// the runtime evaluator's contract that schema is advisory at eval).
-type schedulerEvaluator struct {
-	ev *program.EdgeEvaluator
-}
-
-func (s schedulerEvaluator) Eval(ctx context.Context, edge state.EdgeRow, schema any, journal state.OutputJournalEntry) (bool, string, error) {
-	sch, _ := schema.(*program.OutputsSchema)
-	return s.ev.Eval(ctx, edge, sch, journal)
-}
-
-// outputsSchemaResolverFor closes over the BriefLoader's per-feature
-// schema map so the scheduler can resolve an upstream feature's
-// declared OutputsSchema at predicate-eval time. The returned closure
-// boxes the *program.OutputsSchema into the scheduler-side `any` so
-// the scheduler stays import-free of package program.
-func outputsSchemaResolverFor(loader *program.BriefLoader) scheduler.OutputsSchemaResolver {
-	return func(featureID string) (any, bool) {
-		sch, ok := loader.OutputsSchemaForFeature(featureID)
-		if !ok {
-			return nil, false
-		}
-		return sch, true
-	}
-}
-
-// spawnerSet bundles the three handles a serve invocation needs to
-// wire the Spawner + Reaper. Only the claude backend populates
-// Killer + Worktrees; the stub leaves them nil so runServe knows to
-// skip the Reaper.
-type spawnerSet struct {
-	Spawner   spawner.Spawner
-	Killer    reaper.ChildKiller
-	Worktrees *spawner.WorktreeManager
-}
-
-// buildSpawner returns the spawnerSet selected by the -spawner flag.
-//
-// The logger parameter is consumed only by the stub branch: the stub
-// emits spawn.* structured events through it (spec §5.3). ClaudeSpawner
-// currently has no slog callsites — its observability lands when real
-// stdout/stderr-stream capture ships (#27, #45), at which point the
-// logger will thread through ClaudeSpawnerConfig the same way.
-func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger, db *state.DB, costKey []byte, costKeyID string) (spawnerSet, error) {
-	switch name {
-	case "", "stub":
-		return spawnerSet{Spawner: spawner.New(spawner.Config{Logger: logger})}, nil
-	case "claude":
-		wm, err := spawner.NewWorktreeManager(spawner.WorktreeManagerConfig{RepoRoot: repoRoot})
-		if err != nil {
-			return spawnerSet{}, fmt.Errorf("worktree manager: %w", err)
-		}
-		cfg := spawner.ClaudeSpawnerConfig{Command: claudeBin, BaseRef: baseRef}
-		if db != nil && len(costKey) > 0 {
-			cfg.OnResultEventFor = spend.SpawnerCallback(db.SQL(),
-				spend.WriteOptions{Key: costKey, KeyID: costKeyID},
-				spend.CallScope{WrittenBy: "claude-spawner"})
-		}
-		cs, err := spawner.NewClaudeSpawner(wm, cfg)
-		if err != nil {
-			return spawnerSet{}, fmt.Errorf("claude spawner: %w", err)
-		}
-		return spawnerSet{Spawner: cs, Killer: cs, Worktrees: wm}, nil
-	default:
-		return spawnerSet{}, fmt.Errorf("unknown spawner %q (want stub|claude)", name)
-	}
-}
-
-// loadBriefKeyring returns the configured HMAC keyring for brief
-// verification + approval-token verify. The verify-side consumes every
-// entry; signers must use loadBriefKeyringWithActive to pick the
-// active (write) key.
-func loadBriefKeyring() map[string][]byte {
-	keys, _ := loadBriefKeyringWithActive()
-	return keys
-}
-
-// loadBriefKeyringWithActive resolves the multi-key keyring + active
-// keyID per docs/engineer/specs/2026-06-02-s3-t3-key-rotation-drill.md
-// §3.3. Precedence: REGATTA_HMAC_KEYRING (colon-comma list) overrides
-// the legacy REGATTA_HMAC_KEY single-key path. Active = last entry in
-// keyring order (rotation IS append) unless REGATTA_HMAC_KEY_ID
-// overrides — operators recovering under an older key set the explicit
-// keyID and sign under it. Empty keyring returns ("", "") and lets the
-// brief loader surface the misconfig via brief.rejected logs.
-func loadBriefKeyringWithActive() (map[string][]byte, string) {
-	if raw := os.Getenv("REGATTA_HMAC_KEYRING"); raw != "" {
-		keys, order, err := parseBriefKeyring(raw)
-		if err != nil {
-			// Boot-time misconfig should fail loud; we surface via empty
-			// keyring + brief.rejected. Future PR-C wires log.Fatal at
-			// serve entry.
-			return map[string][]byte{}, ""
-		}
-		active := order[len(order)-1]
-		if override := os.Getenv("REGATTA_HMAC_KEY_ID"); override != "" {
-			if _, ok := keys[override]; ok {
-				active = override
-			}
-		}
-		return keys, active
-	}
-
-	envName := os.Getenv("REGATTA_HMAC_KEY_ENV")
-	if envName == "" {
-		envName = "REGATTA_HMAC_KEY"
-	}
-	v := os.Getenv(envName)
-	if v == "" {
-		return map[string][]byte{}, ""
-	}
-	keyID := os.Getenv("REGATTA_HMAC_KEY_ID")
-	if keyID == "" {
-		keyID = "k1"
-	}
-	return map[string][]byte{keyID: []byte(v)}, keyID
-}
-
-// parseBriefKeyring decodes the colon-comma multi-key env format
-// (`k1:hex,k2:hex,...`) into a keyring map plus the keyID order. Hex
-// over JSON because kubectl + Docker `--env` accept colons + commas
-// unquoted; JSON forces shell-quote drama (spec §5 reviewer note).
-// Returns ErrDuplicateKeyID when two entries share a keyID — silent
-// overwrite would lose the older verify path mid-rotation.
-func parseBriefKeyring(raw string) (map[string][]byte, []string, error) {
-	pairs := strings.Split(raw, ",")
-	keys := make(map[string][]byte, len(pairs))
-	order := make([]string, 0, len(pairs))
-	for i, pair := range pairs {
-		pair = strings.TrimSpace(pair)
-		if pair == "" {
-			continue
-		}
-		idx := strings.IndexByte(pair, ':')
-		if idx <= 0 || idx == len(pair)-1 {
-			return nil, nil, fmt.Errorf("keyring entry %d: want 'keyID:hex', got %q", i, pair)
-		}
-		keyID := strings.TrimSpace(pair[:idx])
-		hexMat := strings.TrimSpace(pair[idx+1:])
-		decoded, err := hex.DecodeString(hexMat)
-		if err != nil {
-			return nil, nil, fmt.Errorf("keyring entry %s: hex decode: %w", keyID, err)
-		}
-		if len(decoded) < schemas.MinKeyLen {
-			return nil, nil, fmt.Errorf("keyring entry %s: %w (got %d bytes)", keyID, schemas.ErrWeakKey, len(decoded))
-		}
-		if _, dup := keys[keyID]; dup {
-			return nil, nil, fmt.Errorf("keyring entry %s: duplicate keyID", keyID)
-		}
-		keys[keyID] = decoded
-		order = append(order, keyID)
-	}
-	if len(order) == 0 {
-		return nil, nil, fmt.Errorf("keyring is empty")
-	}
-	return keys, order, nil
-}
-
-// buildMergeWiring constructs the merge.Coordinator (always when this
-// daemon runs so the c0 recovery sweep is live) and — when
-// autoMergeEnabled is true — the merge.Worker that drives the c2
-// autonomous gh-pr-merge flow. The worker is nil when the gate is
-// off so the deferred Stop() shutdown is a no-op.
-//
-// gh ≥ 2.40 floor: when the worker is enabled we run a boot-time
-// gh-version probe (spec §9.10, #656). Refuse to wire the worker if
-// gh is too old — --match-head-commit silently fails on 2.39 and
-// older, defeating the SHA-pin guard. The Coordinator (Reconcile-only
-// path) still gets built so the recovery sweep stays live.
-//
-// The probe seam stays nil-stubbed for now: the production gh-CLI
-// prober ships alongside the W7 L4-as-review wiring; until then the
-// Coordinator's Reconcile path is exercised by tests + the executor
-// is the load-bearing seam for c2.
-func buildMergeWiring(db *state.DB, autoMergeEnabled bool, logger *slog.Logger) (*merge.Coordinator, *merge.Worker, error) {
-	coord, err := merge.New(merge.Config{
-		DB:     db,
-		Prober: merge.NewGhProber(nil),
-		Logger: logger,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("merge: new coordinator: %w", err)
-	}
-	if !autoMergeEnabled {
-		return coord, nil, nil
-	}
-	if err := verifyGhVersionFn(context.Background(), logger); err != nil {
-		return nil, nil, fmt.Errorf("merge: gh version check: %w", err)
-	}
-	coord.SetExecutor(merge.GhExecutor{})
-	w := merge.NewWorker(coord, 32, logger)
-	return coord, w, nil
-}
-
-// verifyGhVersionFn is the test seam for the boot-time gh-version
-// gate (#656). Production defaults to merge.VerifyGhVersion with the
-// real shell-out probe; tests reassign it to a fake that returns a
-// pinned version string so buildMergeWiring stays hermetic.
-var verifyGhVersionFn = func(ctx context.Context, logger *slog.Logger) error {
-	return merge.VerifyGhVersion(ctx, nil, logger)
-}
-
-// buildRejectionRouter wires the RejectionRouter the orchestrator
-// drives per tick. Defaults — K=3 + label=needs-human — come from the
-// router package; we pass them implicitly by leaving the Config
-// zero-valued. The labeler is injected so tests can substitute a
-// capturing fake without spawning gh; serve.go production wiring hands
-// in rejectionrouter.GHLabeler{} which shells out to gh.
-func buildRejectionRouter(db *state.DB, labeler rejectionrouter.PRLabeler, logger *slog.Logger) *rejectionrouter.Router {
-	return rejectionrouter.New(rejectionrouter.Config{
-		DB:      db,
-		Labeler: labeler,
-		Logger:  logger,
-	})
-}
-
-// buildApprovalGate constructs the scheduler-side HITL gate seam from
-// regatta.yaml. Missing or empty regatta.yaml yields (nil, nil, nil) so
-// repos that have not adopted approval gates pay zero runtime cost —
-// scheduler.Config.Gate=nil disables the gate-pass entirely.
-//
-// MVP-2 W3 resolution policy: gate name == work_item lane. Operators
-// who want richer routing (per-feature gates, predicate-CEL) plug in a
-// custom GateResolver post-MVP; the seam stays scheduler-agnostic.
-//
-// The notifier defaults to the stub (audit-only slog) until the
-// channel-adapter PR lands. Keyring + kid are shared with the brief
-// loader so an operator who configured REGATTA_HMAC_KEY for briefs
-// gets approval-token signing for free.
-func buildApprovalGate(db *state.DB, repoRoot string, clock func() time.Time, logger *slog.Logger) (scheduler.ApprovalGate, scheduler.GateResolver, error) {
-	cfgPath := filepath.Join(repoRoot, "regatta.yaml")
-	data, err := os.ReadFile(cfgPath) // #nosec G304 -- repoRoot is an operator-supplied trust boundary; the path is fixed to regatta.yaml under it.
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil, nil
-		}
-		return nil, nil, fmt.Errorf("read %s: %w", cfgPath, err)
-	}
-	gates, err := config.LoadApprovalGates(data)
-	if err != nil {
-		return nil, nil, fmt.Errorf("load approval gates: %w", err)
-	}
-	if len(gates) == 0 {
-		return nil, nil, nil
-	}
-
-	byName := make(map[string]approval.Config, len(gates))
-	for _, g := range gates {
-		byName[g.Name] = g
-	}
-
-	keyring, kid := approvalKeyring()
-	g := approval.NewGate(db, approval.NewStubNotifier(logger), keyring, kid, clock, logger)
-	resolver := scheduler.GateResolver(func(wi state.WorkItem) (approval.Config, bool) {
-		c, ok := byName[wi.Lane]
-		return c, ok
-	})
-	return g, resolver, nil
-}
-
-// listenerConfig is the bootListener seam; the test harness drives it directly so integration tests exercise the real boot path.
-type listenerConfig struct {
-	UI         bool
-	Addr       string
-	DB         *state.DB
-	Keyring    approvaltoken.Keyring
-	Clock      func() time.Time
-	// Authorizer is the OPA-backed gate built at runServe boot. Pre-T3
-	// the web handler does not yet consume it; the field is plumbed so
-	// W8 T3 can pick it up without touching listener wiring.
-	Authorizer *authz.OPAAuthorizer
-	// PublicHost is the externally reachable host (no scheme) parsed from
-	// --public-url. Reverse-proxy deployments set it so OriginCheck pins
-	// the public hostname instead of the inner pod's r.Host (#304).
-	PublicHost string
-}
-
-// preflightUIBoot fires BEFORE state.Open so the operator sees the HMAC misconfig at the loud-at-boot moment (spec §1.3 open-q 9.8) rather than as a render-time lie.
-func preflightUIBoot(ui bool) error {
-	if !ui {
-		return nil
-	}
-	if os.Getenv("REGATTA_HMAC_KEY") != "" {
-		return nil
-	}
-	if envName := os.Getenv("REGATTA_HMAC_KEY_ENV"); envName != "" && os.Getenv(envName) != "" {
-		return nil
-	}
-	return fmt.Errorf("--ui requires REGATTA_HMAC_KEY (or REGATTA_HMAC_KEY_ENV) to be set; refusing to boot")
-}
-
-// bootListener returns a configured *http.Server when --ui=true, or nil when --ui=false so the caller skips the listen syscall entirely.
-func bootListener(cfg listenerConfig) (*http.Server, error) {
-	if !cfg.UI {
-		return nil, nil
-	}
-	if err := preflightUIBoot(true); err != nil {
-		return nil, err
-	}
-	mux := http.NewServeMux()
-	// W3: content-negotiated /healthz — JSON readiness for the supervisor,
-	// legacy `ok\n` literal preserved for the W7.0 contract.
-	var healthDB *sql.DB
-	if cfg.DB != nil {
-		healthDB = cfg.DB.SQL()
-	}
-	mux.HandleFunc("/healthz", health.Handler(health.Dependencies{
-		DB:        healthDB,
-		Heartbeat: health.NewHeartbeatCell(cfg.Clock),
-		Brief:     health.NewBriefCell(),
-		Version:   version,
-	}))
-	cbPath, cbHandler := approval.NewHTTPCallback(approval.Dependencies{
-		DB:      cfg.DB,
-		Keyring: cfg.Keyring,
-		Clock:   cfg.Clock,
-	})
-	mux.Handle(cbPath, cbHandler)
-	// W7.1 T4: mount the operator UI scaffold last so http.ServeMux's
-	// longest-prefix-wins rule keeps /healthz + /api/approval/callback above
-	// the `/` catch-all (TestServe_RootHandlerWiredIntoBootListener pins it).
-	webHandler, err := newWebHandler(cfg)
-	if err != nil {
-		return nil, err
-	}
-	mux.Handle("/", webHandler)
-	addr := cfg.Addr
-	if addr == "" {
-		addr = defaultListenerAddr
-	}
-	return &http.Server{
-		Addr:              addr,
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-	}, nil
-}
-
-// newWebHandler constructs the W7.1 T4 operator UI handler with templates
-// loaded from the package's embed.FS at boot. Template parse failure surfaces
-// as a bootListener error (spec §3.4 fail-loud) rather than a render-time lie.
-// RouteRegistrar is nil pre-T6; cmd/regatta passes the field unchanged.
-func newWebHandler(cfg listenerConfig) (http.Handler, error) {
-	tmpls, err := web.LoadTemplates(web.AssetsFS())
-	if err != nil {
-		return nil, fmt.Errorf("web templates: %w", err)
-	}
-	return web.NewHandler(web.Dependencies{
-		DB:             cfg.DB,
-		Keyring:        cfg.Keyring,
-		Templates:      tmpls,
-		Clock:          cfg.Clock,
-		Config:         web.Config{PublicHost: cfg.PublicHost},
-		RouteRegistrar: nil,
-	}), nil
-}
-
-// loadMarkdownCatalogRoot reads regatta.yaml at repoRoot and returns
-// (spec_adapter.root, true) when the adapter type is markdown_catalog.
-// Returns ("", false) when the yaml is missing, malformed, or declares
-// a different adapter type — callers fall back to the --items-root
-// flag default. Malformed-yaml is intentionally not fatal here: the
-// approval-gate loader catches the same yaml a few lines later and
-// fails loud there, so this codepath stays read-only-best-effort.
-func loadMarkdownCatalogRoot(repoRoot string) (string, bool) {
-	cfgPath := filepath.Join(repoRoot, "regatta.yaml")
-	cfg, err := validateconfig.LoadConfigFile(cfgPath)
-	if err != nil {
-		return "", false
-	}
-	root := cfg.MarkdownCatalogRoot()
-	if root == "" {
-		return "", false
-	}
-	return root, true
-}
-
-// buildAuthorizer constructs the W8 OPA authorizer and (when the
-// operator declares safety.authz.policy_dir) spawns the hot-reload
-// goroutine bound to ctx. Empty / missing regatta.yaml ⇒ embed.FS
-// default-deny only; the authorizer is still hydrated so call sites
-// always see a non-nil store.
-//
-// Reloader lifecycle: bound to ctx — SIGINT/SIGTERM cancel the parent,
-// which drains both the watcher and signal goroutines. SIGHUP is
-// claimed by the reloader's own signal.Notify, which does not steal
-// from the parent context's signal.NotifyContext (it listens on a
-// disjoint signal set).
-func buildAuthorizer(ctx context.Context, repoRoot string, slogger *slog.Logger) (*authz.OPAAuthorizer, error) {
-	cfg, _ := validateconfig.LoadConfigFile(filepath.Join(repoRoot, "regatta.yaml"))
-	authzCfg := cfg.AuthzConfig()
-
-	// disk.Loader with embedded fallback is the canonical wiring: an
-	// empty / missing policy_dir falls through to embed.FS so single-
-	// tenant deployments boot zero-config.
-	loader := &disk.Loader{Fallback: embedded.NewLoader()}
-	if authzCfg != nil && authzCfg.PolicyDir != "" {
-		dir := authzCfg.PolicyDir
-		if !filepath.IsAbs(dir) {
-			dir = filepath.Join(repoRoot, dir)
-		}
-		loader.Dir = dir
-	}
-
-	az, err := authz.NewOPAAuthorizer(authz.Config{Loader: loader})
-	if err != nil {
-		return nil, fmt.Errorf("new authorizer: %w", err)
-	}
-	if err := az.Hydrate(ctx); err != nil {
-		return nil, fmt.Errorf("hydrate: %w", err)
-	}
-
-	// Reloader only spins up when policy_dir is set — there is nothing
-	// to hot-reload for an embed.FS-only deployment.
-	if loader.Dir == "" {
-		return az, nil
-	}
-
-	r := &reload.Reloader{
-		Authorizer: az,
-		Loader:     loader,
-		Tenant:     authz.DefaultTenant,
-		Logger:     slogger,
-	}
-	if d := parseAuthzDebounce(authzCfg.ReloadDebounce); d > 0 {
-		r.Debounce = d
-	}
-	if authzCfg.ReloadSighup != nil && !*authzCfg.ReloadSighup {
-		r.DisableSighup = true
-	}
-	if authzCfg.ReloadFsnotify != nil && !*authzCfg.ReloadFsnotify {
-		r.DisableFsnotify = true
-	}
-	// OnStart fires after BOTH triggers (watcher + SIGHUP handler) are
-	// registered — commit 6341256 added the SIGHUP-readiness gate so
-	// operators (and tests) can rely on this log as the
-	// pid-can-receive-SIGHUP signal.
-	r.OnStart = func() {
-		slogger.Info("authz reload: ready",
-			"policy_dir", loader.Dir,
-			"sighup_enabled", !r.DisableSighup,
-			"fsnotify_enabled", !r.DisableFsnotify,
-		)
-	}
-	go func() {
-		if err := r.Run(ctx); err != nil {
-			slogger.Error("authz reload: exited", "err", err)
-		}
-	}()
-	return az, nil
-}
-
-// parseAuthzDebounce parses the CUE-validated `^[0-9]+(ms|s)$` debounce
-// string. Returns 0 on empty / parse error — reload.Reloader.Run then
-// falls back to reload.DefaultDebounce. The CUE schema already rejects
-// malformed values at validate-config time, so the parse-error branch
-// covers only a forward-compat drift between schema + Go parsing.
-func parseAuthzDebounce(s string) time.Duration {
-	if s == "" {
-		return 0
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil {
-		return 0
-	}
-	return d
-}
-
-// buildReviewApprover constructs the W7 L4-as-review Approver from
-// env-driven config. Returns (nil, nil) — opt-in via env — when any of
-// the required vars (REGATTA_REVIEW_REPO, GH_TOKEN_REVIEWER,
-// GH_USER_REVIEWER, GH_USER_BOT) is empty so default-off matches spec
-// §2: "Default-off; opt-in via regatta.yaml: gates.l4_posts_review:
-// true". Env over yaml keeps the secret out of the file + avoids a CUE
-// schema change for this wave; yaml-driven config can land alongside
-// the install-service surface (spec §12 carry-forward).
-func buildReviewApprover(logger *slog.Logger) (*review.Approver, error) {
-	repo := os.Getenv("REGATTA_REVIEW_REPO")
-	token := os.Getenv("GH_TOKEN_REVIEWER")
-	reviewer := os.Getenv("GH_USER_REVIEWER")
-	authorBot := os.Getenv("GH_USER_BOT")
-	if repo == "" || token == "" || reviewer == "" || authorBot == "" {
-		return nil, nil
-	}
-	owner, name, ok := strings.Cut(repo, "/")
-	if !ok || owner == "" || name == "" {
-		return nil, fmt.Errorf("REGATTA_REVIEW_REPO=%q: want owner/name", repo)
-	}
-	// #658: reuse the brief HMAC keyring for verdict-sig verify. Empty
-	// keyring leaves the Approver in legacy WARN-only mode so the gate
-	// stays default-off until operators have rotated keys into place.
-	return review.New(review.Config{
-		Owner:          owner,
-		Repo:           name,
-		ReviewerToken:  token,
-		ReviewerLogin:  reviewer,
-		AuthorBotLogin: authorBot,
-		Logger:         logger,
-		Keyring:        loadBriefKeyring(),
-	})
-}
-
-// parsePublicURL extracts the Host (incl. port) from --public-url so OriginCheck
-// can pin the externally reachable hostname behind a reverse proxy (#304). Empty
-// input returns ("", nil) so the flag stays optional; non-empty input MUST carry
-// an http/https scheme — bare hostnames are rejected to keep mis-configurations
-// loud at boot rather than silently falling back to r.Host.
-func parsePublicURL(raw string) (string, error) {
-	if raw == "" {
-		return "", nil
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return "", fmt.Errorf("parse %q: %w", raw, err)
-	}
-	if u.Scheme != "http" && u.Scheme != "https" {
-		return "", fmt.Errorf("parse %q: want http:// or https:// scheme", raw)
-	}
-	if u.Host == "" {
-		return "", fmt.Errorf("parse %q: missing host", raw)
-	}
-	return u.Host, nil
-}
-
-// approvalKeyring reuses the brief HMAC key for approval-token signing.
-// Operators set REGATTA_HMAC_KEY once and both surfaces light up; an
-// empty key returns an empty MapKeyring so NewGate's constructor guard
-// fires only when the operator has at least one gate defined.
-func approvalKeyring() (approvaltoken.Keyring, string) {
-	keys, active := loadBriefKeyringWithActive()
-	if active == "" {
-		active = "k1"
-	}
-	return approvaltoken.MapKeyring(keys), active
 }
