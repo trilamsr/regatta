@@ -38,6 +38,8 @@ const (
 	// anthropicMaxTokens caps response length. Findings are short
 	// JSON; 4096 leaves headroom for ~30 findings at ~120 tokens each.
 	anthropicMaxTokens = 4096
+
+	anthropicBlockTypeText = "text"
 )
 
 // AnthropicAdapter implements the L4 Invoker against Anthropic's
@@ -166,7 +168,7 @@ func buildAnthropicPayload(model, static, dynamic string) map[string]any {
 	}
 	if static != "" {
 		payload["system"] = []map[string]any{{
-			"type":          "text",
+			"type":          anthropicBlockTypeText,
 			"text":          static,
 			"cache_control": map[string]any{"type": "ephemeral"},
 		}}
@@ -203,7 +205,7 @@ func extractAnthropicText(raw []byte) (string, anthropicUsage, error) {
 	}
 	var sb strings.Builder
 	for _, c := range msg.Content {
-		if c.Type == "text" {
+		if c.Type == anthropicBlockTypeText {
 			sb.WriteString(c.Text)
 		}
 	}
