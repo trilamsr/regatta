@@ -1,9 +1,9 @@
-# Spec with TBD inside release-notes fence
+# Spec carrying release-notes draft
 
-The release-notes fence is operator-author scratch space; bare TBDs are allowed there.
+The release-notes fence is operator-author scratch space; bare placeholders are allowed there.
 
 ```release-notes
-[DOCS] Placeholder TBD release-notes line for spec authoring.
+[DOCS] placeholder TBD release-notes line for spec authoring.
 ```
 
 Body prose stays clean.

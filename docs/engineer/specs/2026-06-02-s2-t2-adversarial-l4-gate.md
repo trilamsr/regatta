@@ -3,7 +3,7 @@
 Status: ready for review
 Date: 2026-06-02
 Author: design subagent <tree@lumalabs.ai>
-Issue umbrella: TBD (this spec stands up the umbrella)
+Issue umbrella: #728
 
 Depends on:
 

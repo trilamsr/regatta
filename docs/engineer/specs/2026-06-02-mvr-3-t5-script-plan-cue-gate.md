@@ -45,7 +45,7 @@ Out (Phase X with explicit reopen-trigger):
 - v2 schema migration story. **Reopen:** first breaking change to ScriptPlan shape. Today v1-only; the version field is in the schema so v2 is additive.
 - L4 gate falling back to a local heuristic when the second-opinion model is down. **Reopen:** first observed L4-model outage in production; today reject-on-LLM-down is the conservative default (`feedback_decision_priority`: long-term correctness > short-term availability).
 
-Self-host filter: the validator ships with the autonomous loop's first script-plan dispatch. Until that lands (post-MVR-3-T6), the validator runs in **shadow mode** - it runs against every script-plan, logs rejections to substrate, but does not block. The script-mode dispatch path is gated behind a `regatta.yaml: orchestrator.script_plan.enforce: true` flag (default `false` until #TBD-followup flips it). Per `feedback_self_improvement`, shadow mode catches false-positives in the L0-L6 gate-chain before they cost a real run.
+Self-host filter: the validator ships with the autonomous loop's first script-plan dispatch. Until that lands (post-MVR-3-T6), the validator runs in **shadow mode** - it runs against every script-plan, logs rejections to substrate, but does not block. The script-mode dispatch path is gated behind a `regatta.yaml: orchestrator.script_plan.enforce: true` flag (default `false` until #731 flips it). Per `feedback_self_improvement`, shadow mode catches false-positives in the L0-L6 gate-chain before they cost a real run.
 
 ## 3. CUE schema design
 

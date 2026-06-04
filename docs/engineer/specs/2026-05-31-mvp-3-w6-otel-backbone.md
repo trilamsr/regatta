@@ -10,7 +10,7 @@ summary: "W6 OTel observability backbone: SDK + slog bridge + scheduler/spawner/
 Status: ready for review
 Date: 2026-05-31
 Author: design subagent <tri@maydow.com>
-Issue umbrella: TBD (this spec stands up the umbrella)
+Issue umbrella: #726
 Depends on: #113 (PR, slog wiring — hard prereq, merged), #115 (PR, `Config.Logger` normalization — hard prereq, merged), MVP-2 W2 (conditional-DAG journal — soft, lands same wave)
 Binding brief: `docs/superpowers/briefs/2026-05-31-mvp-3-next-level.md` §4 W6 + §5 cross-wedge threads + §6 red-team + §8 bootstrap
 Roadmap fit: brief §4 — **rank #1 wedge** for MVP-3; spine for W7 (UI), W9 (replay), W10 (provenance), W12 (billing) per §5 thread #2

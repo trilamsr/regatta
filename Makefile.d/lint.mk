@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets vet lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -21,6 +21,12 @@ check-phase-x-leak:  ## Fail when an active spec names a Phase-X token (tenant_i
 
 check-phase-x-leak-test:  ## Fixture-driven test for check-phase-x-leak.sh.
 	bash scripts/check-phase-x-leak_test.sh
+
+check-tbd:  ## Fail when an engineer doc carries a bare `TBD` placeholder outside an HTML-comment+issue or `release-notes` fence.
+	bash scripts/check-tbd.sh
+
+check-tbd-test:  ## Fixture-driven test for check-tbd.sh.
+	bash scripts/check-tbd_test.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh

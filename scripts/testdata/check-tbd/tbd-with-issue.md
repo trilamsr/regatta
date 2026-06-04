@@ -1,5 +1,5 @@
-# TBD paired with issue spec
+# Spec with same-line issue ref
 
-Owner: TBD (tracked in #456 at Wave-B kickoff)
+Owner: TBD (tracked in #456 at Wave-B kickoff).
 
-This line cites an issue on the same line as the TBD, so it's allowed.
+The placeholder above carries an issue ref on the same line, so the gate allows it.
