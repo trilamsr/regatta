@@ -10,7 +10,7 @@ summary: "Cost governor wedge — pre-call USD+token caps + Anthropic Usage API 
 Status: ready for review
 Date: 2026-06-01
 Author: design subagent <tri@maydow.com>
-Issue umbrella: TBD (this spec stands up the umbrella)
+Issue umbrella: #727
 Depends on:
 - **Hard prereq (merged):** W6 OTel T1 (SDK setup), T2 (slog bridge), T4 (stream-json GenAI parser), T5 (Config.Tracer injection across 8 components) — `docs/engineer/specs/2026-05-31-mvp-3-w6-otel-backbone.md`. The W6 stream-json parser at `internal/orchestrator/spawner/genai.go` is the LLM-call seam this wedge piggy-backs on for `token_spend` emission and for the `gen_ai.usage.*` attribute source.
 - **Hard prereq (merged):** Unified Substrate v2 Wave 1 — `docs/engineer/specs/2026-06-01-unified-substrate-design.md`. This wedge writes `events.kind='token_spend'` and `events.kind='budget_reconciled'` and reads cumulative spend via reducer `append` + caller-side `SUM(payload->>'usd')`. Both kinds are already registered in substrate v2 §2.1 + §4 with `defaultReducer(kind)` strategies — `token_spend=append`, `budget_reconciled=lww`. No new substrate enum slot is required.
@@ -21,6 +21,10 @@ Roadmap fit: `wedge_roadmap_assessment` MVP-2 W1 row was deferred to land **afte
 Memory rules in force: `feedback_research_design_principles` (adopt OSS), `feedback_decision_priority` (UX > best-prac > velocity), `feedback_grade_rubric` (B/A/A+ tool-checkable), `feedback_adversarial_review` (hostile-read mandate), `feedback_spec_pattern_authority` (one pattern mandated), `feedback_unaddressed_load_bearing` (named-but-deferred → tracking issue), `feedback_deletion_default` (what got smaller?), `feedback_simplify_reviewer` (mandatory deletion proposal), `wedge_cost_governor` (prior-art patterns), `wedge_roadmap_assessment` (P8 trap pattern).
 
 ---
+
+## §0 Closing trigger
+
+Done when: T1-T6 PRs (per §5/§6) merge under `cost-governor-followup` umbrella #727 AND `regatta.yaml: cost.deny_above_usd` is wired into the scheduler tick with substrate `token_spend` + `budget_reconciled` events emitted on real LLM calls (acceptance signal: 7 consecutive days of green substrate emission against the autonomous self-host loop).
 
 ## §1 Problem
 

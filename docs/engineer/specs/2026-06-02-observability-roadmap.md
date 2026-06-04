@@ -10,7 +10,7 @@ summary: "Observability roadmap — converged metric-layer + operator-surface pl
 Status: ready for review (converged)
 Date: 2026-06-02
 Author: design subagent (research+design + amendments + second-tier review folded)
-Issue umbrella: TBD (this spec stands up the umbrella)
+Issue umbrella: #730
 Depends on: #159 umbrella (W6 OTel backbone — span/log signal shipped); #224 (substrate event log + HMAC chain); #283 (token_spend writer); #381/#380/#388/#385 (L4 gate cache + second-opinion + per-category + auto-fix); #382/#391/#394 (crash-recovery property infra)
 Binding brief: operator-brief "15-item observability roadmap" (2026-06-02 session)
 Roadmap fit: extends W6 trace+log signal with the metric signal, the SLO layer, and the operator-surface layer (`regatta status` + daily digest + trigger-clock). Prerequisite for the 30-day-green Phase-S → Phase-G trigger gauge.
@@ -585,9 +585,9 @@ Per `feedback_grade_rubric`. Applies to every PR in every wave. Implementer scor
 
 Per `feedback_unaddressed_load_bearing` — every load-bearing leftover gets a tracking issue. Three filed:
 
-1. **`[OBS-followup] SLO-2 budget widen (5% OR 28d window) + SLO-3 quantile rewrite (P99 of 30d trailing)`** — owner: TBD at Wave-B kickoff; trigger: 30 days of real burn-rate data from Wave-B in the warehouse. Linked from §5 SLO-2 + SLO-3 entries.
+1. **`[OBS-followup] SLO-2 budget widen (5% OR 28d window) + SLO-3 quantile rewrite (P99 of 30d trailing)`** — trigger: 30 days of real burn-rate data from Wave-B in the warehouse. Linked from §5 SLO-2 + SLO-3 entries. (Single-operator self-host: owner field omitted per CLAUDE.md §Self-host filter.)
 
-2. **`[OBS-followup] Dashboard-UI-drift nightly diff job (Grafana HTTP export vs checked-in JSON) + cardinality-cost "active series count" panel on docs/operator/dashboards/meta.json`** — owner: TBD at Wave-D kickoff. Linked from §4 trap #10 + trap #11. Bundles two related concerns into one issue because both ship on the meta-dashboard surface.
+2. **`[OBS-followup] Dashboard-UI-drift nightly diff job (Grafana HTTP export vs checked-in JSON) + cardinality-cost "active series count" panel on docs/operator/dashboards/meta.json`** — trigger: Wave-D kickoff. Linked from §4 trap #10 + trap #11. Bundles two related concerns into one issue because both ship on the meta-dashboard surface. (Single-operator self-host: owner field omitted per CLAUDE.md §Self-host filter.)
 
 3. **`[OBS-followup] Cost-per-agent rollup (Prom recording rule OR sqlite view joining event_token_spend × dispatch trace tree on trace_id → agent_id)`** — owner: C-T3 by default; reassign at Wave-C kickoff if scope grows. Linked from §11 RISK-B. Filed because adding `agent_id` to the cost-counter labels would breach the cardinality budget; the rollup ships as a derived view, not as a new label.
 

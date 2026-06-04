@@ -9,7 +9,7 @@ summary: "W12 metered billing — deferred to Phase X per docs/engineer/briefs/2
 Status: ready for review
 Date: 2026-06-01
 Author: design subagent <tri@maydow.com>
-Issue umbrella: TBD (this spec stands up the umbrella)
+Issue umbrella: #729
 Depends on:
 - **Hard prereq (must be merged):** Cost Governor Wave 2 — `docs/engineer/specs/2026-06-01-cost-governor-design.md` §3.4 + §3.5. Specifically the T3 reconciler tick that emits `events.kind='budget_reconciled'` (lww by `tenant_id, period_start`) and the T4 substrate writer wiring. W12 is a pure CONSUMER of those events — this wedge writes no `budget_reconciled` rows, only reads them.
 - **Hard prereq (must be merged):** W7 Operator Web UI Wave 1 — `docs/engineer/specs/2026-06-01-w7-operator-web-ui-design.md` §3.2 (`internal/web/` package) + §3.3 (route table) + §3.5 (templates) + W7.0 HTTP listener landed in #263. Billing UI tab adds one route alongside the existing `/runs/...` and `/approve/...` routes; the embed.FS template loader + cookie-HMAC auth middleware + Tailwind/htmx asset pipeline are all reused verbatim.
@@ -469,7 +469,7 @@ Per `feedback_grade_rubric`: each grade has tool-checkable criteria. The PR body
 ### A — edge cases + deletion + reviewer-cleared
 - **A1.** B + adversarial-reviewer subagent runs against the spec and finds zero unaddressed issues. **Verify:** PR body cites the reviewer subagent transcript hash.
 - **A2.** §3.9 "What got smaller" enumerates ≥ 6 deletions vs the naive build. **Verify:** count the bullets — must be ≥ 6.
-- **A3.** §5 every R-tier risk maps to either an in-spec mitigation OR a `[billing-followup]` tracking issue. **Verify:** no risk row reads "TBD" or "??".
+- **A3.** §5 every R-tier risk maps to either an in-spec mitigation OR a `[billing-followup]` tracking issue. **Verify:** no risk row reads `TBD` or `??`.
 - **A4.** §6 every task T1-T6 lists ≥ 3 B-tier tests + ≥ 2 A-tier + ≥ 1 A+. **Verify:** count assertions per row.
 - **A5.** Stripe SDK adoption is pinned to v76 in any code preview (none in this spec; impl tasks must hold). **Verify:** spec text says `stripe-go/v76` verbatim.
 - **A6.** ZERO new migration files. **Verify:** `ls migrations/ | wc -l` unchanged between main and PR.
