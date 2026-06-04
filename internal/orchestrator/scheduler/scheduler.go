@@ -240,9 +240,10 @@ type Scheduler struct {
 
 	backoff *recheckBackoff
 
-	// lastPoll tracks the most recent successful adapter.List call per
-	// registered adapter so Tick can honour Capabilities().MinPollInterval
-	// without re-polling a rate-budgeted source every tick (#847).
+	// lastPoll tracks the most recent adapter.List attempt per registered
+	// adapter (success OR error) so Tick honours Capabilities().MinPollInterval
+	// without re-polling every tick — including the rate-limit-error case
+	// where retrying inside the budget window worsens the throttle (#847).
 	// Indexed by Config.Adapters slot to keep the key total + cheap.
 	lastPoll []time.Time
 }
@@ -435,11 +436,13 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 
 // pollAdaptersHonouringMinPoll calls List on each registered adapter
 // whose Capabilities().MinPollInterval has elapsed since its last poll
-// (zero-value lastPoll always polls — first tick fires). List results
-// are dropped here: adaptersync owns adapter→state mirroring; this seam
-// exists so the scheduler enforces per-adapter cadence so a rate-budgeted
-// source (github_issues=30s) is not hammered at the orchestrator's
-// faster tick rate (#847).
+// attempt (zero-value lastPoll always polls — first tick fires).
+// lastPoll updates on error too so a flapping rate-limited adapter is
+// not re-tried inside the budget window. List results are dropped here:
+// adaptersync owns adapter→state mirroring; this seam exists so the
+// scheduler enforces per-adapter cadence so a rate-budgeted source
+// (github_issues=30s) is not hammered at the orchestrator's faster
+// tick rate (#847).
 func (s *Scheduler) pollAdaptersHonouringMinPoll(ctx context.Context) {
 	now := s.cfg.Clock()
 	for i, ad := range s.cfg.Adapters {
