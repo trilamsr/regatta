@@ -36,12 +36,8 @@ Each row is generated from the spec's own frontmatter (`title`, `status`, `summa
 - [`2026-06-02-s1-t1-self-host-regatta-yaml.md`](2026-06-02-s1-t1-self-host-regatta-yaml.md) — S1-T1 — `regatta.yaml` for this repo + `.regatta/items/` bootstrap
 - [`2026-06-02-s1-t3-boot-prompt-converter.md`](2026-06-02-s1-t3-boot-prompt-converter.md) — Spec: S1-T3 — boot-prompt → work_item brief converter
 - [`2026-06-02-s1-t5-smoke-test.md`](2026-06-02-s1-t5-smoke-test.md) — S1-T5 — self-host smoke test (Phase S1 acceptance gate)
-- [`2026-06-02-s2-t1-w9-substrate-impl.md`](2026-06-02-s2-t1-w9-substrate-impl.md) — S2-T1 — W9 Replay+Diff Harness, Substrate-Default DurableHistory Impl Spec — Phase S2-T1: substrate-default DurableHistory impl only. Compares against Temporal-backed alternative for rationale; the Temporal variant itself is Phase-X per brief §4.
 - [`2026-06-02-s2-t2-adversarial-l4-gate.md`](2026-06-02-s2-t2-adversarial-l4-gate.md) — S2-T2 — Adversarial Reviewer as First-Class L4 Gate — Design Spec
 - [`2026-06-02-s2-t3-followup-triage.md`](2026-06-02-s2-t3-followup-triage.md) — Spec: S2-T3 — GitHub `[followup]` issues → work_item briefs
-- [`2026-06-02-s2-t4-mutation-testing.md`](2026-06-02-s2-t4-mutation-testing.md) — Phase-S S2-T4 — Mutation testing on cost-governor + scheduler (design spec, v1) — Phase S2-T4 mutation testing on cost-governor + scheduler. References Phase-X seams (Stripe billing) only as forward-fit context.
-- [`2026-06-02-s3-t1-w8-opa-slim.md`](2026-06-02-s3-t1-w8-opa-slim.md) — Phase S3-T1 — W8 OPA slim — policy hot-reload (single-tenant) — Phase S3-T1: slim W8 — authorizer + hot-reload, single-tenant. Multi-tenant RBAC + tenant_id propagation deferred to Phase X per brief §4.
-- [`2026-06-02-s3-t2-substrate-cutover.md`](2026-06-02-s3-t2-substrate-cutover.md) — S3-T2 — substrate Phase B+C cutover (approvals only) — Phase S3-T2: shadow-write + read-from-substrate cutover for approvals only. Forward-fits the W8 tenant_id seam without absorbing it.
 - [`2026-06-02-s3-t3-key-rotation-drill.md`](2026-06-02-s3-t3-key-rotation-drill.md) — S3-T3 — HMAC key-rotation drill + operator recovery doc
 - [`2026-06-02-s3-t4-crash-recovery-property.md`](2026-06-02-s3-t4-crash-recovery-property.md) — S3-T4 — Crash-Recovery Property Test Design Spec
 - [`2026-06-03-mvr-2-t1-w7-wave2-dag-reviewer-ui.md`](2026-06-03-mvr-2-t1-w7-wave2-dag-reviewer-ui.md) — MVR-2 T1 — W7 Wave 2 htmx (DAG read view + reviewer-rich PR UI) — Pre-fetch skeleton spec for MVR-2 T1. Extends MVR-1 T1 W7 Wave 1 dashboard with two new read surfaces: agent-DAG visualization and reviewer-comment-aware PR detail view. Still read-only (write paths stay CLI per Wave 1 constraint). Vendored htmx 2.0.x + Pico CSS. 3-4 wk effort band. SKELETON — full elaboration at MVR-2 dispatch time.
@@ -74,7 +70,12 @@ Pre-fetch skeletons gated behind a Phase X reopen-trigger (per `docs/engineer/br
 
 ## Shipped
 
-_None._
+Specs whose implementation has landed; retained for archaeology.
+
+- [`2026-06-02-s2-t1-w9-substrate-impl.md`](2026-06-02-s2-t1-w9-substrate-impl.md) — S2-T1 — W9 Replay+Diff Harness, Substrate-Default DurableHistory Impl Spec — Phase S2-T1: substrate-default DurableHistory impl only. Compares against Temporal-backed alternative for rationale; the Temporal variant itself is Phase-X per brief §4.
+- [`2026-06-02-s2-t4-mutation-testing.md`](2026-06-02-s2-t4-mutation-testing.md) — Phase-S S2-T4 — Mutation testing on cost-governor + scheduler (design spec, v1) — Phase S2-T4 mutation testing on cost-governor + scheduler. References Phase-X seams (Stripe billing) only as forward-fit context.
+- [`2026-06-02-s3-t1-w8-opa-slim.md`](2026-06-02-s3-t1-w8-opa-slim.md) — Phase S3-T1 — W8 OPA slim — policy hot-reload (single-tenant) — Phase S3-T1: slim W8 — authorizer + hot-reload, single-tenant. Multi-tenant RBAC + tenant_id propagation deferred to Phase X per brief §4.
+- [`2026-06-02-s3-t2-substrate-cutover.md`](2026-06-02-s3-t2-substrate-cutover.md) — S3-T2 — substrate Phase B+C cutover (approvals only) — Phase S3-T2: shadow-write + read-from-substrate cutover for approvals only. Forward-fits the W8 tenant_id seam without absorbing it.
 
 ## Superseded
 
