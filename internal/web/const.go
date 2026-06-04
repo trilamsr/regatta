@@ -1,8 +1,6 @@
 package web
 
-// Named values for spec §3.7, §3.6.1, §3.4. Every magic number in
-// internal/web/*.go MUST be named here so TestConstNoZeroValueMagic
-// stays green.
+// Named values for spec §3.7, §3.6.1, §3.4. Every magic number in internal/web/*.go MUST be named here so TestConstNoZeroValueMagic stays green.
 
 // CSRFCookieName names the spec §3.6.2 double-submit cookie.
 const CSRFCookieName = "regatta_csrf"
@@ -25,12 +23,10 @@ const PollIntervalSeconds = 5
 // staticCacheControl is the spec §3.3 row 8 immutable cache directive applied to /ui/static/*.
 const staticCacheControl = "public, max-age=86400, immutable"
 
-// noStoreCacheControl is the spec §3.3 default cache directive for every non-asset route
-// (R6 — operator surfaces cannot tolerate stale-cache lies).
+// noStoreCacheControl is the spec §3.3 default cache directive for every non-asset route (R6 — operator surfaces cannot tolerate stale-cache lies).
 const noStoreCacheControl = "no-store"
 
-// uiStaticPrefix is the spec §3.3 row 8 mount point; sub-mux uses it as
-// both the route prefix and the http.StripPrefix argument.
+// uiStaticPrefix is the spec §3.3 row 8 mount point; sub-mux uses it as both route prefix and http.StripPrefix argument.
 const uiStaticPrefix = "/ui/static/"
 
 // staticDirName / templatesDirName are the embed-relative folder names; LoadTemplates uses both in one fs.Sub call site.
