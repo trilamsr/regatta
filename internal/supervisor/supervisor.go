@@ -322,6 +322,18 @@ func sanitizeEnvFile(p string) error {
 	return nil
 }
 
+// sanitizeShellPath rejects metacharacters that would escape the
+// double-quoted `/bin/sh -lc` wrapper embedding WorkingDir + BinaryPath
+// on macOS — `"`, `$`, backtick, newline, null, plus `\` for parity with
+// the EnvFile sanitizer. field names the rejected struct field for
+// operator-facing diagnostics (PR #830 adversarial review).
+func sanitizeShellPath(field, p string) error {
+	if strings.ContainsAny(p, "\"$`\n\x00\\") {
+		return fmt.Errorf("%s path %q contains a shell metacharacter (one of \" $ ` \\ newline null) that would break the launchd sourcing wrapper", field, p)
+	}
+	return nil
+}
+
 // resolveMacPath picks the PATH ordering by inspecting the running
 // binary's prefix — spec §3.4 (brew detection fix #2; `which` is only
 // a tiebreaker, never authoritative).
@@ -358,6 +370,12 @@ func renderUnit(p Plan) (string, error) {
 	var tmpl string
 	switch p.OS {
 	case osDarwin:
+		if err := sanitizeShellPath("working-dir", p.WorkingDir); err != nil {
+			return "", err
+		}
+		if err := sanitizeShellPath("binary", p.BinaryPath); err != nil {
+			return "", err
+		}
 		tmpl = launchdTemplate
 	case osLinux:
 		tmpl = systemdTemplate
