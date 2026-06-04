@@ -47,11 +47,13 @@ type L4Gate interface {
 	Evaluate(ctx context.Context, cfg l4.Config, in l4.Input) (schemas.GateResult, error)
 }
 
-// L4GateResolver maps a planned work_item to its L4 config + Input;
-// ok=false means out-of-scope (e.g. doc-only PRs). Input construction
-// (diff vs base, scorecard extraction) lives in production wiring so
-// the scheduler stays policy-agnostic.
-type L4GateResolver func(wi state.WorkItem) (l4.Config, l4.Input, bool)
+// L4GateResolver maps a planned work_item to its L4 scope (Config +
+// Input); ok=false means out-of-scope (e.g. doc-only PRs). Input
+// construction (diff vs base, scorecard extraction) lives in production
+// wiring so the scheduler stays policy-agnostic. Returning L4Scope
+// directly lets filter.Pass[L4Scope] consume the resolver without an
+// adapter wrapper (#704 R1).
+type L4GateResolver func(wi state.WorkItem) (L4Scope, bool)
 
 // DowngradeHook surfaces a soft-cap-induced model swap to the spawner.
 // Nil is legal — soft-cap downgrades degrade to WARN-only.

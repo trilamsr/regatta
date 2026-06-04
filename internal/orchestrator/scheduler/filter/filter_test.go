@@ -217,6 +217,63 @@ func TestFilterApply_PropertyIdempotent(t *testing.T) {
 	})
 }
 
+// TestFilterApply_PropertyCrossPassCommutes asserts A∘B == B∘A on disjoint-key drop sets (#704 R3).
+func TestFilterApply_PropertyCrossPassCommutes(t *testing.T) {
+	t.Parallel()
+	rapid.Check(t, func(rt *rapid.T) {
+		ids := rapid.SliceOfN(rapid.StringMatching(`[a-z]{1,4}`), 0, 12).Draw(rt, "ids")
+		dropA := rapid.SliceOfDistinct(rapid.StringMatching(`[a-z]{1,4}`), rapid.ID[string]).Draw(rt, "dropA")
+		dropB := rapid.SliceOfDistinct(rapid.StringMatching(`[a-z]{1,4}`), rapid.ID[string]).Draw(rt, "dropB")
+		setA := map[string]bool{}
+		for _, id := range dropA {
+			setA[id] = true
+		}
+		setB := map[string]bool{}
+		for _, id := range dropB {
+			if !setA[id] {
+				setB[id] = true
+			}
+		}
+		in := make([]state.WorkItem, 0, len(ids))
+		for _, id := range ids {
+			in = append(in, wi(id))
+		}
+		pA := filter.Pass[struct{}]{
+			Name:    "A",
+			Resolve: keepAll,
+			Evaluate: func(_ context.Context, w state.WorkItem, _ struct{}) (bool, error) {
+				return !setA[w.ID], nil
+			},
+		}
+		pB := filter.Pass[struct{}]{
+			Name:    "B",
+			Resolve: keepAll,
+			Evaluate: func(_ context.Context, w state.WorkItem, _ struct{}) (bool, error) {
+				return !setB[w.ID], nil
+			},
+		}
+		ab, err := filter.Apply(context.Background(), pA, in)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		ab, err = filter.Apply(context.Background(), pB, ab)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		ba, err := filter.Apply(context.Background(), pB, in)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		ba, err = filter.Apply(context.Background(), pA, ba)
+		if err != nil {
+			rt.Fatal(err)
+		}
+		if !equalSlice(ids2(ab), ids2(ba)) {
+			rt.Fatalf("A∘B=%v B∘A=%v", ids2(ab), ids2(ba))
+		}
+	})
+}
+
 // FuzzApply_OrderIndependentVerdict asserts kept-set invariant under input reorder (#251 §5).
 func FuzzApply_OrderIndependentVerdict(f *testing.F) {
 	f.Add("a,b,c,d,e", uint8(3))
