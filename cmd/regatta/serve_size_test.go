@@ -6,9 +6,7 @@ import (
 	"testing"
 )
 
-// TestServeFileSize asserts cmd/regatta/serve.go stays below the
-// god-file threshold so future cascade rebases do not anchor here
-// (audit Wave D, memory feedback_cascade_rebase_root_cause).
+// TestServeFileSize asserts cmd/regatta/serve.go stays under the god-file threshold (audit Wave D).
 func TestServeFileSize(t *testing.T) {
 	const limit = 400
 	data, err := os.ReadFile("serve.go")
