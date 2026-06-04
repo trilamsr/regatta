@@ -62,7 +62,6 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 			if body, ok := o.cfg.ItemBody(ctx, a.WorkItemID); ok {
 				itemBody = body
 			} else {
-				// WARN on miss; the prompt degrades but the spawn proceeds.
 				o.log.Warn("orchestrator.item_body_missing",
 					string(obs.KeyWorkItemID), a.WorkItemID,
 					string(obs.KeyAgentID), a.ID,

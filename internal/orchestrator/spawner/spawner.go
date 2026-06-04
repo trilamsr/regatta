@@ -36,17 +36,10 @@ type Request struct {
 	DAGID      string
 	RunID      string
 
-	// ItemBody is the raw markdown of the work_item brief
-	// (`.regatta/items/<id>.md`). PromptBuilder pastes it verbatim so
-	// the agent reads acceptance criteria + linked artifacts without a
-	// follow-up read. Empty when the brief file is absent — the prompt
-	// degrades to the identifier line in that case.
+	// ItemBody is the raw markdown of the work_item brief; PromptBuilder pastes it verbatim. Empty falls back to the identifier-only prompt.
 	ItemBody string
 
-	// RepoRoot is the absolute path of the repo checkout the agent
-	// will operate against. Empty in unit tests that exercise prompt
-	// shaping in isolation; production callers populate it from
-	// flags.RepoRoot.
+	// RepoRoot is the absolute repo checkout the agent operates against; empty in isolated prompt-shaping unit tests.
 	RepoRoot string
 }
 

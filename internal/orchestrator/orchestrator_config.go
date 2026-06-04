@@ -22,12 +22,7 @@ type BriefLoader interface {
 	Sync(ctx context.Context, pollStartedAt time.Time) error
 }
 
-// ItemBodyLoader returns the raw markdown brief for workItemID so
-// ScheduleOnce can populate spawner.Request.ItemBody before Spawn. Nil
-// or a (",false") return drops back to the identifier-only prompt
-// without blocking the spawn — a missing brief MUST NOT strand the
-// reservation. Implementations sit in cmd/regatta/serve.go for the
-// production wiring; tests stub with a closure over an in-memory map.
+// ItemBodyLoader feeds spawner.Request.ItemBody; nil or ok=false degrades to identifier-only prompt so a missing brief never strands the reservation.
 type ItemBodyLoader func(ctx context.Context, workItemID string) (body string, ok bool)
 
 // Config holds tunables and dependencies for an Orchestrator, wired via

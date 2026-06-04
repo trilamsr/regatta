@@ -213,11 +213,7 @@ func (s *ClaudeSpawner) WorktreeManager() *WorktreeManager { return s.wm }
 // factory landed without booting a subprocess.
 func (s *ClaudeSpawner) Config() ClaudeSpawnerConfig { return s.cfg }
 
-// defaultPromptBuilder produces the rich worker prompt. CLAUDE.md auto-loads
-// in the worktree so universal rules need not be duplicated — this template
-// pins per-dispatch context (item brief) and cites the load-bearing slugs
-// the worker most often drifts on (TDD-first, WHY-not-WHAT, deletion default,
-// PR-body hygiene, A+ scorecard citation gate).
+// defaultPromptBuilder pins per-dispatch context (item brief) and cites the CLAUDE.md slugs workers most often drift on; the worktree's CLAUDE.md auto-load supplies the rule bodies.
 func defaultPromptBuilder(req Request) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "regatta worker: work item %s on lane %s (agent %d).\n\n",

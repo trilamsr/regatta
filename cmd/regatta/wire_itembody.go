@@ -13,12 +13,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 )
 
-// buildItemBodyLoader resolves work_item IDs to raw markdown briefs
-// under <repoRoot>/.regatta/items. The directory is rescanned per call
-// so briefs added mid-loop (issue auto-triage) become visible without
-// a daemon restart — bounded by item count which the self-host loop
-// keeps small. Returns ("",false) on miss so ScheduleOnce's
-// WARN-and-degrade path stays intact.
+// buildItemBodyLoader rescans <repoRoot>/.regatta/items per call so briefs added mid-loop become visible without a daemon restart; misses fall through to ScheduleOnce's WARN-and-degrade path.
 func buildItemBodyLoader(repoRoot string, slogger *slog.Logger) func(ctx context.Context, workItemID string) (string, bool) {
 	dir := filepath.Join(repoRoot, ".regatta", "items")
 	var mu sync.Mutex
@@ -32,10 +27,6 @@ func buildItemBodyLoader(repoRoot string, slogger *slog.Logger) func(ctx context
 	}
 }
 
-// scanItemsForID walks dir for the first *.md whose frontmatter id
-// matches workItemID. ParseMarkdownItem enforces the same frontmatter
-// schema the orchestrator's adapter uses, so a hit here is the same
-// brief mirrored into work_items.
 func scanItemsForID(dir, workItemID string, slogger *slog.Logger) (string, bool) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -52,7 +43,8 @@ func scanItemsForID(dir, workItemID string, slogger *slog.Logger) (string, bool)
 			continue
 		}
 		path := filepath.Join(dir, entry.Name())
-		data, err := os.ReadFile(path) // #nosec G304 — path is built from flag-constrained repoRoot + fixed .regatta/items prefix + dir entry; same trust boundary as adapter/markdown.go
+		// #nosec G304 — path = flag-constrained repoRoot + fixed .regatta/items + dir entry; same trust boundary as adapter/markdown.go.
+		data, err := os.ReadFile(path)
 		if err != nil {
 			continue
 		}
