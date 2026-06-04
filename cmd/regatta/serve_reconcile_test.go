@@ -91,6 +91,7 @@ func TestStartReconciler_LandsBudgetReconciledRowOnTick(t *testing.T) {
 	}
 
 	waitCtx, waitCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer waitCancel()
 	testutil.Eventually(t, waitCtx, 50*time.Millisecond, func() bool {
 		var n int
 		if err := db.SQL().QueryRowContext(ctx,
@@ -100,7 +101,6 @@ func TestStartReconciler_LandsBudgetReconciledRowOnTick(t *testing.T) {
 		}
 		return false
 	}, "reconciler did not write budget_reconciled row")
-	waitCancel()
 	cancel()
 	select {
 	case <-done:
