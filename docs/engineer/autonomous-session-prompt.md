@@ -73,12 +73,99 @@ PHASE X — External-buyer wedges [DEFERRED]
   P3.8 swap-out adapters · W9 Temporal-backed DurableHistory. Specs in main. DO NOT dispatch implementers. Reopen on: external-customer-ask OR 30-day-green trigger. (W8/W10/W11/W12 moved into MVR-2/MVR-3 above.)
 
 OPEN FOLLOWUPS (sweep when between phase items, ≤5 trivial PRs/session cap)
+
+<!-- BEGIN auto-priority -->
+- #617 [FOLLOWUP #592] GPL-2 container variant tracking
+- #620 [FOLLOWUP #595] regatta self-improve mute/replay CLI verbs
+- #621 [FOLLOWUP #595] Production Anthropic LLM wiring
+- #630 [FOLLOWUP #576] T4 replay-latency P95 baseline post-Phase-X Replay
+- #678 [FOLLOWUP #638] Windows CI runner — defer until GH Actions matrix slot opens
+- #679 [FOLLOWUP #639] Mutation testing on greenclock.go — defer until tooling-add lands
+- #700 [FOLLOWUP #694] 8 adversarial-review findings on substrate fast-path
+- #702 [FOLLOWUP #691] reloader rapid-cycle stall + test timing brittleness
+- #703 [FOLLOWUP #697] 5 adversarial-review findings on scheduler gate re-check
+- #704 [FOLLOWUP #698] 3 risks + 4 comment-deletion nits on filter helper refactor
+- #705 [FOLLOWUP #692] 4 adversarial-review findings on cost backfill CLI
+- #706 [FOLLOWUP #699] 3 false-negative gaps + stale-guard untested on Tracer/Meter invariant
+- #709 [A4-BLOCKER] BudgetReconciledPayload float-field deletion: cross-package consumers
+- #714 [A2-followup] check-memory-citations.sh: ship CI-portable fixture
+- #715 [BLOCKER] Wave B1 HMAC canon-collapse premise mismatch — MacSum already canonical [followup,tech-debt]
+- #719 [B4-followup] worktree-gc: squash-merge detection via tree-equivalence
+- #720 [C1-BLOCKER] approvals_shadow.go — zero callers but load-bearing downstream specs; cutover-plan sequence [followup,tech-debt]
+- #722 [C2-followup] reconcile docs/operator/getting-started.md + w7 spec §3.3 with JSON-only /healthz
+- #724 [F1-followup] phase-x-leak: add htmx + opt-in 4 in-flight specs
+- #725 [F1-followup] mvr-2-t6 substrate bridge: tenant_id scope-creep vs self-host filter
+- #726 [W6-umbrella] OTel backbone spec umbrella [W6-followup,documentation]
+- #727 [cost-governor-umbrella] Cost governor design spec umbrella [cost-governor-followup,documentation]
+- #728 [S2-T2-umbrella] Adversarial L4 gate spec umbrella [documentation,followup]
+- #729 [W12-billing-umbrella] Stripe metering / billing spec umbrella [billing-followup,documentation]
+- #730 [OBS-umbrella] Observability roadmap spec umbrella [OBS-followup,documentation]
+- #731 [MVR-3-T5] flip orchestrator.script_plan.enforce default to true after shadow-mode burn-in [documentation,followup,mvp-3]
+- #735 [H-followup] check-tbd: tighten regex + add fixture coverage
+- #736 [F2-followup] migrate 3 skipped polling sites (different anti-patterns)
+- #738 [D-followup] rename pre-existing serve_*.go → wire_*.go for naming consistency
+- #739 [BLOCKER] Wave G state/ 3-way split — receiver-method constraint + 140 importers
+<!-- END auto-priority -->
+
 - RISK followups — strategic-design closeout: #423 #424 #426 #427 all CLOSED 2026-06-03; no open RISK trackers remain in this slice.
 - ~80 followup tracking issues filed across PHASE-AUTONOMY + OBS wave drains (#573-#588, #606-#667) — sweep by tier (correctness > consistency > docs)
 - Architecture-review followups — #551 generalize external-side-effect intent/outbox · #548 GDPR crypto-shred. (#549 #550 #553 #554 CLOSED 2026-06-03.)
 - Recurring A+ rubric checkboxes — fuzz, mutation testing extensions, key-rotation drill extensions
 
 Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -200`. Per feedback_boot_prompt_per_wave_refresh, entries >2 waves old are pruned; older shipped wedges live in git history only.
+
+<!-- BEGIN auto-shipped -->
+- #643 refactor(orchestrator): split orchestrator.go per subsystem (541 → 162 LoC)
+- #664 [FIX] merge: BranchDeleted outcome + gh<2.40 boot refusal + missing tests (closes #655 #656 #657)
+- #665 [FIX] substrate: add manual_merge + operator_intervention event kinds (closes #659)
+- #666 [FIX] supervisor: install-service bootstraps OS init + polls /healthz with rollback (closes #647 #648)
+- #668 [FIX] cost+resume CLI: defer db.Close() to prevent connection leak (closes #649)
+- #669 [CI] enforce scorecard criterion citations via pr-lint gate
+- #670 [DOCS] MVR-2 wedge skeleton specs — T1/T2/T3/T4/T5/T6/T7 (pre-fetch per indefinite-autonomy)
+- #671 [DOCS] MVR-3 wedge skeleton specs — T1 Sigstore / T2 Stripe / T3 blackboard / T4 research-mode (pre-fetch)
+- #672 [DOCS] boot prompt: mark PHASE-AUTONOMY + OBS waves complete; refresh PRIORITY to DEPLOY + GREEN-CLOCK; 2026-06-03 wave entry
+- #673 [FEATURE] merge: scheduler gates_pass→PrepareMerge+Enqueue + GhProber + regatta merge status CLI (closes #586 #612 #613)
+- #674 feat(review): W7 followup cluster — HMAC verify + Reconciler + pagination + status CLI + CODEOWNERS
+- #675 [BUGFIX] cost-cap W5 followup cluster (#622 #650 #651 #652)
+- #676 feat(secrets): W6 followup cluster — per-key source + reload-secrets CLI + nightly compat tests
+- #677 [FIX] selfimprove: align rules to spec §5.2 + wire substrate source + cron default dry-run (closes #644 #645 #646)
+- #680 [FEATURE] obs: OBS-C/D followup batch — collector wedge + recording rules + scatter panel + span lint + triggers CLI + runbook + spec amendments
+- #681 [FEATURE] prwatch+substrate: fork-PR allowlist + threshold tunable + gh-version integ test + sweeper bench + full-chain weekly sweep
+- #682 [CHORE] cost-gov: 10-issue cleanup batch (1 doc note + 6 BATCH-DEFER + 3 open)
+- #683 [FIX] pr-watcher: design elaboration + older bugfix cluster verify-and-close
+- #684 [CHORE] tracker: customer-roadmap RISKs + OBS-followup tail (reopen-triggers + inline doc fixes)
+- #685 [CHORE] tracker: close W8-OPA-RBAC + DW-superset followups with reopen-triggers
+- #686 [CHORE] actionable-today cluster: 3 fixes + 5 deferred-with-triggers
+- #687 [DOCS] spec for #251 — scheduler filter helper consolidation
+- #688 [DOCS] dispatch templates: harden WORKTREE preamble against /tmp/ clone drift (#188)
+- #689 [FEAT] serve: --public-url flag for reverse-proxy Origin check (#304)
+- #690 [FIX] install-service: respect operator-configured healthz port (closes #667)
+- #691 [TEST] authz/reload: F-HR8 restore-after-removal test + fix watch-root re-Add gap (#365)
+- #692 [FEAT] cost: regatta cost backfill <run_id> recovery CLI
+- #693 feat(lint-substrate-queries): walk BinaryExpr concat chains for substrate queries (#234)
+- #694 perf(substrate): F1 fast-path skips signedPayload round-trip (#216)
+- #695 [CHORE] dispatch-templates: harden scorecard backtick + release-notes-fence traps
+- #696 fix(test): absorb linux CI variance in spawner span-recorder poll
+- #697 fix(scheduler): re-check approval gate in reservation loop (closes #167)
+- #698 refactor(scheduler): consolidate apply{Approval,Cost,L4}Gate into shared filter.Apply (#251)
+- #699 [FEAT] obs/lint: Tracer+Meter pair grep-invariant gate (closes #509)
+- #701 [DOCS] operator console v5.1 spec + v2 backlog (customer-0 dual-principal)
+- #707 [CHORE] docker-compose UI default + boot prompt wave refresh
+- #708 [FEATURE] operator-console S0 plan + MVR-1-T1 pointer update (boot-prompt + roadmap)
+- #710 [CHORE] collapse multi-line Test/Fuzz/Benchmark godocs
+- #711 [DOCS] specs: status frontmatter + skeleton-prefetch/superseded sections
+- #712 [CHANGE] prwatch: delete deprecated BranchRenameThreshold const alias
+- #713 [DOCS] boot-prompt purge + check-memory-citations gate + 5 broken slug cite fixes
+- #716 [CHORE] add scripts/worktree-gc.sh — dry-run-default GC for merged agent worktrees
+- #717 [REFACTOR] unify GitHubClient/GHClient under internal/ghclient.Client
+- #718 [REFACTOR] collapse otel.Meter literals via obs.Meter factory (Wave B2)
+- #721 [CHANGE] health: delete W7.0 plaintext shim — /healthz always returns JSON
+- #723 [CI] scripts/check-phase-x-leak.sh — mechanical self-host filter gate
+- #732 [DOCS] purge bare TBD placeholders + add check-tbd gate
+- #733 [REFACTOR] testutil: add Eventually helper + migrate 5 high-flake polling sites
+- #734 [REFACTOR] Wave E: inline single-impl interfaces (LLMClient/EventSource/CohortReader/BridgeOption); delete dead estimate.Estimator
+- #737 [REFACTOR] split cmd/regatta/serve.go (1068→394 LOC) into per-subsystem wire_*.go siblings
+<!-- END auto-shipped -->
 
 - **2026-06-03 Wave SHIPPED** (~60+ PRs across PHASE-AUTONOMY + OBS final drains + MVR specs + memory/scorecard infra + post-merge reliability+UX polish):
   - PHASE-AUTONOMY W1-W7: all 7 wedges IMPL landed. W7 L4-as-review identity #589. W3 supervisor #597 (`regatta install-service` + healthz + sd_notify).
