@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
+	"github.com/trilamsr/regatta/internal/secrets"
 )
 
 // loadBriefKeyring returns the configured HMAC keyring for brief
@@ -27,13 +29,11 @@ func loadBriefKeyring() map[string][]byte {
 // overrides — operators recovering under an older key set the explicit
 // keyID and sign under it. Empty keyring returns ("", "") and lets the
 // brief loader surface the misconfig via brief.rejected logs.
+//nolint:contextcheck // loadBriefKeyring predates ctx-threading; signature is stable across callers.
 func loadBriefKeyringWithActive() (map[string][]byte, string) {
 	if raw := os.Getenv("REGATTA_HMAC_KEYRING"); raw != "" {
 		keys, order, err := parseBriefKeyring(raw)
 		if err != nil {
-			// Boot-time misconfig should fail loud; we surface via empty
-			// keyring + brief.rejected. Future PR-C wires log.Fatal at
-			// serve entry.
 			return map[string][]byte{}, ""
 		}
 		active := order[len(order)-1]
@@ -46,10 +46,16 @@ func loadBriefKeyringWithActive() (map[string][]byte, string) {
 	}
 
 	envName := os.Getenv("REGATTA_HMAC_KEY_ENV")
-	if envName == "" {
-		envName = "REGATTA_HMAC_KEY"
+	var v string
+	if envName != "" {
+		v = os.Getenv(envName)
+	} else {
+		ctx := context.Background() //nolint:contextcheck // loadBriefKeyring predates ctx-threading; keep stable signature.
+		// DefaultNoPlatform here: serve has already exported keychain-resolved values into env at boot, and CLI subcommands (`regatta cost`, …) MUST NOT prompt for keychain on every invocation (#932 MED-6 reviewer finding).
+		if got, err := secrets.DefaultNoPlatform(ctx).Get(ctx, secrets.KeyBriefHMACs); err == nil {
+			v = string(got.Bytes())
+		}
 	}
-	v := os.Getenv(envName)
 	if v == "" {
 		return map[string][]byte{}, ""
 	}

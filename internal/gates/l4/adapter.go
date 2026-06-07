@@ -8,9 +8,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/secrets"
 )
 
 // Anthropic Messages API integration. Stdlib HTTP only — no SDK dep,
@@ -53,13 +54,17 @@ type AnthropicAdapter struct {
 	Client  *http.Client
 }
 
-// NewAnthropicAdapter reads ANTHROPIC_API_KEY from env when apiKey is
-// empty, then sets the spec-defaults for BaseURL + Version + Timeout.
-// Empty key after env-fallback returns an error so config-load surfaces
-// the misconfiguration rather than the first PR run.
+// NewAnthropicAdapter resolves the API key via the secrets.Fetcher
+// chain when apiKey is empty (keychain → legacy env), then sets the
+// spec-defaults for BaseURL + Version + Timeout. Empty key after
+// fetch-fallback returns an error so config-load surfaces the
+// misconfiguration rather than the first PR run.
 func NewAnthropicAdapter(apiKey string) (*AnthropicAdapter, error) {
 	if apiKey == "" {
-		apiKey = strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY"))
+		ctx := context.Background()
+		if v, err := secrets.Default(ctx).Get(ctx, secrets.KeyAnthropic); err == nil {
+			apiKey = strings.TrimSpace(string(v.Bytes()))
+		}
 	}
 	if apiKey == "" {
 		return nil, errors.New("l4 adapter: ANTHROPIC_API_KEY is empty")

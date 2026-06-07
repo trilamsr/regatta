@@ -21,11 +21,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/secrets"
 	"github.com/trilamsr/regatta/internal/strutil"
 )
 
@@ -41,12 +41,17 @@ type AnthropicPlanner struct {
 	HTTPClient *http.Client
 }
 
-// NewAnthropicPlanner reads ANTHROPIC_API_KEY from the environment
-// and returns a configured client. The model id is required so
-// callers explicitly choose Opus vs Sonnet vs Haiku (price/quality
-// is operator-visible, never hidden).
+// NewAnthropicPlanner resolves ANTHROPIC_API_KEY via the secrets
+// Fetcher chain (keychain → legacy env → canonical env) and returns a
+// configured client. The model id is required so callers explicitly
+// choose Opus vs Sonnet vs Haiku (price/quality is operator-visible,
+// never hidden).
 func NewAnthropicPlanner(model string) (*AnthropicPlanner, error) {
-	key := strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY"))
+	ctx := context.Background()
+	var key string
+	if v, err := secrets.Default(ctx).Get(ctx, secrets.KeyAnthropic); err == nil {
+		key = strings.TrimSpace(string(v.Bytes()))
+	}
 	if key == "" {
 		return nil, errors.New("ANTHROPIC_API_KEY is empty")
 	}

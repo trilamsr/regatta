@@ -562,3 +562,48 @@ alarm_webhook:
 		t.Errorf("GHTokenEnv=%q want GH_PAT", wh.GHTokenEnv)
 	}
 }
+
+// TestLoad_Secrets_UnknownSourceRejected asserts CUE rejects a source enum outside env|keychain|pass|file (8.6, #911).
+func TestLoad_Secrets_UnknownSourceRejected(t *testing.T) {
+	yaml := minimalValid + `
+secrets:
+  anthropic_api_key:
+    source: vault
+    name: x
+`
+	if err := LoadBytes([]byte(yaml)); err == nil {
+		t.Fatal("expected CUE rejection for source=vault; got nil")
+	}
+}
+
+// TestLoad_Secrets_EnvSource_RoundTrip asserts a valid env-sourced secret round-trips through CUE → Go (#911).
+func TestLoad_Secrets_EnvSource_RoundTrip(t *testing.T) {
+	yaml := minimalValid + `
+secrets:
+  anthropic_api_key:
+    source: env
+    name: MY_ANTHROPIC
+`
+	cfg, err := LoadConfig([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Secrets == nil || cfg.Secrets.AnthropicAPIKey == nil {
+		t.Fatalf("Secrets.AnthropicAPIKey nil; got cfg=%+v", cfg)
+	}
+	got := cfg.Secrets.AnthropicAPIKey
+	if got.Source != "env" || got.Name != "MY_ANTHROPIC" {
+		t.Errorf("got source=%q name=%q; want env / MY_ANTHROPIC", got.Source, got.Name)
+	}
+}
+
+// TestLoad_Secrets_Omitted_BackCompat asserts no secrets block surfaces as nil (back-compat) (#911).
+func TestLoad_Secrets_Omitted_BackCompat(t *testing.T) {
+	cfg, err := LoadConfig([]byte(minimalValid))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.Secrets != nil {
+		t.Fatalf("Secrets=%+v; want nil for omitted block", cfg.Secrets)
+	}
+}

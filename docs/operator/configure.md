@@ -153,3 +153,39 @@ Walkthrough + minimal example: [quickstart.md §5](quickstart.md#5-authoring-a-c
 Fixture pairing: [`testdata/v2_briefs_e2e/PROG-2.md`](../../testdata/v2_briefs_e2e/PROG-2.md)
 plus [`internal/program/end_to_end_v2_test.go`](../../internal/program/end_to_end_v2_test.go).
 Rejection sentinels are documented in the same section.
+
+## Secrets
+
+The `secrets:` block consolidates every operator-supplied credential
+into one place. Per-secret you choose a source (`env`, `keychain`,
+`pass`, `file`). Omit the block to keep the pre-#911 behaviour: each
+canonical key resolves from its default env-var name.
+
+| Canonical key      | Default env-var fallback                | YAML field          |
+|--------------------|------------------------------------------|---------------------|
+| anthropic_api_key  | `ANTHROPIC_API_KEY`                      | `anthropic_api_key` |
+| gh_token           | `GH_TOKEN` then `GITHUB_TOKEN`           | `gh_token`          |
+| brief_hmac         | `REGATTA_HMAC_KEYRING` then `REGATTA_HMAC_KEY` | `brief_hmac`  |
+| audit_hmac         | `REGATTA_AUDIT_HMAC_KEY`                 | `audit_hmac`        |
+| approval_token     | `REGATTA_APPROVAL_TOKEN_KEY`             | `approval_token`    |
+
+Example:
+
+```yaml
+secrets:
+  anthropic_api_key:
+    source: keychain
+  gh_token:
+    source: env
+    name: GH_TOKEN_REVIEWER
+  brief_hmac:
+    source: file
+    path: /etc/regatta/brief.key
+    key_id: brief-2026-06
+```
+
+If you use defaults today, change nothing — the loader falls back to
+the env-var names above when the corresponding yaml field is absent.
+
+`source: file` requires the file mode to be `0600` or stricter; a
+world- or group-readable path fails closed at boot.

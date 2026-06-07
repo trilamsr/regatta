@@ -20,6 +20,7 @@ import (
 	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/secrets"
 )
 
 // Exit codes for `approval decide` per spec §5.6.
@@ -190,13 +191,22 @@ func exitCodeFor(err error) int {
 	}
 }
 
-// loadApprovalTokenKeyring reads HMAC key + key id from env so the approval-token surface rotates independently of brief signing.
+// loadApprovalTokenKeyring resolves the approval-token HMAC via the
+// secrets.Fetcher chain so the surface rotates independently of brief
+// signing; back-compat: REGATTA_APPROVAL_TOKEN_KEY_ENV → named env or
+// the legacy REGATTA_APPROVAL_TOKEN_KEY (via alias adapter) still wins.
 func loadApprovalTokenKeyring() (approvaltoken.Keyring, error) {
 	envName := os.Getenv("REGATTA_APPROVAL_TOKEN_KEY_ENV")
-	if envName == "" {
+	var v string
+	if envName != "" {
+		v = os.Getenv(envName)
+	} else {
+		ctx := context.Background()
+		if got, err := secrets.DefaultNoPlatform(ctx).Get(ctx, secrets.KeyApprovalToken); err == nil {
+			v = string(got.Bytes())
+		}
 		envName = "REGATTA_APPROVAL_TOKEN_KEY"
 	}
-	v := os.Getenv(envName)
 	if v == "" {
 		return nil, fmt.Errorf("approval token key not set: export %s or $REGATTA_APPROVAL_TOKEN_KEY_ENV", envName)
 	}

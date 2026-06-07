@@ -31,14 +31,15 @@ var ErrUnsupported = errors.New("secret backend unsupported on this platform")
 // keys reject at the boundary (no path-traversal via `pass show
 // ../etc/passwd`).
 const (
-	KeyAnthropic    = "regatta.anthropic_api_key"
-	KeyGHToken      = "regatta.gh_token"
-	KeyBriefHMACs   = "regatta.brief_hmac_keys"
-	KeyAuditHMACKey = "regatta.audit_hmac_key"
+	KeyAnthropic      = "regatta.anthropic_api_key"
+	KeyGHToken        = "regatta.gh_token"
+	KeyBriefHMACs     = "regatta.brief_hmac_keys"
+	KeyAuditHMACKey   = "regatta.audit_hmac_key"
+	KeyApprovalToken  = "regatta.approval_token_key"
 )
 
 // CanonicalKeys is the boot-time fetch set; adapters are independent.
-var CanonicalKeys = []string{KeyAnthropic, KeyGHToken, KeyBriefHMACs, KeyAuditHMACKey}
+var CanonicalKeys = []string{KeyAnthropic, KeyGHToken, KeyBriefHMACs, KeyAuditHMACKey, KeyApprovalToken}
 
 const (
 	redactedSentinel = "<redacted>" // single source so test + prod cannot drift
@@ -50,6 +51,8 @@ const (
 	AdapterEnv      = "env"
 	AdapterKeychain = "keychain"
 	AdapterPass     = "pass"
+	AdapterFile     = "file"
+	AdapterAlias    = "env_alias"
 )
 
 // keyRe pins the canonical key shape; path-traversal via key name

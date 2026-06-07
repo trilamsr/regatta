@@ -137,7 +137,11 @@ func runServe(args []string) int {
 	bootSecretsCtx, bootSecretsCancel := context.WithCancel(context.Background())
 	defer bootSecretsCancel()
 	secretCache := secrets.NewCache()
-	secretFetcher := secrets.Default(bootSecretsCtx)
+	secretFetcher, sfErr := buildSecretFetcherFromRepo(bootSecretsCtx, f.RepoRoot, slogger)
+	if sfErr != nil {
+		logger.Printf("secrets config: %v", sfErr)
+		return 2
+	}
 	secretCache.Load(bootSecretsCtx, secretFetcher, slogger)
 	exportSecretsToEnv(bootSecretsCtx, secretCache, slogger)
 	go secretCache.Run(bootSecretsCtx, secretFetcher, slogger)

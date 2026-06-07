@@ -23,6 +23,7 @@ import (
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
+	"github.com/trilamsr/regatta/internal/secrets"
 )
 
 const (
@@ -263,12 +264,16 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 	return 0
 }
 
-// loadAuditVerifyKeyring resolves the HMAC keyring. The CLI accepts
-// REGATTA_AUDIT_HMAC_KEY for parity with existing keyring envvars;
-// missing key means the operator gets chain-unverifiable rows
-// rather than a confidently-wrong "chain-ok" verdict.
+// loadAuditVerifyKeyring resolves the HMAC keyring via secrets.Fetcher
+// so an operator may route the audit key through `secrets:` in
+// regatta.yaml; back-compat: no block ⇒ legacy REGATTA_AUDIT_HMAC_KEY
+// path inside the Default chain still wins.
 func loadAuditVerifyKeyring() (map[string][]byte, error) {
-	key := os.Getenv("REGATTA_AUDIT_HMAC_KEY")
+	ctx := context.Background()
+	var key string
+	if v, err := secrets.DefaultNoPlatform(ctx).Get(ctx, secrets.KeyAuditHMACKey); err == nil {
+		key = string(v.Bytes())
+	}
 	keyID := os.Getenv("REGATTA_AUDIT_HMAC_KEY_ID")
 	if key == "" {
 		return nil, fmt.Errorf("REGATTA_AUDIT_HMAC_KEY not set")

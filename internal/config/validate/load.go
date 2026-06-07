@@ -80,6 +80,24 @@ type Config struct {
 	SpecAdapter  *SpecAdapter  `yaml:"spec_adapter,omitempty" json:"spec_adapter,omitempty"`
 	Safety       *Safety       `yaml:"safety,omitempty" json:"safety,omitempty"`
 	AlarmWebhook *AlarmWebhook `yaml:"alarm_webhook,omitempty" json:"alarm_webhook,omitempty"`
+	Secrets      *Secrets      `yaml:"secrets,omitempty" json:"secrets,omitempty"`
+}
+
+// Secret mirrors `regatta.yaml::secrets.<key>` per #911; absent block surfaces as a nil parent — back-compat preserved.
+type Secret struct {
+	Source string `yaml:"source" json:"source"`
+	Name   string `yaml:"name,omitempty" json:"name,omitempty"`
+	Path   string `yaml:"path,omitempty" json:"path,omitempty"`
+	KeyID  string `yaml:"key_id,omitempty" json:"key_id,omitempty"`
+}
+
+// Secrets is the typed view of `regatta.yaml::secrets`; nil ⇒ Default chain (back-compat).
+type Secrets struct {
+	AnthropicAPIKey *Secret `yaml:"anthropic_api_key,omitempty" json:"anthropic_api_key,omitempty"`
+	GHToken         *Secret `yaml:"gh_token,omitempty" json:"gh_token,omitempty"`
+	BriefHMAC       *Secret `yaml:"brief_hmac,omitempty" json:"brief_hmac,omitempty"`
+	AuditHMAC       *Secret `yaml:"audit_hmac,omitempty" json:"audit_hmac,omitempty"`
+	ApprovalToken   *Secret `yaml:"approval_token,omitempty" json:"approval_token,omitempty"`
 }
 
 // Repo mirrors `regatta.yaml::repo`; owner+name pair the github_issues adapter (MVR-1-T4) anchors SourceRef.Locator against.
