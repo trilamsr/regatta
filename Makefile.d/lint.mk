@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -45,6 +45,12 @@ check-state-tier-order:  ## Fail when a pure subpackage under internal/orchestra
 
 check-state-tier-order-test:  ## Fixture-driven test for check-state-tier-order.sh.
 	bash scripts/check_state_tier_order_test.sh
+
+check-prompt-parity:  ## Fail when defaultPromptBuilder lacks a feedback_* slug listed under implementer.md `## Anchored rules` (closes #901, session retro Impact 3).
+	bash scripts/check-prompt-parity.sh
+
+check-prompt-parity-test:  ## Fixture-driven test for check-prompt-parity.sh (missing slug → 1, aligned → 0, escape-hatch → 0).
+	bash scripts/check-prompt-parity_test.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh

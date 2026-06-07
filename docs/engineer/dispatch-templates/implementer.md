@@ -92,6 +92,18 @@ LOAD-BEARING LEFTOVERS → ISSUES
 INDEPENDENT REVIEW MEASURES vs A+ RUBRIC
 - Solo implementers ship at B-tier by default. Spawn reviewer to pull up to A. (`feedback_agent_pr_review`)
 
+## Anchored rules (worker-prompt parity)
+
+These slugs MUST be cited by `internal/orchestrator/spawner/claude.go::defaultPromptBuilder` so spawned worker subprocesses receive them inline (CC subprocess auto-loads CLAUDE.md but the per-dispatch prompt is authoritative for context budgeting). `scripts/check-prompt-parity.sh` enforces. Add a slug here only when the rule is worker-actionable mid-task. Reviewer-only / operator-only rules stay out of this list. Closes #901.
+
+- `feedback_tdd_discipline`
+- `feedback_comments_discipline`
+- `feedback_deletion_default`
+- `feedback_pr_body_hygiene`
+- `feedback_review_proportional`
+
+Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mark a slug intentionally kept here but not pushed to the prompt.
+
 ## Per-dispatch payload
 - Task: `<TASK-ID>`
 - Spec: `<SPEC-PATH>` (canonical; deviations require design-subagent re-spawn per `feedback_spec_pattern_authority`)
