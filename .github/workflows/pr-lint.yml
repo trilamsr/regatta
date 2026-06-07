@@ -98,6 +98,10 @@ jobs:
           set -euo pipefail
           bash scripts/check-tdd.sh
 
+      # NOTE: pr-lint snapshots PR body at trigger event payload. After
+      # editing the body to add Reviewer-recommendation: APPROVE (or fix
+      # scorecard/release-notes), push an empty commit to force re-trigger
+      # with the live body — body-edit alone reuses the stored payload.
       - name: check-reviewer-verdict
         if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
         env:
