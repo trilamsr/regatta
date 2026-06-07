@@ -69,7 +69,35 @@ func parseSlot(body string) (*promptSlot, error) {
 // loaded atomically so a concurrent hot-reload swap is observed without
 // torn reads — the SHA returned always matches the body just rendered.
 func RenderPrompt(in Input, maxChars int) (string, string, error) {
+	return renderUsingSlot(active.Load(), in, maxChars)
+}
+
+// RenderPromptSplit returns the static cacheable prefix (system block)
+// and the dynamic per-PR suffix (user message) separately so the
+// Anthropic adapter can tag the prefix with cache_control=ephemeral
+// for prompt-cache reuse across PRs (#852). The SHA still pins the
+// full concatenated body so audit-replay stays exact.
+//
+// Loads the active slot ONCE and threads it through the body render so
+// a concurrent hot-reload swap cannot pair an old slot's static prefix
+// with a new slot's rendered body — that mismatch would silently fail
+// the TrimPrefix and contaminate the prompt cache with the wrong static
+// (#886).
+func RenderPromptSplit(in Input, maxChars int) (string, string, string, error) {
 	slot := active.Load()
+	full, sha, err := renderUsingSlot(slot, in, maxChars)
+	if err != nil {
+		return "", "", "", err
+	}
+	if slot.static == slot.body || slot.static == "" {
+		return "", full, sha, nil
+	}
+	dyn := strings.TrimPrefix(full, slot.static)
+	dyn = strings.TrimLeft(dyn, "\n")
+	return slot.static, dyn, sha, nil
+}
+
+func renderUsingSlot(slot *promptSlot, in Input, maxChars int) (string, string, error) {
 	diff := in.Diff
 	if maxChars > 0 && len(diff) > maxChars {
 		diff = diff[:maxChars]
@@ -93,25 +121,6 @@ func RenderPrompt(in Input, maxChars int) (string, string, error) {
 	out := strings.Replace(buf.String(), cacheBreakpointMarker+"\n", "", 1)
 	out = strings.Replace(out, cacheBreakpointMarker, "", 1)
 	return out, slot.sha, nil
-}
-
-// RenderPromptSplit returns the static cacheable prefix (system block)
-// and the dynamic per-PR suffix (user message) separately so the
-// Anthropic adapter can tag the prefix with cache_control=ephemeral
-// for prompt-cache reuse across PRs (#852). The SHA still pins the
-// full concatenated body so audit-replay stays exact.
-func RenderPromptSplit(in Input, maxChars int) (string, string, string, error) {
-	slot := active.Load()
-	full, sha, err := RenderPrompt(in, maxChars)
-	if err != nil {
-		return "", "", "", err
-	}
-	if slot.static == slot.body || slot.static == "" {
-		return "", full, sha, nil
-	}
-	dyn := strings.TrimPrefix(full, slot.static)
-	dyn = strings.TrimLeft(dyn, "\n")
-	return slot.static, dyn, sha, nil
 }
 
 // PromptSHA exposes the active template SHA so callers stamping
