@@ -455,6 +455,9 @@ merge click). Gated on Phase X relaxation, not Phase S.
 
 - `.env` was not gitignored prior to PR #826 — re-clone or `git rm
   --cached .env` if running off an older checkout.
+- `chmod 600 .env` is WARN-only at install time (PR #830) — loose modes
+  do not fail the install, but the Anthropic key is then readable by
+  every account on the host. Fix the mode before installing.
 - `GH_TOKEN` in your shell environment overrides `.env` on Linux
   (`EnvironmentFile=` is overridden by the parent); on macOS the plist
   wrapper runs `set -a; . ...; exec` *after* the parent env is
