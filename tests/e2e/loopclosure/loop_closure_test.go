@@ -151,6 +151,11 @@ safety:
 		"GH_TOKEN="+cfg.GHToken,
 		"ANTHROPIC_API_KEY="+cfg.AnthropicKey,
 	)
+	// Piping serve stdout/stderr to the test process is safe because the
+	// audit in #918 confirmed no production code path logs env-var
+	// VALUES — only names + presence + secrets.Value's redacting
+	// LogValue/GoString/MarshalJSON/MarshalText (internal/secrets/secrets.go).
+	// Reopen-trigger: any new slog/Fprintf that interpolates os.Getenv("GH_TOKEN"|"ANTHROPIC_API_KEY"|"REGATTA_*_KEY") raw.
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
