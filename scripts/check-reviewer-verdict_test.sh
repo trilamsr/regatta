@@ -157,6 +157,61 @@ EOF
   rm -f "$body"
 }
 
+run_case_fenced_revise_bare_approve_passes() {
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+Example of a stale draft kept for context:
+
+```
+Reviewer-recommendation: REVISE
+```
+
+Reviewer-agent-id: cavecrew-reviewer-abc123
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing >/dev/null 2>&1; then
+    pass "fenced REVISE + bare APPROVE → bare APPROVE wins (#922)"
+  else
+    fail "fenced REVISE + bare APPROVE should pass — fenced tokens must be stripped (#922)"
+  fi
+  rm -f "$body"
+}
+
+run_case_fenced_approve_bare_revise_fails() {
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+```
+Reviewer-recommendation: APPROVE
+```
+
+Reviewer-recommendation: REVISE
+
+```release-notes
+[FIX] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing 2>&1 | grep -qE "REVISE|BLOCK"; then
+    pass "fenced APPROVE + bare REVISE → bare REVISE wins (#922)"
+  else
+    fail "fenced APPROVE + bare REVISE should fail — fenced tokens must be stripped (#922)"
+  fi
+  rm -f "$body"
+}
+
 run_case_load_bearing_missing_token
 run_case_load_bearing_approve_passes
 run_case_load_bearing_revise_fails
@@ -164,6 +219,8 @@ run_case_load_bearing_block_fails
 run_case_chore_release_notes_skips
 run_case_docs_release_notes_skips
 run_case_not_load_bearing_skips
+run_case_fenced_revise_bare_approve_passes
+run_case_fenced_approve_bare_revise_fails
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"
