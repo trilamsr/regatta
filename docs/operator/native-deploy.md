@@ -552,6 +552,18 @@ Use the verbs below when the supervisor is wedged.
   state dir between uninstall and reinstall. This is destructive —
   every prior work-item, brief, and merge record is gone.
 
+## E2E loop-closure smoke (nightly only)
+
+`make ci-integration` exercises the full self-host loop end-to-end against a real GitHub fixture repo and a real claude subagent. It is nightly-only — per-PR CI does NOT run it because each invocation costs Anthropic tokens and writes to the fixture repo. Required env (test skips if any absent):
+
+- `REGATTA_E2E_REPO` — `owner/name` of a throwaway repo the runner owns.
+- `REGATTA_E2E_GH_TOKEN` — token with `repo` + `workflow` scope on that repo.
+- `REGATTA_E2E_ANTHROPIC_API_KEY` — key the spawned worker uses.
+- `REGATTA_E2E_BINARY` — path to a built `regatta` binary (`go build -o /tmp/regatta ./cmd/regatta`).
+- `REGATTA_E2E_DEADLINE` — optional duration (default `15m`).
+
+The test files an `autonomous`-labelled issue, starts `regatta serve` pointed at a temp config, waits for a linked PR to appear, and asserts the PR body carries the release-notes fence. Source: `tests/e2e/loopclosure/loop_closure_test.go`. Tracking: #894.
+
 ## Related
 
 - [`container.md`](container.md) — Docker path (Stage 1 runtime image).
