@@ -26,5 +26,9 @@ ci-check: check stale-todo  ## CI gate; supersedes `check` with longer-running s
 
 ci: ci-check  ## CI entrypoint. CI also runs lint as a separate job via golangci-lint-action for redundancy; `make check` runs the same linter locally so PR-time lint failures show up before push.
 
+ci-integration: ## Nightly-only: e2e + integration tests that cost Anthropic tokens / write to real fixture repos. Requires REGATTA_E2E_* env (see tests/e2e/loopclosure/loop_closure_test.go). Skips when env absent.
+	go test -tags=e2e -count=1 -timeout=30m ./tests/e2e/...
+	go test -tags=integration_gh -count=1 -timeout=10m ./internal/orchestrator/prwatch/...
+
 pre-push-check: check  ## Local pre-push gate. Runs `make check` + PR-body release-notes block sanity check.
 	bash scripts/check-release-notes-local.sh
