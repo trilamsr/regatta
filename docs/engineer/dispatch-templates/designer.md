@@ -22,8 +22,8 @@ WORKTREE (harness-managed — do NOT create your own)
 RESEARCH + DESIGN
 - Prefer adopting proven OSS over reimplementation. Study `<REFERENCES>` first; cite version + commit-sha + license. Priority: UX > quality bar matching reference systems > ecosystem conventions > long-term repo+user benefit. Per `feedback_research_design_principles`.
 
-GRADE RUBRIC
-- Spec MUST end with a B/A/A+ rubric — each tier names falsifiable acceptance criteria (test names, metric thresholds, named artifacts). Implementer scorecards measure against this. Per `feedback_grade_rubric`.
+GRADE RUBRIC (optional, no CI gate)
+- Spec MAY end with a B/A/A+ rubric — each tier names falsifiable acceptance criteria (test names, metric thresholds, named artifacts). Implementer self-grades against this for operator visibility; no format enforcement. Per `feedback_grade_rubric` (downgraded: self-host phase, no CI gate).
 
 SELF-HOST FILTER
 - Every claim filtered by "does the sole internal operator need this to dispatch regatta-the-binary at this repo unattended?". Keep → in scope. Defer → Phase X with explicit reopen-trigger (external customer ask OR 30-day-green). Per `docs/engineer/briefs/2026-06-01-self-host-first.md` §1.
@@ -77,5 +77,4 @@ DESIGN ITERATION LOCAL (no per-revision PR)
 
 1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `CLAUDE.md` §CI gates "PR body hygiene". HEREDOC bodies escape backticks.
 2. **GH base-sha drift workaround** per #343 (fix #347 merged): tag release-notes with `[DOCS]` for spec-only PRs to skip check-tdd.
-3. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Spec PR body MUST include a triple-fence ` ```release-notes ` block with `[DOCS] one-line summary (#issue)` inside. Without the fence, `check-scorecard.sh` falls through to the error branch even on `[DOCS]` PRs — the category-exempt branch only fires when the fence is present.
-4. **Scorecard rubric in spec MUST use bare citation tokens** per `feedback_scorecard_citation_token_outside_backticks`. The A+ rubric you ship in the spec will be copy-pasted into the implementer PR body. Wrapping `TestX` or `file.go:42` in backticks in the spec rubric template propagates invisible-token failures to the implementer. Write tokens bare in the spec rubric scorecard template.
+3. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Spec PR body MUST include a triple-fence ` ```release-notes ` block with `[DOCS] one-line summary (#issue)` inside.

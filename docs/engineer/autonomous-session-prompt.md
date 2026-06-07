@@ -180,7 +180,7 @@ Already shipped (do NOT redo) — confirm via `git log --oneline origin/main -20
   - **Dispatch-template hardening:** #688 worktree /tmp/clone trap (closes #188) · #695 scorecard-backtick + release-notes-fence traps.
   - **Issue triage:** ~80 followup tracking issues filed (#573-#588, #606-#667, #700-#706). 33+ closed via PRs or moved to reopen-trigger state.
   - **Adversarial-review backfill:** 6 retroactive reviews on load-bearing PRs from this wave → 22 Risk+ findings → 6 followup issues #700 #702 #703 #704 #705 #706.
-  - **New feedback memories** (3 this session): `feedback_ci_timeout_orphan_test_goroutine` · `feedback_release_notes_fence_missing` · `feedback_scorecard_citation_token_outside_backticks` (reinforced).
+  - **New feedback memories** (2 this session): `feedback_ci_timeout_orphan_test_goroutine` · `feedback_release_notes_fence_missing`.
   - Self-host loop structurally complete. Phase DEPLOY READY (Docker stage 2 compose covers full obs stack). Operator action: set `REGATTA_HMAC_KEY` + `docker compose up -d` OR `regatta install-service` on bare host.
 - **2026-06-02 Strategic-design CONVERGENCE**: #432 MERGED observability-roadmap converged spec (consolidates #400 #405 #410 #413 #420). #433 MERGED next-horizon roadmap unified brief — 4 MVR-1 impl-ready items + 16 wave-4 items + 4 RISK followups (#423 #424 #426 #427). 29 prior strategic-design PRs CLOSED as superseded per `feedback_design_iteration_local`.
 
@@ -188,18 +188,17 @@ WORKFLOW per item — use templates at `docs/engineer/dispatch-templates/`. Subs
 1. Design subagent → spec — `designer.md` (rubric, OSS-first, self-host filter)
 2. Adversarial reviewer on spec → fix findings — `reviewer.md`
 3. Plan subagent → plan — `designer.md` (plans are spec-shaped)
-4. Parallel implementer subagents on file-disjoint tasks — `implementer.md` (worktree + TDD + scorecard + release-notes + doc-check)
+4. Parallel implementer subagents on file-disjoint tasks — `implementer.md` (worktree + TDD + release-notes + doc-check)
 5. Adversarial reviewer per wave → fix → merge — `reviewer.md`
 6. Land / defer / reject decisions on issues + stale PRs — `triage.md`
 
-Templates encode load-bearing preamble: worktree-first, TDD failing-first, adversarial reviewer, A+ scorecard, doc-check banned phrases, release-notes fence, no-signatures, memory cites, PHASE-S-RELAX conditions. Cite memory rules in dispatch prompts via the templates' `<MEMORY-RULES>` variable.
+Templates encode load-bearing preamble: worktree-first, TDD failing-first, adversarial reviewer, optional self-grade, doc-check banned phrases, release-notes fence, no-signatures, memory cites, PHASE-S-RELAX conditions. Cite memory rules in dispatch prompts via the templates' `<MEMORY-RULES>` variable.
 
 RULES (canonical — repo-tracked at CLAUDE.md; this section adds autonomous-loop-only rules)
 
 The bulk of agent rules now live in repo-root `CLAUDE.md` (auto-loaded by every agent in this tree). Read it once at session start. The block below ONLY captures rules specific to the indefinite-autonomous-loop mode that wouldn't make sense in a one-off dev session.
 
 - Subagents do everything: design, plan, impl, review, doc, PR-body drafting, issue filing, debugging. Main thread = dispatcher + integrator.
-- **Scorecard pre-validation before PR open** (`#758`, `#778`): for any scorecard-bearing PR, run `make scorecard-check BODY_FILE=/tmp/pr-<branch>.md` (or `bash scripts/check-scorecard.sh --body-file /tmp/pr-<branch>.md`) and confirm exit 0 BEFORE `gh pr create` / `gh pr edit`. Now chained into `make pre-push-check`.
 - **W9 substrate-choice locked = option C hybrid, self-host scope = substrate-default impl ONLY** (memory/wedge_roadmap_assessment §"Substrate + W9 substrate-choice locked 2026-06-01" + self-host-first brief §3 S2-T1): ship W9 against `DurableHistory` Go interface, default impl on substrate `events`. Temporal-backed impl is Phase X — gated behind refined P2.5 trigger (sqlite contention >5% OR ≥30 concurrent OR replay-recovery >60s — any one, two consecutive 24h windows) AND external customer ask. W9 promoted ahead of W7/W8 for self-host loop closure. Never re-litigate during implementer dispatch.
 - PHASE-S-RELAX no relaxations active — full-gate posture across all templates. Reopen-trigger: next gate-relaxation window (pre-launch hardening freeze OR customer-pilot mode). Archived rule at `archive/feedback_gate_relaxation_phase_s.md` in operator memory.
 - **Comment-noise gate trip-traps** per #333 followup — reviewer-tag regex over-matches reviewer-Request / reviewer-JSON prose; banner-comment regex rejects `# --- Section ---`. Dodge: hyphenate or lowercase, replace banners with plain `# Section.`.

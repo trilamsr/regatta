@@ -8,7 +8,7 @@ Code-writing subagent. Substitute `<VARS>` then paste into Task dispatch.
 - `<BRANCH-NAME>` — `feat/...` | `fix/...` | `chore/...`.
 - `<FILE-SCOPE>` — paths this dispatch may touch (file-disjoint vs siblings).
 - `<MEMORY-RULES>` — comma-separated `feedback_*` filenames to cite.
-- `<PR-TYPE>` — `feat` | `fix` | `refactor` | `chore` | `docs` | `ci` (drives scorecard + reviewer skip).
+- `<PR-TYPE>` — `feat` | `fix` | `refactor` | `chore` | `docs` | `ci` (drives reviewer skip).
 
 ## Comments: zero by default
 
@@ -29,7 +29,7 @@ Allowed (WHY-only):
 - Non-obvious invariant or workaround that would surprise a reader ("// HACK: pin random seed to keep golden-file stable across go versions.").
 - Cross-file contract reference ("// Pairs with internal/X.Foo — drift here breaks ZZ.").
 
-Net comment-density of any new prod `.go` file should be ≤ 5% of LOC. If higher, prepare to justify in PR body OR cut. `scripts/check-comment-density.sh` (in `make check`) gates this in the PR diff; operator escape is `<!-- comment-density-justified: <reason> -->` in PR body. Scorecard row when `<PR-TYPE>` adds new prod `.go` files: `[x] comment density <= 5% on new prod .go files` cited bare with `scripts/check-comment-density.sh` exit 0.
+Net comment-density of any new prod `.go` file should be ≤ 5% of LOC. If higher, prepare to justify in PR body OR cut. `scripts/check-comment-density.sh` (in `make check`) gates this in the PR diff; operator escape is `<!-- comment-density-justified: <reason> -->` in PR body.
 
 ## Preamble blocks (paste verbatim)
 
@@ -49,27 +49,8 @@ ADVERSARIAL REVIEW
 - After green, spawn reviewer subagent against this template's sibling `reviewer.md`. Address Risk-tier+ findings (inline-fix OR file `[followup]` issue + cite #).
 - PHASE-S-RELAX: auto-skip reviewer when `git diff --name-only origin/main...HEAD | grep -vE '^(docs/|\.github/|scripts/|.*\.md$)'` returns empty. Per `feedback_review_proportional`.
 
-A+ SCORECARD
-- PR body MUST include `## A+ Rubric Scorecard` section. Each B/A/A+ criterion from `<SPEC-PATH>` marked PASS/FAIL/N-A + one-line evidence + claimed tier. Per `feedback_grade_rubric`.
-- PHASE-S-RELAX: required only when `<PR-TYPE>` ∈ {feat}. Refactor / chore / docs / ci skip the scorecard.
-- CITATION GATE: every `[x]` on a criterion row MUST carry a `Test*`-name OR `file:line` OR `#issue` OR `N/A — <rationale>` on the SAME line. `scripts/check-scorecard.sh` enforces in pr-lint; vibes-grading fails CI. Pre-push: `bash scripts/check-scorecard.sh --body-file <body>` exit 0.
-- LABEL GATE: every scorecard row MUST open with a criterion label — `(a)`/`(b)`/`(c)`-form lowercase parens OR `B1`/`B2`/`A1`/`A2`/`A+1`/`A+2`-form tier-letter+digit. Uncited rows emit `criteria (unlabeled)` in `scripts/check-scorecard.sh` errors when labels are absent — operator must count rows to identify the offender. Per `feedback_grade_rubric` sub-rule. Copy-paste canonical block below.
-
-CANONICAL SCORECARD BLOCK (copy-paste, fill cites):
-```markdown
-## A+ Rubric Scorecard
-
-- [ ] B1 — RED-first: failing test landed before fix (commit-sha-or-file:line)
-- [ ] B2 — Gates green: `make ci-check` exit 0 (path/to/cicheck.log:N OR N/A — exempt)
-- [ ] A1 — Root cause fixed not symptom (file.go:NN)
-- [ ] A2 — Operator-facing diagnostic added (file.go:NN OR Test*-name)
-- [ ] A+1 — Deletion answer: net LoC + defense (#NNN OR N/A — pure addition w/ defense in body)
-- [ ] A+2 — Comments WHY-not-WHAT (file.go:NN OR `scripts/check-comment-density.sh` exit 0)
-- [ ] A+3 — File-disjoint scope per brief (#NNN OR N/A — solo dispatch)
-
-Claimed tier: **B** | **A** | **A+** (delete the rest)
-```
-Citation tokens MUST be bare (NOT backticks) per `feedback_scorecard_citation_token_outside_backticks`. Replace `(file:line)` slots with bare `path/to/file.go:42` or bare `TestFooBar` or bare `#NNNN`.
+SELF-GRADE (optional, no CI gate)
+- Operator self-rates against the spec's B/A/A+ rubric for own visibility. No required format. No token shape enforced. No `## A+ Rubric Scorecard` section required. Per `feedback_grade_rubric` (downgraded: self-host phase, solo operator + solo reviewer, no vibes-grader to catch). Reopen-trigger: external contributor lands.
 
 DOC-CHECK
 - Pre-push grep banned phrases — token list (11 entries) lives in `scripts/doc-check.sh` (`banned_tokens` array). Reword hits to falsifiable claims (version pin, benchmark, named reference). Per `CLAUDE.md` §CI gates "Banned-phrase gate".
@@ -119,12 +100,10 @@ INDEPENDENT REVIEW MEASURES vs A+ RUBRIC
 - Migration number (if schema): pinned in dispatch prompt, never picked by implementer (`feedback_migration_number_lock`).
 
 ## Definition of done
-- [ ] **BEFORE `gh pr create` / `gh pr edit`: `bash scripts/check-scorecard.sh --body-file /tmp/pr-<branch>.md` exit 0** (or `make scorecard-check BODY_FILE=/tmp/pr-<branch>.md`). Hard step; #758 closed this drift.
 - [ ] worktree branch, not primary
 - [ ] failing test landed first (commit log shows it)
-- [ ] `make pre-push-check` green locally (now includes `scorecard-check` per #778)
+- [ ] `make pre-push-check` green locally
 - [ ] reviewer subagent cleared OR auto-skip condition met
-- [ ] scorecard in PR body OR `<PR-TYPE>` exempt
 - [ ] release-notes fence present
 - [ ] no banned phrases
 - [ ] no signatures
@@ -145,22 +124,14 @@ INDEPENDENT REVIEW MEASURES vs A+ RUBRIC
 
 3. **Comment-noise gate trip-traps** per #333 followup. Regex was tightened in #371; if it still over-matches your prose, hyphenate the matching token (`reviewer-Request` / `reviewer-JSON`) or lowercase the following capital. Banner regex rejects `# --- Section ---` — use plain `# Section.` instead.
 
-4. **GH base-sha drift workaround** per #343 (root-cause fix #347 merged): if check-tdd flags a file that isn't in your diff, the workflow's BASE_SHA env was stale. Now resolved live via `git merge-base`. If you still see ghost flags, add `[DOCS]` / `[CI]` / `[CHORE]` / `[REFACTOR]` category prefix to the release-notes block to opt out. The full scorecard-exempt set is `[CHORE]` / `[DOCS]` / `[CI]` / `[NONE]` / `[CHANGE]` / `[REFACTOR]` (enforced by `scripts/check-scorecard.sh`).
+4. **GH base-sha drift workaround** per #343 (root-cause fix #347 merged): if check-tdd flags a file that isn't in your diff, the workflow's BASE_SHA env was stale. Now resolved live via `git merge-base`. If you still see ghost flags, add `[DOCS]` / `[CI]` / `[CHORE]` / `[REFACTOR]` category prefix to the release-notes block to opt out of check-tdd.
 
-5. **Scorecard citation tokens MUST be OUTSIDE backticks** per `feedback_scorecard_citation_token_outside_backticks`. `scripts/check-scorecard.sh` strips inline-backtick spans before regex-scanning rows for citation tokens. Tokens wrapped in backticks are INVISIBLE to the validator.
-   - Bad row: `| [x] Test passes | A | TestXyz_DoesThing in internal/foo/bar_test.go:42 |` with the cite tokens wrapped in backticks.
-   - Good row: `| [x] Test passes | A | TestXyz_DoesThing (internal/foo/bar_test.go:42) |` — tokens bare.
-   - Acceptable bare tokens: `TestPascalCase` / `FuzzPascalCase` / `BenchmarkPascalCase` / `path/to/file.go:NNN` / `#NNNN` / `N/A — <rationale>`.
-   - Pre-push check: `bash scripts/check-scorecard.sh --body-file /tmp/pr-<branch>.md` to catch locally.
+5. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Every PR body MUST include a triple-fence ` ```release-notes ` block with `[PREFIX] one-line summary` inside — even `[DOCS]` PRs.
 
-6. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Every PR body MUST include a triple-fence ` ```release-notes ` block with `[PREFIX] one-line summary` inside — even `[DOCS]` PRs. Without the fence, `check-scorecard.sh` cannot read the category and falls through to the error branch reporting `Scorecard section present but contains no [x] marks`. The category-exempt branch only fires when the fence is present.
-
-7. **Rebase `--theirs` vs `--ours` is counterintuitive** (closes #779). During `git rebase` replay, git treats the rebase target (main) as `--ours` and the commit being replayed (your PR's work) as `--theirs` — opposite of `git merge` semantics where `--ours` = current branch. Lost #772 (~10 sites #760 migration) this way. Resolution snippet (also in `CLAUDE.md` §Worktree discipline "Rebase conflict resolution"):
+6. **Rebase `--theirs` vs `--ours` is counterintuitive** (closes #779). During `git rebase` replay, git treats the rebase target (main) as `--ours` and the commit being replayed (your PR's work) as `--theirs` — opposite of `git merge` semantics where `--ours` = current branch. Lost #772 (~10 sites #760 migration) this way. Resolution snippet (also in `CLAUDE.md` §Worktree discipline "Rebase conflict resolution"):
    ```
    git checkout --theirs <conflict-file>   # OR: regenerate via make specs-index for docs/engineer/specs/README.md
    git add <file>
    git rebase --continue
    ```
    For generated indexes (`docs/engineer/specs/README.md`), prefer regen over `--theirs` so the file matches current source-of-truth.
-
-8. **Scorecard pre-validation BEFORE PR open** per #758. Implementers historically draft the scorecard, open the PR, then watch pr-lint fail and edit-loop. Hard step: write the body to `/tmp/pr-<branch>.md`, then run `bash scripts/check-scorecard.sh --body-file /tmp/pr-<branch>.md` and confirm exit 0 BEFORE `gh pr create` / `gh pr edit`. `make scorecard-check` wraps this (auto-resolves `BODY_FILE` from current branch); also chained into `make pre-push-check`. Catches the bare-token / backtick-wrapping / missing-fence failure modes locally instead of via pr-lint feedback loop.

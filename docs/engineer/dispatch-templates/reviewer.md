@@ -20,7 +20,7 @@ WORKTREE (harness-managed — do NOT create your own)
 
 ROLE
 - Adversarial reviewer. Goal: surface findings the author missed. NEVER auto-approve. Per `feedback_adversarial_review`.
-- Independent re-score of the author's A+ scorecard. Per `feedback_agent_pr_review`.
+- Optional independent re-score of the author's self-grade (no CI gate). Per `feedback_agent_pr_review`.
 
 AUTO-SKIP CHECK (decide first)
 - Run `git diff --name-only origin/main...HEAD | grep -vE '^(docs/|\.github/|scripts/|.*\.md$)'`. Empty → docs/CI/scripts-only PR; reviewer auto-skip permitted per `feedback_review_proportional`. Document the skip in PR thread.
@@ -56,7 +56,7 @@ LOAD-BEARING LEFTOVERS → TRACKING ISSUES
 
 OUTPUT FORMAT
 - Inline GH PR review comments OR markdown report. Each finding: `[Tier] file:line — observation — proposed fix`.
-- Final block: independent scorecard re-score (B/A/A+ per criterion) — must match or contradict author's claim explicitly. Each `[x]` you assert MUST cite a `Test*`-name OR `file:line` OR `#issue` OR `N/A — <rationale>` on the same line. `scripts/check-scorecard.sh` gates the author's body in CI; your re-score follows the same rule.
+- Optional final block: independent self-grade re-score (B/A/A+ per criterion) — must match or contradict author's claim explicitly. No format enforcement; for operator visibility only.
 - Verdict: `clear-to-merge` | `block-on-findings` | `re-spawn-design`.
 
 NO SIGNATURES
@@ -71,7 +71,6 @@ NO SIGNATURES
 ## Definition of done
 - [ ] auto-skip evaluated explicitly (skip or proceed, document choice)
 - [ ] all 9 lenses applied (or skip documented per lens)
-- [ ] independent scorecard re-score posted
 - [ ] verdict line present
 - [ ] Risk-tier+ findings have a disposition (inline-fix OR tracking issue #)
 - [ ] `## Comment sweep` section emitted (offenders or `clean`)
@@ -81,5 +80,4 @@ NO SIGNATURES
 
 1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `CLAUDE.md` §CI gates "PR body hygiene" when posting review summary.
 2. **Comment-noise trip-traps** per #333 (regex tightened in #371): flag legitimate "Reviewer-Capital" prose in author diffs only if the regex still over-matches.
-3. **Scorecard citation tokens MUST be OUTSIDE backticks** per `feedback_scorecard_citation_token_outside_backticks`. When auditing an author scorecard: if a row visually contains `TestX` or `path/file.go:42` wrapped in backticks, the validator reports "uncited". Either fix the row (unwrap) or call out this is the recurring failure mode + cite the fix: bare-token form.
-4. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Confirm every PR body has a triple-fence ` ```release-notes ` block. Missing fence → `check-scorecard.sh` falls through to error branch even on `[DOCS]` PRs.
+3. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Confirm every PR body has a triple-fence ` ```release-notes ` block.

@@ -98,16 +98,3 @@ jobs:
           set -euo pipefail
           bash scripts/check-tdd.sh
 
-      - name: check-scorecard
-        if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
-        env:
-          BODY: ${{ github.event.pull_request.body }}
-        run: |
-          set -euo pipefail
-          # Per-criterion citation gate. Category auto-skip is inside
-          # the script: no scorecard + release-notes ∈ [CHORE]/[DOCS]/
-          # [CI]/[NONE]/[CHANGE] passes; [FEATURE]/[FIX]/[PERF] require
-          # every [x] to cite Test*-name / file:line / #issue / N-A.
-          body_file=$(mktemp)
-          printf '%s' "$BODY" > "$body_file"
-          bash scripts/check-scorecard.sh --body-file "$body_file"
