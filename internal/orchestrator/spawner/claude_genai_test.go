@@ -28,9 +28,10 @@ func (s *streamStarter) start(ctx context.Context, _ string, _ []string, _ io.Re
 	if err != nil {
 		return nil, err
 	}
-	go func() {
-		_, _ = stdout.Write(data)
-	}()
+	// Sync-write before returning so cmd.Wait's pw.Close cannot race the fixture write and leave ParseStream blocked on a half-filled pipe (#883).
+	if _, err := stdout.Write(data); err != nil {
+		return nil, err
+	}
 	cmd := exec.CommandContext(ctx, "true")
 	if err := cmd.Start(); err != nil {
 		return nil, err
