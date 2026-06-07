@@ -67,13 +67,15 @@ func (c composite) GetWithSource(ctx context.Context, key string) (Value, string
 }
 
 // Default returns the platform-correct chain. On darwin: keychain →
-// env. On linux: pass → env. Anywhere else (or with the disable knob
-// set): env only.
+// legacy-env → env. On linux: pass → legacy-env → env. Anywhere else
+// (or with the disable knob set): legacy-env → env. legacy-env carries
+// the pre-#911 env-var names (ANTHROPIC_API_KEY, REGATTA_HMAC_KEY, …)
+// so callers reading via canonical key see back-compat resolution.
 func Default(_ context.Context) Fetcher {
 	if os.Getenv(disableEnv) == "1" {
-		return NewComposite(NewEnvFetcher())
+		return NewComposite(NewAliasEnvFetcher(), NewEnvFetcher())
 	}
 	fs := platformAdapters()
-	fs = append(fs, NewEnvFetcher())
+	fs = append(fs, NewAliasEnvFetcher(), NewEnvFetcher())
 	return NewComposite(fs...)
 }

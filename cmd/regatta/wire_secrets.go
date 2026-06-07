@@ -11,8 +11,10 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/config/validate"
 	"github.com/trilamsr/regatta/internal/secrets"
 )
 
@@ -21,10 +23,50 @@ import (
 // at boot means we do NOT touch the five env-var fan-out points in
 // serve.go — they continue to call os.Getenv unchanged.
 var secretEnvOverrides = map[string][]string{
-	secrets.KeyAnthropic:    {"ANTHROPIC_API_KEY"},
-	secrets.KeyGHToken:      {"GH_TOKEN", "GITHUB_TOKEN"},
-	secrets.KeyBriefHMACs:   {"REGATTA_HMAC_KEYRING"},
-	secrets.KeyAuditHMACKey: {"REGATTA_AUDIT_HMAC_KEY"},
+	secrets.KeyAnthropic:     {"ANTHROPIC_API_KEY"},
+	secrets.KeyGHToken:       {"GH_TOKEN", "GITHUB_TOKEN"},
+	secrets.KeyBriefHMACs:    {"REGATTA_HMAC_KEYRING"},
+	secrets.KeyAuditHMACKey:  {"REGATTA_AUDIT_HMAC_KEY"},
+	secrets.KeyApprovalToken: {"REGATTA_APPROVAL_TOKEN_KEY"},
+}
+
+// buildSecretFetcherFromRepo reads regatta.yaml at repoRoot, returning
+// a Fetcher built from `secrets:` when present, else the Default chain.
+// Missing or malformed yaml degrades to Default — operators booting
+// without a config file see byte-equal behaviour to pre-#911.
+func buildSecretFetcherFromRepo(ctx context.Context, repoRoot string) (secrets.Fetcher, error) {
+	cfg, _ := validate.LoadConfigFile(filepath.Join(repoRoot, "regatta.yaml"))
+	return buildSecretFetcher(ctx, cfg)
+}
+
+// buildSecretFetcher returns the operator-configured Fetcher when
+// regatta.yaml carries a `secrets:` block, else the platform Default
+// chain (back-compat). Adapts the validate.Secrets view to the
+// internal/secrets.Config view at the composition root.
+func buildSecretFetcher(ctx context.Context, cfg *validate.Config) (secrets.Fetcher, error) {
+	if cfg == nil || cfg.Secrets == nil {
+		return secrets.Default(ctx), nil
+	}
+	return secrets.BuildFromConfig(ctx, adaptSecretsConfig(cfg.Secrets))
+}
+
+func adaptSecretsConfig(in *validate.Secrets) *secrets.Config {
+	if in == nil {
+		return nil
+	}
+	conv := func(s *validate.Secret) *secrets.Spec {
+		if s == nil {
+			return nil
+		}
+		return &secrets.Spec{Source: s.Source, Name: s.Name, Path: s.Path, KeyID: s.KeyID}
+	}
+	return &secrets.Config{
+		AnthropicAPIKey: conv(in.AnthropicAPIKey),
+		GHToken:         conv(in.GHToken),
+		BriefHMAC:       conv(in.BriefHMAC),
+		AuditHMAC:       conv(in.AuditHMAC),
+		ApprovalToken:   conv(in.ApprovalToken),
+	}
 }
 
 // exportSecretsToEnv walks the cache and sets each legacy env-var
@@ -35,6 +77,13 @@ func exportSecretsToEnv(ctx context.Context, cache *secrets.Cache, logger *slog.
 	for key, envNames := range secretEnvOverrides {
 		v, src, ok := cache.Get(key)
 		if !ok {
+			continue
+		}
+		// Alias-source values already came from the same legacy env
+		// names we'd be writing — re-exporting risks crossing schemas
+		// (e.g. single-key REGATTA_HMAC_KEY value written into the
+		// keyring-format REGATTA_HMAC_KEYRING slot).
+		if src == secrets.AdapterAlias {
 			continue
 		}
 		for _, env := range envNames {
