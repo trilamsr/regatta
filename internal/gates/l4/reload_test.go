@@ -12,8 +12,18 @@ import (
 	"time"
 )
 
+// snapshotActiveSlot pins the package-level active slot for the test's
+// lifetime; without this, -count>1 leaks the test-fixture slot into
+// later tests (#913).
+func snapshotActiveSlot(t *testing.T) {
+	t.Helper()
+	prev := active.Load()
+	t.Cleanup(func() { active.Store(prev) })
+}
+
 // TestReloader_SIGHUP_SwapsPromptAndSHA: disk-edit + SIGHUP swaps body + SHA.
 func TestReloader_SIGHUP_SwapsPromptAndSHA(t *testing.T) {
+	snapshotActiveSlot(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "adversarial.tmpl")
 	if err := os.WriteFile(path, []byte("v1 {{ .PRSHA }}\n"), 0o644); err != nil {
@@ -87,6 +97,7 @@ func TestReloader_SIGHUP_SwapsPromptAndSHA(t *testing.T) {
 
 // TestReloader_FsnotifyDebounce: 5 writes in window -> exactly 1 reload.
 func TestReloader_FsnotifyDebounce(t *testing.T) {
+	snapshotActiveSlot(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "adversarial.tmpl")
 	if err := os.WriteFile(path, []byte("vA {{ .PRSHA }}\n"), 0o644); err != nil {
@@ -141,6 +152,7 @@ loop:
 
 // TestReloader_SHAShortCircuit_NoSwap: identical bytes -> Skipped.
 func TestReloader_SHAShortCircuit_NoSwap(t *testing.T) {
+	snapshotActiveSlot(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "adversarial.tmpl")
 	body := []byte("same {{ .PRSHA }}\n")
@@ -184,6 +196,7 @@ func TestReloader_SHAShortCircuit_NoSwap(t *testing.T) {
 
 // TestReloader_BadTemplate_RetainsLastGood: parse-fail keeps prior slot.
 func TestReloader_BadTemplate_RetainsLastGood(t *testing.T) {
+	snapshotActiveSlot(t)
 	dir := t.TempDir()
 	path := filepath.Join(dir, "adversarial.tmpl")
 	if err := os.WriteFile(path, []byte("good {{ .PRSHA }}\n"), 0o644); err != nil {
