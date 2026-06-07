@@ -51,6 +51,7 @@ Each row is generated from the spec's own frontmatter (`title`, `status`, `summa
 - [`2026-06-04-mvr-1-t4-github-issues-adapter-impl.md`](2026-06-04-mvr-1-t4-github-issues-adapter-impl.md) — MVR-1-T4 — `github_issues` spec adapter — impl-ready
 - [`2026-06-04-operator-console-ui-roadmap.md`](2026-06-04-operator-console-ui-roadmap.md) — Operator Console — Phase-S UI Roadmap (S1 → S2 → S3)
 - [`2026-06-04-state-package-split-design.md`](2026-06-04-state-package-split-design.md) — internal/orchestrator/state god-package 3-way split — Design Spec — Design for splitting state/ (3076 LOC, 18 files, 140 importers) into a primary state package + thin subpackages, working around Go's same-package receiver rule via Option E (hybrid: state keeps the singleton coordinator, subpackages own pure data types + free functions).
+- [`2026-06-07-secrets-config-unification.md`](2026-06-07-secrets-config-unification.md) — Secrets config unification — `secrets:` block in `regatta.yaml`
 
 ## Skeleton-prefetch (Phase X)
 
