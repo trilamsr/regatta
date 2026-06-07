@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,6 +86,25 @@ func TestGHClient_GHCLIStderr404_WrapsErrNotFound(t *testing.T) {
 	_, err := c.GetIssue(context.Background(), 99)
 	if err == nil || !errors.Is(err, schemas.ErrNotFound) {
 		t.Fatalf("err=%v want wrap of schemas.ErrNotFound", err)
+	}
+}
+
+// TestGHCLIClient_ExecMissing asserts exec.ErrNotFound (gh binary missing in distroless) → wrapped ErrPermanent with binary name (closes #882).
+func TestGHCLIClient_ExecMissing(t *testing.T) {
+	wrapped := &exec.Error{Name: "gh", Err: exec.ErrNotFound}
+	c := ghclient.NewGHCLIClientWithRunner("o", "r", fakeRunner{err: wrapped})
+	_, err := c.ListIssuesByLabelPaginated(context.Background(), "autonomous", ghclient.ListIssuesOpts{})
+	if err == nil {
+		t.Fatal("err=nil want exec.ErrNotFound wrap")
+	}
+	if !errors.Is(err, exec.ErrNotFound) {
+		t.Fatalf("err=%v want errors.Is(err, exec.ErrNotFound)", err)
+	}
+	if !errors.Is(err, schemas.ErrPermanent) {
+		t.Fatalf("err=%v want errors.Is(err, schemas.ErrPermanent)", err)
+	}
+	if !strings.Contains(err.Error(), "gh") {
+		t.Fatalf("err=%q must name the missing binary", err)
 	}
 }
 
