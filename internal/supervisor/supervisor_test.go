@@ -458,6 +458,129 @@ func TestPreInstallEnvFileCheck_TightModeSilent(t *testing.T) {
 	}
 }
 
+// TestSupervisorOptions_NameDefaultsToRegatta pins back-compat: empty Name preserves "regatta" namespace (#929).
+func TestSupervisorOptions_NameDefaultsToRegatta(t *testing.T) {
+	opts, home := newDarwinOpts(t)
+	plan, err := buildPlan(normalize(opts))
+	if err != nil {
+		t.Fatalf("buildPlan: %v", err)
+	}
+	if plan.Label != "com.regatta.serve" {
+		t.Errorf("darwin Label: got %q want com.regatta.serve", plan.Label)
+	}
+	wantWD := filepath.Join(home, ".local", "share", "regatta")
+	if plan.WorkingDir != wantWD {
+		t.Errorf("darwin WorkingDir: got %q want %q", plan.WorkingDir, wantWD)
+	}
+
+	lopts, lhome := newLinuxOpts(t)
+	lplan, err := buildPlan(normalize(lopts))
+	if err != nil {
+		t.Fatalf("buildPlan linux: %v", err)
+	}
+	if lplan.UnitName != "regatta.service" {
+		t.Errorf("linux UnitName: got %q want regatta.service", lplan.UnitName)
+	}
+	wantLWD := filepath.Join(lhome, ".local", "share", "regatta")
+	if lplan.WorkingDir != wantLWD {
+		t.Errorf("linux WorkingDir: got %q want %q", lplan.WorkingDir, wantLWD)
+	}
+}
+
+// TestSupervisorOptions_NameSetsLabelDarwin pins Name="foo" → Label "com.regatta.serve.foo" on darwin (#929).
+func TestSupervisorOptions_NameSetsLabelDarwin(t *testing.T) {
+	opts, home := newDarwinOpts(t)
+	opts.Name = "myrepo"
+	plan, err := buildPlan(normalize(opts))
+	if err != nil {
+		t.Fatalf("buildPlan: %v", err)
+	}
+	if plan.Label != "com.regatta.serve.myrepo" {
+		t.Errorf("Label: got %q want com.regatta.serve.myrepo", plan.Label)
+	}
+	wantPath := filepath.Join(home, "Library", "LaunchAgents", "com.regatta.serve.myrepo.plist")
+	if plan.UnitPath != wantPath {
+		t.Errorf("UnitPath: got %q want %q", plan.UnitPath, wantPath)
+	}
+}
+
+// TestSupervisorOptions_NameSetsUnitLinux pins Name="foo" → UnitName "regatta-foo.service" on linux (#929).
+func TestSupervisorOptions_NameSetsUnitLinux(t *testing.T) {
+	opts, home := newLinuxOpts(t)
+	opts.Name = "myrepo"
+	plan, err := buildPlan(normalize(opts))
+	if err != nil {
+		t.Fatalf("buildPlan: %v", err)
+	}
+	if plan.UnitName != "regatta-myrepo.service" {
+		t.Errorf("UnitName: got %q want regatta-myrepo.service", plan.UnitName)
+	}
+	wantPath := filepath.Join(home, ".config", "systemd", "user", "regatta-myrepo.service")
+	if plan.UnitPath != wantPath {
+		t.Errorf("UnitPath: got %q want %q", plan.UnitPath, wantPath)
+	}
+}
+
+// TestSupervisorOptions_NameSetsPaths pins Name="foo" → WorkingDir/LogDir suffixed by "foo" (#929).
+func TestSupervisorOptions_NameSetsPaths(t *testing.T) {
+	dopts, dhome := newDarwinOpts(t)
+	dopts.Name = "myrepo"
+	dplan, err := buildPlan(normalize(dopts))
+	if err != nil {
+		t.Fatalf("buildPlan darwin: %v", err)
+	}
+	wantDWD := filepath.Join(dhome, ".local", "share", "regatta", "myrepo")
+	if dplan.WorkingDir != wantDWD {
+		t.Errorf("darwin WorkingDir: got %q want %q", dplan.WorkingDir, wantDWD)
+	}
+	wantDLogs := filepath.Join(dhome, "Library", "Logs", "regatta", "myrepo")
+	if dplan.LogDir != wantDLogs {
+		t.Errorf("darwin LogDir: got %q want %q", dplan.LogDir, wantDLogs)
+	}
+	wantDEnv := filepath.Join(dhome, ".config", "regatta", "myrepo", "env")
+	if dplan.EnvFile != wantDEnv {
+		t.Errorf("darwin EnvFile: got %q want %q", dplan.EnvFile, wantDEnv)
+	}
+
+	lopts, lhome := newLinuxOpts(t)
+	lopts.Name = "myrepo"
+	lplan, err := buildPlan(normalize(lopts))
+	if err != nil {
+		t.Fatalf("buildPlan linux: %v", err)
+	}
+	wantLWD := filepath.Join(lhome, ".local", "share", "regatta", "myrepo")
+	if lplan.WorkingDir != wantLWD {
+		t.Errorf("linux WorkingDir: got %q want %q", lplan.WorkingDir, wantLWD)
+	}
+	wantLLog := filepath.Join(lhome, ".local", "state", "regatta", "myrepo")
+	if lplan.LogDir != wantLLog {
+		t.Errorf("linux LogDir: got %q want %q", lplan.LogDir, wantLLog)
+	}
+}
+
+// TestSupervisorOptions_NameSetsSystemPathsLinux pins system-mode Name="foo" → /var/lib/regatta/foo, /etc/regatta/foo/* (#929).
+func TestSupervisorOptions_NameSetsSystemPathsLinux(t *testing.T) {
+	opts, _ := newLinuxOpts(t)
+	opts.Mode = ModeSystem
+	opts.Name = "myrepo"
+	plan, err := buildPlan(normalize(opts))
+	if err != nil {
+		t.Fatalf("buildPlan: %v", err)
+	}
+	if plan.WorkingDir != "/var/lib/regatta/myrepo" {
+		t.Errorf("WorkingDir: got %q want /var/lib/regatta/myrepo", plan.WorkingDir)
+	}
+	if plan.LogDir != "/var/log/regatta/myrepo" {
+		t.Errorf("LogDir: got %q want /var/log/regatta/myrepo", plan.LogDir)
+	}
+	if plan.ConfigPath != "/etc/regatta/myrepo/regatta.yaml" {
+		t.Errorf("ConfigPath: got %q want /etc/regatta/myrepo/regatta.yaml", plan.ConfigPath)
+	}
+	if plan.EnvFile != "/etc/regatta/myrepo/env" {
+		t.Errorf("EnvFile: got %q want /etc/regatta/myrepo/env", plan.EnvFile)
+	}
+}
+
 // TestInstallService_DryRun_WritesNothing covers spec §3.8 --dry-run.
 func TestInstallService_DryRun_WritesNothing(t *testing.T) {
 	opts, home := newDarwinOpts(t)

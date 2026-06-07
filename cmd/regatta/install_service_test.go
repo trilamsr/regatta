@@ -39,6 +39,24 @@ func TestInstallServiceEnvFileFlag(t *testing.T) {
 	}
 }
 
+// TestInstallService_NameFlag asserts --name threads through to supervisor.Options.Name (#929).
+func TestInstallService_NameFlag(t *testing.T) {
+	var out, errBuf bytes.Buffer
+	code := runInstallServiceTo(&out, &errBuf, []string{
+		"--dry-run",
+		"--name", "myrepo",
+	})
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%s", code, errBuf.String())
+	}
+	// Name="myrepo" suffixes the Label, WorkingDir, EnvFile; dry-run prints all three.
+	for _, want := range []string{"com.regatta.serve.myrepo", "regatta/myrepo", "regatta/myrepo/env"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("dry-run output missing %q; got:\n%s", want, out.String())
+		}
+	}
+}
+
 // TestInstallServiceHealthzURLDefault asserts loopback :8080 fallback when --healthz-url omitted (#667).
 func TestInstallServiceHealthzURLDefault(t *testing.T) {
 	var out, errBuf bytes.Buffer

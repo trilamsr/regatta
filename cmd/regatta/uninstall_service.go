@@ -14,6 +14,7 @@ func runUninstallService(args []string) int {
 	user := fs.Bool("user", true, "uninstall per-user agent (default)")
 	system := fs.Bool("system", false, "uninstall system unit (requires root)")
 	noCron := fs.Bool("no-cron", false, "skip cron block strip")
+	name := fs.String("name", "", "per-target namespace suffix; must match the --name passed to install-service (#929). Empty targets the single-target `regatta` install.")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -25,6 +26,7 @@ func runUninstallService(args []string) int {
 	opts := supervisor.Options{
 		Mode:   mode,
 		NoCron: *noCron,
+		Name:   *name,
 		Out:    os.Stdout,
 		Err:    os.Stderr,
 	}

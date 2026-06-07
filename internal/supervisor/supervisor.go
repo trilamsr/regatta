@@ -37,6 +37,7 @@ type Options struct {
 	DryRun     bool
 	Force      bool
 	NoCron     bool
+	Name       string // namespace suffix for multi-target-repo install side-by-side (#929); empty ⇒ "regatta" (back-compat).
 	HealthzURL string // operator override for post-bootstrap /healthz polling (#667); empty ⇒ DefaultHealthzURL
 	EnvFile    string // operator override for env-file path; empty ⇒ OS+mode default. launchd has no native EnvironmentFile, so on darwin the plist wraps `regatta serve` in `/bin/sh -lc` that sources this file (followup to #826).
 	Out        io.Writer
@@ -254,38 +255,47 @@ func buildPlan(opts Options) (Plan, error) {
 	}
 	p.HomePath = home
 
+	// nameSuffix is the optional per-target subdirectory + label suffix (#929);
+	// empty ⇒ legacy single-target layout.
+	nameSuffix := opts.Name
 	switch p.OS {
 	case osDarwin:
 		p.Label = "com.regatta.serve"
+		if nameSuffix != "" {
+			p.Label = p.Label + "." + nameSuffix
+		}
 		if opts.Mode == ModeUser {
 			p.UnitPath = filepath.Join(home, "Library", "LaunchAgents", p.Label+".plist")
-			p.WorkingDir = filepath.Join(home, ".local", "share", "regatta")
-			p.LogDir = filepath.Join(home, "Library", "Logs", "regatta")
+			p.WorkingDir = filepath.Join(home, ".local", "share", "regatta", nameSuffix)
+			p.LogDir = filepath.Join(home, "Library", "Logs", "regatta", nameSuffix)
 		} else {
 			p.UnitPath = filepath.Join("/Library/LaunchDaemons", p.Label+".plist")
-			p.WorkingDir = "/var/lib/regatta"
-			p.LogDir = "/var/log/regatta"
+			p.WorkingDir = filepath.Join("/var/lib/regatta", nameSuffix)
+			p.LogDir = filepath.Join("/var/log/regatta", nameSuffix)
 		}
 		p.PathEnv = resolveMacPath(bin)
-		p.EnvFile = resolveDarwinEnvFile(opts, home)
+		p.EnvFile = resolveDarwinEnvFile(opts, home, nameSuffix)
 		if err := sanitizeEnvFile(p.EnvFile); err != nil {
 			return p, err
 		}
 	case osLinux:
 		p.UnitName = "regatta.service"
+		if nameSuffix != "" {
+			p.UnitName = "regatta-" + nameSuffix + ".service"
+		}
 		if opts.Mode == ModeUser {
 			p.UnitPath = filepath.Join(home, ".config", "systemd", "user", p.UnitName)
-			p.WorkingDir = filepath.Join(home, ".local", "share", "regatta")
-			p.LogDir = filepath.Join(home, ".local", "state", "regatta")
+			p.WorkingDir = filepath.Join(home, ".local", "share", "regatta", nameSuffix)
+			p.LogDir = filepath.Join(home, ".local", "state", "regatta", nameSuffix)
 			p.User = currentUser()
 		} else {
 			p.UnitPath = filepath.Join("/etc/systemd/system", p.UnitName)
-			p.WorkingDir = "/var/lib/regatta"
-			p.LogDir = "/var/log/regatta"
+			p.WorkingDir = filepath.Join("/var/lib/regatta", nameSuffix)
+			p.LogDir = filepath.Join("/var/log/regatta", nameSuffix)
 			p.User = "regatta"
 		}
-		p.ConfigPath = "/etc/regatta/regatta.yaml"
-		p.EnvFile = "/etc/regatta/env"
+		p.ConfigPath = filepath.Join("/etc/regatta", nameSuffix, "regatta.yaml")
+		p.EnvFile = filepath.Join("/etc/regatta", nameSuffix, "env")
 		if opts.EnvFile != "" {
 			p.EnvFile = opts.EnvFile
 		}
@@ -300,15 +310,16 @@ func buildPlan(opts Options) (Plan, error) {
 // user-mode / system-mode default. launchd has no native EnvironmentFile
 // equivalent — the plist wraps `regatta serve` in `/bin/sh -lc` that
 // sources this path so ANTHROPIC_API_KEY + GH_TOKEN land in serve's env
-// (followup to #826).
-func resolveDarwinEnvFile(opts Options, home string) string {
+// (followup to #826). nameSuffix carves a per-target subdir when --name
+// is set (#929); empty preserves the single-target default.
+func resolveDarwinEnvFile(opts Options, home, nameSuffix string) string {
 	if opts.EnvFile != "" {
 		return opts.EnvFile
 	}
 	if opts.Mode == ModeSystem {
-		return "/etc/regatta/env"
+		return filepath.Join("/etc/regatta", nameSuffix, "env")
 	}
-	return filepath.Join(home, ".config", "regatta", "env")
+	return filepath.Join(home, ".config", "regatta", nameSuffix, "env")
 }
 
 // sanitizeEnvFile rejects characters that would break out of the
