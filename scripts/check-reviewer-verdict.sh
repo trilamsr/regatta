@@ -22,8 +22,8 @@
 #
 #   Pass: body contains `Reviewer-recommendation: APPROVE` ON ITS OWN
 #   line (case-insensitive, leading/trailing whitespace allowed). Tokens
-#   inside fenced code blocks are still counted — the convention is to
-#   place the token in the PR body footer, not in a code block.
+#   inside ```-fenced code blocks are stripped before the scan so stale
+#   examples or draft snippets cannot beat the bare footer token (#922).
 #
 #   Fail: token absent OR equals REVISE/BLOCK when --load-bearing.
 #
@@ -98,7 +98,14 @@ if [ "$LOAD_BEARING" -ne 1 ]; then
   exit 0
 fi
 
-RECOMMENDATION=$(grep -iE '^[[:space:]]*Reviewer-recommendation:' "$BODY_FILE" \
+# Strip ```-fenced blocks so stale draft tokens cannot shadow the bare
+# footer token via `head -1` ordering (#922). Mirrors the category-extract
+# awk above; toggle state-machine flips on every ``` line.
+RECOMMENDATION=$(awk '
+  /^```/ { in_fence = !in_fence; next }
+  !in_fence { print }
+' "$BODY_FILE" \
+  | grep -iE '^[[:space:]]*Reviewer-recommendation:' \
   | head -1 \
   | sed -E 's/^[[:space:]]*Reviewer-recommendation:[[:space:]]*//I' \
   | tr -d '[:space:]' \
