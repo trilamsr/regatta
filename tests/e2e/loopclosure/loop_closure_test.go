@@ -24,14 +24,14 @@ func TestLoopClosureE2E(t *testing.T) {
 
 	probeRepo(t, cfg)
 
-	issueNumber, cleanup := createSmokeIssue(ctx, t, cfg)
+	issueNumber, titleStamp, cleanup := createSmokeIssue(ctx, t, cfg)
 	t.Cleanup(cleanup)
 
 	serveCmd, serveCancel := startServe(ctx, t, cfg)
 	t.Cleanup(serveCancel)
 	_ = serveCmd
 
-	prNumber := waitForLinkedPR(ctx, t, cfg, issueNumber)
+	prNumber := waitForLinkedPR(ctx, t, cfg, issueNumber, titleStamp)
 	t.Logf("loop closed: issue #%d → PR #%d", issueNumber, prNumber)
 
 	assertPRBodyShape(ctx, t, cfg, prNumber)
@@ -71,9 +71,10 @@ func probeRepo(t *testing.T, cfg e2eConfig) {
 	}
 }
 
-func createSmokeIssue(ctx context.Context, t *testing.T, cfg e2eConfig) (int, func()) {
+func createSmokeIssue(ctx context.Context, t *testing.T, cfg e2eConfig) (int, string, func()) {
 	t.Helper()
-	title := fmt.Sprintf("[E2E-SMOKE %d] loop-closure assertion", time.Now().UnixNano())
+	titleStamp := fmt.Sprintf("[E2E-SMOKE %d]", time.Now().UnixNano())
+	title := titleStamp + " loop-closure assertion"
 	body := `## E2E smoke item
 
 This issue is created by TestLoopClosureE2E. It asks the autonomous worker
@@ -112,7 +113,7 @@ N/A — test fixture.
 		close.Env = append(os.Environ(), "GH_TOKEN="+cfg.GHToken)
 		_ = close.Run()
 	}
-	return num, cleanup
+	return num, titleStamp, cleanup
 }
 
 func parseIssueNumberFromCreateURL(s string) int {
@@ -164,51 +165,42 @@ safety:
 	return cmd, cancel
 }
 
-func waitForLinkedPR(ctx context.Context, t *testing.T, cfg e2eConfig, issueNumber int) int {
+func waitForLinkedPR(ctx context.Context, t *testing.T, cfg e2eConfig, issueNumber int, titleStamp string) int {
 	t.Helper()
-	deadline, ok := ctx.Deadline()
-	if !ok {
-		deadline = time.Now().Add(15 * time.Minute)
-	}
 	tick := time.NewTicker(20 * time.Second)
 	defer tick.Stop()
 
-	needle := fmt.Sprintf("#%d", issueNumber)
 	for {
-		if time.Now().After(deadline) {
-			t.Fatalf("deadline reached without linked PR for issue #%d", issueNumber)
-		}
 		cmd := exec.CommandContext(ctx, "gh", "pr", "list",
 			"--repo", cfg.Repo,
 			"--state", "all",
-			"--json", "number,title,body",
+			"--json", "number,title",
 			"-L", "20",
 		)
 		cmd.Env = append(os.Environ(), "GH_TOKEN="+cfg.GHToken)
 		out, err := cmd.Output()
 		if err != nil {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-				t.Fatalf("context deadline during gh pr list: %v", ctx.Err())
+				t.Fatalf("deadline reached without linked PR for issue #%d (titleStamp %q): %v", issueNumber, titleStamp, ctx.Err())
 			}
 			t.Logf("gh pr list transient: %v", err)
 		} else {
 			var prs []struct {
 				Number int    `json:"number"`
 				Title  string `json:"title"`
-				Body   string `json:"body"`
 			}
 			if err := json.Unmarshal(out, &prs); err != nil {
 				t.Fatalf("parse pr list: %v", err)
 			}
 			for _, pr := range prs {
-				if strings.Contains(pr.Title, needle) || strings.Contains(pr.Body, needle) {
+				if strings.Contains(pr.Title, titleStamp) {
 					return pr.Number
 				}
 			}
 		}
 		select {
 		case <-ctx.Done():
-			t.Fatalf("ctx done: %v", ctx.Err())
+			t.Fatalf("deadline reached without linked PR for issue #%d (titleStamp %q): %v", issueNumber, titleStamp, ctx.Err())
 		case <-tick.C:
 		}
 	}
