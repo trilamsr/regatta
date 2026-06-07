@@ -41,10 +41,12 @@ type InvokeRequest struct {
 // into the GateResult; PromptSHA pins the prompt template version in
 // telemetry for audit replay.
 type InvokeResponse struct {
-	Findings  []schemas.Finding
-	PromptSHA string
-	TokensIn  int64
-	TokensOut int64
+	Findings         []schemas.Finding
+	PromptSHA        string
+	TokensIn         int64
+	TokensOut        int64
+	TokensCacheRead  int64
+	TokensCacheWrite int64
 }
 
 // Run executes the L4 adversarial-reviewer gate against the input

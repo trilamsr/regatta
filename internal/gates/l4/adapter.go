@@ -38,6 +38,8 @@ const (
 	// anthropicMaxTokens caps response length. Findings are short
 	// JSON; 4096 leaves headroom for ~30 findings at ~120 tokens each.
 	anthropicMaxTokens = 4096
+
+	anthropicBlockTypeText = "text"
 )
 
 // AnthropicAdapter implements the L4 Invoker against Anthropic's
@@ -80,12 +82,12 @@ func (a *AnthropicAdapter) Invoke() Invoker {
 }
 
 func (a *AnthropicAdapter) do(ctx context.Context, req InvokeRequest) (InvokeResponse, error) {
-	prompt, sha, err := RenderPrompt(req.Input, req.MaxChars)
+	static, dynamic, sha, err := RenderPromptSplit(req.Input, req.MaxChars)
 	if err != nil {
 		return InvokeResponse{}, err
 	}
 
-	payload, err := json.Marshal(buildAnthropicPayload(req.Model, prompt))
+	payload, err := json.Marshal(buildAnthropicPayload(req.Model, static, dynamic))
 	if err != nil {
 		return InvokeResponse{}, fmt.Errorf("l4 adapter: marshal payload: %w", err)
 	}
@@ -132,7 +134,7 @@ func (a *AnthropicAdapter) do(ctx context.Context, req InvokeRequest) (InvokeRes
 			httpResp.StatusCode, snippet(raw, 500))
 	}
 
-	textBody, inTok, outTok, err := extractAnthropicText(raw)
+	textBody, usage, err := extractAnthropicText(raw)
 	if err != nil {
 		return InvokeResponse{}, err
 	}
@@ -141,25 +143,47 @@ func (a *AnthropicAdapter) do(ctx context.Context, req InvokeRequest) (InvokeRes
 		return InvokeResponse{}, fmt.Errorf("l4 adapter: %w", err)
 	}
 	return InvokeResponse{
-		Findings:  env.Findings,
-		PromptSHA: sha,
-		TokensIn:  inTok,
-		TokensOut: outTok,
+		Findings:         env.Findings,
+		PromptSHA:        sha,
+		TokensIn:         usage.InputTokens,
+		TokensOut:        usage.OutputTokens,
+		TokensCacheRead:  usage.CacheReadInputTokens,
+		TokensCacheWrite: usage.CacheCreationInputTokens,
 	}, nil
 }
 
 // buildAnthropicPayload returns the Messages API request shape. The
-// prompt is sent as one user message; the JSON-output contract is
-// enforced via the prompt template's "## Output schema" section.
-func buildAnthropicPayload(model, prompt string) map[string]any {
-	return map[string]any{
+// static reviewer preamble + hunt list + output schema land in the
+// `system` block tagged with cache_control=ephemeral so Anthropic's
+// prompt cache reuses them across PRs (#852); the dynamic per-PR
+// diff/spec/scorecard stays in the user message uncached.
+func buildAnthropicPayload(model, static, dynamic string) map[string]any {
+	payload := map[string]any{
 		"model":       model,
 		"max_tokens":  anthropicMaxTokens,
 		"temperature": 0.2,
 		"messages": []map[string]any{
-			{"role": "user", "content": prompt},
+			{"role": "user", "content": dynamic},
 		},
 	}
+	if static != "" {
+		payload["system"] = []map[string]any{{
+			"type":          anthropicBlockTypeText,
+			"text":          static,
+			"cache_control": map[string]any{"type": "ephemeral"},
+		}}
+	}
+	return payload
+}
+
+// anthropicUsage mirrors the Messages-API usage object. cache_read /
+// cache_creation surface Anthropic's prompt-cache accounting (#852);
+// zero on responses from models without prompt-cache support.
+type anthropicUsage struct {
+	InputTokens              int64 `json:"input_tokens"`
+	OutputTokens             int64 `json:"output_tokens"`
+	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 }
 
 // extractAnthropicText pulls the first text-content block out of an
@@ -167,32 +191,29 @@ func buildAnthropicPayload(model, prompt string) map[string]any {
 // asks for one JSON envelope as the entire response so multi-block
 // responses are degenerate; we still scan all blocks and concatenate
 // to stay robust against future model behaviour drift.
-func extractAnthropicText(raw []byte) (string, int64, int64, error) {
+func extractAnthropicText(raw []byte) (string, anthropicUsage, error) {
 	var msg struct {
 		Content []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
 		} `json:"content"`
-		StopReason string `json:"stop_reason"`
-		Usage      struct {
-			InputTokens  int64 `json:"input_tokens"`
-			OutputTokens int64 `json:"output_tokens"`
-		} `json:"usage"`
+		StopReason string         `json:"stop_reason"`
+		Usage      anthropicUsage `json:"usage"`
 	}
 	if err := json.Unmarshal(raw, &msg); err != nil {
-		return "", 0, 0, fmt.Errorf("l4 adapter: parse response: %w", err)
+		return "", anthropicUsage{}, fmt.Errorf("l4 adapter: parse response: %w", err)
 	}
 	var sb strings.Builder
 	for _, c := range msg.Content {
-		if c.Type == "text" {
+		if c.Type == anthropicBlockTypeText {
 			sb.WriteString(c.Text)
 		}
 	}
 	if sb.Len() == 0 {
-		return "", msg.Usage.InputTokens, msg.Usage.OutputTokens,
+		return "", msg.Usage,
 			fmt.Errorf("l4 adapter: empty text content (stop_reason=%s)", msg.StopReason)
 	}
-	return sb.String(), msg.Usage.InputTokens, msg.Usage.OutputTokens, nil
+	return sb.String(), msg.Usage, nil
 }
 
 func snippet(b []byte, n int) string {
