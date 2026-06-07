@@ -169,8 +169,11 @@ var (
 	http404Re        = regexp.MustCompile(`(?i)\bHTTP 404\b`)
 )
 
-// classifyGHCLIError maps a non-zero gh exit's stderr to a wrapped sentinel: 403+X-RateLimit-Reset→*RateLimitedError, 404→ErrNotFound, else original (#848).
+// classifyGHCLIError maps a non-zero gh exit's stderr to a wrapped sentinel: ENOENT→ErrPermanent (binary missing, e.g. distroless #882), 403+X-RateLimit-Reset→*RateLimitedError, 404→ErrNotFound, else original (#848).
 func classifyGHCLIError(stderr []byte, runErr error, ctxLabel string) error {
+	if errors.Is(runErr, exec.ErrNotFound) {
+		return fmt.Errorf("%s: %w: gh binary not found in PATH (distroless image? install gh or wire HTTP client): %w", ctxLabel, schemas.ErrPermanent, runErr)
+	}
 	s := string(stderr)
 	if http403Re.MatchString(s) {
 		if m := rateLimitResetRe.FindStringSubmatch(s); len(m) == 2 {
