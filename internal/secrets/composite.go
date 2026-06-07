@@ -79,3 +79,8 @@ func Default(_ context.Context) Fetcher {
 	fs = append(fs, NewAliasEnvFetcher(), NewEnvFetcher())
 	return NewComposite(fs...)
 }
+
+// DefaultNoPlatform returns the alias→env chain only, skipping the platform store. One-shot CLI subcommands (`regatta audit verify`, `regatta approval decide`) call this to preserve pre-#911 env-direct behaviour and avoid a keychain prompt on every invocation; serve-time call paths still use Default so SIGHUP-rotated keychain entries continue to work.
+func DefaultNoPlatform(_ context.Context) Fetcher {
+	return NewComposite(NewAliasEnvFetcher(), NewEnvFetcher())
+}

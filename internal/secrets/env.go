@@ -40,11 +40,6 @@ func EnvVarName(key string) string {
 	return strings.ToUpper(strings.ReplaceAll(key, ".", "_"))
 }
 
-// getenvNoEmpty returns os.Getenv(name) treating "" as unset.
-func getenvNoEmpty(name string) string {
-	return os.Getenv(name)
-}
-
 // legacyEnvAliases pins back-compat env names to canonical keys so a
 // build without a `secrets:` block reads byte-equal to pre-#911.
 var legacyEnvAliases = map[string][]string{

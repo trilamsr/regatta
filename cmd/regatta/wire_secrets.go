@@ -9,6 +9,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -30,12 +32,16 @@ var secretEnvOverrides = map[string][]string{
 	secrets.KeyApprovalToken: {"REGATTA_APPROVAL_TOKEN_KEY"},
 }
 
-// buildSecretFetcherFromRepo reads regatta.yaml at repoRoot, returning
-// a Fetcher built from `secrets:` when present, else the Default chain.
-// Missing or malformed yaml degrades to Default — operators booting
-// without a config file see byte-equal behaviour to pre-#911.
-func buildSecretFetcherFromRepo(ctx context.Context, repoRoot string) (secrets.Fetcher, error) {
-	cfg, _ := validate.LoadConfigFile(filepath.Join(repoRoot, "regatta.yaml"))
+// buildSecretFetcherFromRepo reads regatta.yaml at repoRoot, returning a Fetcher built from `secrets:` when present, else the Default chain. Spec §11 mitigates yaml-typo risk via CUE rejection — so a non-ENOENT load error MUST surface (WARN + non-nil err) rather than silently fall back. A missing regatta.yaml stays silent and returns Default — zero-config deployments are the documented happy path (mirrors `buildSpecAdapter` #867 contract).
+func buildSecretFetcherFromRepo(ctx context.Context, repoRoot string, logger *slog.Logger) (secrets.Fetcher, error) {
+	cfgPath := filepath.Join(repoRoot, "regatta.yaml")
+	cfg, loadErr := validate.LoadConfigFile(cfgPath)
+	if loadErr != nil && !errors.Is(loadErr, fs.ErrNotExist) {
+		if logger != nil {
+			logger.Warn("secrets.config_load_failed", "path", cfgPath, "err", loadErr)
+		}
+		return nil, loadErr
+	}
 	return buildSecretFetcher(ctx, cfg)
 }
 

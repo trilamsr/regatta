@@ -2,8 +2,10 @@ package secrets
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 )
 
 // Source enum values mirror CUE schema #Secret.source.
@@ -72,12 +74,39 @@ func fetcherForSpec(ctx context.Context, key string, spec *Spec) (Fetcher, error
 		if spec.Path == "" {
 			return nil, errors.New("source=file requires path")
 		}
-		return NewFileFetcher(key, spec.Path), nil
+		f := NewFileFetcher(key, spec.Path)
+		if key == KeyBriefHMACs {
+			if spec.KeyID == "" {
+				return nil, errors.New("source=file for brief_hmac requires key_id")
+			}
+			return briefHMACKeyringFormatter{inner: f, keyID: spec.KeyID}, nil
+		}
+		return f, nil
 	case SourceKeychain, SourcePass:
 		return Default(ctx), nil
 	default:
 		return nil, fmt.Errorf("unknown source %q (want env|keychain|pass|file)", spec.Source)
 	}
+}
+
+// briefHMACKeyringFormatter reshapes a brief_hmac raw value into the `keyID:hex(raw)` shape parseBriefKeyring expects — without this, a raw file dump exported into REGATTA_HMAC_KEYRING silently fails parse → empty keyring (#932 HIGH-2).
+type briefHMACKeyringFormatter struct {
+	inner Fetcher
+	keyID string
+}
+
+func (b briefHMACKeyringFormatter) Name() string { return b.inner.Name() }
+
+func (b briefHMACKeyringFormatter) Get(ctx context.Context, key string) (Value, error) {
+	v, err := b.inner.Get(ctx, key)
+	if err != nil {
+		return Value{}, err
+	}
+	raw := v.Bytes()
+	if len(raw) == 0 {
+		return Value{}, ErrNotFound
+	}
+	return NewValue([]byte(b.keyID + ":" + hex.EncodeToString(raw))), nil
 }
 
 type namedEnvFetcher struct {
@@ -94,7 +123,7 @@ func (f namedEnvFetcher) Get(_ context.Context, key string) (Value, error) {
 	if err := ValidateKey(key); err != nil {
 		return Value{}, err
 	}
-	v := getenvNoEmpty(f.envName)
+	v := os.Getenv(f.envName)
 	if v == "" {
 		return Value{}, ErrNotFound
 	}
@@ -108,6 +137,7 @@ type routedFetcher struct {
 
 func (r routedFetcher) Name() string { return "yaml→default" }
 
+// Get walks the routed entry for key when present, then the Default chain. The Default-chain fallback on routed-miss is INTENTIONAL: a yaml-configured `source: env, name: GH_TOKEN_REVIEWER` whose env var is unset SHOULD still resolve via legacy aliases (back-compat with pre-#911). Operators who want strict routing get it implicitly by leaving the legacy env unset.
 func (r routedFetcher) Get(ctx context.Context, key string) (Value, error) {
 	if err := ValidateKey(key); err != nil {
 		return Value{}, err

@@ -175,7 +175,6 @@ Example:
 secrets:
   anthropic_api_key:
     source: keychain
-    name: regatta/anthropic
   gh_token:
     source: env
     name: GH_TOKEN_REVIEWER

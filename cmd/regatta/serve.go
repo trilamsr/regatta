@@ -137,7 +137,7 @@ func runServe(args []string) int {
 	bootSecretsCtx, bootSecretsCancel := context.WithCancel(context.Background())
 	defer bootSecretsCancel()
 	secretCache := secrets.NewCache()
-	secretFetcher, sfErr := buildSecretFetcherFromRepo(bootSecretsCtx, f.RepoRoot)
+	secretFetcher, sfErr := buildSecretFetcherFromRepo(bootSecretsCtx, f.RepoRoot, slogger)
 	if sfErr != nil {
 		logger.Printf("secrets config: %v", sfErr)
 		return 2

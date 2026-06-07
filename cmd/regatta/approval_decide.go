@@ -202,7 +202,7 @@ func loadApprovalTokenKeyring() (approvaltoken.Keyring, error) {
 		v = os.Getenv(envName)
 	} else {
 		ctx := context.Background()
-		if got, err := secrets.Default(ctx).Get(ctx, secrets.KeyApprovalToken); err == nil {
+		if got, err := secrets.DefaultNoPlatform(ctx).Get(ctx, secrets.KeyApprovalToken); err == nil {
 			v = string(got.Bytes())
 		}
 		envName = "REGATTA_APPROVAL_TOKEN_KEY"

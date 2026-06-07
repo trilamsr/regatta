@@ -271,7 +271,7 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 func loadAuditVerifyKeyring() (map[string][]byte, error) {
 	ctx := context.Background()
 	var key string
-	if v, err := secrets.Default(ctx).Get(ctx, secrets.KeyAuditHMACKey); err == nil {
+	if v, err := secrets.DefaultNoPlatform(ctx).Get(ctx, secrets.KeyAuditHMACKey); err == nil {
 		key = string(v.Bytes())
 	}
 	keyID := os.Getenv("REGATTA_AUDIT_HMAC_KEY_ID")

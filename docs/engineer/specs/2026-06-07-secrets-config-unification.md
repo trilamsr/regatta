@@ -47,7 +47,7 @@ Operator wires a new repo by editing one yaml block. `regatta doctor` (separate 
 
 3.2 Default behavior (no `secrets:` block): unchanged from today. Composite fetcher with platform-native first + env fallback. Canonical keys resolved against existing env-var names (back-compat).
 
-3.3 With `secrets:` block: every named secret routes through the configured source. `source: env, name: GH_TOKEN_REVIEWER` keeps an operator-chosen env name; `source: keychain, name: regatta-bot/gh` uses an OS keychain entry.
+3.3 With `secrets:` block: every named secret routes through the configured source. `source: env, name: GH_TOKEN_REVIEWER` keeps an operator-chosen env name; `source: keychain` resolves the canonical key from the platform store (current loader honours `name:` only for `source: env` — keychain/pass route via the Default chain by canonical key; binding a custom keychain account is filed as a followup).
 
 3.4 Migrate FIVE prod call sites off raw `os.Getenv` onto `secrets.Fetcher.Get(ctx, canonicalKey)`:
 - `internal/gates/l4/adapter.go:62` (`ANTHROPIC_API_KEY`)
@@ -132,7 +132,6 @@ func BuildFromConfig(secrets *schemas.Secrets) (Fetcher, error)
 secrets:
   anthropic_api_key:
     source: keychain
-    name: regatta/anthropic
   gh_token:
     source: env
     name: GH_TOKEN_REVIEWER
@@ -142,7 +141,6 @@ secrets:
     key_id: brief-2026-06
   audit_hmac:
     source: pass
-    name: regatta/audit-hmac
     key_id: audit-2026-06
 ```
 

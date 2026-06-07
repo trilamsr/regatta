@@ -51,7 +51,8 @@ func loadBriefKeyringWithActive() (map[string][]byte, string) {
 		v = os.Getenv(envName)
 	} else {
 		ctx := context.Background() //nolint:contextcheck // loadBriefKeyring predates ctx-threading; keep stable signature.
-		if got, err := secrets.Default(ctx).Get(ctx, secrets.KeyBriefHMACs); err == nil {
+		// DefaultNoPlatform here: serve has already exported keychain-resolved values into env at boot, and CLI subcommands (`regatta cost`, …) MUST NOT prompt for keychain on every invocation (#932 MED-6 reviewer finding).
+		if got, err := secrets.DefaultNoPlatform(ctx).Get(ctx, secrets.KeyBriefHMACs); err == nil {
 			v = string(got.Bytes())
 		}
 	}
