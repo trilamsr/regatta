@@ -15,11 +15,31 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"text/template"
 	"time"
 )
+
+// nameRE is the per-target namespace charset (spec §6.4): lowercase
+// alphanumeric + hyphen, 1-32 chars, must start with [a-z0-9]. Stops
+// path traversal (`..`), launchd Label corruption (`/`), systemd unit
+// injection (`\n`).
+var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
+
+// ValidateName enforces the [a-z0-9-]{1,32} whitelist on --name suffixes
+// (spec §6.4). Empty is accepted by the supervisor (single-target default)
+// but the CLI flag-parse site rejects empty separately if needed.
+func ValidateName(name string) error {
+	if name == "" {
+		return fmt.Errorf("name must not be empty")
+	}
+	if !nameRE.MatchString(name) {
+		return fmt.Errorf("name %q must match [a-z0-9][a-z0-9-]{0,31} (lowercase alphanumeric + hyphen, 1-32 chars, leading [a-z0-9])", name)
+	}
+	return nil
+}
 
 //go:embed templates/regatta.service.tmpl
 var systemdTemplate string
@@ -37,6 +57,7 @@ type Options struct {
 	DryRun     bool
 	Force      bool
 	NoCron     bool
+	Name       string // namespace suffix for multi-target-repo install side-by-side (#929); empty ⇒ single-target layout (no suffix), preserving back-compat with pre-#929 installs. Validated against [a-z0-9][a-z0-9-]{0,31} (spec §6.4).
 	HealthzURL string // operator override for post-bootstrap /healthz polling (#667); empty ⇒ DefaultHealthzURL
 	EnvFile    string // operator override for env-file path; empty ⇒ OS+mode default. launchd has no native EnvironmentFile, so on darwin the plist wraps `regatta serve` in `/bin/sh -lc` that sources this file (followup to #826).
 	Out        io.Writer
@@ -77,6 +98,15 @@ const (
 	osDarwin = "darwin"
 	osLinux  = "linux"
 )
+
+// regattaName is the base namespace used in paths + the default systemd
+// unit name when --name is empty. Extracted so the single-target default
+// is one symbol grep.
+const regattaName = "regatta"
+
+// regattaUnit is the default systemd unit filename for single-target
+// installs (Name=="").
+const regattaUnit = "regatta.service"
 
 // String stringifies Mode for diagnostic + idempotency-status output.
 func (m Mode) String() string {
@@ -234,6 +264,11 @@ func normalize(o Options) Options {
 // buildPlan resolves all install parameters; pure function (no FS writes).
 func buildPlan(opts Options) (Plan, error) {
 	p := Plan{OS: opts.GOOS, Mode: opts.Mode}
+	if opts.Name != "" {
+		if err := ValidateName(opts.Name); err != nil {
+			return p, err
+		}
+	}
 	bin := opts.Binary
 	if bin == "" {
 		exe, err := os.Executable()
@@ -254,38 +289,47 @@ func buildPlan(opts Options) (Plan, error) {
 	}
 	p.HomePath = home
 
+	// nameSuffix is the optional per-target subdirectory + label suffix (#929);
+	// empty ⇒ legacy single-target layout.
+	nameSuffix := opts.Name
 	switch p.OS {
 	case osDarwin:
 		p.Label = "com.regatta.serve"
+		if nameSuffix != "" {
+			p.Label = p.Label + "." + nameSuffix
+		}
 		if opts.Mode == ModeUser {
 			p.UnitPath = filepath.Join(home, "Library", "LaunchAgents", p.Label+".plist")
-			p.WorkingDir = filepath.Join(home, ".local", "share", "regatta")
-			p.LogDir = filepath.Join(home, "Library", "Logs", "regatta")
+			p.WorkingDir = filepath.Join(home, ".local", "share", "regatta", nameSuffix)
+			p.LogDir = filepath.Join(home, "Library", "Logs", "regatta", nameSuffix)
 		} else {
 			p.UnitPath = filepath.Join("/Library/LaunchDaemons", p.Label+".plist")
-			p.WorkingDir = "/var/lib/regatta"
-			p.LogDir = "/var/log/regatta"
+			p.WorkingDir = filepath.Join("/var/lib/regatta", nameSuffix)
+			p.LogDir = filepath.Join("/var/log/regatta", nameSuffix)
 		}
 		p.PathEnv = resolveMacPath(bin)
-		p.EnvFile = resolveDarwinEnvFile(opts, home)
+		p.EnvFile = resolveDarwinEnvFile(opts, home, nameSuffix)
 		if err := sanitizeEnvFile(p.EnvFile); err != nil {
 			return p, err
 		}
 	case osLinux:
-		p.UnitName = "regatta.service"
+		p.UnitName = regattaUnit
+		if nameSuffix != "" {
+			p.UnitName = "regatta-" + nameSuffix + ".service"
+		}
 		if opts.Mode == ModeUser {
 			p.UnitPath = filepath.Join(home, ".config", "systemd", "user", p.UnitName)
-			p.WorkingDir = filepath.Join(home, ".local", "share", "regatta")
-			p.LogDir = filepath.Join(home, ".local", "state", "regatta")
+			p.WorkingDir = filepath.Join(home, ".local", "share", "regatta", nameSuffix)
+			p.LogDir = filepath.Join(home, ".local", "state", "regatta", nameSuffix)
 			p.User = currentUser()
 		} else {
 			p.UnitPath = filepath.Join("/etc/systemd/system", p.UnitName)
-			p.WorkingDir = "/var/lib/regatta"
-			p.LogDir = "/var/log/regatta"
-			p.User = "regatta"
+			p.WorkingDir = filepath.Join("/var/lib/regatta", nameSuffix)
+			p.LogDir = filepath.Join("/var/log/regatta", nameSuffix)
+			p.User = regattaName
 		}
-		p.ConfigPath = "/etc/regatta/regatta.yaml"
-		p.EnvFile = "/etc/regatta/env"
+		p.ConfigPath = filepath.Join("/etc/regatta", nameSuffix, "regatta.yaml")
+		p.EnvFile = filepath.Join("/etc/regatta", nameSuffix, "env")
 		if opts.EnvFile != "" {
 			p.EnvFile = opts.EnvFile
 		}
@@ -300,15 +344,16 @@ func buildPlan(opts Options) (Plan, error) {
 // user-mode / system-mode default. launchd has no native EnvironmentFile
 // equivalent — the plist wraps `regatta serve` in `/bin/sh -lc` that
 // sources this path so ANTHROPIC_API_KEY + GH_TOKEN land in serve's env
-// (followup to #826).
-func resolveDarwinEnvFile(opts Options, home string) string {
+// (followup to #826). nameSuffix carves a per-target subdir when --name
+// is set (#929); empty preserves the single-target default.
+func resolveDarwinEnvFile(opts Options, home, nameSuffix string) string {
 	if opts.EnvFile != "" {
 		return opts.EnvFile
 	}
 	if opts.Mode == ModeSystem {
-		return "/etc/regatta/env"
+		return filepath.Join("/etc/regatta", nameSuffix, "env")
 	}
-	return filepath.Join(home, ".config", "regatta", "env")
+	return filepath.Join(home, ".config", "regatta", nameSuffix, "env")
 }
 
 // sanitizeEnvFile rejects characters that would break out of the
@@ -352,7 +397,7 @@ func currentUser() string {
 	if u := os.Getenv("USER"); u != "" {
 		return u
 	}
-	return "regatta"
+	return regattaName
 }
 
 func unitFileMode(p Plan) os.FileMode {
@@ -379,6 +424,21 @@ func renderUnit(p Plan) (string, error) {
 		}
 		tmpl = launchdTemplate
 	case osLinux:
+		for _, f := range []struct {
+			name, val string
+		}{
+			{"working-dir", p.WorkingDir},
+			{"log-dir", p.LogDir},
+			{"env-file", p.EnvFile},
+			{"config-path", p.ConfigPath},
+			{"unit-name", p.UnitName},
+			{"read-write-paths", p.ReadWritePaths},
+			{"user", p.User},
+		} {
+			if err := sanitizeSystemdValue(f.name, f.val); err != nil {
+				return "", err
+			}
+		}
 		tmpl = systemdTemplate
 	default:
 		return "", fmt.Errorf("unsupported OS %q", p.OS)
@@ -399,6 +459,17 @@ func renderUnit(p Plan) (string, error) {
 func sanitizePath(p string) error {
 	if strings.ContainsAny(p, "\n\x00") {
 		return fmt.Errorf("binary path contains illegal character")
+	}
+	return nil
+}
+
+// sanitizeSystemdValue rejects newline + null in any value embedded in
+// the systemd unit file. A newline lets an attacker inject arbitrary
+// directives (e.g. `\nExecStartPre=/bin/rm -rf /`); a null byte truncates
+// the unit on parse. field names the rejected directive for diagnostics.
+func sanitizeSystemdValue(field, v string) error {
+	if strings.ContainsAny(v, "\n\x00") {
+		return fmt.Errorf("%s value %q contains newline or null — systemd unit injection risk", field, v)
 	}
 	return nil
 }
