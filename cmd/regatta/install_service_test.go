@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -49,8 +50,12 @@ func TestInstallService_NameFlag(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit=%d stderr=%s", code, errBuf.String())
 	}
-	// Name="myrepo" suffixes the Label, WorkingDir, EnvFile; dry-run prints all three.
-	for _, want := range []string{"com.regatta.serve.myrepo", "regatta/myrepo", "regatta/myrepo/env"} {
+	// Name="myrepo" suffixes the unit identifier (launchd Label on darwin, systemd UnitName elsewhere), WorkingDir, and EnvFile.
+	unitID := "com.regatta.serve.myrepo"
+	if runtime.GOOS != "darwin" {
+		unitID = "regatta-myrepo.service"
+	}
+	for _, want := range []string{unitID, "regatta/myrepo", "regatta/myrepo/env"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("dry-run output missing %q; got:\n%s", want, out.String())
 		}
