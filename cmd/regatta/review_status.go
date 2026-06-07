@@ -112,9 +112,9 @@ func runReviewStatus(args []string, out io.Writer) int {
 // passStr maps the bool to a short readable label.
 func passStr(b bool) string {
 	if b {
-		return "PASS"
+		return string(statusPass)
 	}
-	return "FAIL"
+	return string(statusFail)
 }
 
 // collapse truncates a string to width with an ellipsis — the 30-col

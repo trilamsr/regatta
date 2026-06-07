@@ -37,6 +37,7 @@ const (
 	subcmdDigest           = "digest"
 	subcmdInstallService   = "install-service"
 	subcmdUninstallService = "uninstall-service"
+	// subcmdDoctor is declared in doctor.go.
 )
 
 // subcmdAudit is declared in audit.go (its run function lives there).
@@ -73,6 +74,7 @@ var subcommands = []subcommand{
 	{subcmdReview, runReview},
 	{subcmdInstallService, runInstallService},
 	{subcmdUninstallService, runUninstallService},
+	{subcmdDoctor, runDoctor},
 }
 
 func main() {
@@ -128,6 +130,7 @@ func usage(w io.Writer) {
   regatta review setup-codeowners [--repo-root D]     Idempotent CODEOWNERS catch-all wiring reviewer-bot on every PR
   regatta install-service [--user|--system]           Install OS-native supervisor (launchd or systemd)
   regatta uninstall-service [--user|--system]         Reverse install-service (idempotent)
+  regatta doctor [--json] [--skip <name>]             Preflight: secrets, binaries, gh auth, git, config, branch protection
   regatta version                                     Print build info
   regatta help                                        This message
 
