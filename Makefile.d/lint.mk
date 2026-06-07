@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-scorecard-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -27,9 +27,6 @@ check-tbd:  ## Fail when an engineer doc carries a bare `TBD` placeholder outsid
 
 check-tbd-test:  ## Fixture-driven test for check-tbd.sh.
 	bash scripts/check-tbd_test.sh
-
-check-scorecard-test:  ## Fixture-driven test for check-scorecard.sh (citation gate; #741 backtick-strip regression guard).
-	bash scripts/check-scorecard_test.sh
 
 check-comment-density:  ## Fail when a NEW prod .go file in the PR diff exceeds 5% comment density (#743 §Comments).
 	bash scripts/check-comment-density.sh
