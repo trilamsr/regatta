@@ -2,6 +2,8 @@ package l4
 
 import (
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -55,6 +57,88 @@ func TestRenderPrompt_SHAStable(t *testing.T) {
 	}
 	if PromptSHA() != sha1 {
 		t.Fatalf("PromptSHA() = %q want %q", PromptSHA(), sha1)
+	}
+}
+
+// TestRenderPromptSplit_HotReloadRace asserts the returned (static, sha) pair always agrees on the slot rendered against (#886).
+func TestRenderPromptSplit_HotReloadRace(t *testing.T) {
+	prev := active.Load()
+	t.Cleanup(func() { active.Store(prev) })
+
+	bodyA := "STATIC-A reviewer preamble {{ \"\" }}" + cacheBreakpointMarker + "\nDYN-A {{ .PRSHA }}"
+	bodyB := "STATIC-B different preamble {{ \"\" }} extra line\n" + cacheBreakpointMarker + "\nDYN-B {{ .PRSHA }}"
+	slotA, err := parseSlot(bodyA)
+	if err != nil {
+		t.Fatalf("parseSlot A: %v", err)
+	}
+	slotB, err := parseSlot(bodyB)
+	if err != nil {
+		t.Fatalf("parseSlot B: %v", err)
+	}
+	if slotA.sha == slotB.sha {
+		t.Fatalf("test setup: slots must hash differently")
+	}
+	wantStatic := map[string]string{
+		slotA.sha: slotA.static,
+		slotB.sha: slotB.static,
+	}
+
+	active.Store(slotA)
+
+	var (
+		stop      atomic.Bool
+		swapWG    sync.WaitGroup
+		renderWG  sync.WaitGroup
+		mismatch  atomic.Int64
+		iterCount atomic.Int64
+	)
+
+	swapWG.Add(1)
+	go func() {
+		defer swapWG.Done()
+		toggle := false
+		for !stop.Load() {
+			if toggle {
+				active.Store(slotA)
+			} else {
+				active.Store(slotB)
+			}
+			toggle = !toggle
+		}
+	}()
+
+	const renderers = 4
+	for i := 0; i < renderers; i++ {
+		renderWG.Add(1)
+		go func() {
+			defer renderWG.Done()
+			in := Input{PRSHA: "abc"}
+			for j := 0; j < 5000; j++ {
+				static, _, sha, err := RenderPromptSplit(in, 100)
+				if err != nil {
+					t.Errorf("RenderPromptSplit: %v", err)
+					return
+				}
+				iterCount.Add(1)
+				if want, ok := wantStatic[sha]; ok {
+					if static != want {
+						mismatch.Add(1)
+					}
+				} else {
+					t.Errorf("unknown sha returned: %q", sha)
+					return
+				}
+			}
+		}()
+	}
+
+	renderWG.Wait()
+	stop.Store(true)
+	swapWG.Wait()
+
+	if mismatch.Load() > 0 {
+		t.Fatalf("static/sha disagreement on %d/%d renders — hot-reload race (#886)",
+			mismatch.Load(), iterCount.Load())
 	}
 }
 
