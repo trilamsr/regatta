@@ -14,20 +14,7 @@ import (
 	"time"
 )
 
-// TestLoopClosureE2E drives the full self-host loop against a real GitHub fixture repo (#894).
-//
-// Loop under test: gh issue created in fixture repo → github_issues adapter polls →
-// scheduler reserves work_item → spawner.ClaudeSpawner launches claude binary in worktree →
-// claude opens PR against fixture repo → test asserts terminal state within deadline.
-//
-// Required environment (test SKIPS if absent — never fails for missing config):
-//   - REGATTA_E2E_REPO      : owner/name of a throwaway GitHub repo the test owns
-//   - REGATTA_E2E_GH_TOKEN  : token with repo + workflow scope on that repo
-//   - REGATTA_E2E_ANTHROPIC_API_KEY : key for the spawned claude subagent
-//   - REGATTA_E2E_BINARY    : path to a built `regatta` binary (caller builds — keeps test free of build deps)
-//
-// Why skip rather than fail: this test costs Anthropic tokens + writes to a real GitHub repo.
-// Per-PR CI runs MUST NOT consume either. Nightly runner sets the env; PR runs skip.
+// TestLoopClosureE2E drives the full self-host loop (gh issue → adapter → spawner → PR) against a real fixture repo; SKIPS without REGATTA_E2E_* env (#894).
 func TestLoopClosureE2E(t *testing.T) {
 	cfg := loadE2EConfig(t)
 
