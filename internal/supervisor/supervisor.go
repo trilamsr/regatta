@@ -15,11 +15,31 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"text/template"
 	"time"
 )
+
+// nameRE is the per-target namespace charset (spec §6.4): lowercase
+// alphanumeric + hyphen, 1-32 chars, must start with [a-z0-9]. Stops
+// path traversal (`..`), launchd Label corruption (`/`), systemd unit
+// injection (`\n`).
+var nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
+
+// ValidateName enforces the [a-z0-9-]{1,32} whitelist on --name suffixes
+// (spec §6.4). Empty is accepted by the supervisor (single-target default)
+// but the CLI flag-parse site rejects empty separately if needed.
+func ValidateName(name string) error {
+	if name == "" {
+		return fmt.Errorf("name must not be empty")
+	}
+	if !nameRE.MatchString(name) {
+		return fmt.Errorf("name %q must match [a-z0-9][a-z0-9-]{0,31} (lowercase alphanumeric + hyphen, 1-32 chars, leading [a-z0-9])", name)
+	}
+	return nil
+}
 
 //go:embed templates/regatta.service.tmpl
 var systemdTemplate string
@@ -37,7 +57,7 @@ type Options struct {
 	DryRun     bool
 	Force      bool
 	NoCron     bool
-	Name       string // namespace suffix for multi-target-repo install side-by-side (#929); empty ⇒ "regatta" (back-compat).
+	Name       string // namespace suffix for multi-target-repo install side-by-side (#929); empty ⇒ single-target layout (no suffix), preserving back-compat with pre-#929 installs. Validated against [a-z0-9][a-z0-9-]{0,31} (spec §6.4).
 	HealthzURL string // operator override for post-bootstrap /healthz polling (#667); empty ⇒ DefaultHealthzURL
 	EnvFile    string // operator override for env-file path; empty ⇒ OS+mode default. launchd has no native EnvironmentFile, so on darwin the plist wraps `regatta serve` in `/bin/sh -lc` that sources this file (followup to #826).
 	Out        io.Writer
@@ -78,6 +98,15 @@ const (
 	osDarwin = "darwin"
 	osLinux  = "linux"
 )
+
+// regattaName is the base namespace used in paths + the default systemd
+// unit name when --name is empty. Extracted so the single-target default
+// is one symbol grep.
+const regattaName = "regatta"
+
+// regattaUnit is the default systemd unit filename for single-target
+// installs (Name=="").
+const regattaUnit = "regatta.service"
 
 // String stringifies Mode for diagnostic + idempotency-status output.
 func (m Mode) String() string {
@@ -235,6 +264,11 @@ func normalize(o Options) Options {
 // buildPlan resolves all install parameters; pure function (no FS writes).
 func buildPlan(opts Options) (Plan, error) {
 	p := Plan{OS: opts.GOOS, Mode: opts.Mode}
+	if opts.Name != "" {
+		if err := ValidateName(opts.Name); err != nil {
+			return p, err
+		}
+	}
 	bin := opts.Binary
 	if bin == "" {
 		exe, err := os.Executable()
@@ -279,7 +313,7 @@ func buildPlan(opts Options) (Plan, error) {
 			return p, err
 		}
 	case osLinux:
-		p.UnitName = "regatta.service"
+		p.UnitName = regattaUnit
 		if nameSuffix != "" {
 			p.UnitName = "regatta-" + nameSuffix + ".service"
 		}
@@ -292,7 +326,7 @@ func buildPlan(opts Options) (Plan, error) {
 			p.UnitPath = filepath.Join("/etc/systemd/system", p.UnitName)
 			p.WorkingDir = filepath.Join("/var/lib/regatta", nameSuffix)
 			p.LogDir = filepath.Join("/var/log/regatta", nameSuffix)
-			p.User = "regatta"
+			p.User = regattaName
 		}
 		p.ConfigPath = filepath.Join("/etc/regatta", nameSuffix, "regatta.yaml")
 		p.EnvFile = filepath.Join("/etc/regatta", nameSuffix, "env")
@@ -363,7 +397,7 @@ func currentUser() string {
 	if u := os.Getenv("USER"); u != "" {
 		return u
 	}
-	return "regatta"
+	return regattaName
 }
 
 func unitFileMode(p Plan) os.FileMode {
@@ -390,6 +424,21 @@ func renderUnit(p Plan) (string, error) {
 		}
 		tmpl = launchdTemplate
 	case osLinux:
+		for _, f := range []struct {
+			name, val string
+		}{
+			{"working-dir", p.WorkingDir},
+			{"log-dir", p.LogDir},
+			{"env-file", p.EnvFile},
+			{"config-path", p.ConfigPath},
+			{"unit-name", p.UnitName},
+			{"read-write-paths", p.ReadWritePaths},
+			{"user", p.User},
+		} {
+			if err := sanitizeSystemdValue(f.name, f.val); err != nil {
+				return "", err
+			}
+		}
 		tmpl = systemdTemplate
 	default:
 		return "", fmt.Errorf("unsupported OS %q", p.OS)
@@ -410,6 +459,17 @@ func renderUnit(p Plan) (string, error) {
 func sanitizePath(p string) error {
 	if strings.ContainsAny(p, "\n\x00") {
 		return fmt.Errorf("binary path contains illegal character")
+	}
+	return nil
+}
+
+// sanitizeSystemdValue rejects newline + null in any value embedded in
+// the systemd unit file. A newline lets an attacker inject arbitrary
+// directives (e.g. `\nExecStartPre=/bin/rm -rf /`); a null byte truncates
+// the unit on parse. field names the rejected directive for diagnostics.
+func sanitizeSystemdValue(field, v string) error {
+	if strings.ContainsAny(v, "\n\x00") {
+		return fmt.Errorf("%s value %q contains newline or null — systemd unit injection risk", field, v)
 	}
 	return nil
 }

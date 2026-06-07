@@ -57,6 +57,60 @@ func TestInstallService_NameFlag(t *testing.T) {
 	}
 }
 
+// TestInstallService_NameFlag_Validation rejects --name charsets outside [a-z0-9-]{1,32} (spec §6.4, #933 reviewer-HIGH).
+func TestInstallService_NameFlag_Validation(t *testing.T) {
+	cases := []struct {
+		label string
+		name  string
+	}{
+		{"path traversal", ".."},
+		{"slash injection", "a/b"},
+		{"newline injection", "a\nb"},
+		{"space", "my repo"},
+		{"uppercase", "MyRepo"},
+		{"leading hyphen", "-repo"},
+		{"empty", ""},
+		{"too long (33)", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		{"dot", "my.repo"},
+		{"underscore", "my_repo"},
+		{"null byte", "a\x00b"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.label, func(t *testing.T) {
+			if tc.name == "" {
+				// Empty is the back-compat default — must NOT be rejected at the CLI.
+				var out, errBuf bytes.Buffer
+				code := runInstallServiceTo(&out, &errBuf, []string{"--dry-run"})
+				if code != 0 {
+					t.Fatalf("empty --name (default) must succeed; exit=%d stderr=%s", code, errBuf.String())
+				}
+				return
+			}
+			var out, errBuf bytes.Buffer
+			code := runInstallServiceTo(&out, &errBuf, []string{"--dry-run", "--name", tc.name})
+			if code == 0 {
+				t.Fatalf("--name=%q must be rejected; exit=0 stdout=%s", tc.name, out.String())
+			}
+			if !strings.Contains(errBuf.String(), "name") {
+				t.Errorf("expected error mentioning 'name'; got %q", errBuf.String())
+			}
+		})
+	}
+}
+
+// TestInstallService_NameFlag_Accepts pins valid --name charsets pass validation (#933 reviewer-HIGH).
+func TestInstallService_NameFlag_Accepts(t *testing.T) {
+	for _, name := range []string{"a", "myrepo", "my-repo", "repo123", "a1b2c3", "abcdefghijklmnopqrstuvwxyz012345"} {
+		t.Run(name, func(t *testing.T) {
+			var out, errBuf bytes.Buffer
+			code := runInstallServiceTo(&out, &errBuf, []string{"--dry-run", "--name", name})
+			if code != 0 {
+				t.Fatalf("--name=%q must succeed; exit=%d stderr=%s", name, code, errBuf.String())
+			}
+		})
+	}
+}
+
 // TestInstallServiceHealthzURLDefault asserts loopback :8080 fallback when --healthz-url omitted (#667).
 func TestInstallServiceHealthzURLDefault(t *testing.T) {
 	var out, errBuf bytes.Buffer

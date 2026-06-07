@@ -581,6 +581,72 @@ func TestSupervisorOptions_NameSetsSystemPathsLinux(t *testing.T) {
 	}
 }
 
+// TestBuildPlan_RejectsInvalidName asserts buildPlan defense-in-depth rejects Name outside [a-z0-9-]{1,32} (#933 reviewer-HIGH).
+func TestBuildPlan_RejectsInvalidName(t *testing.T) {
+	cases := []string{"..", "a/b", "a\nb", "MyRepo", "-x", "a.b", "a_b", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	for _, name := range cases {
+		t.Run(name, func(t *testing.T) {
+			opts, _ := newDarwinOpts(t)
+			opts.Name = name
+			if _, err := buildPlan(normalize(opts)); err == nil {
+				t.Fatalf("buildPlan must reject Name=%q", name)
+			}
+		})
+	}
+}
+
+// TestRenderUnit_Linux_RejectsMetacharsInWorkingDir pins systemd-injection guard mirrors darwin path (#933 reviewer-HIGH).
+func TestRenderUnit_Linux_RejectsMetacharsInWorkingDir(t *testing.T) {
+	cases := []struct {
+		field string
+		mut   func(p *Plan)
+	}{
+		{"WorkingDir newline", func(p *Plan) { p.WorkingDir = "/var/lib/regatta\n[Service]\nExecStart=/bin/sh" }},
+		{"LogDir newline", func(p *Plan) { p.LogDir = "/var/log/regatta\nUser=root" }},
+		{"EnvFile newline", func(p *Plan) { p.EnvFile = "/etc/regatta/env\nUser=root" }},
+		{"ConfigPath newline", func(p *Plan) { p.ConfigPath = "/etc/regatta/regatta.yaml\nExecStartPre=/bin/rm -rf /" }},
+		{"UnitName newline", func(p *Plan) { p.UnitName = "regatta\n.service" }},
+		{"WorkingDir null", func(p *Plan) { p.WorkingDir = "/var/lib/regatta\x00x" }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.field, func(t *testing.T) {
+			p := Plan{
+				OS:             osLinux,
+				Mode:           ModeUser,
+				UnitName:       "regatta.service",
+				UnitPath:       "/tmp/regatta.service",
+				BinaryPath:     "/usr/local/bin/regatta",
+				WorkingDir:     "/var/lib/regatta",
+				LogDir:         "/var/log/regatta",
+				ConfigPath:     "/etc/regatta/regatta.yaml",
+				EnvFile:        "/etc/regatta/env",
+				User:           "regatta",
+				ReadWritePaths: "/var/lib/regatta /var/log/regatta",
+			}
+			tc.mut(&p)
+			if _, err := renderUnit(p); err == nil {
+				t.Fatalf("renderUnit must reject injection in %s", tc.field)
+			}
+		})
+	}
+}
+
+// TestValidateName covers the [a-z0-9-]{1,32} charset whitelist (spec §6.4, #933).
+func TestValidateName(t *testing.T) {
+	reject := []string{"..", "a/b", "a\nb", "a b", "MyRepo", "-r", "", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "a.b", "a_b", "a\x00b"}
+	for _, name := range reject {
+		if err := ValidateName(name); err == nil {
+			t.Errorf("ValidateName(%q) must reject", name)
+		}
+	}
+	accept := []string{"a", "0", "myrepo", "my-repo", "abcdefghijklmnopqrstuvwxyz012345"}
+	for _, name := range accept {
+		if err := ValidateName(name); err != nil {
+			t.Errorf("ValidateName(%q) must accept; got %v", name, err)
+		}
+	}
+}
+
 // TestInstallService_DryRun_WritesNothing covers spec §3.8 --dry-run.
 func TestInstallService_DryRun_WritesNothing(t *testing.T) {
 	opts, home := newDarwinOpts(t)

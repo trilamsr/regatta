@@ -18,6 +18,12 @@ func runUninstallService(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	if *name != "" {
+		if err := supervisor.ValidateName(*name); err != nil {
+			fmt.Fprintln(os.Stderr, "uninstall-service:", err)
+			return 2
+		}
+	}
 	_ = *user
 	mode := supervisor.ModeUser
 	if *system {

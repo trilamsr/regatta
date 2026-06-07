@@ -32,6 +32,12 @@ func runInstallServiceTo(out, errW io.Writer, args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	if *name != "" {
+		if err := supervisor.ValidateName(*name); err != nil {
+			_, _ = fmt.Fprintln(errW, "install-service:", err)
+			return 2
+		}
+	}
 	_ = *user // --user is the documented default; flag tracked for help text + future opt-out
 	mode := supervisor.ModeUser
 	if *system {

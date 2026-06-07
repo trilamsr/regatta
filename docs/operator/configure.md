@@ -131,6 +131,42 @@ Rotation: bump the file, recompute the digest, update the config in
 the same commit. A mismatch on startup logs the expected vs. actual
 sha and exits non-zero before any work is scheduled.
 
+## Multiple targets
+
+One host can run several `regatta serve` instances side-by-side, one per
+target repo, via the `--name` flag on `install-service` /
+`uninstall-service` (spec #929 §A.4).
+
+```sh
+regatta install-service --name myrepo --env-file ~/.config/regatta/myrepo/env
+regatta install-service --name otherrepo --env-file ~/.config/regatta/otherrepo/env
+```
+
+`--name` must match `[a-z0-9][a-z0-9-]{0,31}` (lowercase alphanumeric +
+hyphen, 1-32 chars, leading [a-z0-9]) — the supervisor rejects path
+traversal (`..`), launchd Label corruption (`/`), and systemd unit
+injection (`\n`) at parse time (spec §6.4).
+
+| Surface | `--name=""` (default) | `--name=myrepo` |
+|---|---|---|
+| launchd Label (macOS) | `com.regatta.serve` | `com.regatta.serve.myrepo` |
+| systemd UnitName (Linux) | `regatta.service` | `regatta-myrepo.service` |
+| WorkingDir (user, macOS) | `~/.local/share/regatta` | `~/.local/share/regatta/myrepo` |
+| LogDir (user, macOS) | `~/Library/Logs/regatta` | `~/Library/Logs/regatta/myrepo` |
+| WorkingDir (system, Linux) | `/var/lib/regatta` | `/var/lib/regatta/myrepo` |
+| ConfigPath (system, Linux) | `/etc/regatta/regatta.yaml` | `/etc/regatta/myrepo/regatta.yaml` |
+| EnvFile (system, Linux) | `/etc/regatta/env` | `/etc/regatta/myrepo/env` |
+
+Empty `--name` preserves the single-target layout used by pre-#929
+installs — upgrade paths do not require a name flip.
+
+To remove one target without touching the other, pass the same `--name`
+to uninstall:
+
+```sh
+regatta uninstall-service --name myrepo
+```
+
 ## Program briefs (MVP-2 conditional DAG)
 
 `regatta.yaml` configures the orchestrator; program briefs live
