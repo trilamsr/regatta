@@ -27,7 +27,7 @@ run_case() {
   # run_case <name> <expected-exit> <env-prefix> [grep-pattern]
   local name="$1" want_exit="$2" envs="$3" pattern="${4:-}"
   local out got_exit
-  out=$(env -i HOME="$HOME" PATH="$PATH" bash -c "$envs bash '$CHECK'" 2>&1)
+  out=$(bash -c "$envs bash '$CHECK'" 2>&1)
   got_exit=$?
   local ok=1
   if [ "$got_exit" -ne "$want_exit" ]; then
@@ -51,25 +51,25 @@ run_case() {
 # script reads it instead of calling `gh pr view`.
 
 run_case "A-clean-passes" 0 \
-  "MIGRATIONS_DIR='$FIXTURES/clean' DIFF_ADDED='' "
+  "MIGRATIONS_DIR='$FIXTURES/clean' KNOWN_GAPS='' DIFF_ADDED='' "
 
 run_case "B-duplicate-fails" 1 \
-  "MIGRATIONS_DIR='$FIXTURES/duplicate' DIFF_ADDED='' " \
+  "MIGRATIONS_DIR='$FIXTURES/duplicate' KNOWN_GAPS='' DIFF_ADDED='' " \
   "duplicate version 2"
 
 run_case "C-non-contiguous-tail-fails" 1 \
-  "MIGRATIONS_DIR='$FIXTURES/non-contiguous-tail' DIFF_ADDED='' " \
+  "MIGRATIONS_DIR='$FIXTURES/non-contiguous-tail' KNOWN_GAPS='' DIFF_ADDED='' " \
   "non-contiguous tail"
 
 run_case "D-known-gap-passes" 0 \
   "MIGRATIONS_DIR='$FIXTURES/known-gap' KNOWN_GAPS='3' DIFF_ADDED='' "
 
 run_case "E-multi-add-fails" 1 \
-  "MIGRATIONS_DIR='$FIXTURES/clean' DIFF_ADDED=\$'0006_a.sql\n0007_b.sql' " \
+  "MIGRATIONS_DIR='$FIXTURES/clean' KNOWN_GAPS='' DIFF_ADDED=\$'0006_a.sql\n0007_b.sql' " \
   "adds 2 migrations"
 
 run_case "F-multi-add-justified-passes" 0 \
-  "MIGRATIONS_DIR='$FIXTURES/clean' DIFF_ADDED=\$'0006_a.sql\n0007_b.sql' PR_BODY='see <!-- migration-multi-add-justified: parent+child FK --> end' "
+  "MIGRATIONS_DIR='$FIXTURES/clean' KNOWN_GAPS='' DIFF_ADDED=\$'0006_a.sql\n0007_b.sql' PR_BODY='see <!-- migration-multi-add-justified: parent+child FK --> end' "
 
 echo "---"
 echo "passes=$passes fails=$fails"
