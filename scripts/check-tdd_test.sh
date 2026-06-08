@@ -214,6 +214,15 @@ func BenchmarkFoo(b *testing.B) {
 EOF
 }
 
+case_testdata_go_skipped() {
+  mkdir -p internal/foo/testdata
+  cat > internal/foo/testdata/fixture.go <<EOF
+package fixture
+
+const Sample = "hi"
+EOF
+}
+
 case_deletion_only_passes() {
   mkdir -p internal/foo
   cat > internal/foo/foo.go <<EOF
@@ -314,6 +323,7 @@ run_case test_with_benchmark_satisfies          0 "every production"   case_test
 # within a shared ancestor; cmd/ and internal/ have no shared ancestor
 # below the repo root. Expected: FAIL.
 run_case prod_cmd_test_internal_fails          1 "without a matching" case_cmd_test_in_internal_passes
+run_case testdata_go_skipped                    0 "no production"      case_testdata_go_skipped
 run_stale_base_case
 
 echo

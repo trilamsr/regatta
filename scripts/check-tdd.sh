@@ -84,6 +84,12 @@ while IFS= read -r f; do
     *.go) ;;
     *) continue ;;
   esac
+  # testdata/ is the Go-toolchain-reserved fixture directory: the
+  # compiler ignores it and `go test` does not load it as a package.
+  # *.go files under it are fixture material, not production code.
+  case "$f" in
+    */testdata/*|testdata/*) continue ;;
+  esac
   # Count lines added (starts with '+' but not '+++').
   added=$(git diff "$base" "$head" -- "$f" | grep -cE '^\+[^+]' || true)
   if [ "$added" -eq 0 ]; then
