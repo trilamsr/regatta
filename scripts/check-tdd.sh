@@ -157,17 +157,27 @@ while IFS= read -r pf; do
   if [ "$found" -eq 0 ]; then
     symbols=$(git diff "$base" "$head" -- "$pf" \
       | awk '
+          # Track open const(/var(/type( blocks: a "+" line inside one
+          # is an exported decl when it starts with a capital letter.
+          /^\+const[[:space:]]*\(/ { inblock=1; next }
+          /^\+var[[:space:]]*\(/   { inblock=1; next }
+          /^\+type[[:space:]]*\(/  { inblock=1; next }
+          /^\+[[:space:]]*\)/      { inblock=0; next }
           /^\+func[[:space:]]+\(/ {
             # method receiver: "+func (r *Recv) Method(...)"
-            for (i=1; i<=NF; i++) if ($i ~ /^[A-Z]/) { sub(/\(.*/, "", $i); print $i; next }
+            for (i=1; i<=NF; i++) if ($i ~ /^[A-Z]/) { sub(/[(,].*/, "", $i); print $i; next }
             next
           }
           /^\+func[[:space:]]+[A-Z]/ {
-            sym=$2; sub(/\(.*/, "", sym); print sym; next
+            sym=$2; sub(/[(,].*/, "", sym); print sym; next
           }
-          /^\+type[[:space:]]+[A-Z]/  { print $2; next }
-          /^\+var[[:space:]]+[A-Z]/   { print $2; next }
-          /^\+const[[:space:]]+[A-Z]/ { print $2; next }
+          /^\+type[[:space:]]+[A-Z]/  { sym=$2; sub(/[(,].*/, "", sym); print sym; next }
+          /^\+var[[:space:]]+[A-Z]/   { sym=$2; sub(/[(,].*/, "", sym); print sym; next }
+          /^\+const[[:space:]]+[A-Z]/ { sym=$2; sub(/[(,].*/, "", sym); print sym; next }
+          # Inside an open block: "+\tFoo = 1" or "+\tFoo Type".
+          inblock && /^\+[[:space:]]+[A-Z]/ {
+            sym=$2; sub(/[(,].*/, "", sym); print sym; next
+          }
         ' \
       | sort -u)
     if [ -n "$symbols" ]; then
