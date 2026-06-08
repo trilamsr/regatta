@@ -211,6 +211,7 @@ Example:
 secrets:
   anthropic_api_key:
     source: keychain
+    name: regatta/anthropic        # optional: bind a custom keychain account
   gh_token:
     source: env
     name: GH_TOKEN_REVIEWER
@@ -222,6 +223,11 @@ secrets:
 
 If you use defaults today, change nothing — the loader falls back to
 the env-var names above when the corresponding yaml field is absent.
+
+For `source: keychain` / `source: pass`, `name:` is optional. When set,
+it overrides the lookup account (macOS Keychain `-a <name>`) or pass
+entry (`pass show <name>`). When absent, the canonical key is used
+(`regatta.anthropic_api_key` etc.) — back-compat with pre-#934.
 
 `source: file` requires the file mode to be `0600` or stricter; a
 world- or group-readable path fails closed at boot.
