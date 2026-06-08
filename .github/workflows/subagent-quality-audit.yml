@@ -1,0 +1,49 @@
+name: subagent-quality-audit
+
+on:
+  schedule:
+    - cron: '41 7 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  scan:
+    name: scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          fetch-depth: 1
+
+      - name: audit merged PRs in last 24h
+        id: audit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set +e
+          bash scripts/audit-recent-prs.sh --gh-mode --require-token > /tmp/audit.out 2>&1
+          echo "rc=$?" >> "$GITHUB_OUTPUT"
+          cat /tmp/audit.out
+
+      - name: file tracking issue on hit
+        if: steps.audit.outputs.rc != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          date_tag=$(date -u +%Y-%m-%d)
+          body_file=$(mktemp)
+          {
+            echo "Daily subagent-quality audit found malformed Reviewer-recommendation tokens or phantom-dep cites in PRs merged in the last 24h. Closes via review on each flagged PR."
+            echo
+            echo '```'
+            cat /tmp/audit.out
+            echo '```'
+          } > "$body_file"
+          gh issue create \
+            --title "[AUDIT] subagent-quality findings ${date_tag}" \
+            --body-file "$body_file"
