@@ -9,9 +9,8 @@ import (
 
 // Run is one row in the runs registry. CausalHash pins the inputs the
 // dispatch was deterministic over; RerunOf links a rerun-from-hash
-// child back to its parent so the postmortem view (spec §3.3) can walk
-// the chain. DeclaredEffectClass is the policy envelope the surprise
-// detector folds tool_call observations against (spec §3.7).
+// child back to its parent. DeclaredEffectClass is the policy envelope
+// the surprise detector folds tool_call observations against. Spec §3.2.
 type Run struct {
 	ID                  string
 	StartedAt           time.Time
@@ -29,9 +28,9 @@ type Run struct {
 	DeclaredEffectClass string
 }
 
-// InsertRun appends one runs row. Duplicate primary keys surface as an
-// error rather than an upsert — the scheduler dispatch boundary is the
-// sole writer and a collision means the ID generator is racing.
+// InsertRun appends one runs row; duplicate id surfaces as error
+// rather than upsert — the scheduler dispatch boundary is the sole
+// writer and a collision means the ID generator is racing.
 func (d *DB) InsertRun(ctx context.Context, r Run) error {
 	var finishedAt sql.NullInt64
 	if r.FinishedAt != nil {
@@ -60,8 +59,7 @@ func (d *DB) InsertRun(ctx context.Context, r Run) error {
 	return nil
 }
 
-// GetRun returns the full row for id. Surfaces sql.ErrNoRows wrapped
-// when the row is absent.
+// GetRun returns the full row for id; missing id surfaces a wrapped sql.ErrNoRows.
 func (d *DB) GetRun(ctx context.Context, id string) (Run, error) {
 	var r Run
 	var startedAt int64
@@ -94,8 +92,7 @@ func (d *DB) GetRun(ctx context.Context, id string) (Run, error) {
 	return r, nil
 }
 
-// ListRecentRuns returns up to limit runs in started_at-DESC order.
-// Backs the S1 console runs index view (spec §3.3).
+// ListRecentRuns returns up to limit runs in started_at-DESC order; backs the S1 runs index view (spec §3.3).
 func (d *DB) ListRecentRuns(ctx context.Context, limit int) ([]Run, error) {
 	rows, err := d.sql.QueryContext(ctx, `
 		SELECT id, started_at, status, causal_hash, trace_id, declared_effect_class

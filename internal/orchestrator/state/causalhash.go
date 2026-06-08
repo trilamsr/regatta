@@ -8,11 +8,7 @@ import (
 	"github.com/trilamsr/regatta/internal/canon"
 )
 
-// CausalInputs are the bytes a regatta dispatch is deterministic over.
-// Hash() is the value runs.causal_hash carries — folding by causal_hash
-// surfaces every replay of the same agent over the same world. Spec
-// §3.2 + §3.8 (rerun-from-hash). Versions is a sorted-key map via
-// canon.Marshal so insertion order never leaks into the digest.
+// CausalInputs are the bytes a regatta dispatch is deterministic over; Versions is sorted by canon.Marshal so map iteration order never leaks into Hash(). Spec §3.2 + §3.8.
 type CausalInputs struct {
 	SpecHash           string            `json:"spec_hash"`
 	ModelHash          string            `json:"model_hash"`
@@ -22,7 +18,7 @@ type CausalInputs struct {
 	Versions           map[string]string `json:"versions"`
 }
 
-// Hash returns the lowercase-hex sha256 of canon.Marshal(c).
+// Hash returns lowercase-hex sha256 of canon.Marshal(c).
 func (c CausalInputs) Hash() (string, error) {
 	b, err := canon.Marshal(c)
 	if err != nil {

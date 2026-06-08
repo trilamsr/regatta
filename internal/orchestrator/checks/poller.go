@@ -1,9 +1,4 @@
-// Package checks polls "gh pr checks" and emits one event per state
-// change on each watched PR. v1 ships an Emitter seam so the producer
-// can land separately from the substrate-write wiring (HMAC keying,
-// run_id resolution) — the seam keeps test isolation cheap and the
-// race-detector clean. Spec ref:
-// docs/engineer/specs/2026-06-02-operator-console-design.md §3.2.
+// Package checks polls "gh pr checks" and emits one event per state change per PR. v1 ships an Emitter seam so the substrate-write wiring (HMAC keying, run_id resolution) can land separately. Spec §3.2.
 package checks
 
 import (
@@ -12,24 +7,18 @@ import (
 	"sync"
 )
 
-// GHCLI is the gh-shell seam. Production wires GHShell; tests inject
-// an in-memory fake.
+// GHCLI is the gh-shell seam; production wires GHShell, tests inject an in-memory fake.
 type GHCLI interface {
 	PRChecks(ctx context.Context, pr string) (CheckRun, error)
 }
 
-// CheckRun is the aggregated PR-checks rollup. Conclusion is one of
-// "success", "failure", or empty (still running); Status mirrors gh's
-// per-check Status field ("completed" once every required check has
-// terminated).
+// CheckRun is the aggregated PR-checks rollup; Conclusion ∈ {"success","failure",""}, Status mirrors gh's per-check Status ("completed" once all required checks terminate).
 type CheckRun struct {
 	Conclusion string
 	Status     string
 }
 
-// Emission is the payload the poller hands to the Emitter on each
-// state change. PR is the gh PR identifier (number or URL) the caller
-// passed to Poll; CheckRun is the rollup observed at that tick.
+// Emission is the payload the poller hands to Emitter on each state change.
 type Emission struct {
 	PR        string
 	CheckRun  CheckRun
@@ -37,16 +26,12 @@ type Emission struct {
 	PrevValue CheckRun
 }
 
-// Emitter is the substrate-write seam. The production wire-up appends
-// a substrate event under KindGateVerdict with payload
-// {pr, conclusion, status} per spec §3.2; tests use a capture sink.
+// Emitter is the substrate-write seam; production appends KindGateVerdict {pr,conclusion,status} per spec §3.2.
 type Emitter interface {
 	Emit(ctx context.Context, e Emission) error
 }
 
-// Poller observes gh pr-checks per PR and routes each state change
-// through the Emitter. Safe for concurrent Poll calls — internal
-// last-seen map is mutex-guarded.
+// Poller observes gh pr-checks per PR and routes each state change through Emitter; concurrent Poll is safe — last-seen map is mutex-guarded.
 type Poller struct {
 	gh   GHCLI
 	sink Emitter
@@ -55,17 +40,12 @@ type Poller struct {
 	last map[string]CheckRun
 }
 
-// New constructs a Poller wired to gh and sink. The last-seen cache
-// starts empty so the first observation per PR fires unconditionally.
+// New wires a Poller; last-seen cache starts empty so first observation per PR always emits.
 func New(gh GHCLI, sink Emitter) *Poller {
 	return &Poller{gh: gh, sink: sink, last: map[string]CheckRun{}}
 }
 
-// Poll fetches the current check rollup for pr and emits one event
-// when the rollup differs from the previously observed value. The
-// first observation always emits. Concurrent callers serialize on the
-// internal mutex; gh.PRChecks runs outside the lock so a slow network
-// call does not block siblings.
+// Poll fetches the current rollup for pr and emits when it differs from the previous observation (first observation always emits). gh.PRChecks runs outside the lock so a slow call does not block siblings.
 func (p *Poller) Poll(ctx context.Context, pr string) error {
 	cur, err := p.gh.PRChecks(ctx, pr)
 	if err != nil {

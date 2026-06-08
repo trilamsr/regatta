@@ -7,13 +7,8 @@ import (
 	"os/exec"
 )
 
-// GHShell shells `gh pr checks <pr> --json conclusion,status,name`
-// and folds the per-check rows into a single CheckRun rollup.
-// Production wiring; tests inject a fake GHCLI directly.
+// GHShell shells `gh pr checks <pr> --json conclusion,status,name --required` and folds the rows into a single CheckRun rollup.
 type GHShell struct {
-	// Runner is the exec seam. Defaults to exec.CommandContext via
-	// defaultExec; tests can stub for hermetic coverage of the JSON
-	// fold logic.
 	Runner func(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
@@ -22,9 +17,7 @@ func NewGHShell() *GHShell {
 	return &GHShell{Runner: defaultExec}
 }
 
-// PRChecks returns the aggregated rollup: "failure" wins over any
-// not-yet-completed check; the rollup is "success/completed" only when
-// every required check has succeeded.
+// PRChecks returns the aggregated rollup: "failure" wins; the rollup is "success/completed" only when every required check has succeeded.
 func (g *GHShell) PRChecks(ctx context.Context, pr string) (CheckRun, error) {
 	runner := g.Runner
 	if runner == nil {
@@ -54,10 +47,7 @@ func (g *GHShell) PRChecks(ctx context.Context, pr string) (CheckRun, error) {
 	return CheckRun{Conclusion: "success", Status: "completed"}, nil
 }
 
-// defaultExec runs name + args via os/exec. gh CLI binary name + args
-// are construction-controlled literal strings (not operator-supplied)
-// so the gosec G204 warning is a false positive — mirrors the same
-// pattern in internal/orchestrator/prwatch/ghcli.go.
+// defaultExec runs name+args via os/exec; gh CLI binary + args are construction-controlled literal strings (mirrors prwatch/ghcli.go).
 //
 //nolint:gosec // gh CLI + literal-arg shell-out
 func defaultExec(ctx context.Context, name string, args ...string) ([]byte, error) {

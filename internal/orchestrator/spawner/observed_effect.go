@@ -2,10 +2,7 @@ package spawner
 
 import "sort"
 
-// ObservedSignal is one side-effect observation from a tool call. Kind
-// is the only field the surprise detector folds against the run's
-// DeclaredEffectClass envelope (spec §3.7); Path/Endpoint/USDMicro are
-// kept on the struct for downstream consumers that want the raw record.
+// ObservedSignal is one side-effect observation from a tool call; Kind is the only field the surprise detector folds against DeclaredEffectClass (spec §3.7).
 type ObservedSignal struct {
 	Kind     string
 	Path     string
@@ -13,9 +10,7 @@ type ObservedSignal struct {
 	USDMicro int64
 }
 
-// CollectObservedEffects returns the sorted, deduped set of Kind values
-// across sigs. Returns an empty (non-nil) slice when input is empty so
-// the substrate consumer can rely on len() == 0 detection.
+// CollectObservedEffects returns the sorted, deduped set of Kind values; empty input yields a non-nil zero-length slice so callers can rely on len() == 0.
 func CollectObservedEffects(sigs []ObservedSignal) []string {
 	seen := map[string]struct{}{}
 	for _, s := range sigs {
