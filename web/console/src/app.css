@@ -1,0 +1,64 @@
+:root {
+  --color-bg: #0f172a;
+  --color-card: #1b2336;
+  --color-muted: #272f42;
+  --color-border: #475569;
+  --color-fg: #f8fafc;
+  --color-muted-fg: #94a3b8;
+  --color-primary: #1e293b;
+  --color-accent: #22c55e;
+  --color-destructive: #ef4444;
+  --color-ring: #22c55e;
+
+  --status-running: #22c55e;
+  --status-pending: #f59e0b;
+  --status-blocked: #dc2626;
+  --status-merged: #8b5cf6;
+  --status-cancelled: #64748b;
+
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --grid-gap: 8px;
+  --card-padding: 12px;
+  --table-row-height: 36px;
+  --sidebar-width: 240px;
+  --header-height: 56px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100dvh;
+}
+
+code,
+.mono,
+.tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0ms !important;
+    transition-duration: 0ms !important;
+  }
+}
