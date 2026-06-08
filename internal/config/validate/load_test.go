@@ -607,3 +607,16 @@ func TestLoad_Secrets_Omitted_BackCompat(t *testing.T) {
 		t.Fatalf("Secrets=%+v; want nil for omitted block", cfg.Secrets)
 	}
 }
+
+// TestLoad_Secrets_UnknownCanonicalKeyRejected pins spec §11: typo'd canonical key (anthropic_api_keyy) fails CUE close-semantic at validate (#935).
+func TestLoad_Secrets_UnknownCanonicalKeyRejected(t *testing.T) {
+	yaml := minimalValid + `
+secrets:
+  anthropic_api_keyy:
+    source: env
+    name: FOO
+`
+	if err := LoadBytes([]byte(yaml)); err == nil {
+		t.Fatal("expected CUE rejection on typo'd canonical key under secrets; got nil")
+	}
+}
