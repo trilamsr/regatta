@@ -8,6 +8,11 @@
 # docs/engineer/specs/ and docs/rfcs/.
 docs/superpowers/
 
+# Auto-generated spec index. Regenerate locally with `make specs-index`
+# to browse; never tracked because every spec PR would otherwise rewrite
+# this anchor and cascade-rebase every other in-flight spec PR.
+docs/engineer/specs/README.md
+
 # Go build artifacts
 bin/
 dist/*

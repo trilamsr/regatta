@@ -73,7 +73,7 @@ CI-CHECK OUTPUT COMPRESSION
   If grep empty AND exit≠0 → fallback `tail -50 /tmp/cicheck.log`. Main thread re-runs full (~10% lie rate per `feedback_subagent_verification`).
 
 SHARED-PRIMITIVE OWNERSHIP
-- Before edit, scan composition roots (`cmd/regatta/serve.go`, `internal/orchestrator/state/machine.go`, `Makefile`, `docs/engineer/specs/README.md`) for sibling-touch. Defer to named OWNER if assigned. (`feedback_parallel_safety`, `feedback_conflict_anticipation`)
+- Before edit, scan composition roots (`cmd/regatta/serve.go`, `internal/orchestrator/state/machine.go`, `Makefile`) for sibling-touch. Defer to named OWNER if assigned. `docs/engineer/specs/README.md` used to belong here but is now gitignored + regenerated locally. (`feedback_parallel_safety`, `feedback_conflict_anticipation`)
 
 WINDOWS PATH TESTS
 - When asserting paths against error messages or production output, canonicalize BOTH sides the same way production code does — OR platform-branch the test inputs. 8.3 short-names + `/etc`-literal paths break Windows CI silently post-merge. (`feedback_windows_path_tests`)
@@ -142,8 +142,8 @@ Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mar
 
 6. **Rebase `--theirs` vs `--ours` is counterintuitive** (closes #779). During `git rebase` replay, git treats the rebase target (main) as `--ours` and the commit being replayed (your PR's work) as `--theirs` — opposite of `git merge` semantics where `--ours` = current branch. Lost #772 (~10 sites #760 migration) this way. Resolution snippet (also in `CLAUDE.md` §Worktree discipline "Rebase conflict resolution"):
    ```
-   git checkout --theirs <conflict-file>   # OR: regenerate via make specs-index for docs/engineer/specs/README.md
+   git checkout --theirs <conflict-file>
    git add <file>
    git rebase --continue
    ```
-   For generated indexes (`docs/engineer/specs/README.md`), prefer regen over `--theirs` so the file matches current source-of-truth.
+   (Note: `docs/engineer/specs/README.md` is no longer tracked — it is gitignored and regenerated locally via `make specs-index`, so it never appears in rebase conflicts.)
