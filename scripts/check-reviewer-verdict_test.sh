@@ -441,8 +441,31 @@ EOF
   rm -f "$body" "$paths_file"
 }
 
+run_case_load_bearing_approve_without_agent_id_fails() {
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing >/dev/null 2>&1; then
+    fail "load-bearing + APPROVE without Reviewer-agent-id should exit non-zero (self-tagged approval)"
+  else
+    pass "load-bearing + APPROVE without Reviewer-agent-id fails (self-tagged approval blocked)"
+  fi
+  rm -f "$body"
+}
+
 run_case_load_bearing_missing_token
 run_case_load_bearing_approve_passes
+run_case_load_bearing_approve_without_agent_id_fails
 run_case_load_bearing_revise_fails
 run_case_load_bearing_block_fails
 run_case_chore_release_notes_skips

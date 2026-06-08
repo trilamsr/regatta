@@ -7,7 +7,7 @@
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-check: doc-check doc-check-test specs-index-test prose-dup check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test  ## Local gate; <60s. `vet` dropped — golangci-lint enables govet (.golangci.yml).
+check: doc-check doc-check-test specs-index-test prose-dup check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-doc-links check-doc-links-test check-pr-body-close-keywords-test lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test  ## Local gate; <60s. `vet` dropped — golangci-lint enables govet (.golangci.yml).
 
 # CI parallelization shards. Together cover the same gate set as `make check`
 # (plus `stale-todo` for `check-stale-todo`). Local `make check` and
@@ -33,3 +33,9 @@ ci-integration: ## Nightly-only: e2e + integration tests that cost Anthropic tok
 
 pre-push-check: check  ## Local pre-push gate. Runs `make check` + PR-body release-notes block sanity check.
 	bash scripts/check-release-notes-local.sh
+	@PR_NUM=$$(gh pr view --json number --jq .number 2>/dev/null || true); \
+	if [ -n "$$PR_NUM" ]; then \
+	  bash scripts/check-pr-body-close-keywords.sh --pr "$$PR_NUM"; \
+	else \
+	  echo "check-pr-body-close-keywords: no open PR for this branch yet; skipping"; \
+	fi

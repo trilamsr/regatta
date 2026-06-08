@@ -168,8 +168,26 @@ RECOMMENDATION=$(awk '
   | tr -d '[:space:]' \
   | tr '[:lower:]' '[:upper:]')
 
+REVIEWER_AGENT_ID=$(awk '
+  /^```/ { in_fence = !in_fence; next }
+  !in_fence { print }
+' "$BODY_FILE" \
+  | grep -iE '^[[:space:]]*Reviewer-agent-id:' \
+  | tail -1 \
+  | sed -E 's/^[[:space:]]*Reviewer-agent-id:[[:space:]]*//I' \
+  | tr -d '[:space:]')
+
 case "$RECOMMENDATION" in
   APPROVE)
+    if [ -z "$REVIEWER_AGENT_ID" ]; then
+      echo "check-reviewer-verdict: load-bearing PR has Reviewer-recommendation: APPROVE but is missing the Reviewer-agent-id token in body." >&2
+      echo "  An APPROVE without a named reviewer is a self-tagged approval — independent review never happened." >&2
+      echo "  Fix: dispatch an independent reviewer subagent per CLAUDE.md feedback_no_self_tagged_approve." >&2
+      echo "  Add to PR body footer (bare, NOT in a code block):" >&2
+      echo "    Reviewer-agent-id: <id>" >&2
+      echo "    Reviewer-recommendation: APPROVE" >&2
+      exit 1
+    fi
     exit 0
     ;;
   REVISE|BLOCK)

@@ -34,6 +34,15 @@ check-comment-density:  ## Fail when a NEW prod .go file in the PR diff exceeds 
 check-comment-density-test:  ## Fixture-driven test for check-comment-density.sh (clean / dense / allowlisted / test-file / existing-file).
 	bash scripts/check-comment-density_test.sh
 
+check-doc-links:  ## Fail when a markdown-link `](path)` body under docs/ or CLAUDE.md references a non-existent intra-repo file.
+	bash scripts/check-doc-links.sh
+
+check-doc-links-test:  ## Smoke test for check-doc-links.sh (broken / existing / external / testdata / anchor-suffix).
+	bash scripts/check-doc-links_test.sh
+
+check-pr-body-close-keywords-test:  ## Smoke test for check-pr-body-close-keywords.sh (catches `closes #N #M` space-form which GitHub doesn't auto-close).
+	bash scripts/check-pr-body-close-keywords_test.sh
+
 check-no-bare-sleep:  ## Fail when a *_test.go file carries `time.Sleep` lexically nested inside a `for` block without `// allow-sleep:` directive (#760 migration target: testutil.Eventually).
 	bash scripts/check-no-bare-sleep.sh
 
