@@ -207,12 +207,14 @@ func TestDefaultPromptBuilderInjectsItemBodyAndDisciplineAnchors(t *testing.T) {
 			t.Fatalf("prompt missing %q: %q", want, prompt)
 		}
 	}
-	// Five discipline anchors cite CLAUDE.md by slug.
+	// Six discipline anchors cite CLAUDE.md by slug — `feedback_no_implementer_automerge`
+	// pins the no-automerge worker rule the reviewer-verdict gate enforces (#1046).
 	for _, slug := range []string{
 		"feedback_tdd_discipline",
 		"feedback_comments_discipline",
 		"feedback_deletion_default",
 		"feedback_pr_body_hygiene",
+		"feedback_no_implementer_automerge",
 		"per-criterion citation gate",
 	} {
 		if !contains(prompt, slug) {
