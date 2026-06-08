@@ -25,7 +25,6 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
-	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 	"github.com/trilamsr/regatta/internal/program"
@@ -244,9 +243,7 @@ func runServe(args []string) int {
 		return 2
 	}
 
-	sched := scheduler.New(db, scheduler.Config{
-		LaneCaps:         map[string]int(f.LaneCaps),
-		LockTTL:          f.LockTTL,
+	sched := buildScheduler(db, f, schedulerDeps{
 		Evaluator:        schedulerEvaluator{evaluator},
 		OutputsSchemas:   outputsSchemaResolverFor(loader),
 		Gate:             gate,

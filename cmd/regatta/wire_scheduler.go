@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/trilamsr/regatta/internal/config"
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/orchestrator/merge"
@@ -130,4 +132,36 @@ func buildMergeWiring(db *state.DB, autoMergeEnabled bool, logger *slog.Logger) 
 // a pinned-version stub so buildMergeWiring stays hermetic.
 var verifyGhVersionFn = func(ctx context.Context, logger *slog.Logger) error {
 	return merge.VerifyGhVersion(ctx, nil, logger)
+}
+
+// schedulerDeps bundles the eight composition-root dependencies
+// buildScheduler threads into scheduler.Config so runServe stays
+// orchestration-only (#975 slice 1).
+type schedulerDeps struct {
+	Evaluator        scheduler.EdgeEvaluator
+	OutputsSchemas   scheduler.OutputsSchemaResolver
+	Gate             scheduler.ApprovalGate
+	GateResolver     scheduler.GateResolver
+	CostCap          scheduler.CostCapGate
+	Clock            func() time.Time
+	MergeCoordinator *merge.Coordinator
+	MergeWorker      *merge.Worker
+	Meter            metric.Meter
+}
+
+// buildScheduler hoists the scheduler.New(...) composition out of runServe so each subsystem-touching PR stops dirtying serve.go (#975 slice 1).
+func buildScheduler(db *state.DB, f serveFlags, deps schedulerDeps) *scheduler.Scheduler {
+	return scheduler.New(db, scheduler.Config{
+		LaneCaps:         map[string]int(f.LaneCaps),
+		LockTTL:          f.LockTTL,
+		Evaluator:        deps.Evaluator,
+		OutputsSchemas:   deps.OutputsSchemas,
+		Gate:             deps.Gate,
+		GateResolver:     deps.GateResolver,
+		CostCap:          deps.CostCap,
+		Clock:            deps.Clock,
+		MergeCoordinator: deps.MergeCoordinator,
+		MergeWorker:      deps.MergeWorker,
+		Meter:            deps.Meter,
+	})
 }
