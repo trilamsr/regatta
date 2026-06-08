@@ -35,6 +35,16 @@
 #                         self-tag loophole (`feedback_no_self_tagged_approve`):
 #                         author writing own APPROVE token == zero
 #                         adversarial pass.
+#     --automerge-enabled signals that `autoMergeRequest != null` on the PR
+#                         (queried via `gh pr view --json autoMergeRequest`).
+#                         When the PR is also load-bearing AND
+#                         `Reviewer-agent-id:` is present, the gate fails
+#                         closed with stderr token
+#                         `automerge_with_agent_id_on_load_bearing`. Closes
+#                         #1046: agent both writes its own APPROVE and
+#                         enables automerge, leaving zero operator window
+#                         between APPROVE-token landing and merge. Operator
+#                         can always disable automerge then merge manually.
 #
 #   Operator escape (rare): include `<!-- reviewer-skip-justified: <reason
 #   ≥4 chars> -->` in the PR body to bypass the self-tag mismatch check
