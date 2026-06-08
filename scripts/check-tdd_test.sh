@@ -223,6 +223,73 @@ const Sample = "hi"
 EOF
 }
 
+# c1 positive: cmd/regatta/wire.go adds Wire(); the only test lives in
+# internal/foo/foo_test.go but mentions the new symbol Wire. Pre-fix
+# this fails (top-level subtrees cmd/ vs internal/ share no ancestor
+# below repo root); post-fix the cross-package symbol mention satisfies
+# the gate. Models the BUG-1055 pattern (wire_prwatch.go + cross-pkg
+# unit test on the wired component).
+case_cross_pkg_symbol_match_passes() {
+  mkdir -p cmd/regatta internal/foo
+  cat > cmd/regatta/wire.go <<EOF
+package main
+
+func Wire() int { return 1 }
+EOF
+  cat > internal/foo/foo_test.go <<EOF
+package foo
+
+import "testing"
+
+func TestWireIntegration(t *testing.T) {
+  // exercises Wire through the wired-up code path
+  _ = "Wire"
+}
+EOF
+}
+
+# c1 positive (const block): prod adds an exported const inside a
+# const ( ... ) block. The awk extractor must walk into the block.
+case_cross_pkg_symbol_in_const_block_passes() {
+  mkdir -p cmd/regatta internal/foo
+  cat > cmd/regatta/wire.go <<EOF
+package main
+
+const (
+	Magic = 42
+)
+EOF
+  cat > internal/foo/foo_test.go <<EOF
+package foo
+
+import "testing"
+
+func TestMagic(t *testing.T) {
+  _ = "Magic"
+}
+EOF
+}
+
+# c1 negative: prod adds Foo, the test in the diff mentions only Bar.
+# Even with the symbol-match fallback, zero mentions = gate fails.
+case_cross_pkg_symbol_mismatch_fails() {
+  mkdir -p cmd/regatta internal/foo
+  cat > cmd/regatta/wire.go <<EOF
+package main
+
+func Foo() int { return 1 }
+EOF
+  cat > internal/foo/foo_test.go <<EOF
+package foo
+
+import "testing"
+
+func TestBar(t *testing.T) {
+  _ = "Bar"
+}
+EOF
+}
+
 case_deletion_only_passes() {
   mkdir -p internal/foo
   cat > internal/foo/foo.go <<EOF
@@ -324,6 +391,9 @@ run_case test_with_benchmark_satisfies          0 "every production"   case_test
 # below the repo root. Expected: FAIL.
 run_case prod_cmd_test_internal_fails          1 "without a matching" case_cmd_test_in_internal_passes
 run_case testdata_go_skipped                    0 "no production"      case_testdata_go_skipped
+run_case cross_pkg_symbol_match_passes          0 "every production"   case_cross_pkg_symbol_match_passes
+run_case cross_pkg_symbol_in_const_block_passes 0 "every production"   case_cross_pkg_symbol_in_const_block_passes
+run_case cross_pkg_symbol_mismatch_fails        1 "without a matching" case_cross_pkg_symbol_mismatch_fails
 run_stale_base_case
 
 echo
