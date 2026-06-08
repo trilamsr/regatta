@@ -640,7 +640,7 @@ func TestWatcher_BranchDiverged_EmitsWarnOncePerDivergenceSha(t *testing.T) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	heads := map[int64]string{1: "remotesha"}
-	probe := func(id int64) (string, bool) {
+	probe := func(_ context.Context, id int64) (string, bool) {
 		sha, ok := heads[id]
 		return sha, ok
 	}
@@ -729,7 +729,7 @@ func TestWatcher_BranchDiverged_AbsentLocalSkipsWarn(t *testing.T) {
 	db := statetest.OpenDB(t)
 	var buf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	probe := func(int64) (string, bool) { return "", false }
+	probe := func(context.Context, int64) (string, bool) { return "", false }
 	w, err := New(Config{
 		DB: db, BranchFn: branchFor, Lister: lister, Logger: log,
 		LocalHeadFn: probe,

@@ -7,18 +7,16 @@ import (
 	"time"
 )
 
-type PathFn func(agentID int64) string
-
-// NewWorktreeLocalHeadFn wires the BUG-1051 divergence probe by shelling git rev-parse HEAD in the agent's worktree; ok=false on any miss so the watcher stays silent rather than emitting a false-positive WARN.
-func NewWorktreeLocalHeadFn(pathFor PathFn) func(agentID int64) (string, bool) {
-	return func(agentID int64) (string, bool) {
+// NewWorktreeLocalHeadFn shells git rev-parse HEAD in the agent's worktree for the BUG-1051 divergence probe; ok=false on miss keeps the watcher silent.
+func NewWorktreeLocalHeadFn(pathFor func(agentID int64) string) func(ctx context.Context, agentID int64) (string, bool) {
+	return func(ctx context.Context, agentID int64) (string, bool) {
 		dir := pathFor(agentID)
 		if dir == "" {
 			return "", false
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
-		out, err := exec.CommandContext(ctx, "git", "-C", dir, "rev-parse", "HEAD").Output()
+		out, err := exec.CommandContext(probeCtx, "git", "-C", dir, "rev-parse", "HEAD").Output() //#nosec G204 -- git binary literal; dir from internal PathFor seam.
 		if err != nil {
 			return "", false
 		}

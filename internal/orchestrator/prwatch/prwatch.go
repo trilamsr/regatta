@@ -112,7 +112,7 @@ type Config struct {
 	// HeadRefOid still reads sha-A while the local worktree carries
 	// sha-B. Returning ok=false (worktree gone, ref missing) suppresses
 	// the probe. Nil disables divergence detection entirely (#1051 c2).
-	LocalHeadFn func(agentID int64) (sha string, ok bool)
+	LocalHeadFn func(ctx context.Context, agentID int64) (sha string, ok bool)
 }
 
 // Watcher owns the running↔pr_open reconciliation. One per
@@ -142,7 +142,7 @@ type Watcher struct {
 
 	// localHeadFn: optional local-HEAD probe. Nil disables divergence
 	// detection. See Config.LocalHeadFn (#1051).
-	localHeadFn func(agentID int64) (string, bool)
+	localHeadFn func(ctx context.Context, agentID int64) (string, bool)
 
 	// divergedEmitted: per-agent record of the last local sha we
 	// emitted prwatch.branch_diverged for. Same tuple suppresses, new
@@ -291,7 +291,7 @@ func (w *Watcher) sweepOne(ctx context.Context, a state.Agent) {
 			return
 		}
 		w.missCount[a.ID] = 0
-		w.observeBranchDiverged(a, *pr)
+		w.observeBranchDiverged(ctx, a, *pr)
 		if pr.HeadRefOid == a.PRSHA {
 			return
 		}
@@ -482,11 +482,11 @@ func (w *Watcher) observeBranchRenamedByAgent(a state.Agent, branch string, pr P
 // orchestrator waits forever for a terminal-PR transition that will
 // never arrive. Emits once per (agent_id, local_sha) tuple — same sha
 // suppresses, new local sha re-arms.
-func (w *Watcher) observeBranchDiverged(a state.Agent, pr PullRequest) {
+func (w *Watcher) observeBranchDiverged(ctx context.Context, a state.Agent, pr PullRequest) {
 	if w.localHeadFn == nil {
 		return
 	}
-	localSHA, ok := w.localHeadFn(a.ID)
+	localSHA, ok := w.localHeadFn(ctx, a.ID)
 	if !ok || localSHA == "" {
 		return
 	}
