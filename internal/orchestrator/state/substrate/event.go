@@ -60,6 +60,11 @@ const (
 	// KindCostCapResumed — W5 cost-cap operator-override audit (#622).
 	// Append; one row per `regatta resume` invocation.
 	KindCostCapResumed EventKind = "cost_cap_resumed"
+	// KindToolCall — operator-console S0: one row per Claude-shim tool
+	// execution carrying {agent_id, signature, declared_effect_class,
+	// observed_effect}. Surprise detector folds these against the run's
+	// declared envelope (spec §3.2 + §3.7).
+	KindToolCall EventKind = "tool_call"
 )
 
 // AllKinds returns the canonical kind list in declaration order —
@@ -71,6 +76,7 @@ func AllKinds() []EventKind {
 		KindBriefRejected, KindPRStageTransition,
 		KindManualMerge, KindOperatorIntervention,
 		KindCostCapThrottled, KindCostCapResumed,
+		KindToolCall,
 	}
 }
 

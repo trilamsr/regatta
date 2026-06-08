@@ -406,6 +406,35 @@ func strictUnmarshal(raw json.RawMessage, v any) error {
 	return nil
 }
 
+// toolCallPayload mirrors the operator-console S0 tool_call envelope:
+// surprise detector folds DeclaredEffectClass against ObservedEffect at
+// fold-time (spec §3.7). AgentID + Signature scope the event back to a
+// single Claude-shim call boundary.
+type toolCallPayload struct {
+	AgentID             string   `json:"agent_id"`
+	Signature           string   `json:"signature"`
+	ArgsHash            string   `json:"args_hash"`
+	DeclaredEffectClass string   `json:"declared_effect_class"`
+	ObservedEffect      []string `json:"observed_effect"`
+	StartedAt           int64    `json:"started_at"`
+	FinishedAt          int64    `json:"finished_at"`
+}
+
+func validateToolCall(raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return fmt.Errorf("%w: tool_call payload empty", ErrInvalidPayload)
+	}
+	var p toolCallPayload
+	if err := strictUnmarshal(raw, &p); err != nil {
+		return fmt.Errorf("%w: tool_call: %w", ErrInvalidPayload, err)
+	}
+	if p.AgentID == "" || p.Signature == "" {
+		return fmt.Errorf("%w: tool_call missing agent_id|signature",
+			ErrInvalidPayload)
+	}
+	return nil
+}
+
 func init() {
 	RegisterPayloadValidator(KindNodeOutput, validateNodeOutput)
 	RegisterPayloadValidator(KindFact, validateFact)
@@ -419,5 +448,6 @@ func init() {
 	RegisterPayloadValidator(KindOperatorIntervention, validateGreenClockReset(KindOperatorIntervention))
 	RegisterPayloadValidator(KindCostCapThrottled, validateCostCapThrottled)
 	RegisterPayloadValidator(KindCostCapResumed, validateCostCapResumed)
+	RegisterPayloadValidator(KindToolCall, validateToolCall)
 	// KindGateVerdict: registered by T-S2 in gate_verdict_payload.go init().
 }

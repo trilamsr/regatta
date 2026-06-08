@@ -12,7 +12,7 @@ import (
 // ghJSONFields pins the fields the watcher consumes. Kept as a
 // constant so a future gh schema-drift case (issue R4 in the spec)
 // surfaces as a unit-test failure rather than a silent zero-value.
-const ghJSONFields = "number,headRefOid,state,headRefName,title,author"
+const ghJSONFields = "number,headRefOid,state,headRefName,title,author,mergeStateStatus"
 
 // GHCLILister shells the gh CLI for the watcher's PR query. Production
 // wiring; tests use the in-memory stubLister.
@@ -106,6 +106,7 @@ type ghAuthorWrap struct {
 	Author      struct {
 		Login string `json:"login"`
 	} `json:"author"`
+	MergeStateStatus string `json:"mergeStateStatus"`
 }
 
 func decodePRs(raw []byte) ([]PullRequest, error) {
@@ -119,12 +120,13 @@ func decodePRs(raw []byte) ([]PullRequest, error) {
 	out := make([]PullRequest, len(wrapped))
 	for i, w := range wrapped {
 		out[i] = PullRequest{
-			Number:      w.Number,
-			HeadRefOid:  w.HeadRefOid,
-			State:       w.State,
-			HeadRefName: w.HeadRefName,
-			Title:       w.Title,
-			AuthorLogin: w.Author.Login,
+			Number:           w.Number,
+			HeadRefOid:       w.HeadRefOid,
+			State:            w.State,
+			HeadRefName:      w.HeadRefName,
+			Title:            w.Title,
+			AuthorLogin:      w.Author.Login,
+			MergeStateStatus: w.MergeStateStatus,
 		}
 	}
 	return out, nil
