@@ -420,6 +420,79 @@ EOF
   fi
   rm -f "$body" "$paths_file"
 
+  # Self-tag denylist: 'main-thread-adversarial-self' agent-id rejected on load-bearing PR.
+  body=$(mktemp); paths_file=$(mktemp)
+  write_body "$body" <<'EOF'
+## PR
+Reviewer-agent-id: main-thread-adversarial-self
+Reviewer-recommendation: APPROVE
+```release-notes
+[FEAT] x
+```
+EOF
+  printf '%s\n' "CLAUDE.md" > "$paths_file"
+  if "$GATE" --body-file "$body" --changed-paths-file "$paths_file" >/dev/null 2>&1; then
+    fail "self-tag 'main-thread-adversarial-self' must be rejected on load-bearing PR"
+  else
+    pass "self-tag 'main-thread-adversarial-self' rejected on load-bearing PR"
+  fi
+  rm -f "$body" "$paths_file"
+
+  # Self-tag denylist: 'self-tagged-defer' agent-id rejected on load-bearing PR.
+  body=$(mktemp); paths_file=$(mktemp)
+  write_body "$body" <<'EOF'
+## PR
+Reviewer-agent-id: self-tagged-defer
+Reviewer-recommendation: APPROVE
+```release-notes
+[FEAT] x
+```
+EOF
+  printf '%s\n' "scripts/check-foo.sh" > "$paths_file"
+  if "$GATE" --body-file "$body" --changed-paths-file "$paths_file" >/dev/null 2>&1; then
+    fail "self-tag 'self-tagged-defer' must be rejected on load-bearing PR"
+  else
+    pass "self-tag 'self-tagged-defer' rejected on load-bearing PR"
+  fi
+  rm -f "$body" "$paths_file"
+
+  # Min-length: agent-id <12 chars rejected on load-bearing PR.
+  body=$(mktemp); paths_file=$(mktemp)
+  write_body "$body" <<'EOF'
+## PR
+Reviewer-agent-id: short
+Reviewer-recommendation: APPROVE
+```release-notes
+[FEAT] x
+```
+EOF
+  printf '%s\n' "Makefile.d/foo.mk" > "$paths_file"
+  if "$GATE" --body-file "$body" --changed-paths-file "$paths_file" >/dev/null 2>&1; then
+    fail "agent-id <12 chars must be rejected on load-bearing PR"
+  else
+    pass "agent-id <12 chars rejected on load-bearing PR"
+  fi
+  rm -f "$body" "$paths_file"
+
+  # Harness-shape: 17-char hex agent-id 'a6614259e2388c0ee' accepted on load-bearing PR.
+  body=$(mktemp); paths_file=$(mktemp)
+  write_body "$body" <<'EOF'
+## PR
+Reviewer-agent-id: a6614259e2388c0ee
+Reviewer-recommendation: APPROVE
+```release-notes
+[FEAT] x
+```
+EOF
+  printf '%s\n' "scripts/check-foo.sh" > "$paths_file"
+  if "$GATE" --body-file "$body" --changed-paths-file "$paths_file" >/dev/null 2>&1; then
+    pass "harness-shape agent-id accepted on load-bearing PR"
+  else
+    fail "harness-shape agent-id 'a6614259e2388c0ee' should pass on load-bearing PR"
+  fi
+  rm -f "$body" "$paths_file"
+
+
   # Non-load-bearing paths still honor [CHORE] auto-skip.
   body=$(mktemp)
   paths_file=$(mktemp)

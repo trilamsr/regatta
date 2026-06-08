@@ -188,6 +188,22 @@ case "$RECOMMENDATION" in
       echo "    Reviewer-recommendation: APPROVE" >&2
       exit 1
     fi
+    # Independent-reviewer allowlist per `feedback_no_self_tagged_approve`.
+    # Real reviewer agent IDs match one of two canonical shapes:
+    #   (a) harness shape `^a[0-9a-f]{16}$` (17-char hex, e.g. `a6614259e2388c0ee`)
+    #   (b) named-subagent shape `^(cavecrew|designer|triage|implementer|reviewer)-[a-z0-9-]+$`
+    # Any other value is treated as a self-tag escape (#1036 used
+    # `main-thread-adversarial-self`; #1037/#1038 used `self-tagged-defer`)
+    # and rejected. Allowlist beats denylist: workers can invent new
+    # escape strings, but cannot fake the canonical prefixes without
+    # actually dispatching a real subagent.
+    if ! echo "$REVIEWER_AGENT_ID" | grep -qE '^(a[0-9a-f]{16}|(cavecrew|designer|triage|implementer|reviewer)-[a-z0-9-]+)$'; then
+      echo "check-reviewer-verdict: Reviewer-agent-id '$REVIEWER_AGENT_ID' does not match independent-reviewer allowlist on a load-bearing PR." >&2
+      echo "  Allowed shapes: harness ID '^a[0-9a-f]{16}\$' (e.g. 'a6614259e2388c0ee') OR named subagent '^(cavecrew|designer|triage|implementer|reviewer)-<slug>\$'." >&2
+      echo "  Self-tag escapes (e.g. 'main-thread-adversarial-self', 'self-tagged-defer') rejected per CLAUDE.md 'No self-tagged Reviewer-recommendation: APPROVE'." >&2
+      echo "  Fix: dispatch independent reviewer subagent in fresh slot; paste its agent ID into the PR body footer." >&2
+      exit 1
+    fi
     exit 0
     ;;
   REVISE|BLOCK)
