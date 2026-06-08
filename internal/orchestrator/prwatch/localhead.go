@@ -7,16 +7,9 @@ import (
 	"time"
 )
 
-// PathFn resolves an agent's local worktree path. Same shape as
-// spawner.WorktreeManager.PathFor; surfaced as an interface here so
-// prwatch does not import the spawner package.
 type PathFn func(agentID int64) string
 
-// NewWorktreeLocalHeadFn returns a LocalHeadFn that runs
-// `git -C <worktree> rev-parse HEAD` to read the agent's local HEAD.
-// Used by serve.go to wire the BUG-1051 branch-diverged probe.
-// Missing worktree or non-git directory returns ok=false so the
-// watcher stays silent on agents whose checkout the operator deleted.
+// NewWorktreeLocalHeadFn wires the BUG-1051 divergence probe by shelling git rev-parse HEAD in the agent's worktree; ok=false on any miss so the watcher stays silent rather than emitting a false-positive WARN.
 func NewWorktreeLocalHeadFn(pathFor PathFn) func(agentID int64) (string, bool) {
 	return func(agentID int64) (string, bool) {
 		dir := pathFor(agentID)
