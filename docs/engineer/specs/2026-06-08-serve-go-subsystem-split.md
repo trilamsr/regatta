@@ -163,6 +163,11 @@ An implementer who dispatches in parallel hits a `serve.go` merge-conflict storm
      > /tmp/boot-trace.jsonl
    ```
    Pin: each JSON line MUST parse, MUST have non-empty `msg`, MUST drop every numeric field whose value depends on wall-clock or histogram-bucket runtime data. Pre/post `diff /tmp/boot-trace.before.jsonl /tmp/boot-trace.after.jsonl` MUST be empty. If `--log-format=json` is unavailable in the local build, fall back to `regatta serve --tick-once 2>&1 | grep -oE '^[a-z_.]+ msg=[^ ]+' | sort -u` (substrate-event whitelist + alphabetical sort — substrate events emit in deterministic order; sort eliminates goroutine-scheduling jitter).
+
+   **Event-kind sequence contract (hardened post-#1007 review):** the diff over the canonicalized trace is the LOAD-BEARING acceptance, NOT a hand-pinned `kind` enumeration. Three constraints to keep the gate from over-fitting:
+   - **Required vs optional events.** The diff compares only events the binary emits at boot under THIS config. An operator config with `secrets: {}` empty produces a boot trace lacking `secrets.attached`; that is correct and MUST NOT fail the gate. The acceptance is "boot trace stable across the refactor", NOT "all subsystems present". A separate `make check` step (`scripts/check-event-kind-pin.sh`) covers presence-when-enabled.
+   - **Event-kind rename gate.** New `scripts/check-event-kind-pin.sh` (added in Slice 4) greps `internal/obs/` for event-kind string constants and asserts each appears at HEAD. A rename PR that changes `scheduler.attached` → `scheduler.ready` fails the gate; the PR author must update the pin list atomically with the rename. Drift surfaces at PR time, not in a downstream branch's diff.
+   - **Order vs set.** The diff treats line order as load-bearing, but the implementer is permitted to reorder file-disjoint subsystem starts (e.g. `reaper.attached` vs `evaluator.attached`) IF the reordered sequence is committed pre-refactor as the new baseline. Reorder + diff against the new baseline = pass. The contract is "same trace before and after THIS PR", not "same trace as some historic master copy".
 4. `make ci-check` green on impl PR.
 5. `git diff origin/main...HEAD -- cmd/regatta/` shows net LOC delta ≤ +20 (extractions should be near-zero-sum; godoc dedupe shrinks total).
 
