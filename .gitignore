@@ -14,6 +14,7 @@ docs/superpowers/
 docs/engineer/specs/README.md
 
 # Go build artifacts
+/regatta
 bin/
 dist/*
 !dist/services/
