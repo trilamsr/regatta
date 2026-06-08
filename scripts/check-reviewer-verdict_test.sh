@@ -666,8 +666,8 @@ run_case_automerge_with_agent_id_on_load_bearing_fails() {
   # Closes #1046: orchestrator rushed self-tagged APPROVE + automerge in 19s.
   # When --automerge-enabled is passed AND the PR is load-bearing AND
   # Reviewer-agent-id is present, the gate MUST fail closed — agent both
-  # wrote its own APPROVE and enabled automerge, leaving no operator
-  # window for human merge per CLAUDE.md `gates::human_merge`.
+  # wrote its own APPROVE and enabled automerge, leaving zero operator
+  # window between APPROVE-token landing and merge.
   local body
   body=$(mktemp)
   write_body "$body" <<'EOF'

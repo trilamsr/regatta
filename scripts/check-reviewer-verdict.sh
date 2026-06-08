@@ -208,10 +208,12 @@ REVIEWER_AGENT_ID=$(awk '
 case "$RECOMMENDATION" in
   APPROVE)
     # Automerge guard (closes #1046): if the agent both writes its own
-    # APPROVE and enables automerge, no operator window exists for human
-    # merge per CLAUDE.md `gates::human_merge`. Token-present check still
-    # runs after the missing-agent-id branch below to keep error messages
-    # specific; the automerge guard fires only when an agent-id is present.
+    # APPROVE and enables automerge, zero operator window exists between
+    # APPROVE-token landing and merge. Pairs with the no-self-tag rule
+    # above to keep an independent reviewer in the loop. Token-present
+    # check still runs in the missing-agent-id branch below to keep error
+    # messages specific; the automerge guard fires only when an agent-id
+    # is present.
     if [ "$AUTOMERGE_ENABLED" -eq 1 ] && [ -n "$REVIEWER_AGENT_ID" ]; then
       echo "check-reviewer-verdict: automerge_with_agent_id_on_load_bearing — autoMergeRequest is enabled on a load-bearing PR carrying Reviewer-agent-id: $REVIEWER_AGENT_ID." >&2
       echo "  Agent-written APPROVE + agent-enabled automerge leaves zero operator window between APPROVE-token landing and merge." >&2
