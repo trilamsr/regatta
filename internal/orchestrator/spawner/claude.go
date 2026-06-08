@@ -13,6 +13,8 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/trilamsr/regatta/internal/orchestrator/prompt"
 )
 
 // processKiller is the seam tests use to inject classified Kill errors.
@@ -223,9 +225,14 @@ const (
 // itemBodyRejectedBanner replaces the ItemBody when a sentinel collision is detected so the fence cannot be closed early; deterministic guard cheaper than escape/rewrite logic.
 const itemBodyRejectedBanner = "[regatta: item body rejected — contained boundary sentinel literal; brief dropped to prevent fence-escape injection]"
 
-// defaultPromptBuilder pins per-dispatch context (item brief) and cites the CLAUDE.md slugs workers most often drift on; the worktree's CLAUDE.md auto-load supplies the rule bodies.
+// defaultPromptBuilder pins per-dispatch context (item brief) and cites the CLAUDE.md slugs workers most often drift on; the worktree's CLAUDE.md auto-load supplies the rule bodies. When the target repo lacks CLAUDE.md, the bundled default is injected inline so the worker still receives a baseline (spec 2026-06-08-regatta-on-arbitrary-repo §3 L1).
 func defaultPromptBuilder(req Request) string {
 	var b strings.Builder
+	if rules, source, err := prompt.ResolveClaudeMd(req.RepoRoot); err == nil && source == prompt.SourceBundled {
+		b.WriteString("## Operating rules (bundled default — target has no CLAUDE.md)\n\n")
+		b.WriteString(rules)
+		b.WriteString("\n\n")
+	}
 	fmt.Fprintf(&b, "regatta worker: work item %s on lane %s (agent %d).\n\n",
 		req.WorkItemID, req.Lane, req.AgentID)
 	if body := strings.TrimSpace(stripControlChars(req.ItemBody)); body != "" {

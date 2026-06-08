@@ -1,0 +1,127 @@
+# Worker operating rules (bundled default)
+
+This file is the bundled default the regatta binary ships for target repos
+that do NOT carry a project `CLAUDE.md`. When the target repo has its own
+`CLAUDE.md`, that file wins verbatim and this one is unused.
+
+The rules below are universal and repo-agnostic. They describe HOW a worker
+subagent should write code, run tests, and shape a pull request, regardless
+of language, framework, or build system.
+
+## Decision priority
+
+When two options conflict, apply this order:
+
+1. User experience — observable behavior of the merged change.
+2. Ease — simplest viable design wins; pick the option a future reader can
+   follow without context.
+3. Performance — measurable, not assumed.
+4. Best practices — language idioms, standard library before deps.
+5. Speed — local iteration loop time.
+6. Velocity — short-term throughput.
+
+Long-term beats short-term. Verify tool-checkable facts (file contents,
+command output, version pins) rather than asking the operator.
+
+## Default simpler
+
+Pick the simplest viable option. Three similar lines beat a premature
+abstraction. Do not pre-build lint scripts, tiered systems, or abstractions
+for drift you have not yet observed. If a duplication appears twice, leave
+it; refactor on the third occurrence.
+
+## TDD discipline
+
+Failing test first. Run the test, capture the failing output in the pull
+request body, then implement, then run green. The commit log must show the
+failing test landed before the implementation it covers.
+
+When implementing a bug fix, the failing test reproduces the bug. When
+implementing a new feature, the failing test asserts the feature's
+externally observable behavior.
+
+## Comments: WHY not WHAT
+
+Default to no comment. A clear name plus signature plus types already
+documents the WHAT.
+
+Drop:
+- Restating the symbol name in its own godoc / docstring.
+- Restating the signature.
+- Section banners (`# ---`, `// ===`, `# *** Setup ***`).
+- Multi-paragraph implementation narration.
+- Untagged TODO / FIXME / XXX / HACK. Cite an issue number on the same
+  line or omit.
+- Commented-out code blocks.
+
+Keep only:
+- Exported symbol documentation: symbol name plus the WHY in one sentence.
+- Non-obvious invariant or workaround that would surprise a reader.
+- Cross-file contract reference when the contract is load-bearing.
+
+## Root cause only
+
+Fix the primary failure mode, not the symptom. A bug downstream usually
+means the upstream API contract was violated; check the contract before
+patching the downstream code. A race condition usually means the locking
+design is wrong, not the lock primitive.
+
+## Deletion default
+
+Every pull request should answer: what got smaller? Lines, features,
+abstractions, primitives, dependencies — any of those is a valid answer.
+Pure-addition pull requests require an explicit defense in the body.
+
+## No AI signatures
+
+Do not write `Co-Authored-By:` tags, "Generated with" footers, or
+"written by Claude / AI / LLM" markers in commits, pull request bodies,
+pull request titles, code comments, or generated documentation. Anywhere.
+
+## Pull request body shape
+
+Open one pull request for one work item. Title format: `<type>: <short>`
+where `<type>` is one of `feat` / `fix` / `refactor` / `chore` / `docs` /
+`ci` / `perf`.
+
+Body sections, in order:
+
+1. Summary — one paragraph or bullet list of what changed.
+2. Root cause (for bug fixes) — what was wrong, why the fix targets it.
+3. Test plan — test names that ran or test commands the reviewer can
+   re-run.
+4. Release notes — a fenced block describing the user-visible change,
+   one line. Format:
+
+   ```
+   ```release-notes
+   feat: short description
+   ```
+   ```
+
+   For internal-only changes, use `none (internal)` inside the fence.
+
+## Worktree discipline
+
+Work inside the worktree the harness provides. Do not run `git clone` or
+`git worktree add` from inside a worker subagent — the harness pre-creates
+the worktree, and the worker only needs to `cd` into it. Do not write code
+under `/tmp/`; `/tmp/` is for ephemeral logs only.
+
+## Pull request body hygiene
+
+Use `--body-file <path>` when creating or editing a pull request body
+through the GitHub CLI. Inline HEREDOC bodies escape backticks and
+silently break the fenced release-notes block.
+
+## Failing-test capture
+
+Before pushing, run the test command locally. Paste the failing output
+into the test-plan section of the pull request body so a reviewer can see
+the RED state the implementation later turned GREEN.
+
+## Begin the work
+
+Read the work-item brief, plan the smallest viable change, write the
+failing test first, implement, run the test green, run the project's
+local checks, push, open one pull request.

@@ -406,3 +406,37 @@ func countSubstr(s, sub string) int {
 	}
 	return n
 }
+
+// TestDefaultPromptBuilder_TargetHasClaudeMd_NoBundledInject asserts the bundled default is NOT injected inline when the target repo carries its own CLAUDE.md — Claude CLI auto-loads it instead (spec L1.2).
+func TestDefaultPromptBuilder_TargetHasClaudeMd_NoBundledInject(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# target rules\n"), 0o644); err != nil {
+		t.Fatalf("seed CLAUDE.md: %v", err)
+	}
+	got := defaultPromptBuilder(Request{
+		AgentID:    1,
+		WorkItemID: "WORK-T",
+		Lane:       "lane-1",
+		RepoRoot:   dir,
+	})
+	if contains(got, "Operating rules (bundled default") {
+		t.Fatalf("expected NO bundled-default inject when target has CLAUDE.md, got:\n%s", got)
+	}
+}
+
+// TestDefaultPromptBuilder_NoClaudeMd_InjectsBundledDefault asserts the bundled default lands inline when the target repo has no CLAUDE.md (spec L1.1).
+func TestDefaultPromptBuilder_NoClaudeMd_InjectsBundledDefault(t *testing.T) {
+	dir := t.TempDir()
+	got := defaultPromptBuilder(Request{
+		AgentID:    2,
+		WorkItemID: "WORK-N",
+		Lane:       "lane-2",
+		RepoRoot:   dir,
+	})
+	if !contains(got, "Operating rules (bundled default") {
+		t.Fatalf("expected bundled-default inject when target lacks CLAUDE.md, got:\n%s", got)
+	}
+	if !contains(got, "Default simpler") {
+		t.Fatalf("expected bundled default body content (Default simpler section), got:\n%s", got)
+	}
+}
