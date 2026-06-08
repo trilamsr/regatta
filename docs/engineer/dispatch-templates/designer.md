@@ -30,6 +30,7 @@ SELF-HOST FILTER
 
 ADVERSARIAL REVIEW ON SPEC
 - After draft, spawn reviewer subagent (see sibling `reviewer.md`) targeting: simplification opportunities, deletion candidates, edge cases, risk tiers, OSS reuse the spec missed. Fix findings inline OR cite as deferred with reopen-trigger.
+- **Mandatory independent reviewer before PR open**: designer MUST request a fresh `Agent(reviewer-subagent)` (NOT a self-included adversarial section) before opening the PR. Cite reviewer agentId + `Reviewer-recommendation: APPROVE` in PR body footer. `scripts/check-reviewer-verdict.sh` fails closed when specs/briefs/templates/CLAUDE.md change without the token, even on `[DOCS]` release-notes. Per `feedback_adversarial_review_every_step`.
 
 DOC-CHECK
 - No banned phrases (`scripts/doc-check.sh`, 11 tokens). Reword to falsifiable claims (version pin, benchmark, named reference). Pre-push grep mandatory. Per `CLAUDE.md` §CI gates "Banned-phrase gate".

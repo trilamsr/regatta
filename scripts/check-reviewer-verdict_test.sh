@@ -212,6 +212,126 @@ EOF
   rm -f "$body"
 }
 
+run_case_docs_spec_requires_token() {
+  local body diff_file
+  body=$(mktemp)
+  diff_file=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+- new spec
+
+```release-notes
+[DOCS] new spec
+```
+EOF
+  printf 'docs/engineer/specs/2026-06-08-new.md\n' > "$diff_file"
+  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" 2>&1 | grep -qE "Reviewer-recommendation"; then
+    pass "[DOCS] spec change without token fails (load-bearing carve-out)"
+  else
+    fail "[DOCS] spec change without token should fail — specs are load-bearing"
+  fi
+  rm -f "$body" "$diff_file"
+}
+
+run_case_docs_brief_requires_token() {
+  local body diff_file
+  body=$(mktemp)
+  diff_file=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+- design brief
+
+```release-notes
+[DOCS] new brief
+```
+EOF
+  printf 'docs/engineer/briefs/2026-06-08-thing.md\n' > "$diff_file"
+  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" 2>&1 | grep -qE "Reviewer-recommendation"; then
+    pass "[DOCS] brief change without token fails (load-bearing carve-out)"
+  else
+    fail "[DOCS] brief change without token should fail — briefs are load-bearing"
+  fi
+  rm -f "$body" "$diff_file"
+}
+
+run_case_docs_template_requires_token() {
+  local body diff_file
+  body=$(mktemp)
+  diff_file=$(mktemp)
+  write_body "$body" <<'EOF'
+```release-notes
+[DOCS] tweak dispatch template
+```
+EOF
+  printf 'docs/engineer/dispatch-templates/implementer.md\n' > "$diff_file"
+  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" 2>&1 | grep -qE "Reviewer-recommendation"; then
+    pass "[DOCS] dispatch-template change without token fails (load-bearing carve-out)"
+  else
+    fail "[DOCS] dispatch-template change without token should fail — templates are agent-rule surface"
+  fi
+  rm -f "$body" "$diff_file"
+}
+
+run_case_docs_claudemd_requires_token() {
+  local body diff_file
+  body=$(mktemp)
+  diff_file=$(mktemp)
+  write_body "$body" <<'EOF'
+```release-notes
+[DOCS] CLAUDE.md tweak
+```
+EOF
+  printf 'CLAUDE.md\n' > "$diff_file"
+  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" 2>&1 | grep -qE "Reviewer-recommendation"; then
+    pass "[DOCS] CLAUDE.md change without token fails (load-bearing carve-out)"
+  else
+    fail "[DOCS] CLAUDE.md change without token should fail — agent-rule surface"
+  fi
+  rm -f "$body" "$diff_file"
+}
+
+run_case_docs_runbook_still_skips() {
+  local body diff_file
+  body=$(mktemp)
+  diff_file=$(mktemp)
+  write_body "$body" <<'EOF'
+```release-notes
+[DOCS] runbook refresh
+```
+EOF
+  printf 'docs/operator/runbook.md\n' > "$diff_file"
+  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" >/dev/null 2>&1; then
+    pass "[DOCS] runbook change still auto-skips (proportional)"
+  else
+    fail "[DOCS] runbook change should still auto-skip per feedback_review_proportional"
+  fi
+  rm -f "$body" "$diff_file"
+}
+
+run_case_docs_spec_with_token_passes() {
+  local body diff_file
+  body=$(mktemp)
+  diff_file=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+- new spec
+
+Reviewer-agent-id: cavecrew-reviewer-spec123
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[DOCS] new spec
+```
+EOF
+  printf 'docs/engineer/specs/2026-06-08-new.md\n' > "$diff_file"
+  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" >/dev/null 2>&1; then
+    pass "[DOCS] spec change WITH token passes"
+  else
+    fail "[DOCS] spec change WITH token should pass"
+  fi
+  rm -f "$body" "$diff_file"
+}
+
 run_case_multiple_tokens_uses_last() {
   local body
   body=$(mktemp)
@@ -330,6 +450,12 @@ run_case_docs_release_notes_skips
 run_case_not_load_bearing_skips
 run_case_fenced_revise_bare_approve_passes
 run_case_fenced_approve_bare_revise_fails
+run_case_docs_spec_requires_token
+run_case_docs_brief_requires_token
+run_case_docs_template_requires_token
+run_case_docs_claudemd_requires_token
+run_case_docs_runbook_still_skips
+run_case_docs_spec_with_token_passes
 run_case_multiple_tokens_uses_last
 run_case_load_bearing_path_classifier
 

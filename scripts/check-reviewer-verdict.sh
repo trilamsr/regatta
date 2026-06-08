@@ -20,15 +20,24 @@
 #                         load-bearing list (CLAUDE.md, Makefile,
 #                         Makefile.d/*, .github/workflows/*,
 #                         docs/engineer/dispatch-templates/*,
-#                         scripts/check-*.sh) sets load-bearing=1 AND
-#                         BYPASSES the release-notes category auto-skip
-#                         (closes #985 #986 retro audit 2026-06-08).
+#                         scripts/check-*.sh) OR the load-bearing-doc
+#                         list (docs/engineer/specs/*.md,
+#                         docs/engineer/briefs/*.md) sets load-bearing=1
+#                         AND BYPASSES the release-notes category auto-skip
+#                         (closes #985 #986 #991 retro audit 2026-06-08).
 #     --skip              short-circuit pass (operator-discretion escape)
 #
 #   Auto-skip: release-notes prefix in [CHORE]/[DOCS]/[CI]/[NONE]/[CHANGE]
 #   (matches scripts/check-scorecard.sh category-exempt list). NOT applied
 #   when --changed-paths-file flags a load-bearing surface above — those
 #   surfaces are themselves the category being reviewed.
+#
+#   Load-bearing-doc carve-out: even when release-notes is [DOCS], the
+#   gate refuses to auto-skip when the diff touches load-bearing prose
+#   surfaces — docs/engineer/specs/*.md, docs/engineer/briefs/*.md,
+#   docs/engineer/dispatch-templates/*.md, or CLAUDE.md. Operator finding
+#   2026-06-08: design/spec PRs landed w/ self-included adversarial
+#   sections (not independent review). Per `feedback_adversarial_review_every_step`.
 #
 #   Pass: body contains `Reviewer-recommendation: APPROVE` ON ITS OWN
 #   line (case-insensitive, leading/trailing whitespace allowed). Tokens
@@ -94,10 +103,10 @@ if [ -z "$BODY_FILE" ] || [ ! -f "$BODY_FILE" ]; then
   exit 3
 fi
 
-# Path classifier (closes #985 #986). When --changed-paths-file lists any
-# agent-rule or CI-gate surface, flag load-bearing AND bypass category
-# auto-skip — refactors to these surfaces self-tagged [CHORE]/[DOCS] in
-# the 2026-06-08 retro and slipped past review.
+# Path classifier (closes #985 #986 #991). When --changed-paths-file lists any
+# agent-rule, CI-gate, or load-bearing-doc surface, flag load-bearing AND
+# bypass category auto-skip — refactors to these surfaces self-tagged
+# [CHORE]/[DOCS] in the 2026-06-08 retro and slipped past review.
 LOAD_BEARING_BY_PATH=0
 if [ -n "$PATHS_FILE" ]; then
   if [ ! -f "$PATHS_FILE" ]; then
@@ -112,6 +121,10 @@ if [ -n "$PATHS_FILE" ]; then
         break
         ;;
       scripts/check-*.sh)
+        LOAD_BEARING_BY_PATH=1
+        break
+        ;;
+      docs/engineer/specs/*.md|docs/engineer/briefs/*.md)
         LOAD_BEARING_BY_PATH=1
         break
         ;;
