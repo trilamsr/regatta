@@ -1,9 +1,11 @@
 package prwatch
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -542,6 +544,76 @@ func TestWatcher_BranchRenameThreshold_Configurable(t *testing.T) {
 	}
 	if !got[0].AgentID.Valid || got[0].AgentID.Int64 != a.ID {
 		t.Fatalf("event agent_id=%v, want %d", got[0].AgentID, a.ID)
+	}
+}
+
+// TestWatcher_BranchRenamedByAgent_LogsAndTransitions covers BUG-1047:
+// the spawned worker pushed under a semantic branch name instead of the
+// orchestrator-pinned regatta/agent-N, so gh `--head regatta/agent-N`
+// returns 0 results. The title-prefix fallback still resolves the PR
+// (worker kept `[agent-N]` in the title) but Sweep must emit
+// `prwatch.branch_renamed_by_agent` WARN so the operator sees the prompt
+// drift in logs even when the in-prompt fix slips.
+func TestWatcher_BranchRenamedByAgent_LogsAndTransitions(t *testing.T) {
+	lister := &stubLister{
+		byBranch: map[string][]PullRequest{},
+		byTitlePrefix: map[string][]PullRequest{
+			"[agent-1]": {{
+				Number:      1045,
+				HeadRefOid:  "renamedsha",
+				State:       "OPEN",
+				HeadRefName: "refactor/reviewer-verdict-modular-agent-1",
+				Title:       "[agent-1] modularize reviewer verdict",
+				AuthorLogin: "trilamsr",
+			}},
+		},
+	}
+	db := statetest.OpenDB(t)
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	w, err := New(Config{DB: db, BranchFn: branchFor, Lister: lister, Logger: log})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	a := driveToRunning(t, db, "WORK-1")
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	got, err := db.GetAgent(context.Background(), a.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.State != state.AgentPROpen {
+		t.Fatalf("state=%s, want pr_open (title-prefix rescue)", got.State)
+	}
+	if got.PRSHA != "renamedsha" {
+		t.Fatalf("pr_sha=%s, want renamedsha", got.PRSHA)
+	}
+	if !strings.Contains(buf.String(), "prwatch.branch_renamed_by_agent") {
+		t.Fatalf("missing prwatch.branch_renamed_by_agent log; got:\n%s", buf.String())
+	}
+}
+
+// TestWatcher_LiteralBranchMatch_DoesNotEmitBranchRenamed guards the
+// happy path: when the literal-branch query returns the PR, the
+// branch_renamed_by_agent diagnostic must stay silent.
+func TestWatcher_LiteralBranchMatch_DoesNotEmitBranchRenamed(t *testing.T) {
+	lister := &stubLister{byBranch: map[string][]PullRequest{
+		"regatta/agent-1": {{Number: 42, HeadRefOid: "deadbeef", State: "OPEN"}},
+	}}
+	db := statetest.OpenDB(t)
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	w, err := New(Config{DB: db, BranchFn: branchFor, Lister: lister, Logger: log})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	driveToRunning(t, db, "WORK-1")
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if strings.Contains(buf.String(), "branch_renamed_by_agent") {
+		t.Fatalf("unexpected branch_renamed_by_agent log on literal-branch match:\n%s", buf.String())
 	}
 }
 
