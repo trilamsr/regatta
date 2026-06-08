@@ -225,8 +225,9 @@ type Scheduler struct {
 
 	// Pre-created (§3 row 4 / A-T3) so the hot path is a single
 	// Record() with no per-tick allocation.
-	tickLatency  metric.Float64Histogram
-	stepDuration metric.Float64Histogram
+	tickLatency       metric.Float64Histogram
+	stepDuration      metric.Float64Histogram
+	adapterPollErrors metric.Int64Counter
 
 	// multiDefaultLogged dedupes edge.multiple_defaults_per_from so a
 	// misconfigured brief logs once per (program_id, from_id) per
@@ -288,11 +289,16 @@ func newScheduler(db schedulerDB, cfg Config) *Scheduler {
 	if err != nil {
 		stepDuration, _ = obs.Meter(obs.MeterScopeSchedulerFallback).Float64Histogram("regatta.scheduler.tick.step_duration_ms")
 	}
+	adapterPollErrors, err := meter.Int64Counter("regatta.scheduler.adapter_poll.errors_total")
+	if err != nil {
+		adapterPollErrors, _ = obs.Meter(obs.MeterScopeSchedulerFallback).Int64Counter("regatta.scheduler.adapter_poll.errors_total")
+	}
 	return &Scheduler{
 		db: db, cfg: cfg, log: log, tracer: tracer,
 		tickLatency: tickLatency, stepDuration: stepDuration,
-		backoff:  newRecheckBackoffWithMeter(meter),
-		lastPoll: make([]time.Time, len(cfg.Adapters)),
+		adapterPollErrors: adapterPollErrors,
+		backoff:           newRecheckBackoffWithMeter(meter),
+		lastPoll:          make([]time.Time, len(cfg.Adapters)),
 	}
 }
 
@@ -452,6 +458,7 @@ func (s *Scheduler) pollAdaptersHonouringMinPoll(ctx context.Context) {
 		}
 		if _, err := ad.List(ctx); err != nil {
 			s.log.Warn("scheduler.adapter_poll_failed", "adapter_index", i, "err", err)
+			s.adapterPollErrors.Add(ctx, 1, metric.WithAttributes(attribute.Int("adapter_index", i)))
 		}
 		s.lastPoll[i] = now
 	}
