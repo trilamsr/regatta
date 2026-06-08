@@ -27,7 +27,7 @@ Done when ALL of:
 1. Impl PR (separate from this spec) merges referencing this spec.
 2. `wc -l cmd/regatta/serve.go` ≤ 100 (orchestration root only — flags, signal/ctx, listener bind, shutdown order).
 3. `grep -n "orchestrator.New\|reaper.New\|program.NewEdgeEvaluator\|program.NewBriefLoader\|scheduler.New" cmd/regatta/serve.go` returns 0 matches.
-4. `cmd/regatta serve --tick-once` substrate-event-kind sequence before/after the split is byte-equal under the mechanical `diff` in §7 #3 (operator-observable contract preserved).
+4. `cmd/regatta serve --tick-once` boot trace before/after the split passes the mechanical canonicalization in §7 #3 (operator-observable contract preserved; no operator-vibes grep).
 5. `make ci-check` green on impl PR.
 
 ## §1 Problem
@@ -116,7 +116,7 @@ An implementer who dispatches in parallel hits a `serve.go` merge-conflict storm
 - Add: `buildScheduler(db *state.DB, f serveFlags, deps schedulerDeps) *scheduler.Scheduler` where `schedulerDeps` bundles `Evaluator`, `OutputsSchemas`, `Gate`, `GateResolver`, `CostCap`, `Clock`, `MergeCoordinator`, `MergeWorker`.
 - `runServe` change: replace `serve.go:247-258` with `sched := buildScheduler(db, f, schedulerDeps{...})`. Net delta: -10 LOC inline + 14 LOC in wire file.
 - Test: `wire_scheduler_test.go` (existing? — verify; if missing, add `TestBuildScheduler_DefaultsPropagate` asserting LaneCaps / LockTTL / Clock pass through).
-- Acceptance: `regatta serve --tick-once` boot trace byte-equal modulo timestamps.
+- Acceptance: `regatta serve --tick-once` boot trace passes the §7 #3 canonicalization (see §7 for exact `jq` invocation).
 
 ### Slice 2 — `buildOrchestrator` + `attachReaper` (NEW files)
 
@@ -156,14 +156,13 @@ An implementer who dispatches in parallel hits a `serve.go` merge-conflict storm
 
 1. `wc -l cmd/regatta/serve.go` ≤ 100.
 2. `grep -nE 'orchestrator\.New|reaper\.New|program\.NewEdgeEvaluator|program\.NewBriefLoader|scheduler\.New' cmd/regatta/serve.go` returns ZERO lines.
-3. `regatta serve --tick-once` boot trace before/after the four-slice impl PR is byte-equal on the substrate-event-kind sequence (closes #991). Mechanical check:
-   ```
+3. `regatta serve --tick-once --log-format=json` boot trace before/after the four-slice impl PR is byte-equal modulo timestamps + run-specific floats. Capture is mechanical, NOT operator-vibes (closes #991):
+   ```bash
    regatta serve --tick-once --log-format=json 2>&1 \
-     | jq -r 'select(.event != null) | .event' \
-     > /tmp/boot-events-${SHA}.txt
-   diff /tmp/boot-events-main.txt /tmp/boot-events-after.txt
+     | jq -c 'del(.time, .ts) | del(.ms) | del(.latency_ms) | del(.duration_ms) | del(.bucket_counts) | del(.bucket_boundaries)' \
+     > /tmp/boot-trace.jsonl
    ```
-   Acceptance = `diff` reports zero lines. Pinned event-kind sequence (must appear in this order at boot, captured pre-refactor at `origin/main`): `config.loaded`, `secrets.attached`, `keyring.attached`, `spec_adapter.attached`, `authz.attached`, `scheduler.attached`, `orchestrator.attached`, `reaper.attached`, `evaluator.attached`, `tick.start`, `tick.end`. Wall-clock timestamps, latency histograms, and random IDs are NOT compared — only the event-kind ordering. Per CLAUDE.md `feedback_grade_rubric` this turns the predicate from operator-vibes into a single `diff` exit code.
+   Pin: each JSON line MUST parse, MUST have non-empty `msg`, MUST drop every numeric field whose value depends on wall-clock or histogram-bucket runtime data. Pre/post `diff /tmp/boot-trace.before.jsonl /tmp/boot-trace.after.jsonl` MUST be empty. If `--log-format=json` is unavailable in the local build, fall back to `regatta serve --tick-once 2>&1 | grep -oE '^[a-z_.]+ msg=[^ ]+' | sort -u` (substrate-event whitelist + alphabetical sort — substrate events emit in deterministic order; sort eliminates goroutine-scheduling jitter).
 4. `make ci-check` green on impl PR.
 5. `git diff origin/main...HEAD -- cmd/regatta/` shows net LOC delta ≤ +20 (extractions should be near-zero-sum; godoc dedupe shrinks total).
 
