@@ -19,10 +19,12 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// SpecAdapter mirrors the orchestrator's read surface. Declared
-// locally so adaptersync does not import orchestrator (import cycle).
+// SpecAdapter is the subset of schemas.SpecAdapter the Syncer needs:
+// List drives the mirror; Capabilities supplies MinPollInterval so the
+// Syncer can skip List inside the rate-budget window (#888).
 type SpecAdapter interface {
 	List(ctx context.Context) ([]schemas.WorkItem, error)
+	Capabilities() schemas.Capabilities
 }
 
 // Config holds dependencies for a Syncer. Mirrors the Config.Logger

@@ -24,6 +24,10 @@ type stubAdapter struct {
 
 func (s *stubAdapter) List(context.Context) ([]schemas.WorkItem, error) { return s.items, nil }
 
+// Capabilities returns zero MinPollInterval so the Syncer's MinPoll gate
+// stays off-by-default in tests that don't exercise cadence.
+func (s *stubAdapter) Capabilities() schemas.Capabilities { return schemas.Capabilities{} }
+
 func newSyncTestDB(t *testing.T) *state.DB {
 	t.Helper()
 	db, err := state.Open(context.Background(), state.DSN(filepath.Join(t.TempDir(), "s.db")))
