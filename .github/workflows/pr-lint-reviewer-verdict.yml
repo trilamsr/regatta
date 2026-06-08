@@ -69,13 +69,16 @@ jobs:
           # --automerge-enabled closes #1046: if autoMergeRequest != null
           # AND the PR is load-bearing AND Reviewer-agent-id is present,
           # the gate fails closed — no operator window for human merge.
+          # `set -u` + empty-array expansion would crash on every non-automerge
+          # PR; use `${arr[@]+"${arr[@]}"}` conditional expansion so the empty
+          # array elides cleanly. `:-` would expand to one empty arg.
           automerge_flag=()
           if automerge_state=$(gh pr view "$PR_NUMBER" --json autoMergeRequest --jq '.autoMergeRequest' 2>/dev/null) \
             && [ -n "$automerge_state" ] && [ "$automerge_state" != "null" ]; then
             automerge_flag=(--automerge-enabled)
           fi
           if [ "$load_bearing" -eq 1 ]; then
-            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --load-bearing --pr-author "$PR_AUTHOR" "${automerge_flag[@]}"
+            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --load-bearing --pr-author "$PR_AUTHOR" ${automerge_flag[@]+"${automerge_flag[@]}"}
           else
-            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --pr-author "$PR_AUTHOR" "${automerge_flag[@]}"
+            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --pr-author "$PR_AUTHOR" ${automerge_flag[@]+"${automerge_flag[@]}"}
           fi

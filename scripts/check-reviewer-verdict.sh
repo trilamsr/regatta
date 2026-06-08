@@ -42,10 +42,9 @@
 #                         closed with stderr token
 #                         `automerge_with_agent_id_on_load_bearing`. Closes
 #                         #1046: agent both writes its own APPROVE and
-#                         enables automerge, leaving no operator window for
-#                         human merge per CLAUDE.md `gates::human_merge`.
-#                         Operator can always disable automerge then merge
-#                         manually.
+#                         enables automerge, leaving zero operator window
+#                         between APPROVE-token landing and merge. Operator
+#                         can always disable automerge then merge manually.
 #
 #   Operator escape (rare): include `<!-- reviewer-skip-justified: <reason
 #   ≥4 chars> -->` in the PR body to bypass the self-tag mismatch check
@@ -215,7 +214,7 @@ case "$RECOMMENDATION" in
     # specific; the automerge guard fires only when an agent-id is present.
     if [ "$AUTOMERGE_ENABLED" -eq 1 ] && [ -n "$REVIEWER_AGENT_ID" ]; then
       echo "check-reviewer-verdict: automerge_with_agent_id_on_load_bearing — autoMergeRequest is enabled on a load-bearing PR carrying Reviewer-agent-id: $REVIEWER_AGENT_ID." >&2
-      echo "  Per CLAUDE.md gates::human_merge, agent-written APPROVE + agent-enabled automerge leaves no operator window for human merge." >&2
+      echo "  Agent-written APPROVE + agent-enabled automerge leaves zero operator window between APPROVE-token landing and merge." >&2
       echo "  Fix: disable automerge (gh pr merge --disable-auto <PR>), then operator merges manually after independent review." >&2
       exit 1
     fi

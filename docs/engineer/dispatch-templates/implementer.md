@@ -62,7 +62,7 @@ NO SIGNATURES
 - No `Co-Authored-By`, no AI footer, no "Generated with" tags. Anywhere. Per `feedback_no_signatures`.
 
 NO AUTOMERGE FROM IMPLEMENTER
-- NEVER run `gh pr merge --auto` (or any automerge-enabling form). End with `gh pr ready <N>` + operator-merge handoff. The reviewer-verdict gate fails closed when `autoMergeRequest != null` AND `Reviewer-agent-id:` is present on a load-bearing PR — agent-written APPROVE + agent-enabled automerge leaves no operator window for human merge per `CLAUDE.md` `gates::human_merge`. Per `feedback_no_implementer_automerge` (closes #1046).
+- NEVER run `gh pr merge --auto` (or any automerge-enabling form). End with `gh pr ready <N>` + operator-merge handoff. The reviewer-verdict gate fails closed when `autoMergeRequest != null` AND `Reviewer-agent-id:` is present on a load-bearing PR — agent-written APPROVE + agent-enabled automerge leaves no operator window between APPROVE-token landing and merge. Per `feedback_no_implementer_automerge` (closes #1046).
 
 MEMORY CITES
 - Cite `<MEMORY-RULES>` in PR body footer (path-relative, e.g. `memory/feedback_root_cause`). Reviewer checks citations resolve.
