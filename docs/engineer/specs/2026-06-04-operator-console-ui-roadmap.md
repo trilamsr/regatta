@@ -1,20 +1,29 @@
 ---
-status: active
+status: superseded
 phase: x-forward-fit
 revision: v1 (Phase-S delivery roadmap; scopes down v5.1 design to self-host filter)
 author: design-subagent
 date: 2026-06-04
+superseded_by:
+  - docs/engineer/specs/2026-06-08-operator-console-ui-roadmap-v2.md
 companion:
   - docs/engineer/specs/2026-06-02-operator-console-design.md
   - docs/engineer/specs/2026-06-02-operator-console-v2-backlog.md
   - docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md
 scope_umbrella: "[#183](https://github.com/trilamsr/regatta/issues/183) operator web UI"
 framing: |
-  v5.1 design (PR #701) is the aspirational target ledger. This roadmap
-  is the Phase-S delivery cut: server-rendered Go html/template, vendored
-  CSS, optional vanilla JS, no SvelteKit, no `htmx`, no client framework.
-  htmx is gated as a Phase-X token; this spec stays opt-in via
-  `phase: x-forward-fit` because it explicitly names the deferral.
+  SUPERSEDED 2026-06-08 by docs/engineer/specs/2026-06-08-operator-console-ui-roadmap-v2.md.
+  The operator decision on 2026-06-08 flipped the SvelteKit prohibition
+  recorded here; v2 re-sequences the slices for the SvelteKit target
+  while preserving substrate prereqs and the operator-experience
+  principle. Retained for historical context. Active roadmap lives in v2.
+
+  Original framing (now historical): v5.1 design (PR #701) is the
+  aspirational target ledger. This roadmap was the Phase-S delivery
+  cut: server-rendered Go html/template, vendored CSS, optional vanilla
+  JS, no SvelteKit, no `htmx`, no client framework. htmx was gated as a
+  Phase-X token; this spec stayed opt-in via `phase: x-forward-fit`
+  because it explicitly named the deferral.
 ---
 
 # Operator Console — Phase-S UI Roadmap (S1 → S2 → S3)
