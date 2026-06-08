@@ -8,7 +8,7 @@ date: 2026-06-08
 
 # Regatta on arbitrary repo — generalization umbrella
 
-_Author: design session, 2026-06-08. Source: operator question — "is regatta extensible to ANY codebase?". Companion specs: `docs/engineer/specs/2026-06-07-multi-target-repo.md` (#929 Option A landed via #933 — supervisor --name namespacing), `docs/engineer/specs/2026-06-07-bring-your-own-agent.md` (#930 BYOA spawner adapter), `docs/engineer/specs/2026-06-07-byom-model-providers.md` (#928 BYOM), `docs/engineer/specs/2026-06-08-self-host-smoke-harness.md` (#864), `docs/engineer/specs/2026-06-07-autotuner-closed-loop.md` (#955 live-outcome closed loop). Memory cites: `feedback_default_simpler`, `feedback_decision_priority`, `feedback_single_user_priority`, `feedback_no_signatures`, `feedback_root_cause`, `feedback_deletion_default`, `feedback_validate_before_ship`, `feedback_adversarial_review_every_step`, `feedback_audit_main_before_implementing`._
+_Author: design session, 2026-06-08. Source: operator question — "is regatta extensible to ANY codebase?". Companion specs: `docs/engineer/specs/2026-06-07-multi-target-repo.md` (#929 Option A landed via #933 — supervisor --name namespacing), `docs/engineer/specs/2026-06-07-bring-your-own-agent.md` (#930 BYOA spawner adapter), `docs/engineer/specs/2026-06-07-byom-model-providers.md` (#928 BYOM), `docs/engineer/specs/2026-06-08-self-host-smoke-harness.md` (#864), `docs/engineer/specs/2026-06-07-autotuner-closed-loop.md` (#926 autotuner closed loop). Memory cites: `feedback_default_simpler`, `feedback_decision_priority`, `feedback_single_user_priority`, `feedback_no_signatures`, `feedback_root_cause`, `feedback_deletion_default`, `feedback_validate_before_ship`, `feedback_adversarial_review_every_step`, `feedback_audit_main_before_implementing`._
 
 ```release-notes
 [DOCS] Spec umbrella for regatta-on-arbitrary-repo generalization.
@@ -135,7 +135,7 @@ Resolution order per prompt slot:
 
 ### L4 — Quality-feedback loop per target
 
-**Problem.** L1 + L2 + L3 widen the prompt surface; without measurement we don't know if quality on target-foo regressed or held. The autotuner closed-loop spec (#955) measures THIS repo via live-outcome rates; no per-target dimension today.
+**Problem.** L1 + L2 + L3 widen the prompt surface; without measurement we don't know if quality on target-foo regressed or held. The autotuner closed-loop spec (#926) measures THIS repo via live-outcome rates; no per-target dimension today.
 
 **Design.** Two per-target meters emitted to OTEL:
 
@@ -213,7 +213,7 @@ cascades:
 
 **Phase-X gate.** Defers behind:
 1. Privacy / tenant-isolation triggers — even single-operator, code snippets in detector findings may carry secrets / proprietary patterns. Per-repo isolation by default.
-2. The autotuner closed-loop (#955) lands first — it's the per-repo precursor; cross-repo amplification only makes sense once per-repo signal is proven.
+2. The autotuner closed-loop (#926) lands first — it's the per-repo precursor; cross-repo amplification only makes sense once per-repo signal is proven.
 3. ≥ 3 active targets where the same selfimprove rule fires independently (the "I keep re-learning this" trigger).
 
 NOT in scope.
@@ -293,7 +293,7 @@ Each slice files as a separate `[autonomous]` + `regatta-on-arbitrary-repo` labe
 - Extend `internal/orchestrator/prompt/` to read `regatta-prompts/{CLAUDE.md,implementer.md,reviewer.md,designer.md}` from the target repo worktree (issue base branch, NOT PR head branch).
 - Resolution order: L1 baseline + L2 enrichment + L3 override appended at end.
 - File-size cap 50KB per file; oversize → log warn + skip.
-- Workflow: implement the read path only; `internal/selfimprove/detector.go` write-back stays on the autotuner spec path (#955).
+- Workflow: implement the read path only; `internal/selfimprove/detector.go` write-back stays on the autotuner spec path (#926).
 - Tests: `TestOverride_RegattaPromptsDir_AppendsToBaseline`, `TestOverride_RegattaPromptsClaudeMd_OverridesRoot`, `TestOverride_ReadsBaseBranchNotHead`, `TestOverride_OversizeFile_LogsAndSkips`.
 - Acceptance: L3.1 through L3.4.
 
