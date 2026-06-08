@@ -19,10 +19,12 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// SpecAdapter mirrors the orchestrator's read surface. Declared
-// locally so adaptersync does not import orchestrator (import cycle).
+// SpecAdapter is the subset of schemas.SpecAdapter the Syncer needs:
+// List drives the mirror; Capabilities supplies MinPollInterval so the
+// Syncer can skip List inside the rate-budget window (#888).
 type SpecAdapter interface {
 	List(ctx context.Context) ([]schemas.WorkItem, error)
+	Capabilities() schemas.Capabilities
 }
 
 // Config holds dependencies for a Syncer. Mirrors the Config.Logger
@@ -66,11 +68,19 @@ func (c Config) ResolveMeter() metric.Meter {
 // Syncer pairs an adapter with the state DB. Timestamps are passed
 // to Sync rather than held here, so concurrent producers sharing a
 // DB cannot race on a shared clock.
+//
+// lastPoll holds the most recent Sync attempt timestamp (success OR
+// error) so the MinPollInterval gate can short-circuit re-polls inside
+// the rate-budget window — including the error case where retry-inside-
+// throttle worsens the limit (#888). Single-adapter scope; concurrency
+// is provided by orchestrator.PollOnce's flock.
 type Syncer struct {
-	adapter SpecAdapter
-	db      *state.DB
-	log     *slog.Logger
-	tracer  trace.Tracer
+	adapter           SpecAdapter
+	db                *state.DB
+	log               *slog.Logger
+	tracer            trace.Tracer
+	adapterPollErrors metric.Int64Counter
+	lastPoll          time.Time
 }
 
 // New constructs a Syncer from a Config. Returns an error if any
@@ -92,7 +102,12 @@ func New(cfg Config) (*Syncer, error) {
 	if tracer == nil {
 		tracer = otel.Tracer("adaptersync")
 	}
-	return &Syncer{adapter: cfg.Adapter, db: cfg.DB, log: log, tracer: tracer}, nil
+	meter := cfg.ResolveMeter()
+	adapterPollErrors, err := meter.Int64Counter("regatta.adaptersync.adapter_poll.errors_total")
+	if err != nil {
+		adapterPollErrors, _ = obs.Meter(obs.MeterScopeAdaptersyncFallback).Int64Counter("regatta.adaptersync.adapter_poll.errors_total")
+	}
+	return &Syncer{adapter: cfg.Adapter, db: cfg.DB, log: log, tracer: tracer, adapterPollErrors: adapterPollErrors}, nil
 }
 
 // Sync upserts adapter items, tombstones rows the adapter no longer
@@ -109,8 +124,17 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	// adapter→state mirror activity shows up in the trace tree.
 	ctx, span := s.tracer.Start(ctx, "adaptersync.sync")
 	defer span.End()
+	// MinPollInterval gate (#888): zero-value lastPoll fires the first
+	// call; subsequent calls inside the budget window short-circuit
+	// BEFORE the network hop. lastPoll advances on the error path too so
+	// a flapping rate-limited adapter is not retried-into-the-throttle.
+	if minPoll := s.adapter.Capabilities().MinPollInterval; minPoll > 0 && !s.lastPoll.IsZero() && pollStartedAt.Sub(s.lastPoll) < minPoll {
+		return nil
+	}
+	s.lastPoll = pollStartedAt
 	items, err := s.adapter.List(ctx)
 	if err != nil {
+		s.adapterPollErrors.Add(ctx, 1)
 		return fmt.Errorf("adaptersync: adapter list: %w", err)
 	}
 

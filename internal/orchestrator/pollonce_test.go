@@ -34,6 +34,8 @@ func (okAdapter) List(context.Context) ([]schemas.WorkItem, error) {
 	return nil, nil
 }
 
+func (okAdapter) Capabilities() schemas.Capabilities { return schemas.Capabilities{} }
+
 // listFailingAdapter fails on every List so we can prove the orchestrator
 // fail-fasts when adaptersync.Sync errors. Distinct from
 // orchestrator_test.go's failingAdapter so the rewire of PollOnce can
@@ -43,6 +45,8 @@ type listFailingAdapter struct{}
 func (listFailingAdapter) List(context.Context) ([]schemas.WorkItem, error) {
 	return nil, fmt.Errorf("synthetic adapter list failure")
 }
+
+func (listFailingAdapter) Capabilities() schemas.Capabilities { return schemas.Capabilities{} }
 
 // newPollOnceHarness wires the new Config-based Orchestrator with an
 // empty briefs FS so PollOnce exercises the flock -> AdapterSync ->
