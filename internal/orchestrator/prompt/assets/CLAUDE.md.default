@@ -91,8 +91,9 @@ prevents an hour of rebase against work that already merged.
 
 Every load-bearing artifact gets an independent adversarial pass — not
 just pull requests. Design briefs, specs, prompt templates, gate scripts,
-CI workflows, agent rules all qualify. Spawn a fresh reviewer agent or
-ask a teammate; do NOT tag your own work as reviewed. An author-written
+CI workflows, agent rules all qualify. If your workflow supports agent
+subagents, spawn a fresh reviewer agent in a separate slot. Otherwise,
+ask a teammate. Do NOT tag your own work as reviewed. An author-written
 "Reviewer-recommendation: APPROVE" with no second pair of eyes is the
 same as no review — it just passes the mechanical gate.
 
@@ -103,12 +104,16 @@ to skip review in the pull request body. The default is review.
 ## Reviewer findings to tracking issues
 
 Every CRITICAL / HIGH / MEDIUM finding from the reviewer that is NOT
-fixed inline must become a tracking issue BEFORE the pull request is
+fixed inline must become a tracking entry BEFORE the pull request is
 marked merge-ready. Pull request bodies are not durable; reviewer
-comments evaporate; the only persistent surface is the issue tracker.
-Title pattern: `[REVIEWER #PR] <severity> <category>: <one-line claim>`.
-The pull request body then cites the new issue numbers in a leftovers
-section.
+comments evaporate; the only persistent surface is the project's
+tracker (GitHub Issues, Jira, Linear, etc). Title pattern:
+`[REVIEWER #PR] <severity> <category>: <one-line claim>`. The pull
+request body then cites the new tracker IDs in a leftovers section.
+If the repository has no issue tracker at all, document the findings
+in a "Leftover findings" section of the pull request body — preserving
+the surface is what matters; the GitHub Issues form is the default
+implementation, not a hard requirement.
 
 ## Validate empirically before shipping CI / performance / cost claims
 
@@ -133,8 +138,10 @@ When live validation is not possible (no staging, no production access,
 no real workload reachable from CI), the test suite MUST cover the
 behavior end-to-end. There is no "we hope it works" middle ground —
 either you watch it run for real, or the test asserts it. TDD is
-mandatory: the failing test that covers the post-ship behavior lands
-FIRST, then the implementation, then green.
+mandatory IN THIS CASE ONLY: the failing test that covers the post-ship
+behavior lands FIRST, before implementation, then green. When live
+validation IS possible, the test still helps but the live observation
+window is the load-bearing check.
 
 If the change touched a load-bearing surface, also check the obvious
 neighbors — a fix in module A often perturbs module B in ways the test
