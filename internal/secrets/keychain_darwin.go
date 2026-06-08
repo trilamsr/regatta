@@ -11,22 +11,36 @@ import (
 	"strings"
 )
 
+const defaultKeychainService = "regatta"
+
 // keychainFetcher shells out to /usr/bin/security on darwin. We avoid
 // CGo + the go-keyring dep — the platform tool is documented, present
 // on every darwin install, and supports the `-A` prompt-suppression
 // flag we need for unattended supervisor wakes (R1).
 type keychainFetcher struct {
 	service string // keychain service label; "regatta" by default
+	account string // optional `-a <account>` override; empty ⇒ use canonical key (#934)
 }
 
 // NewKeychainFetcher constructs the darwin Keychain adapter. service
 // is the keychain "service" attribute under which secrets live.
 func NewKeychainFetcher(service string) Fetcher {
 	if service == "" {
-		service = "regatta"
+		service = defaultKeychainService
 	}
 	return keychainFetcher{service: service}
 }
+
+// newNamedKeychainFetcher binds a canonical key to a custom keychain account
+// per spec.Name (#934). Get(_, key) still ValidateKey-guards key but issues
+// `security ... -a <account>` instead of `-a <key>`.
+func newNamedKeychainFetcher(account string) Fetcher {
+	return keychainFetcher{service: defaultKeychainService, account: account}
+}
+
+// keychainCommand is a test seam so unit tests can intercept the
+// `/usr/bin/security` invocation and assert which account was queried.
+var keychainCommand = exec.Command
 
 // Name identifies this adapter for diagnostics + audit output.
 func (keychainFetcher) Name() string { return AdapterKeychain }
@@ -42,7 +56,11 @@ func (k keychainFetcher) Get(_ context.Context, key string) (Value, error) {
 	// prints the password to stdout. -w means "print password only".
 	// key is regex-validated by ValidateKey above; no shell-traversal
 	// risk. #nosec G204 — fixed binary + validated args.
-	cmd := exec.Command("/usr/bin/security", "find-generic-password", "-s", k.service, "-a", key, "-w") //nolint:gosec
+	account := key
+	if k.account != "" {
+		account = k.account
+	}
+	cmd := keychainCommand("/usr/bin/security", "find-generic-password", "-s", k.service, "-a", account, "-w")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -111,3 +129,8 @@ func (k keychainFetcher) Delete(ctx context.Context, key string) error {
 func platformAdapters() []Fetcher {
 	return []Fetcher{NewKeychainFetcher("")}
 }
+
+// newNamedPassFetcher is unsupported on darwin; returns an
+// always-ErrUnsupported fetcher so routedFetcher falls through to
+// Default chain (#934).
+func newNamedPassFetcher(_ string) Fetcher { return unsupportedFetcher{adapter: AdapterPass} }

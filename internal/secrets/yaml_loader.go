@@ -82,7 +82,15 @@ func fetcherForSpec(ctx context.Context, key string, spec *Spec) (Fetcher, error
 			return briefHMACKeyringFormatter{inner: f, keyID: spec.KeyID}, nil
 		}
 		return f, nil
-	case SourceKeychain, SourcePass:
+	case SourceKeychain:
+		if spec.Name != "" {
+			return newNamedKeychainFetcher(spec.Name), nil
+		}
+		return Default(ctx), nil
+	case SourcePass:
+		if spec.Name != "" {
+			return newNamedPassFetcher(spec.Name), nil
+		}
 		return Default(ctx), nil
 	default:
 		return nil, fmt.Errorf("unknown source %q (want env|keychain|pass|file)", spec.Source)
@@ -107,6 +115,16 @@ func (b briefHMACKeyringFormatter) Get(ctx context.Context, key string) (Value, 
 		return Value{}, ErrNotFound
 	}
 	return NewValue([]byte(b.keyID + ":" + hex.EncodeToString(raw))), nil
+}
+
+// unsupportedFetcher reports its adapter name but always returns
+// ErrUnsupported — used as the cross-platform stub for named
+// keychain/pass binds on platforms that lack the backend (#934).
+type unsupportedFetcher struct{ adapter string }
+
+func (u unsupportedFetcher) Name() string                          { return u.adapter }
+func (u unsupportedFetcher) Get(_ context.Context, _ string) (Value, error) {
+	return Value{}, ErrUnsupported
 }
 
 type namedEnvFetcher struct {

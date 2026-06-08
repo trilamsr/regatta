@@ -8,3 +8,13 @@ package secrets
 func platformAdapters() []Fetcher {
 	return nil
 }
+
+// newNamedKeychainFetcher is unsupported off darwin; returns an
+// always-ErrUnsupported fetcher so the routedFetcher falls through
+// to the Default chain (#934).
+func newNamedKeychainFetcher(_ string) Fetcher { return unsupportedFetcher{adapter: AdapterKeychain} }
+
+// newNamedPassFetcher is unsupported off linux; returns an
+// always-ErrUnsupported fetcher so the routedFetcher falls through
+// to the Default chain (#934).
+func newNamedPassFetcher(_ string) Fetcher { return unsupportedFetcher{adapter: AdapterPass} }

@@ -11,20 +11,35 @@ import (
 	"strings"
 )
 
+const defaultPassBinary = "pass"
+
 // passFetcher shells out to `pass show` on Linux. GPL-2 isolation: we
 // run the unmodified upstream binary as a subprocess (no linking, no
 // source modification) — regatta itself stays outside copyleft scope.
 type passFetcher struct {
 	binary string // pass binary path; "pass" via $PATH by default
+	entry  string // optional `pass show <entry>` override; empty ⇒ use passEntryName(key) (#934)
 }
 
 // NewPassFetcher constructs the Linux pass adapter.
 func NewPassFetcher(binary string) Fetcher {
 	if binary == "" {
-		binary = "pass"
+		binary = defaultPassBinary
 	}
 	return passFetcher{binary: binary}
 }
+
+// newNamedPassFetcher binds a canonical key to a custom pass entry path per
+// spec.Name (#934). Get(_, key) still ValidateKey-guards key but issues
+// `pass show <entry>` instead of `pass show <passEntryName(key)>`.
+func newNamedPassFetcher(entry string) Fetcher {
+	return passFetcher{binary: defaultPassBinary, entry: entry}
+}
+
+// passLookPath / passCommand are test seams so unit tests can intercept
+// the `pass` binary lookup + invocation and assert which entry was queried.
+var passLookPath = exec.LookPath
+var passCommand = exec.CommandContext
 
 // Name identifies this adapter in audit + diagnostics output.
 func (passFetcher) Name() string { return AdapterPass }
@@ -38,15 +53,14 @@ func (p passFetcher) Get(ctx context.Context, key string) (Value, error) {
 	if err := ValidateKey(key); err != nil {
 		return Value{}, err
 	}
-	if _, err := exec.LookPath(p.binary); err != nil {
+	if _, err := passLookPath(p.binary); err != nil {
 		return Value{}, ErrUnsupported
 	}
 	entry := passEntryName(key)
-	// #nosec G204 — key regex-validated above; p.binary defaults to
-	// "pass" via exec.LookPath, operator-overrideable only at adapter
-	// construction.
-	//nolint:gosec // G204: key regex-validated; p.binary is fixed at adapter construction
-	cmd := exec.CommandContext(ctx, p.binary, "show", entry)
+	if p.entry != "" {
+		entry = p.entry
+	}
+	cmd := passCommand(ctx, p.binary, "show", entry)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -128,3 +142,8 @@ func passEntryName(key string) string {
 func platformAdapters() []Fetcher {
 	return []Fetcher{NewPassFetcher("")}
 }
+
+// newNamedKeychainFetcher is unsupported on linux; returns an
+// always-ErrUnsupported fetcher so routedFetcher falls through to
+// Default chain (#934).
+func newNamedKeychainFetcher(_ string) Fetcher { return unsupportedFetcher{adapter: AdapterKeychain} }
