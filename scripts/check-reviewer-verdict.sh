@@ -35,6 +35,17 @@
 #                         self-tag loophole (`feedback_no_self_tagged_approve`):
 #                         author writing own APPROVE token == zero
 #                         adversarial pass.
+#     --automerge-enabled signals that `autoMergeRequest != null` on the PR
+#                         (queried via `gh pr view --json autoMergeRequest`).
+#                         When the PR is also load-bearing AND
+#                         `Reviewer-agent-id:` is present, the gate fails
+#                         closed with stderr token
+#                         `automerge_with_agent_id_on_load_bearing`. Closes
+#                         #1046: agent both writes its own APPROVE and
+#                         enables automerge, leaving no operator window for
+#                         human merge per CLAUDE.md `gates::human_merge`.
+#                         Operator can always disable automerge then merge
+#                         manually.
 #
 #   Operator escape (rare): include `<!-- reviewer-skip-justified: <reason
 #   ≥4 chars> -->` in the PR body to bypass the self-tag mismatch check
@@ -76,6 +87,7 @@ LOAD_BEARING=0
 PATHS_FILE=""
 SKIP=0
 PR_AUTHOR=""
+AUTOMERGE_ENABLED=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -85,6 +97,7 @@ while [ $# -gt 0 ]; do
     --changed-paths-file) PATHS_FILE="$2"; shift 2 ;;
     --skip) SKIP=1; shift ;;
     --pr-author) PR_AUTHOR="$2"; shift 2 ;;
+    --automerge-enabled) AUTOMERGE_ENABLED=1; shift ;;
     -h|--help)
       grep '^#' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -195,6 +208,17 @@ REVIEWER_AGENT_ID=$(awk '
 
 case "$RECOMMENDATION" in
   APPROVE)
+    # Automerge guard (closes #1046): if the agent both writes its own
+    # APPROVE and enables automerge, no operator window exists for human
+    # merge per CLAUDE.md `gates::human_merge`. Token-present check still
+    # runs after the missing-agent-id branch below to keep error messages
+    # specific; the automerge guard fires only when an agent-id is present.
+    if [ "$AUTOMERGE_ENABLED" -eq 1 ] && [ -n "$REVIEWER_AGENT_ID" ]; then
+      echo "check-reviewer-verdict: automerge_with_agent_id_on_load_bearing — autoMergeRequest is enabled on a load-bearing PR carrying Reviewer-agent-id: $REVIEWER_AGENT_ID." >&2
+      echo "  Per CLAUDE.md gates::human_merge, agent-written APPROVE + agent-enabled automerge leaves no operator window for human merge." >&2
+      echo "  Fix: disable automerge (gh pr merge --disable-auto <PR>), then operator merges manually after independent review." >&2
+      exit 1
+    fi
     # Token-present check (closes #999/#1001/#1002 self-tag bypass per
     # `feedback_no_self_tagged_approve`): a load-bearing APPROVE without
     # a named reviewer is a self-tagged approval — independent review

@@ -32,6 +32,8 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           # Per CLAUDE.md "TDD + review": every load-bearing PR (security,
@@ -64,8 +66,16 @@ jobs:
           # `Reviewer-agent-id:` line whose value differs from the author.
           # See `feedback_no_self_tagged_approve` + CLAUDE.md 'No self-tagged
           # `Reviewer-recommendation: APPROVE`'.
+          # --automerge-enabled closes #1046: if autoMergeRequest != null
+          # AND the PR is load-bearing AND Reviewer-agent-id is present,
+          # the gate fails closed — no operator window for human merge.
+          automerge_flag=()
+          if automerge_state=$(gh pr view "$PR_NUMBER" --json autoMergeRequest --jq '.autoMergeRequest' 2>/dev/null) \
+            && [ -n "$automerge_state" ] && [ "$automerge_state" != "null" ]; then
+            automerge_flag=(--automerge-enabled)
+          fi
           if [ "$load_bearing" -eq 1 ]; then
-            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --load-bearing --pr-author "$PR_AUTHOR"
+            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --load-bearing --pr-author "$PR_AUTHOR" "${automerge_flag[@]}"
           else
-            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --pr-author "$PR_AUTHOR"
+            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --pr-author "$PR_AUTHOR" "${automerge_flag[@]}"
           fi

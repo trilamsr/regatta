@@ -262,6 +262,7 @@ func defaultPromptBuilder(req Request) string {
 	b.WriteString("- Comments: WHY-not-WHAT per CLAUDE.md feedback_comments_discipline.\n")
 	b.WriteString("- Deletion default: every PR answers \"what got smaller?\" per CLAUDE.md feedback_deletion_default.\n")
 	b.WriteString("- PR hygiene: --body-file always, release-notes fence required per CLAUDE.md feedback_pr_body_hygiene.\n")
+	b.WriteString("- NEVER enable automerge: do NOT run `gh pr merge --auto`. End with `gh pr ready <N>` + operator-merge handoff. Reviewer-verdict gate fails closed when autoMergeRequest!=null AND Reviewer-agent-id present on load-bearing PR per CLAUDE.md feedback_no_implementer_automerge (#1046).\n")
 	b.WriteString("- A+ scorecard required for [FIX]/[FEATURE]/[PERF] release-notes per CLAUDE.md per-criterion citation gate.\n\n")
 	b.WriteString("### Scorecard citation gate (mandatory for [FIX]/[FEATURE]/[PERF] PRs)\n\n")
 	b.WriteString("Every `[x]` in the A+ Scorecard table MUST cite ONE of these tokens ON THE SAME LINE — prose alone fails scripts/check-scorecard.sh:\n\n")
