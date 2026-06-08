@@ -34,30 +34,32 @@ jobs:
         run: |
           set -euo pipefail
           # Per CLAUDE.md "TDD + review": every load-bearing PR (security,
-          # concurrency, schema, public API) requires an independent
-          # reviewer subagent pass. Operator-discretion enforcement led to
-          # 3 CRITICAL + 3 HIGH defects shipping in one session (retro
-          # 2026-06-04 Impact 1); this gate enforces.
-          # Load-bearing heuristic: any change under internal/{ghclient,
-          # gates,orchestrator,supervisor,ghidempotency,secrets,sandbox}/
-          # or cmd/ or contracts/schemas/.
+          # concurrency, schema, public API, agent rules, CI gates)
+          # requires an independent reviewer subagent pass.
+          # Load-bearing classification lives in scripts/check-reviewer-verdict.sh
+          # so this workflow stays a thin caller — closes #986 cascade
+          # divergence where inline YAML path list shadowed the script's
+          # extended list (CLAUDE.md / Makefile / workflows / templates /
+          # gate-scripts).
           base="${BASE_SHA}"
           if git rev-parse --verify origin/main >/dev/null 2>&1; then
             live_base="$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null || echo "")"
             if [ -n "$live_base" ]; then base="$live_base"; fi
           fi
-          mapfile -t changed < <(git diff --name-only "$base" "${HEAD_SHA}")
+          paths_file=$(mktemp)
+          git diff --name-only "$base" "${HEAD_SHA}" > "$paths_file"
           load_bearing=0
-          for f in "${changed[@]}"; do
-            case "$f" in
+          while IFS= read -r changed_path; do
+            [ -z "$changed_path" ] && continue
+            case "$changed_path" in
               internal/ghclient/*|internal/gates/*|internal/orchestrator/*|internal/supervisor/*|internal/ghidempotency/*|internal/secrets/*|internal/sandbox/*) load_bearing=1; break ;;
               cmd/*|contracts/schemas/*) load_bearing=1; break ;;
             esac
-          done
+          done < "$paths_file"
           body_file=$(mktemp)
           printf '%s' "$BODY" > "$body_file"
           if [ "$load_bearing" -eq 1 ]; then
-            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --load-bearing
+            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --load-bearing
           else
-            bash scripts/check-reviewer-verdict.sh --body-file "$body_file"
+            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file"
           fi

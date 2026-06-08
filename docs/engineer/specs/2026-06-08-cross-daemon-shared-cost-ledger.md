@@ -33,6 +33,8 @@ When N regatta daemons run on one host (today: per-repo split per #933; tomorrow
 
 Root cause: cost + rate-limit state is per-daemon-process; the **API-key boundary is the actual aggregation unit** but the code aggregates per-DB-file.
 
+**Cross-spec relationship to #929 (closes #990):** #929 §4 Option A deferred cross-target cost aggregation under the self-host wedge (single-operator, single-target). This spec (#977) is exactly the cross-target/cross-daemon aggregation #929 named as the Option B graduation trigger. The two specs do NOT contradict: #929 picked Option A *for routing* (each target gets its own daemon + state DB); #977 adds shared-cost ONLY at the API-key boundary, leaving per-daemon state untouched. The graduation trigger from #929 (≥2 daemons sharing one API key) is the activation trigger for this spec's `cost.ledger_path` being non-empty. Operators running one daemon per API key continue with per-daemon mode unchanged.
+
 ## §2 Design options
 
 Three options span the centralization spectrum. Each is evaluated against the decision priority (UX > ease > performance > best-practices > speed > velocity, long-term > short-term) and the self-host filter.
@@ -180,6 +182,8 @@ cost:
 
 When `ledger_path` is unset → existing per-daemon behavior. **No silent migration.**
 
+**Multi-daemon path resolution (#933 interaction, closes #990):** `ledger_path` is resolved as an ABSOLUTE host path by every daemon, NOT relative to the daemon's per-name working directory. Rationale: the ledger's point is cross-daemon coordination; resolving it under each daemon's `<workingDir>/<name>/` would defeat that. The operator MUST supply an absolute path (relative paths reject at config-load with `ErrLedgerPathNotAbsolute`). All daemons sharing an API key MUST point `cost.ledger_path` at the same host inode (verified at startup via `os.SameFile` against a lockfile sibling `<ledger_path>.lock`). When a daemon detects a different inode under the same `api_key_env`, it logs a WARN and falls back to per-daemon mode rather than write to a divergent ledger.
+
 ## §4 Acceptance
 
 **A1 (aggregate cap).** Two daemons configured with `CapMicro = $1.00/day` + same `ledger_path` + same API key. Daemon A spends $0.60, daemon B spends $0.50 — total $1.10. The next call from EITHER daemon is throttled. (Today: both proceed because each sees only its own $0.60 or $0.50.)
@@ -229,12 +233,14 @@ Test files:
 ### S1 — Ledger schema + sqlite locking
 
 Owner: implementer subagent 1.
-Files: `internal/cost/ledger/{client.go,schema.go,client_test.go,concurrent_test.go}` (new package).
+Files: `internal/cost/ledger/{client.go,schema.go,client_test.go,concurrent_test.go,migrations/0001_initial.sql}` (new package + sibling migration dir).
 Out of scope for S1: any wire-up to `cap.Enforcer` (S2) or `cost/gate` (S2).
+
+**Migration namespace (pinned, closes #990):** the ledger schema lives in its OWN migration namespace at `internal/cost/ledger/migrations/`, not the existing `internal/orchestrator/state/migrations/`. Rationale: the ledger is an external-side-effect DB (shared across daemons via filesystem path), not part of the per-daemon state machine. Numbering restarts at `0001`; new ledger migrations land as `internal/cost/ledger/migrations/000N_<slug>.sql`. The orchestrator-state migration counter (per CLAUDE.md `feedback_migration_number_lock` + PR #971's `make next-migration`) is unaffected; subagents working on orchestrator-state migrations and ledger migrations in parallel cannot collide.
 
 Deliverables:
 1. `Client` interface + `sqliteClient` impl using `modernc.org/sqlite` with `_journal_mode=WAL&_busy_timeout=5000`.
-2. Schema as in §3 with `PRAGMA user_version = 1`.
+2. Schema as in §3 with `PRAGMA user_version = 1`, embedded SQL in `internal/cost/ledger/migrations/0001_initial.sql`.
 3. `Reserve` + `Settle` + `AggregateSpend24h` + reservation sweep (every 60s + on Open).
 4. TDD-RED commit: `concurrent_test.go` failing against an empty package; THEN impl; THEN green.
 5. `internal/cost/ledger/acceptance_test.go` shell (skipped) referencing the §4 acceptance criteria — populated in S2.
