@@ -78,6 +78,76 @@ Do not write `Co-Authored-By:` tags, "Generated with" footers, or
 "written by Claude / AI / LLM" markers in commits, pull request bodies,
 pull request titles, code comments, or generated documentation. Anywhere.
 
+## Audit before implementing
+
+Before writing code for a task, verify the work is not already on the main
+branch. Grep the codebase for the expected symbol or path; check the recent
+commit log for a reference to the same issue number; read the file you are
+about to create to see if it exists. Tasks may have shipped in an earlier
+session, in a sibling PR, or under a different name. Five minutes of audit
+prevents an hour of rebase against work that already merged.
+
+## Adversarial review every load-bearing step
+
+Every load-bearing artifact gets an independent adversarial pass — not
+just pull requests. Design briefs, specs, prompt templates, gate scripts,
+CI workflows, agent rules all qualify. If your workflow supports agent
+subagents, spawn a fresh reviewer agent in a separate slot. Otherwise,
+ask a teammate. Do NOT tag your own work as reviewed. An author-written
+"Reviewer-recommendation: APPROVE" with no second pair of eyes is the
+same as no review — it just passes the mechanical gate.
+
+If the surface is small, low-risk, and mechanical (dependency bump that
+CI accepted, single-typo fix, comment-only edit), document the decision
+to skip review in the pull request body. The default is review.
+
+## Reviewer findings to tracking issues
+
+Every CRITICAL / HIGH / MEDIUM finding from the reviewer that is NOT
+fixed inline must become a tracking entry BEFORE the pull request is
+marked merge-ready. Pull request bodies are not durable; reviewer
+comments evaporate; the only persistent surface is the project's
+tracker (GitHub Issues, Jira, Linear, etc). Title pattern:
+`[REVIEWER #PR] <severity> <category>: <one-line claim>`. The pull
+request body then cites the new tracker IDs in a leftovers section.
+If the repository has no issue tracker at all, document the findings
+in a "Leftover findings" section of the pull request body — preserving
+the surface is what matters; the GitHub Issues form is the default
+implementation, not a hard requirement.
+
+## Validate empirically before shipping CI / performance / cost claims
+
+For any change whose justification rests on a performance, memory, cost,
+or CI-runtime claim, run a local measurement and paste the numbers into
+the pull request body. Quoting a reviewer's caution, a stale benchmark,
+or "industry wisdom" does not count. `/usr/bin/time -l`, `go test
+-bench`, `hyperfine`, `wrk`, language-equivalent profilers — five
+minutes of measurement resolves arguments that would otherwise go in
+circles.
+
+## Validate after shipping; watch for unintended side effects
+
+A pull request is not done when CI turns green; it is done when the
+merged behavior matches the claim under real workload. After merge,
+validate LIVE when possible — run the changed code against a real
+input, watch the CI flake rate, watch error logs, watch the relevant
+performance metric, run the downstream test against the merged commit.
+At least one observation window before declaring the work closed.
+
+When live validation is not possible (no staging, no production access,
+no real workload reachable from CI), the test suite MUST cover the
+behavior end-to-end. There is no "we hope it works" middle ground —
+either you watch it run for real, or the test asserts it. TDD is
+mandatory IN THIS CASE ONLY: the failing test that covers the post-ship
+behavior lands FIRST, before implementation, then green. When live
+validation IS possible, the test still helps but the live observation
+window is the load-bearing check.
+
+If the change touched a load-bearing surface, also check the obvious
+neighbors — a fix in module A often perturbs module B in ways the test
+suite did not cover. File a follow-up issue the moment a regression
+appears; do not let a half-broken merge sit.
+
 ## Pull request body shape
 
 Open one pull request for one work item. Title format: `<type>: <short>`
