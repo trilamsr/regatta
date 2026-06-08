@@ -7,6 +7,9 @@ import (
 	"testing"
 	"time"
 
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+
 	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 )
@@ -110,6 +113,44 @@ func TestSyncer_HonoursMinPollInterval_ZeroMinPollAlwaysFires(t *testing.T) {
 	}
 	if got := ad.listCalls(); got != 3 {
 		t.Fatalf("List calls=%d want 3 — MinPoll=0 must skip the gate", got)
+	}
+}
+
+// TestSyncer_AdapterPollErrorCounter pins #889 ported from scheduler: List error increments regatta.adaptersync.adapter_poll.errors_total.
+func TestSyncer_AdapterPollErrorCounter(t *testing.T) {
+	r := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(r))
+	t.Cleanup(func() { _ = mp.Shutdown(context.Background()) })
+
+	ad := &countingMinPollAdapter{minPoll: 5 * time.Second, listErr: schemas.ErrRateLimited}
+	db := newSyncTestDB(t)
+	s := mustNew(t, adaptersync.Config{Adapter: ad, DB: db, Meter: mp.Meter("adaptersync-test")})
+
+	if err := s.Sync(context.Background(), time.Unix(1_700_000_000, 0).UTC()); err == nil {
+		t.Fatal("Sync: want error from adapter, got nil")
+	}
+
+	var rm metricdata.ResourceMetrics
+	if err := r.Collect(context.Background(), &rm); err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	var got int64
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != "regatta.adaptersync.adapter_poll.errors_total" {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			if !ok {
+				t.Fatalf("metric %s data type=%T want metricdata.Sum[int64]", m.Name, m.Data)
+			}
+			for _, dp := range sum.DataPoints {
+				got += dp.Value
+			}
+		}
+	}
+	if got != 1 {
+		t.Fatalf("regatta.adaptersync.adapter_poll.errors_total = %d, want 1 — error path must increment counter", got)
 	}
 }
 

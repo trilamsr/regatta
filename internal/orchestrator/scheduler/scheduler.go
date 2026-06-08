@@ -158,12 +158,6 @@ type Config struct {
 	RecheckBackoffK             int
 	RecheckBackoffSuppressTicks int
 	RecheckBackoffStaleTicks    int
-
-	// Adapters are the registered SpecAdapters the scheduler polls per
-	// tick, honouring each adapter's Capabilities().MinPollInterval so a
-	// rate-budgeted source (github_issues=30s) is not hammered by the
-	// orchestrator's faster default cadence (#847).
-	Adapters []schemas.SpecAdapter
 }
 
 // ResolveMeter returns Meter or a lazily-resolved global fallback.
@@ -225,9 +219,8 @@ type Scheduler struct {
 
 	// Pre-created (§3 row 4 / A-T3) so the hot path is a single
 	// Record() with no per-tick allocation.
-	tickLatency       metric.Float64Histogram
-	stepDuration      metric.Float64Histogram
-	adapterPollErrors metric.Int64Counter
+	tickLatency  metric.Float64Histogram
+	stepDuration metric.Float64Histogram
 
 	// multiDefaultLogged dedupes edge.multiple_defaults_per_from so a
 	// misconfigured brief logs once per (program_id, from_id) per
@@ -240,13 +233,6 @@ type Scheduler struct {
 	WriteHook func(writeIndex int) error
 
 	backoff *recheckBackoff
-
-	// lastPoll tracks the most recent adapter.List attempt per registered
-	// adapter (success OR error) so Tick honours Capabilities().MinPollInterval
-	// without re-polling every tick — including the rate-limit-error case
-	// where retrying inside the budget window worsens the throttle (#847).
-	// Indexed by Config.Adapters slot to keep the key total + cheap.
-	lastPoll []time.Time
 }
 
 // New constructs a Scheduler. Config is copied; later mutations to
@@ -289,16 +275,10 @@ func newScheduler(db schedulerDB, cfg Config) *Scheduler {
 	if err != nil {
 		stepDuration, _ = obs.Meter(obs.MeterScopeSchedulerFallback).Float64Histogram("regatta.scheduler.tick.step_duration_ms")
 	}
-	adapterPollErrors, err := meter.Int64Counter("regatta.scheduler.adapter_poll.errors_total")
-	if err != nil {
-		adapterPollErrors, _ = obs.Meter(obs.MeterScopeSchedulerFallback).Int64Counter("regatta.scheduler.adapter_poll.errors_total")
-	}
 	return &Scheduler{
 		db: db, cfg: cfg, log: log, tracer: tracer,
 		tickLatency: tickLatency, stepDuration: stepDuration,
-		adapterPollErrors: adapterPollErrors,
-		backoff:           newRecheckBackoffWithMeter(meter),
-		lastPoll:          make([]time.Time, len(cfg.Adapters)),
+		backoff: newRecheckBackoffWithMeter(meter),
 	}
 }
 
@@ -340,10 +320,6 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 		name string
 		fn   func() error
 	}{
-		{"poll_adapters", func() error {
-			s.pollAdaptersHonouringMinPoll(ctx)
-			return nil
-		}},
 		{"fold", func() error {
 			if s.cfg.Evaluator == nil {
 				return nil
@@ -438,30 +414,6 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 		}
 	}
 	return reserved, nil
-}
-
-// pollAdaptersHonouringMinPoll calls List on each registered adapter
-// whose Capabilities().MinPollInterval has elapsed since its last poll
-// attempt (zero-value lastPoll always polls — first tick fires).
-// lastPoll updates on error too so a flapping rate-limited adapter is
-// not re-tried inside the budget window. List results are dropped here:
-// adaptersync owns adapter→state mirroring; this seam exists so the
-// scheduler enforces per-adapter cadence so a rate-budgeted source
-// (github_issues=30s) is not hammered at the orchestrator's faster
-// tick rate (#847).
-func (s *Scheduler) pollAdaptersHonouringMinPoll(ctx context.Context) {
-	now := s.cfg.Clock()
-	for i, ad := range s.cfg.Adapters {
-		minPoll := ad.Capabilities().MinPollInterval
-		if !s.lastPoll[i].IsZero() && now.Sub(s.lastPoll[i]) < minPoll {
-			continue
-		}
-		if _, err := ad.List(ctx); err != nil {
-			s.log.Warn("scheduler.adapter_poll_failed", "adapter_index", i, "err", err)
-			s.adapterPollErrors.Add(ctx, 1, metric.WithAttributes(attribute.Int("adapter_index", i)))
-		}
-		s.lastPoll[i] = now
-	}
 }
 
 // tickCtx threads the per-tick WriteHook counter through substrate

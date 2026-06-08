@@ -77,7 +77,10 @@ func newHarness(t *testing.T, count int) (*Orchestrator, *spawner.Stub, *state.D
 			t.Fatalf("write: %v", err)
 		}
 	}
-	ad, err := adapter.NewMarkdownCatalog(adapter.MarkdownCatalogConfig{Root: dir})
+	// MinPoll=1ns disables the adaptersync MinPoll gate (#888) so back-
+	// to-back PollOnce calls in this harness still propagate adapter
+	// changes — the gate is verified in adaptersync/adaptersync_minpoll_test.go.
+	ad, err := adapter.NewMarkdownCatalog(adapter.MarkdownCatalogConfig{Root: dir, MinPoll: time.Nanosecond})
 	if err != nil {
 		t.Fatalf("adapter: %v", err)
 	}
