@@ -7,14 +7,14 @@
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-check: doc-check doc-check-test specs-index-test prose-dup check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-no-repo-specific-slugs lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test  ## Local gate; <60s. `vet` dropped — golangci-lint enables govet (.golangci.yml).
+check: doc-check doc-check-test specs-index-test prose-dup check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test  ## Local gate; <60s. `vet` dropped — golangci-lint enables govet (.golangci.yml).
 
 # CI parallelization shards. Together cover the same gate set as `make check`
 # (plus `stale-todo` for `check-stale-todo`). Local `make check` and
 # `make ci-check` remain the serial pre-push entrypoints; the shards exist so
 # .github/workflows/ci.yml can fan them out into parallel jobs without
 # duplicating the target list per shard.
-check-docs: doc-check doc-check-test specs-index-test prose-dup check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test  ## CI shard: bash-script doc/memory/citation gates. Fast (~30s).
+check-docs: doc-check doc-check-test specs-index-test prose-dup check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-migration-numbers check-migration-numbers-test  ## CI shard: bash-script doc/memory/citation gates. Fast (~30s).
 
 check-go: tidy-check mod-verify verify-vendored-assets go-check  ## CI shard: Go module + race-test sweep. `lint` runs in its own job. Slow (~3-5min, setup-go cached).
 

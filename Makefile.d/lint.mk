@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-no-repo-specific-slugs
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -57,6 +57,15 @@ check-reviewer-verdict-test:  ## Fixture-driven test for check-reviewer-verdict.
 
 check-no-repo-specific-slugs:  ## Fail when bundled-default prompt assets (internal/orchestrator/prompt/assets/) carry feedback_* slugs or scripts/check-*.sh refs that meaningless on arbitrary target repos (spec L1.3, #965).
 	bash scripts/check-no-repo-specific-slugs.sh
+
+check-migration-numbers:  ## Fail when internal/orchestrator/state/migrations/ carries duplicates, non-contiguous tail, or PR-diff adds >1 new migration without justification (spec #971).
+	bash scripts/check-migration-numbers.sh
+
+check-migration-numbers-test:  ## Fixture-driven test for check-migration-numbers.sh (clean / duplicate / non-contiguous / known-gap / multi-add / multi-add-justified).
+	bash scripts/check-migration-numbers_test.sh
+
+next-migration:  ## Print the next free SQLite migration number (zero-padded 4 digits). Use in dispatch prompts: $$(make next-migration).
+	@bash scripts/next-migration.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh
