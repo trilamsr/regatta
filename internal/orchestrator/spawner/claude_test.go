@@ -1,15 +1,20 @@
 package spawner
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
+
+	"github.com/trilamsr/regatta/internal/testutil"
 )
 
 // fakeStarter records every starter call and returns a synthetic
@@ -455,6 +460,49 @@ func TestDefaultPromptBuilder_TargetHasClaudeMd_NoBundledInject(t *testing.T) {
 	})
 	if contains(got, "Operating rules (bundled default") {
 		t.Fatalf("expected NO bundled-default inject when target has CLAUDE.md, got:\n%s", got)
+	}
+}
+
+// TestClaudeSpawn_EmitsAgentExitedAfterChildWait asserts the spawner's
+// cmd.Wait goroutine emits an `agent.exited` slog event carrying the
+// child's exit_code, wall_time_ms, and a deterministic last-text
+// fingerprint once the process is gone — the BUG-1051 silent-exit
+// surface. Without this signal a permission-denied child stays
+// `running` in state.agents forever (#1051 c1).
+func TestClaudeSpawn_EmitsAgentExitedAfterChildWait(t *testing.T) {
+	cs, _, _ := newClaudeHarness(t)
+	var buf bytes.Buffer
+	cs.cfg.Logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	cs.SetStarter(func(ctx context.Context, name string, args []string, stdin io.Reader, stdout io.Writer, dir string) (*exec.Cmd, error) {
+		_, _ = io.Copy(io.Discard, stdin)
+		_, _ = stdout.Write([]byte("final-text-marker-9f3a\n"))
+		cmd := exec.CommandContext(ctx, "sh", "-c", "exit 7")
+		cmd.Dir = dir
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		return cmd, nil
+	})
+	if _, err := cs.Spawn(context.Background(), Request{AgentID: 42, WorkItemID: "WORK-EXIT", Lane: "server"}); err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	testutil.Eventually(t, ctx, 5*time.Millisecond, func() bool {
+		return bytes.Contains(buf.Bytes(), []byte("agent.exited"))
+	}, "agent.exited slog never emitted")
+	out := buf.String()
+	for _, want := range []string{
+		"agent.exited",
+		"exit_code=7",
+		"agent_id=42",
+		"work_item_id=WORK-EXIT",
+		"duration_ms=",
+		"last_text_fingerprint=",
+	} {
+		if !contains(out, want) {
+			t.Fatalf("agent.exited event missing %q: %q", want, out)
+		}
 	}
 }
 

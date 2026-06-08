@@ -36,6 +36,12 @@ const (
 	EventSpawnCompleted EventName = "spawn.completed"
 	EventSpawnFailed    EventName = "spawn.failed"
 
+	// EventAgentExited fires once per spawned child after cmd.Wait
+	// returns. Surfaces the silent-exit case in BUG-1051 where a
+	// permission-denied tool call made the agent stop while the
+	// orchestrator's state-DB row stayed `running` forever (#1051).
+	EventAgentExited EventName = "agent.exited"
+
 	// EventSpawnReconciled fires once per converged work_item; EventSpawnReconcileFailed surfaces per-row error so sweep continues on one bad id (#99).
 	EventSpawnReconciled      EventName = "spawn.reconciled"
 	EventSpawnReconcileFailed EventName = "spawn.reconcile_failed"
@@ -107,6 +113,13 @@ const (
 
 	KeyErr AttrKey = "err"
 
+	// KeyExitCode / KeyLastTextFingerprint surface the child's final
+	// breath when the spawner emits agent.exited (#1051). Fingerprint
+	// is sha256-prefix(last-stdout-window) — bounded, identifier-shape,
+	// safe to ship to log shippers without leaking arbitrary text.
+	KeyExitCode            AttrKey = "exit_code"
+	KeyLastTextFingerprint AttrKey = "last_text_fingerprint"
+
 	KeyWorkItemsEvaluated AttrKey = "work_items_evaluated"
 
 	KeyApprovalID    AttrKey = "approval_id"
@@ -145,6 +158,7 @@ func AllEventNames() []EventName {
 		EventSpawnStarted,
 		EventSpawnCompleted,
 		EventSpawnFailed,
+		EventAgentExited,
 		EventSpawnReconciled,
 		EventSpawnReconcileFailed,
 		EventReapCandidateDetected,
@@ -192,6 +206,8 @@ func AllAttrKeys() []AttrKey {
 		KeyVerdict,
 		KeyReason,
 		KeyErr,
+		KeyExitCode,
+		KeyLastTextFingerprint,
 		KeyWorkItemsEvaluated,
 		KeyApprovalID,
 		KeyReviewerCount,

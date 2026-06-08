@@ -630,3 +630,128 @@ func TestNew_MissingDeps(t *testing.T) {
 		})
 	}
 }
+
+// TestWatcher_BranchDiverged_EmitsWarnOncePerDivergenceSha asserts the
+// pr_open agent whose local worktree HEAD has moved past the remote
+// PR tip (the BUG-1051 stuck-push pattern) emits a single
+// `prwatch.branch_diverged` WARN per (agent_id, divergence_sha) tuple
+// and does NOT transition agent state (#1051 c2/c3).
+func TestWatcher_BranchDiverged_EmitsWarnOncePerDivergenceSha(t *testing.T) {
+	lister := &stubLister{byBranch: map[string][]PullRequest{
+		"regatta/agent-1": {{Number: 99, HeadRefOid: "remotesha", State: "OPEN"}},
+	}}
+	db := statetest.OpenDB(t)
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	heads := map[int64]string{1: "remotesha"}
+	probe := func(id int64) (string, bool) {
+		sha, ok := heads[id]
+		return sha, ok
+	}
+	w, err := New(Config{
+		DB:           db,
+		BranchFn:     branchFor,
+		Lister:       lister,
+		Logger:       log,
+		LocalHeadFn:  probe,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	a := driveToRunning(t, db, "WORK-1")
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("first sweep: %v", err)
+	}
+	if strings.Contains(buf.String(), "branch_diverged") {
+		t.Fatalf("unexpected branch_diverged on aligned heads:\n%s", buf.String())
+	}
+	heads[1] = "localnewersha"
+	preState, err := db.GetAgent(context.Background(), a.ID)
+	if err != nil {
+		t.Fatalf("get pre: %v", err)
+	}
+	if preState.State != state.AgentPROpen {
+		t.Fatalf("pre state=%s, want pr_open", preState.State)
+	}
+	buf.Reset()
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("diverged sweep: %v", err)
+	}
+	if !strings.Contains(buf.String(), "prwatch.branch_diverged") {
+		t.Fatalf("missing prwatch.branch_diverged WARN; got:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "localnewersha") {
+		t.Fatalf("WARN missing local sha; got:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "remotesha") {
+		t.Fatalf("WARN missing remote sha; got:\n%s", buf.String())
+	}
+	postState, err := db.GetAgent(context.Background(), a.ID)
+	if err != nil {
+		t.Fatalf("get post: %v", err)
+	}
+	if postState.State != state.AgentPROpen {
+		t.Fatalf("state advanced past pr_open after divergence: %s", postState.State)
+	}
+	buf.Reset()
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("dedupe sweep: %v", err)
+	}
+	if strings.Contains(buf.String(), "branch_diverged") {
+		t.Fatalf("WARN re-fired on same (agent,sha) tuple; got:\n%s", buf.String())
+	}
+	heads[1] = "evennewersha"
+	buf.Reset()
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("re-diverged sweep: %v", err)
+	}
+	if !strings.Contains(buf.String(), "branch_diverged") {
+		t.Fatalf("WARN did not re-arm on new divergence sha; got:\n%s", buf.String())
+	}
+}
+
+// TestWatcher_BranchDiverged_NilProbeStaysSilent asserts a Watcher
+// constructed without LocalHeadFn never emits branch_diverged (#1051).
+func TestWatcher_BranchDiverged_NilProbeStaysSilent(t *testing.T) {
+	lister := &stubLister{byBranch: map[string][]PullRequest{
+		"regatta/agent-1": {{Number: 1, HeadRefOid: "remotesha", State: "OPEN"}},
+	}}
+	w, db := newTestWatcher(t, lister)
+	driveToRunning(t, db, "WORK-1")
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("sweep 2: %v", err)
+	}
+}
+
+// TestWatcher_BranchDiverged_AbsentLocalSkipsWarn asserts a probe
+// returning ok=false (worktree gone / not accessible) suppresses the
+// WARN — no signal to compare against (#1051).
+func TestWatcher_BranchDiverged_AbsentLocalSkipsWarn(t *testing.T) {
+	lister := &stubLister{byBranch: map[string][]PullRequest{
+		"regatta/agent-1": {{Number: 1, HeadRefOid: "remotesha", State: "OPEN"}},
+	}}
+	db := statetest.OpenDB(t)
+	var buf bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	probe := func(int64) (string, bool) { return "", false }
+	w, err := New(Config{
+		DB: db, BranchFn: branchFor, Lister: lister, Logger: log,
+		LocalHeadFn: probe,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	driveToRunning(t, db, "WORK-1")
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("sweep 1: %v", err)
+	}
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("sweep 2: %v", err)
+	}
+	if strings.Contains(buf.String(), "branch_diverged") {
+		t.Fatalf("WARN fired despite absent local probe; got:\n%s", buf.String())
+	}
+}
