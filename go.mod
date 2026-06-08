@@ -28,7 +28,7 @@ require (
 	golang.org/x/text v0.37.0
 	google.golang.org/grpc v1.81.1
 	gopkg.in/yaml.v3 v3.0.1
-	modernc.org/sqlite v1.50.1
+	modernc.org/sqlite v1.52.0
 	pgregory.net/rapid v1.3.0
 )
 
