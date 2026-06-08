@@ -31,6 +31,7 @@ jobs:
           BODY: ${{ github.event.pull_request.body }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: |
           set -euo pipefail
           # Per CLAUDE.md "TDD + review": every load-bearing PR (security,
@@ -58,8 +59,13 @@ jobs:
           done < "$paths_file"
           body_file=$(mktemp)
           printf '%s' "$BODY" > "$body_file"
+          # --pr-author closes the self-tag loophole on load-bearing PRs:
+          # when present + APPROVE, the gate requires a bare
+          # `Reviewer-agent-id:` line whose value differs from the author.
+          # See `feedback_no_self_tagged_approve` + CLAUDE.md 'No self-tagged
+          # `Reviewer-recommendation: APPROVE`'.
           if [ "$load_bearing" -eq 1 ]; then
-            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --load-bearing
+            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --load-bearing --pr-author "$PR_AUTHOR"
           else
-            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file"
+            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --pr-author "$PR_AUTHOR"
           fi

@@ -26,6 +26,20 @@
 #                         AND BYPASSES the release-notes category auto-skip
 #                         (closes #985 #986 #991 retro audit 2026-06-08).
 #     --skip              short-circuit pass (operator-discretion escape)
+#     --pr-author <login> PR author login (e.g. from `gh api .../pulls/N
+#                         --jq .user.login`). When provided AND the PR
+#                         carries Reviewer-recommendation: APPROVE on a
+#                         load-bearing surface, the script also enforces
+#                         that a bare `Reviewer-agent-id:` line exists AND
+#                         its value differs from <login>. Closes the
+#                         self-tag loophole (`feedback_no_self_tagged_approve`):
+#                         author writing own APPROVE token == zero
+#                         adversarial pass.
+#
+#   Operator escape (rare): include `<!-- reviewer-skip-justified: <reason
+#   ≥4 chars> -->` in the PR body to bypass the self-tag mismatch check
+#   for trivial doc/typo/dep-bump cases. The token-present check still
+#   runs — the escape only relaxes author ≠ Reviewer-agent-id.
 #
 #   Auto-skip: release-notes prefix in [CHORE]/[DOCS]/[CI]/[NONE]/[CHANGE]
 #   (matches scripts/check-scorecard.sh category-exempt list). NOT applied
@@ -61,6 +75,7 @@ BODY_FILE=""
 LOAD_BEARING=0
 PATHS_FILE=""
 SKIP=0
+PR_AUTHOR=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -69,6 +84,7 @@ while [ $# -gt 0 ]; do
     --load-bearing) LOAD_BEARING=1; shift ;;
     --changed-paths-file) PATHS_FILE="$2"; shift 2 ;;
     --skip) SKIP=1; shift ;;
+    --pr-author) PR_AUTHOR="$2"; shift 2 ;;
     -h|--help)
       grep '^#' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -179,6 +195,10 @@ REVIEWER_AGENT_ID=$(awk '
 
 case "$RECOMMENDATION" in
   APPROVE)
+    # Token-present check (closes #999/#1001/#1002 self-tag bypass per
+    # `feedback_no_self_tagged_approve`): a load-bearing APPROVE without
+    # a named reviewer is a self-tagged approval — independent review
+    # never happened.
     if [ -z "$REVIEWER_AGENT_ID" ]; then
       echo "check-reviewer-verdict: load-bearing PR has Reviewer-recommendation: APPROVE but is missing the Reviewer-agent-id token in body." >&2
       echo "  An APPROVE without a named reviewer is a self-tagged approval — independent review never happened." >&2
@@ -187,6 +207,18 @@ case "$RECOMMENDATION" in
       echo "    Reviewer-agent-id: <id>" >&2
       echo "    Reviewer-recommendation: APPROVE" >&2
       exit 1
+    fi
+    # Operator escape via `<!-- reviewer-skip-justified: <reason ≥4 chars> -->`
+    # bypasses BOTH the allowlist check and the author-mismatch check
+    # (rare, trivial doc/typo/dep-bump only). The token-present check
+    # above always applies.
+    JUSTIFICATION=$(grep -oE '<!--[[:space:]]*reviewer-skip-justified:[[:space:]]*[^>]*-->' "$BODY_FILE" \
+      | head -1 \
+      | sed -E 's/^<!--[[:space:]]*reviewer-skip-justified:[[:space:]]*//; s/[[:space:]]*-->$//' \
+      | sed -E 's/[[:space:]]+$//')
+    JUSTIFICATION_LEN=${#JUSTIFICATION}
+    if [ "$JUSTIFICATION_LEN" -ge 4 ]; then
+      exit 0
     fi
     # Independent-reviewer allowlist per `feedback_no_self_tagged_approve`.
     # Real reviewer agent IDs match one of two canonical shapes:
@@ -202,6 +234,20 @@ case "$RECOMMENDATION" in
       echo "  Allowed shapes: harness ID '^a[0-9a-f]{16}\$' (e.g. 'a6614259e2388c0ee') OR named subagent '^(cavecrew|designer|triage|implementer|reviewer)-<slug>\$'." >&2
       echo "  Self-tag escapes (e.g. 'main-thread-adversarial-self', 'self-tagged-defer') rejected per CLAUDE.md 'No self-tagged Reviewer-recommendation: APPROVE'." >&2
       echo "  Fix: dispatch independent reviewer subagent in fresh slot; paste its agent ID into the PR body footer." >&2
+      echo "  Operator escape (rare, trivial doc/typo/dep-bump only):" >&2
+      echo "    <!-- reviewer-skip-justified: <reason ≥4 chars> -->" >&2
+      exit 1
+    fi
+    # Self-tag mismatch check: when caller passes --pr-author, the bare
+    # `Reviewer-agent-id:` value MUST differ from the author login.
+    if [ -n "$PR_AUTHOR" ] && [ "$REVIEWER_AGENT_ID" = "$PR_AUTHOR" ]; then
+      echo "check-reviewer-verdict: self-tagged APPROVE rejected — Reviewer-agent-id ($REVIEWER_AGENT_ID) equals PR author ($PR_AUTHOR)." >&2
+      echo "  Fix: dispatch an independent reviewer subagent in a fresh slot per CLAUDE.md 'TDD + review'." >&2
+      echo "  Update PR body footer with the reviewer subagent id:" >&2
+      echo "    Reviewer-agent-id: <independent-reviewer-id>  # MUST differ from $PR_AUTHOR" >&2
+      echo "    Reviewer-recommendation: APPROVE" >&2
+      echo "  Operator escape (rare, trivial doc/typo/dep-bump only):" >&2
+      echo "    <!-- reviewer-skip-justified: <reason ≥4 chars> -->" >&2
       exit 1
     fi
     exit 0

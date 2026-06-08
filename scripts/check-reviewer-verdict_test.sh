@@ -536,6 +536,158 @@ EOF
   rm -f "$body"
 }
 
+run_case_self_tagged_author_equals_reviewer_fails() {
+  # Closes self-tag loophole: author writing own APPROVE token == zero
+  # adversarial pass. When --pr-author matches Reviewer-agent-id, fail.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+Reviewer-agent-id: trilamsr
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing --pr-author trilamsr 2>&1 | grep -qE "self-tagged|same.*author|independent"; then
+    pass "author == Reviewer-agent-id fails as self-tagged"
+  else
+    fail "author == Reviewer-agent-id should fail as self-tagged (no adversarial pass)"
+  fi
+  rm -f "$body"
+}
+
+run_case_distinct_reviewer_passes() {
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+Reviewer-agent-id: cavecrew-reviewer-xyz789
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing --pr-author trilamsr >/dev/null 2>&1; then
+    pass "distinct Reviewer-agent-id from author passes"
+  else
+    fail "distinct Reviewer-agent-id from author should pass"
+  fi
+  rm -f "$body"
+}
+
+run_case_missing_reviewer_agent_id_on_load_bearing_fails() {
+  # APPROVE without Reviewer-agent-id line on a load-bearing PR fails —
+  # author identity is unverifiable.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing --pr-author trilamsr 2>&1 | grep -qE "Reviewer-agent-id"; then
+    pass "load-bearing APPROVE missing Reviewer-agent-id fails"
+  else
+    fail "load-bearing APPROVE missing Reviewer-agent-id should fail"
+  fi
+  rm -f "$body"
+}
+
+run_case_operator_escape_skips_self_tag_check() {
+  # Operator escape hatch: <!-- reviewer-skip-justified: <reason> -->
+  # in body bypasses the self-tag check (rare; trivial doc/typo/dep-bump).
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Trivial typo fix in internal/orchestrator/scheduler/scheduler.go
+
+<!-- reviewer-skip-justified: typo fix, <1 LoC, no behavior change -->
+
+Reviewer-agent-id: trilamsr
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FIX] typo
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing --pr-author trilamsr >/dev/null 2>&1; then
+    pass "operator escape hatch bypasses self-tag check"
+  else
+    fail "operator escape hatch should bypass self-tag check"
+  fi
+  rm -f "$body"
+}
+
+run_case_operator_escape_too_short_rejected() {
+  # Operator escape requires a reason ≥4 chars — empty or single-word
+  # justifications are rejected so the escape stays auditable.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+<!-- reviewer-skip-justified: x -->
+
+Reviewer-agent-id: trilamsr
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FIX] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing --pr-author trilamsr 2>&1 | grep -qE "self-tagged|reviewer-skip-justified|allowlist"; then
+    pass "operator escape with <4 char reason rejected"
+  else
+    fail "operator escape with <4 char reason should be rejected"
+  fi
+  rm -f "$body"
+}
+
+run_case_no_author_flag_still_enforces_allowlist() {
+  # Even without --pr-author, the independent-reviewer allowlist runs:
+  # a bare author login as Reviewer-agent-id fails the allowlist shape
+  # check (harness-hex OR named-subagent prefix).
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+Reviewer-agent-id: trilamsr
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing 2>&1 | grep -qE "allowlist"; then
+    pass "no --pr-author flag still rejects non-allowlist agent-id"
+  else
+    fail "no --pr-author flag should still enforce allowlist"
+  fi
+  rm -f "$body"
+}
+
 run_case_load_bearing_missing_token
 run_case_load_bearing_approve_passes
 run_case_load_bearing_approve_without_agent_id_fails
@@ -554,6 +706,12 @@ run_case_docs_runbook_still_skips
 run_case_docs_spec_with_token_passes
 run_case_multiple_tokens_uses_last
 run_case_load_bearing_path_classifier
+run_case_self_tagged_author_equals_reviewer_fails
+run_case_distinct_reviewer_passes
+run_case_missing_reviewer_agent_id_on_load_bearing_fails
+run_case_operator_escape_skips_self_tag_check
+run_case_operator_escape_too_short_rejected
+run_case_no_author_flag_still_enforces_allowlist
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"
