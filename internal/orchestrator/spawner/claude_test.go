@@ -360,6 +360,20 @@ func TestDefaultPromptBuilder_ShowsReleaseNotesFenceSyntax(t *testing.T) {
 	}
 }
 
+// TestDefaultPromptBuilder_CommentsZeroByDefaultDirective asserts the worker prompt carries a hard COMMENTS rule mirroring implementer.md so subagents stop tripping check-comment-density (#994/#978/#996 trap projection per feedback_trap_projection).
+func TestDefaultPromptBuilder_CommentsZeroByDefaultDirective(t *testing.T) {
+	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-COMMENTS", Lane: "server"})
+	for _, want := range []string{
+		"COMMENTS: zero by default.",
+		"Test godocs MUST be ≤ 1 line",
+		"≤ 5% comment-density",
+	} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt missing comments directive token %q: %q", want, prompt)
+		}
+	}
+}
+
 // TestDefaultPromptBuilderEmptyItemBodyFallsBackToStubLine asserts the builder degrades to identifier line when ItemBody is empty.
 func TestDefaultPromptBuilderEmptyItemBodyFallsBackToStubLine(t *testing.T) {
 	prompt := defaultPromptBuilder(Request{AgentID: 3, WorkItemID: "WORK-Z", Lane: "docs"})
