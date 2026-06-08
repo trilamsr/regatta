@@ -29,6 +29,14 @@ node_modules/
 package-lock.json
 package.json
 
+# SvelteKit operator console under web/console/ keeps its package.json +
+# package-lock.json tracked. Only the generated outputs are ignored.
+!web/console/package.json
+!web/console/package-lock.json
+web/console/.svelte-kit/
+web/console/build/
+web/console/node_modules/
+
 # Sloth binary cache (downloaded by scripts/slo-compile.sh per
 # tools/sloth/version pin; never committed — the pin file is the
 # source of truth).
