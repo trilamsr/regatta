@@ -48,6 +48,7 @@ LENSES (apply in order)
    - **Density check**: for every new prod `.go` file ≥ 100 LOC in the diff, compute `comment_lines / total_LOC` and report % vs CLAUDE.md ≤ 5% target. Over → MED finding with the density figure.
    - Scan the diff additions for WHAT-narration explicitly; do not infer from the PR description.
    - Output `## Comment sweep` section listing offenders by `path:line` with severity tag, OR `## Comment sweep: clean` if zero. Silence = failure.
+10. **Citation resolve (HIGH severity)** — for brief / spec / dispatch-template diffs: every cited path resolves via `git ls-tree origin/main --name-only | grep -F <path>` (NOT worktree-local Read). Every numeric claim (event-kind count, rule count, LoC) pairs with the exact command that produced it; reviewer re-runs the command. Every OSS prior-art cite names LICENSE-file URL + resolvable tag-ref. HIGH on any unresolved citation, mismatched numeric, or unverified license. Per `feedback_cite_origin_main_not_local`.
 
 RUN LOCAL LINTS (do not infer from PR description)
 - Fetch branch + run `bash scripts/doc-check.sh` (banned phrases, broken links, comment-noise, test-godoc).
