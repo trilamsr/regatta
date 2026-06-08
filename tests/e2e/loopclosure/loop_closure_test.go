@@ -170,20 +170,28 @@ safety:
 	return cmd, cancel
 }
 
+// prListRunner is the gh-pr-list invoker; tests replace it to drive the deadline-burn branch without a real gh binary.
+var prListRunner = func(ctx context.Context, cfg e2eConfig) ([]byte, error) {
+	cmd := exec.CommandContext(ctx, "gh", "pr", "list",
+		"--repo", cfg.Repo,
+		"--state", "all",
+		"--json", "number,title",
+		"-L", "20",
+	)
+	cmd.Env = append(os.Environ(), "GH_TOKEN="+cfg.GHToken)
+	return cmd.Output()
+}
+
+// waitForLinkedPRTick is the polling cadence; tests shrink it to validate deadline-burn within bounded wall time.
+var waitForLinkedPRTick = 20 * time.Second
+
 func waitForLinkedPR(ctx context.Context, t *testing.T, cfg e2eConfig, issueNumber int, titleStamp string) int {
 	t.Helper()
-	tick := time.NewTicker(20 * time.Second)
+	tick := time.NewTicker(waitForLinkedPRTick)
 	defer tick.Stop()
 
 	for {
-		cmd := exec.CommandContext(ctx, "gh", "pr", "list",
-			"--repo", cfg.Repo,
-			"--state", "all",
-			"--json", "number,title",
-			"-L", "20",
-		)
-		cmd.Env = append(os.Environ(), "GH_TOKEN="+cfg.GHToken)
-		out, err := cmd.Output()
+		out, err := prListRunner(ctx, cfg)
 		if err != nil {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				t.Fatalf("deadline reached without linked PR for issue #%d (titleStamp %q): %v", issueNumber, titleStamp, ctx.Err())
@@ -231,6 +239,39 @@ func assertPRBodyShape(ctx context.Context, t *testing.T, cfg e2eConfig, prNumbe
 	}
 	if !strings.Contains(pr.Body, "```release-notes") {
 		t.Errorf("PR #%d body missing release-notes fence", prNumber)
+	}
+}
+
+// TestWaitForLinkedPR_DeadlineBurn pins exit-on-deadline when gh subprocess errors immediately and repeatedly (#919).
+func TestWaitForLinkedPR_DeadlineBurn(t *testing.T) {
+	origRunner := prListRunner
+	origTick := waitForLinkedPRTick
+	t.Cleanup(func() {
+		prListRunner = origRunner
+		waitForLinkedPRTick = origTick
+	})
+	prListRunner = func(context.Context, e2eConfig) ([]byte, error) {
+		return nil, errors.New("simulated gh subprocess failure")
+	}
+	waitForLinkedPRTick = 1 * time.Millisecond
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	done := make(chan struct{})
+	sub := &testing.T{}
+	go func() {
+		defer close(done)
+		_ = waitForLinkedPR(ctx, sub, e2eConfig{Repo: "x", GHToken: "x"}, 1, "stamp")
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("waitForLinkedPR did not exit within 500ms of 50ms deadline (deadline-burn branch broken)")
+	}
+	if !sub.Failed() {
+		t.Fatalf("expected waitForLinkedPR to t.Fatalf on deadline; sub-T not marked failed")
 	}
 }
 
