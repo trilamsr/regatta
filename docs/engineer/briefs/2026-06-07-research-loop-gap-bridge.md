@@ -88,7 +88,7 @@ Net: the spec is comprehensive on the *first-run* of a thesis. Where it is thin:
 
 **Gap.** Spec §2.3 defines `KindReproVerdict` payload as a flat JSON object signed by HMAC. Verifiable-evidence consumers (external auditors, future supply-chain checks) expect a predicate-shaped envelope.
 
-**Adopt.** in-toto Attestation Framework v1.0 (https://github.com/in-toto/attestation) Apache-2.0; envelope is plain JSON. SLSA v1.0 predicate schema. Skip DSSE signing (defer to Phase X Sigstore swap; HMAC stays for now).
+**Adopt.** in-toto Attestation Framework v1.0 (https://github.com/in-toto/attestation/blob/v1.0/LICENSE) Apache-2.0; envelope is plain JSON. SLSA v1.0 predicate schema (Community Specification License 1.0: https://github.com/slsa-framework/slsa/blob/main/LICENSE.md — schema-only use; no code vendored). Skip DSSE signing (defer to Phase X Sigstore swap; HMAC stays for now).
 
 **Shape.** `KindReproVerdict` payload gains three additive fields: `predicateType: "https://regatta.io/research/repro-verdict/v1"`, `subject: [{name, digest: {sha256}}]`, `predicate: {<existing payload>}`. Existing fields unchanged. Migration: writer canonicalization unchanged; readers ignore unknown fields.
 
@@ -194,7 +194,7 @@ Each issue body: cite this brief, name the trigger predicate (= research-mode di
 - Research vision: `docs/engineer/briefs/2026-06-01-regatta-research-vision.md`
 - Self-host filter: `docs/engineer/briefs/2026-06-01-self-host-first.md`
 - in-toto attestation v1.0: https://github.com/in-toto/attestation
-- SLSA v1.0: https://github.com/slsa-framework/slsa
+- SLSA v1.0: https://github.com/slsa-framework/slsa, LICENSE: https://github.com/slsa-framework/slsa/blob/main/LICENSE.md (Community Specification License 1.0; schema-only use)
 - OpenTelemetry Go SDK v1.30.0: https://github.com/open-telemetry/opentelemetry-go
 - Bazel REAPI digest shape: https://github.com/bazelbuild/remote-apis
 - gonum v0.15.1: https://github.com/gonum/gonum
