@@ -315,6 +315,8 @@ import "list"
 	planner_sha?:        string & =~ "^[0-9a-f]{64}$"
 	security_gate_sha?:  string & =~ "^[0-9a-f]{64}$"
 	agent_brief_sha?:    string & =~ "^[0-9a-f]{64}$"
+	// adaptive_enrichment toggles the L2 target-repo convention scanner; default true. See #966 spec §3 L2.
+	adaptive_enrichment?: bool
 }
 
 // Programs configures the multi-feature decomposition layer.
