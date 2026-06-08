@@ -1,4 +1,3 @@
-// Package prompt resolves operating-rules text the spawner injects into worker subprocesses; target-repo CLAUDE.md wins over the bundled default.
 package prompt
 
 import (
@@ -19,7 +18,8 @@ const (
 	SourceBundled Source = "bundled" //nolint:revive // resolution outcome
 )
 
-func ResolveClaudeMd(repoRoot string) (string, Source, error) { //nolint:revive // returns target CLAUDE.md when present, else bundled default; empty repoRoot skips disk
+// ResolveClaudeMd returns the target's CLAUDE.md when present, else the bundled default; empty repoRoot skips disk (unit-test contract).
+func ResolveClaudeMd(repoRoot string) (string, Source, error) {
 	if repoRoot != "" {
 		path := filepath.Join(repoRoot, "CLAUDE.md")
 		b, err := os.ReadFile(path) // #nosec G304 -- operator-configured target worktree
@@ -37,7 +37,8 @@ func ResolveClaudeMd(repoRoot string) (string, Source, error) { //nolint:revive 
 	return string(b), SourceBundled, nil
 }
 
-func AllBundledAssets() map[string]string { //nolint:revive // every embedded asset keyed by on-disk path for repo-leakage audits
+// AllBundledAssets returns every embedded asset keyed by on-disk path for repo-leakage audits.
+func AllBundledAssets() map[string]string {
 	out := map[string]string{}
 	_ = fs.WalkDir(bundled, "assets", func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
