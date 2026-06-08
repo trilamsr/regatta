@@ -96,14 +96,29 @@ jobs:
             # Fetch all check-runs for the head SHA across pages. The Checks
             # API caps `per_page` at 100 — paginate so a check-run matrix
             # expansion beyond 100 entries does not silently drop required
-            # gates from the result set (closes #982).
+            # gates from the result set (closes #982). Guard each page
+            # against transient gh-api failure (closes #1004) — a 502 or
+            # rate-limit-hit returns a non-array body that would crash
+            # jq -s '.[0] + .[1]' with "array and object cannot be added".
             runs_json='[]'
             page=1
             while :; do
-              page_json=$(gh api \
+              if ! page_json=$(timeout 30s gh api \
                 -H "Accept: application/vnd.github+json" \
                 "repos/${REPO}/commits/${HEAD_SHA}/check-runs?per_page=100&page=${page}" \
-                --jq '[.check_runs[] | {name, status, conclusion}]')
+                --jq '[.check_runs[] | {name, status, conclusion}]' 2>&1); then
+                echo "::warning::gh api page=$page failed or hung >30s (will retry next loop): $page_json"
+                sleep 10
+                continue
+              fi
+              case "$page_json" in
+                '['*) ;;
+                *)
+                  echo "::warning::gh api page=$page returned non-array payload (will retry next loop): $page_json"
+                  sleep 10
+                  continue
+                  ;;
+              esac
               count=$(printf '%s' "$page_json" | jq 'length')
               runs_json=$(jq -s '.[0] + .[1]' <(printf '%s' "$runs_json") <(printf '%s' "$page_json"))
               if [ "$count" -lt 100 ]; then
