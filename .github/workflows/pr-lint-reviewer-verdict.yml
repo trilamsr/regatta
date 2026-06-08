@@ -1,0 +1,63 @@
+name: pr-lint-reviewer-verdict
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check-reviewer-verdict:
+    name: check-reviewer-verdict
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          fetch-depth: 0
+
+      # NOTE: pr-lint snapshots PR body at trigger event payload. After
+      # editing the body to add Reviewer-recommendation: APPROVE (or fix
+      # scorecard/release-notes), push an empty commit to force re-trigger
+      # with the live body — body-edit alone reuses the stored payload.
+      - name: check-reviewer-verdict
+        if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Per CLAUDE.md "TDD + review": every load-bearing PR (security,
+          # concurrency, schema, public API) requires an independent
+          # reviewer subagent pass. Operator-discretion enforcement led to
+          # 3 CRITICAL + 3 HIGH defects shipping in one session (retro
+          # 2026-06-04 Impact 1); this gate enforces.
+          # Load-bearing heuristic: any change under internal/{ghclient,
+          # gates,orchestrator,supervisor,ghidempotency,secrets,sandbox}/
+          # or cmd/ or contracts/schemas/.
+          base="${BASE_SHA}"
+          if git rev-parse --verify origin/main >/dev/null 2>&1; then
+            live_base="$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null || echo "")"
+            if [ -n "$live_base" ]; then base="$live_base"; fi
+          fi
+          mapfile -t changed < <(git diff --name-only "$base" "${HEAD_SHA}")
+          load_bearing=0
+          for f in "${changed[@]}"; do
+            case "$f" in
+              internal/ghclient/*|internal/gates/*|internal/orchestrator/*|internal/supervisor/*|internal/ghidempotency/*|internal/secrets/*|internal/sandbox/*) load_bearing=1; break ;;
+              cmd/*|contracts/schemas/*) load_bearing=1; break ;;
+            esac
+          done
+          body_file=$(mktemp)
+          printf '%s' "$BODY" > "$body_file"
+          if [ "$load_bearing" -eq 1 ]; then
+            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --load-bearing
+          else
+            bash scripts/check-reviewer-verdict.sh --body-file "$body_file"
+          fi

@@ -1,5 +1,17 @@
 name: PR lint
 
+# Orchestrator for the per-gate pr-lint-* workflows. The `pr-lint` job below
+# is the required-status-check name registered in branch protection on `main`
+# (alongside verify/lint/govulncheck/validate). It polls the per-gate
+# workflow check-runs for the same head SHA and fails when any gate fails.
+#
+# Per-gate workflows (each owns its own file = no cascade-rebase when a new
+# gate lands):
+#   - .github/workflows/pr-lint-release-notes.yml   (release-notes)
+#   - .github/workflows/pr-lint-doc-check.yml       (doc-check)
+#   - .github/workflows/pr-lint-tdd.yml             (check-tdd)
+#   - .github/workflows/pr-lint-reviewer-verdict.yml (check-reviewer-verdict)
+
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened, labeled, unlabeled]
@@ -10,131 +22,77 @@ concurrency:
 
 permissions:
   contents: read
+  checks: read
+  actions: read
+  pull-requests: read
 
 jobs:
   pr-lint:
     name: pr-lint
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
-        with:
-          fetch-depth: 0
-
-      - name: release-notes block edited
-        if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
+      - name: wait for per-gate workflows
         env:
-          BODY: ${{ github.event.pull_request.body }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+          GATE_JOBS: "release-notes doc-check check-tdd check-reviewer-verdict"
         run: |
           set -euo pipefail
-          # Skip the check entirely when the PR only touches paths with no
-          # user-visible runtime behavior (docs, CI, build system, tooling
-          # pins). A release-notes block on those is theatre. Exiting 0 here
-          # marks the required check passing.
-          # BASE_SHA from the event payload snapshots at PR-open and
-          # only refreshes on PR events; if main moved between events
-          # the diff window pulls in unrelated commits and the skip
-          # heuristic flips off. Recompute the live merge-base when
-          # origin/main is fetched (this checkout uses fetch-depth: 0).
-          base="${BASE_SHA}"
-          if git rev-parse --verify origin/main >/dev/null 2>&1; then
-            live_base="$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null || echo "")"
-            if [ -n "$live_base" ]; then base="$live_base"; fi
-          fi
-          mapfile -t changed < <(git diff --name-only "$base" "${HEAD_SHA}")
-          if [ "${#changed[@]}" -gt 0 ]; then
-            skip=1
-            for f in "${changed[@]}"; do
-              case "$f" in
-                *.md|docs/*) ;;
-                .github/*) ;;
-                scripts/*) ;;
-                Makefile|Makefile.d/*|.gitignore|.gitattributes) ;;
-                .claude/*|.mcp.json) ;;
-                *) skip=0; break ;;
+          # Polls the GitHub Checks API for the per-gate check-runs created
+          # by the pr-lint-* workflows. Exits non-zero if any required gate
+          # ends in failure/cancelled/timed_out; succeeds when all complete
+          # with conclusion=success (or skipped, which GH reports for jobs
+          # whose top-level `if:` evaluates false).
+          deadline=$(( $(date +%s) + 18*60 ))
+          required=( $GATE_JOBS )
+          while :; do
+            now=$(date +%s)
+            if [ "$now" -ge "$deadline" ]; then
+              echo "::error::pr-lint orchestrator timed out waiting for per-gate workflows."
+              exit 1
+            fi
+            # Fetch all check-runs for the head SHA. Filter to required job names.
+            runs_json=$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${REPO}/commits/${HEAD_SHA}/check-runs?per_page=100" \
+              --jq '[.check_runs[] | {name, status, conclusion}]')
+            pending=0
+            failed=0
+            missing=()
+            for name in "${required[@]}"; do
+              if [ "$name" = "pr-lint" ]; then continue; fi
+              row=$(printf '%s' "$runs_json" | jq -r --arg n "$name" '[.[] | select(.name == $n)] | .[0] // empty')
+              if [ -z "$row" ] || [ "$row" = "null" ]; then
+                missing+=("$name")
+                pending=1
+                continue
+              fi
+              status=$(printf '%s' "$row" | jq -r '.status // ""')
+              conclusion=$(printf '%s' "$row" | jq -r '.conclusion // ""')
+              case "$status" in
+                completed)
+                  case "$conclusion" in
+                    success|skipped|neutral) ;;
+                    *) echo "::error::gate '$name' failed (conclusion=$conclusion)"; failed=1 ;;
+                  esac
+                  ;;
+                *) pending=1 ;;
               esac
             done
-            if [ "$skip" -eq 1 ]; then
-              echo "PR only touches docs/CI/build-tooling - release-notes block check skipped."
+            if [ "$failed" -eq 1 ]; then
+              echo "::error::one or more per-gate workflows failed."
+              exit 1
+            fi
+            if [ "$pending" -eq 0 ]; then
+              echo "all per-gate workflows succeeded."
               exit 0
             fi
-          fi
-
-          if [ -z "${BODY:-}" ]; then
-            echo "::error::PR description is empty. Use the PR template and fill in the release-notes block."
-            exit 1
-          fi
-          block=$(printf '%s\n' "$BODY" | awk '
-            /^```release-notes/ { capture=1; next }
-            capture && /^```/    { exit }
-            capture              { print }
-          ')
-          if [ -z "$block" ]; then
-            echo "::error::No \`\`\`release-notes\`\`\` block found in the PR description."
-            exit 1
-          fi
-          trimmed=$(printf '%s' "$block" | tr -d '[:space:]')
-          if [ -z "$trimmed" ]; then
-            echo "::error::release-notes block is empty. Either describe the user-visible change or write 'NONE'."
-            exit 1
-          fi
-          echo "release-notes block ok:"
-          printf '%s\n' "$block"
-
-      - name: doc-check
-        run: |
-          set -euo pipefail
-          bash scripts/doc-check.sh
-
-      - name: check-tdd
-        if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'tdd-justified')
-        env:
-          BODY: ${{ github.event.pull_request.body }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          bash scripts/check-tdd.sh
-
-      # NOTE: pr-lint snapshots PR body at trigger event payload. After
-      # editing the body to add Reviewer-recommendation: APPROVE (or fix
-      # scorecard/release-notes), push an empty commit to force re-trigger
-      # with the live body — body-edit alone reuses the stored payload.
-      - name: check-reviewer-verdict
-        if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
-        env:
-          BODY: ${{ github.event.pull_request.body }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          # Per CLAUDE.md "TDD + review": every load-bearing PR (security,
-          # concurrency, schema, public API) requires an independent
-          # reviewer subagent pass. Operator-discretion enforcement led to
-          # 3 CRITICAL + 3 HIGH defects shipping in one session (retro
-          # 2026-06-04 Impact 1); this gate enforces.
-          # Load-bearing heuristic: any change under internal/{ghclient,
-          # gates,orchestrator,supervisor,ghidempotency,secrets,sandbox}/
-          # or cmd/ or contracts/schemas/.
-          base="${BASE_SHA}"
-          if git rev-parse --verify origin/main >/dev/null 2>&1; then
-            live_base="$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null || echo "")"
-            if [ -n "$live_base" ]; then base="$live_base"; fi
-          fi
-          mapfile -t changed < <(git diff --name-only "$base" "${HEAD_SHA}")
-          load_bearing=0
-          for f in "${changed[@]}"; do
-            case "$f" in
-              internal/ghclient/*|internal/gates/*|internal/orchestrator/*|internal/supervisor/*|internal/ghidempotency/*|internal/secrets/*|internal/sandbox/*) load_bearing=1; break ;;
-              cmd/*|contracts/schemas/*) load_bearing=1; break ;;
-            esac
+            if [ "${#missing[@]}" -gt 0 ]; then
+              echo "waiting for gates: ${missing[*]} (and any still in-flight)"
+            else
+              echo "per-gate workflows still in-flight; polling..."
+            fi
+            sleep 10
           done
-          body_file=$(mktemp)
-          printf '%s' "$BODY" > "$body_file"
-          if [ "$load_bearing" -eq 1 ]; then
-            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --load-bearing
-          else
-            bash scripts/check-reviewer-verdict.sh --body-file "$body_file"
-          fi
