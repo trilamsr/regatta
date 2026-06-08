@@ -4,10 +4,11 @@
 #
 # Why this script exists: every spec PR previously appended one row to the
 # index. With 6+ concurrent spec PRs the bottom of README.md became a
-# DIRTY-merge magnet (8+ PRs hit it on 2026-06-02). Auto-generating the
-# index from the spec files themselves moves the source-of-truth into each
-# spec, eliminates the shared anchor, and makes the index a derived
-# artifact a CI gate can verify byte-for-byte.
+# DIRTY-merge magnet (8+ PRs hit it on 2026-06-02). The generated index
+# is now gitignored (`.gitignore` excludes `docs/engineer/specs/README.md`)
+# so no PR rewrites the shared anchor; operators run `make specs-index`
+# locally to browse. `--check` mode is retained for the generator's own
+# tests; production runs write the file.
 #
 # Input: every *.md file in --specs-dir (default docs/engineer/specs/),
 # minus README.md. Each spec may carry an optional YAML-ish frontmatter:
