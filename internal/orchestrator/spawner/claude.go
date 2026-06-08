@@ -280,8 +280,26 @@ func defaultPromptBuilder(req Request) string {
 	b.WriteString("Open ONE PR for this work_item. Title format: `<type>: <short>`. ")
 	b.WriteString("Body sections: Summary / Root cause / Test plan / release-notes fence. ")
 	b.WriteString("Reviewer-skip per feedback_review_proportional applies for docs/scripts-only <20 LoC.\n\n")
+	if req.RepoRoot != "" && !enrichmentDisabled() {
+		if enrich := prompt.Enrich(context.Background(), req.RepoRoot, prompt.DefaultOptions()); enrich != "" {
+			b.WriteString(enrich)
+			if !strings.HasSuffix(enrich, "\n") {
+				b.WriteString("\n")
+			}
+			b.WriteString("\n")
+		}
+	}
 	b.WriteString("Begin now. Do not summarize the brief back.\n")
 	return b.String()
+}
+
+// enrichmentDisabled reads the REGATTA_PROMPT_ENRICHMENT env override so the
+// operator can switch L2 off without editing regatta.yaml (typed config gate
+// lives on validate.Prompts.AdaptiveEnrichment; the env knob is the runtime
+// kill-switch the spawner reads without a config-loader dep cycle).
+func enrichmentDisabled() bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv("REGATTA_PROMPT_ENRICHMENT")))
+	return v == "0" || v == "false" || v == "off" || v == "no"
 }
 
 // bodyContainsSentinel reports whether an untrusted body would let a hostile brief close the fence early; collision is rare and rejection is cheaper than escape logic.

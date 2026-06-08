@@ -71,6 +71,8 @@ type Prompts struct {
 	PlannerSHA      string `yaml:"planner_sha,omitempty" json:"planner_sha,omitempty"`
 	SecurityGateSHA string `yaml:"security_gate_sha,omitempty" json:"security_gate_sha,omitempty"`
 	AgentBriefSHA   string `yaml:"agent_brief_sha,omitempty" json:"agent_brief_sha,omitempty"`
+	// AdaptiveEnrichment toggles the L2 target-repo convention scanner (#966); nil ⇒ default true.
+	AdaptiveEnrichment *bool `yaml:"adaptive_enrichment,omitempty" json:"adaptive_enrichment,omitempty"`
 }
 
 // Config is the Go form of a validated regatta.yaml; only fields callers reach into are surfaced. Schema authority: contracts/schemas/regatta.v1.cue.
