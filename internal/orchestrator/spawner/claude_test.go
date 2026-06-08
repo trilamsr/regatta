@@ -466,8 +466,8 @@ func TestDefaultPromptBuilder_TargetHasClaudeMd_NoBundledInject(t *testing.T) {
 // TestClaudeSpawn_EmitsAgentExitedAfterChildWait asserts cmd.Wait goroutine emits agent.exited with exit_code + duration_ms + last_text_fingerprint (#1051).
 func TestClaudeSpawn_EmitsAgentExitedAfterChildWait(t *testing.T) {
 	cs, _, _ := newClaudeHarness(t)
-	var buf bytes.Buffer
-	cs.cfg.Logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	buf := &syncBuf{}
+	cs.cfg.Logger = slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	cs.SetStarter(func(ctx context.Context, name string, args []string, stdin io.Reader, stdout io.Writer, dir string) (*exec.Cmd, error) {
 		_, _ = io.Copy(io.Discard, stdin)
 		_, _ = stdout.Write([]byte("final-text-marker-9f3a\n"))
@@ -484,7 +484,7 @@ func TestClaudeSpawn_EmitsAgentExitedAfterChildWait(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	testutil.Eventually(t, ctx, 5*time.Millisecond, func() bool {
-		return bytes.Contains(buf.Bytes(), []byte("agent.exited"))
+		return contains(buf.String(), "agent.exited")
 	}, "agent.exited slog never emitted")
 	out := buf.String()
 	for _, want := range []string{
@@ -499,6 +499,23 @@ func TestClaudeSpawn_EmitsAgentExitedAfterChildWait(t *testing.T) {
 			t.Fatalf("agent.exited event missing %q: %q", want, out)
 		}
 	}
+}
+
+type syncBuf struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (s *syncBuf) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *syncBuf) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
 }
 
 // TestDefaultPromptBuilder_NoClaudeMd_InjectsBundledDefault asserts the bundled default lands inline when the target repo has no CLAUDE.md (spec L1.1).
