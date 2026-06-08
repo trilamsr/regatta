@@ -57,9 +57,7 @@ ci:
   command: "go test ./..."
 ` + serveLaneDefaultGatesBlock
 
-// TestApplyDefaultLaneCap_GitHubIssuesDefaultsToOne asserts c1: the
-// helper installs server:1 + emits scheduler.default_lane_cap_applied
-// when github_issues is wired and no --lane was passed.
+// TestApplyDefaultLaneCap_GitHubIssuesDefaultsToOne asserts server:1 + scheduler.default_lane_cap_applied on github_issues + no --lane (#1048 c1).
 func TestApplyDefaultLaneCap_GitHubIssuesDefaultsToOne(t *testing.T) {
 	repoRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repoRoot, "regatta.yaml"), []byte(serveLaneDefaultGitHubIssuesYAML), 0o600); err != nil {
@@ -80,9 +78,7 @@ func TestApplyDefaultLaneCap_GitHubIssuesDefaultsToOne(t *testing.T) {
 	}
 }
 
-// TestApplyDefaultLaneCap_ExplicitFlagWins asserts the helper is a
-// no-op when the operator passed --lane — explicit choice overrides
-// the safe default.
+// TestApplyDefaultLaneCap_ExplicitFlagWins asserts helper is no-op when operator passed --lane (override survives, #1048 c1).
 func TestApplyDefaultLaneCap_ExplicitFlagWins(t *testing.T) {
 	repoRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repoRoot, "regatta.yaml"), []byte(serveLaneDefaultGitHubIssuesYAML), 0o600); err != nil {
@@ -98,9 +94,26 @@ func TestApplyDefaultLaneCap_ExplicitFlagWins(t *testing.T) {
 	}
 }
 
-// TestApplyDefaultLaneCap_MarkdownCatalogUnaffected asserts the helper
-// is a no-op for markdown_catalog (single-operator local workflow does
-// not need the cap).
+// TestApplyDefaultLaneCap_PartialOverrideStillCapsServer asserts default applies even when operator caps an unrelated lane (#1048 c1 partial-override).
+func TestApplyDefaultLaneCap_PartialOverrideStillCapsServer(t *testing.T) {
+	repoRoot := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repoRoot, "regatta.yaml"), []byte(serveLaneDefaultGitHubIssuesYAML), 0o600); err != nil {
+		t.Fatalf("write regatta.yaml: %v", err)
+	}
+	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
+
+	f := serveFlags{RepoRoot: repoRoot, LaneCaps: laneCapsFlag{"client": 2}}
+	applyDefaultLaneCap(&f, logger)
+
+	if got, want := f.LaneCaps["server"], 1; got != want {
+		t.Fatalf("LaneCaps[server]=%d, want %d (partial override of client lane should not leave server uncapped)", got, want)
+	}
+	if got, want := f.LaneCaps["client"], 2; got != want {
+		t.Fatalf("LaneCaps[client]=%d, want %d (operator's client cap must survive)", got, want)
+	}
+}
+
+// TestApplyDefaultLaneCap_MarkdownCatalogUnaffected asserts helper is no-op for markdown_catalog (#1048 c1).
 func TestApplyDefaultLaneCap_MarkdownCatalogUnaffected(t *testing.T) {
 	repoRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repoRoot, "regatta.yaml"), []byte(serveLaneDefaultMarkdownYAML), 0o600); err != nil {
@@ -116,8 +129,7 @@ func TestApplyDefaultLaneCap_MarkdownCatalogUnaffected(t *testing.T) {
 	}
 }
 
-// TestApplyDefaultLaneCap_NoRegattaYamlUnaffected asserts the helper
-// is a no-op when regatta.yaml is missing entirely (zero-config path).
+// TestApplyDefaultLaneCap_NoRegattaYamlUnaffected asserts helper is no-op when regatta.yaml is missing (#1048 c1).
 func TestApplyDefaultLaneCap_NoRegattaYamlUnaffected(t *testing.T) {
 	repoRoot := t.TempDir() // no regatta.yaml inside
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -130,9 +142,7 @@ func TestApplyDefaultLaneCap_NoRegattaYamlUnaffected(t *testing.T) {
 	}
 }
 
-// TestServe_NoLaneFlag_OnlyOneSpawnPerTick is c3: end-to-end through
-// buildScheduler — with no --lane flag + 2 planned items on the same
-// `server` lane, scheduler reserves exactly 1 per tick.
+// TestServe_NoLaneFlag_OnlyOneSpawnPerTick asserts 2 planned items on shared lane reserve exactly 1 per Tick under default cap (#1048 c3).
 func TestServe_NoLaneFlag_OnlyOneSpawnPerTick(t *testing.T) {
 	repoRoot := t.TempDir()
 	if err := os.WriteFile(filepath.Join(repoRoot, "regatta.yaml"), []byte(serveLaneDefaultGitHubIssuesYAML), 0o600); err != nil {
