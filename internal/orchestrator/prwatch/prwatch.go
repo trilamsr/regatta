@@ -105,6 +105,14 @@ type Config struct {
 	// operators flip on when the threat model elevates to hostile-
 	// fork-user.
 	StrictForkAuthor bool
+
+	// LocalHeadFn returns the agent's local worktree HEAD sha so Sweep
+	// can detect the BUG-1051 stuck-push pattern: agent pushed sha-A,
+	// rebased locally to sha-B, but force-push was denied — PR's
+	// HeadRefOid still reads sha-A while the local worktree carries
+	// sha-B. Returning ok=false (worktree gone, ref missing) suppresses
+	// the probe. Nil disables divergence detection entirely (#1051 c2).
+	LocalHeadFn func(ctx context.Context, agentID int64) (sha string, ok bool)
 }
 
 // Watcher owns the running↔pr_open reconciliation. One per
@@ -131,6 +139,16 @@ type Watcher struct {
 	// the PR transitions back to a non-DIRTY mergeable state so a
 	// subsequent DIRTY re-arms one fresh emission. Operator-console S0.
 	dirtyEmitted map[int64]bool
+
+	// localHeadFn: optional local-HEAD probe. Nil disables divergence
+	// detection. See Config.LocalHeadFn (#1051).
+	localHeadFn func(ctx context.Context, agentID int64) (string, bool)
+
+	// divergedEmitted: per-agent record of the last local sha we
+	// emitted prwatch.branch_diverged for. Same tuple suppresses, new
+	// sha re-arms — matches the BUG-1051 acceptance criterion "once per
+	// (agent_id, divergence_sha) tuple".
+	divergedEmitted map[int64]string
 }
 
 // New constructs a Watcher. Returns an error when required deps are
@@ -181,6 +199,8 @@ func New(cfg Config) (*Watcher, error) {
 		strictForkAuthor:      cfg.StrictForkAuthor,
 		missCount:             make(map[int64]int),
 		dirtyEmitted:          make(map[int64]bool),
+		localHeadFn:           cfg.LocalHeadFn,
+		divergedEmitted:       make(map[int64]string),
 	}, nil
 }
 
@@ -271,6 +291,7 @@ func (w *Watcher) sweepOne(ctx context.Context, a state.Agent) {
 			return
 		}
 		w.missCount[a.ID] = 0
+		w.observeBranchDiverged(ctx, a, *pr)
 		if pr.HeadRefOid == a.PRSHA {
 			return
 		}
@@ -380,6 +401,7 @@ func (w *Watcher) observeHeadChanged(ctx context.Context, a state.Agent, pr Pull
 // `agent_branch_renamed` so the reaper has an actionable signal, then
 // resets the counter so a re-attached branch can re-fire cleanly.
 func (w *Watcher) observeBranchLost(ctx context.Context, a state.Agent) {
+	delete(w.divergedEmitted, a.ID)
 	w.missCount[a.ID]++
 	if w.missCount[a.ID] < w.branchRenameThreshold {
 		return
@@ -451,6 +473,38 @@ func (w *Watcher) observeBranchRenamedByAgent(a state.Agent, branch string, pr P
 		"observed_head_ref_name", pr.HeadRefName,
 		"pr_number", pr.Number,
 	)
+}
+
+// observeBranchDiverged surfaces BUG-1051: the agent pushed sha-A,
+// rebased locally to sha-B, then the force-push was denied (or the
+// agent silently exited before re-pushing). The PR's HeadRefOid stays
+// sha-A while the local worktree carries sha-B; without a signal, the
+// orchestrator waits forever for a terminal-PR transition that will
+// never arrive. Emits once per (agent_id, local_sha) tuple — same sha
+// suppresses, new local sha re-arms.
+func (w *Watcher) observeBranchDiverged(ctx context.Context, a state.Agent, pr PullRequest) {
+	if w.localHeadFn == nil {
+		return
+	}
+	localSHA, ok := w.localHeadFn(ctx, a.ID)
+	if !ok || localSHA == "" {
+		return
+	}
+	if localSHA == pr.HeadRefOid {
+		delete(w.divergedEmitted, a.ID)
+		return
+	}
+	if w.divergedEmitted[a.ID] == localSHA {
+		return
+	}
+	w.log.Warn("prwatch.branch_diverged",
+		string(obs.KeyAgentID), a.ID,
+		string(obs.KeyWorkItemID), a.WorkItemID,
+		"pr_number", pr.Number,
+		"remote_sha", pr.HeadRefOid,
+		"local_sha", localSHA,
+	)
+	w.divergedEmitted[a.ID] = localSHA
 }
 
 func agentSuffix(agentID int64) string {

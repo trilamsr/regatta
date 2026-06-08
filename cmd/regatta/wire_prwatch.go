@@ -29,6 +29,7 @@ func startPRWatcher(ctx context.Context, o *orchestrator.Orchestrator, db *state
 		Lister:       prwatch.NewGHCLILister(),
 		VersionProbe: prwatch.NewGHCLIVersionProbe(),
 		Logger:       slogger,
+		LocalHeadFn:  prwatch.NewWorktreeLocalHeadFn(set.Worktrees.PathFor),
 	})
 	if err != nil {
 		return fmt.Errorf("pr-watch: %w", err)

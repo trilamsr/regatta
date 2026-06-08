@@ -2,18 +2,23 @@ package spawner
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/prompt"
 )
 
@@ -69,7 +74,23 @@ type ClaudeSpawnerConfig struct {
 	// fields (operator_id, dag_id, work_item_id) onto each emitted row
 	// — the factory wins over OnResultEvent when both are set.
 	OnResultEventFor func(Request) ResultEventCallback
+
+	// Logger sinks the agent.exited event the cmd.Wait goroutine emits
+	// after the child process is gone (#1051). Nil falls back to
+	// slog.Default().
+	Logger *slog.Logger
+
+	// Clock is the time source agent.exited uses for wall-time
+	// accounting. Nil falls back to time.Now; tests pin deterministic
+	// timestamps via this seam.
+	Clock func() time.Time
 }
+
+// lastTextRingSize bounds the trailing-stdout window the agent.exited
+// fingerprint hashes. 4 KiB is large enough to cover a typical claude-
+// CLI farewell ("permission denied" + stop message) while keeping the
+// per-spawn allocation cheap.
+const lastTextRingSize = 4096
 
 // PromptBuilder produces the prompt text for one Spawn request.
 type PromptBuilder func(Request) string
@@ -97,6 +118,12 @@ func NewClaudeSpawner(wm *WorktreeManager, cfg ClaudeSpawnerConfig) (*ClaudeSpaw
 	}
 	if cfg.Tracer == nil {
 		cfg.Tracer = otel.Tracer("spawner")
+	}
+	if cfg.Logger == nil {
+		cfg.Logger = slog.Default()
+	}
+	if cfg.Clock == nil {
+		cfg.Clock = time.Now
 	}
 	return &ClaudeSpawner{
 		wm:       wm,
@@ -140,7 +167,8 @@ func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) 
 	}()
 
 	args := append([]string(nil), s.cfg.Args...)
-	cmd, err := s.starter(ctx, s.cfg.Command, args, strings.NewReader(prompt), pw, path)
+	ring := newLastTextRing(lastTextRingSize)
+	cmd, err := s.starter(ctx, s.cfg.Command, args, strings.NewReader(prompt), io.MultiWriter(pw, ring), path)
 	if err != nil {
 		_ = pw.Close()
 		span.End()
@@ -154,11 +182,13 @@ func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) 
 		return Result{}, errors.New("spawner: starter returned cmd with nil Process")
 	}
 	pid := cmd.Process.Pid
+	start := s.cfg.Clock()
 
 	go func() {
-		_ = cmd.Wait()
+		waitErr := cmd.Wait()
 		_ = pw.Close()
 		span.End()
+		s.emitAgentExited(req, cmd, waitErr, ring, start)
 	}()
 
 	sessionID := fmt.Sprintf("claude-%d", req.AgentID)
@@ -332,6 +362,70 @@ func stripControlChars(s string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// lastTextRing is a fixed-size trailing-window writer used to capture
+// the child's final stdout bytes; the agent.exited fingerprint hashes
+// these so operators can correlate sibling logs without shipping the
+// raw text (#1051).
+type lastTextRing struct {
+	mu   sync.Mutex
+	buf  []byte
+	size int
+}
+
+func newLastTextRing(size int) *lastTextRing {
+	return &lastTextRing{size: size}
+}
+
+func (r *lastTextRing) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(p) >= r.size {
+		r.buf = append(r.buf[:0], p[len(p)-r.size:]...)
+		return len(p), nil
+	}
+	if len(r.buf)+len(p) <= r.size {
+		r.buf = append(r.buf, p...)
+		return len(p), nil
+	}
+	keep := r.size - len(p)
+	r.buf = append(r.buf[:0], r.buf[len(r.buf)-keep:]...)
+	r.buf = append(r.buf, p...)
+	return len(p), nil
+}
+
+func (r *lastTextRing) Snapshot() []byte {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]byte, len(r.buf))
+	copy(out, r.buf)
+	return out
+}
+
+// emitAgentExited records the cmd.Wait outcome. Always best-effort: a
+// missing ProcessState (rare) still produces an event with exit_code=-1
+// so the orchestrator never loses the "child is gone" signal (#1051 c1).
+func (s *ClaudeSpawner) emitAgentExited(req Request, cmd *exec.Cmd, waitErr error, ring *lastTextRing, start time.Time) {
+	exitCode := -1
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+	}
+	last := ring.Snapshot()
+	sum := sha256.Sum256(last)
+	fp := hex.EncodeToString(sum[:8])
+	attrs := []any{
+		string(obs.KeyAgentID), req.AgentID,
+		string(obs.KeyWorkItemID), req.WorkItemID,
+		string(obs.KeyLane), req.Lane,
+		string(obs.KeyExitCode), exitCode,
+		string(obs.KeyDurationMs), s.cfg.Clock().Sub(start).Milliseconds(),
+		string(obs.KeyLastTextFingerprint), fp,
+	}
+	if waitErr != nil {
+		attrs = append(attrs, string(obs.KeyErr), waitErr.Error())
+	}
+	s.cfg.Logger.Info(string(obs.EventAgentExited), attrs...)
 }
 
 // execStarter is the production ProcessStarter. Stderr forwards to
