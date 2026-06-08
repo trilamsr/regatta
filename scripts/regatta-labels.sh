@@ -24,26 +24,26 @@ LABELS=(
   # kind (8)
   "kind:bug|D93F0B|Defect: behavior deviates from spec or doc"
   "kind:feat|0E8A16|New capability"
-  "kind:chore|BFD4F2|Tooling, dependency bump, repo housekeeping"
+  "kind:chore|8B949E|Tooling, dependency bump, repo housekeeping"
   "kind:docs|0075CA|Documentation-only change"
-  "kind:refactor|BFD4F2|Internal restructure; no behavior change"
+  "kind:refactor|8B949E|Internal restructure; no behavior change"
   "kind:test|1D76DB|Test-only addition or fix"
-  "kind:wedge|C5DEF5|Umbrella tracking issue holding N slices"
-  "kind:slice|C5DEF5|One implementation slice under an umbrella"
+  "kind:wedge|586069|Umbrella tracking issue holding N slices"
+  "kind:slice|586069|One implementation slice under an umbrella"
   # severity (4)
   "severity:critical|B60205|Production outage, security exploit, data loss"
   "severity:high|D93F0B|Real defect, no workaround, must fix before next release"
-  "severity:medium|FBCA04|Real defect with workaround, or latent risk in load-bearing surface"
+  "severity:medium|B07D00|Real defect with workaround, or latent risk in load-bearing surface"
   "severity:low|0E8A16|Cosmetic, edge case, deferred fine-tuning"
   # priority (3)
   "priority:p0|D93F0B|This-sprint critical-path; blocks other work"
-  "priority:p1|FBCA04|Next-sprint candidate; ships when p0 clears"
-  "priority:p2|EEEEEE|Backlog; picked at operator discretion"
+  "priority:p1|B07D00|Next-sprint candidate; ships when p0 clears"
+  "priority:p2|8B949E|Backlog; picked at operator discretion"
   # state (4)
   "state:blocked|D93F0B|Cannot start until a named prerequisite closes"
-  "state:followup|C5DEF5|Deferred during PR review; reopen-trigger in body"
-  "state:parking|EEEEEE|Forward-fit deferral; reopen-trigger required"
-  "state:in-review|C5DEF5|Has an open PR or is under reviewer-subagent pass"
+  "state:followup|586069|Deferred during PR review; reopen-trigger in body"
+  "state:parking|8B949E|Forward-fit deferral; reopen-trigger required"
+  "state:in-review|586069|Has an open PR or is under reviewer-subagent pass"
   # scope (4)
   "scope:security|5319E7|Auth, secrets, sandbox, supply chain, injection"
   "scope:ci|0052CC|CI gates, GitHub Actions, lint, test infrastructure"
@@ -51,7 +51,7 @@ LABELS=(
   "scope:ux|006B75|Operator-facing surface — change must include the operator's eyeball"
   # special (2)
   "good-first-issue|7057FF|Self-contained, well-scoped, safe for a new contributor"
-  "duplicate|CFD3D7|Closing as duplicate of another tracked issue"
+  "duplicate|424A53|Closing as duplicate of another tracked issue"
 )
 
 canonical_names() {
@@ -67,23 +67,28 @@ repo_label_names() {
 apply_labels() {
   local missing=0
   local updated=0
+  local failed=0
+  local existing
+  existing=$(gh label list --limit 200 --json name --jq '.[].name' || echo "")
   for entry in "${LABELS[@]}"; do
     IFS='|' read -r name color desc <<<"$entry"
-    if gh label list --limit 200 --json name --jq '.[].name' | grep -Fxq "$name"; then
+    if printf '%s\n' "$existing" | grep -Fxq "$name"; then
       if ! gh label edit "$name" --color "$color" --description "$desc" >/dev/null 2>&1; then
         echo "edit FAILED: $name" >&2
+        failed=$((failed + 1))
       else
         updated=$((updated + 1))
       fi
     else
       if ! gh label create "$name" --color "$color" --description "$desc" >/dev/null 2>&1; then
         echo "create FAILED: $name" >&2
+        failed=$((failed + 1))
       else
         missing=$((missing + 1))
       fi
     fi
   done
-  echo "apply: created=$missing updated=$updated"
+  echo "apply: created=$missing updated=$updated failed=$failed"
 
   if [ "$PRUNE" -eq 1 ]; then
     local removed=0
@@ -95,9 +100,15 @@ apply_labels() {
         removed=$((removed + 1))
       else
         echo "delete FAILED: $name" >&2
+        failed=$((failed + 1))
       fi
     done <<<"$extra"
     echo "prune: removed=$removed"
+  fi
+
+  if [ "$failed" -gt 0 ]; then
+    echo "apply: $failed operation(s) failed; check output above" >&2
+    return 1
   fi
 }
 
