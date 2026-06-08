@@ -7,7 +7,7 @@ Copy-paste this prompt to bootstrap a fully autonomous regatta dev session. Desi
 ## Prompt
 
 ```
-Continue regatta development autonomously. Operate INDEFINITELY in auto mode — execute don't ask, ship don't explain, stop only when externally interrupted. **Self-host-first; Phase S1+S2+S3 + OBS-A/B/C/D + PHASE-AUTONOMY W1-W7 ALL SHIPPED through 2026-06-03 (~150+ PRs merged across autonomous sessions). Autonomy-loop structurally CLOSED — regatta can dispatch + L4-review + auto-merge + cost-throttle + self-improvement-detect + alarm-webhook → file issue → close loop. Operator action: `regatta install-service` once + watch.** Direct path to first paying customer: Phase DEPLOY (container + systemd/launchd, READY — operator install pending) → Phase GREEN-CLOCK (30-day-green trigger — counts after deploy) → Phase MVR-1 (first external-customer wedges + DW-superset T7 strategy iface — specs landed for T1/T2/T3/T5/T6, gated on customer-0 interview) → Phase MVR-2 (paying-customer wedges + DW substrate bridge T6 + /workflows UI T7 — skeleton specs landed) → Phase MVR-3 (DW-superset capstone — script gate T5 + JS runtime T6 — makes regatta superset of Claude-Code Dynamic Workflows; skeleton specs in flight). External-buyer wedges (W8 multi-tenant, W10 Sigstore, W11 blackboard, W12 billing, P3.8 swap-out adapters, W9 Temporal-backed impl) stay Phase X until 30-day-green OR external-customer-ask fires. Never bottleneck on roadmap depth — pre-fetch next horizon per feedback_roadmap_pre_fetch when current wave drains. NEVER ask for clarification; decide via subagent + memory rules per feedback_decision_priority (UX > ease > performance > best-practices > speed > velocity). When blocked: file [followup] issue + add to watch-triggers list + pick next priority. Pause only for genuinely irreversible action (tag signing, secret rotation, branch-protection downgrade).
+Continue regatta development autonomously. Operate INDEFINITELY in auto mode — execute don't ask, ship don't explain, stop only when externally interrupted. **Self-host-first; Phase S1+S2+S3 + OBS-A/B/C/D + PHASE-AUTONOMY W1-W7 ALL SHIPPED through 2026-06-03 (~150+ PRs merged across autonomous sessions). Autonomy-loop structurally CLOSED — regatta can dispatch + L4-review + auto-merge + cost-throttle + self-improvement-detect + alarm-webhook → file issue → close loop. Operator action: `regatta install-service` once + watch.** Current direct path per 2026-06-08 operator reorder: P0 operator console v5.1 UI (SvelteKit, full-speed build) → P1 cascade-rebase structural fixes (Makefile/pr-lint/CUE/serve.go/migration-lock) → P2 DEPLOY install + GREEN-CLOCK start → P3 arbitrary-repo Slices 1-5 (#965-#969) → P4 awareness integrations (#974/#976/#972) → P5 trigger-gated cleanup → P6 SOC2 (Phase-X). External-buyer wedges (W8 multi-tenant, W10 Sigstore, W11 blackboard, W12 billing, P3.8 swap-out adapters, W9 Temporal-backed impl) stay Phase X until 30-day-green OR external-customer-ask fires. Never bottleneck on roadmap depth — pre-fetch next horizon per feedback_roadmap_pre_fetch when current wave drains. NEVER ask for clarification; decide via subagent + memory rules per feedback_decision_priority (UX > ease > performance > best-practices > speed > velocity). When blocked: file [followup] issue + add to watch-triggers list + pick next priority. Pause only for genuinely irreversible action (tag signing, secret rotation, branch-protection downgrade).
 
 BOOT
 1. cd /Users/treedesk/Desktop/Projects/regatta && git fetch && git pull --ff-only main
@@ -16,7 +16,36 @@ BOOT
 4. gh pr list --state open  (note current state; in-flight PRs are normal)
 5. Read MEMORY.md + AGENTS.md (auto-loaded). Specs in `docs/engineer/specs/` are canonical for execution.
 
-PRIORITY (top-down, current direct path: deploy regatta-the-binary → green-clock → first paying customer)
+PRIORITY (top-down — 2026-06-08 reorder; current direct path: ship operator console UI v5.1 → unblock parallel velocity via cascade fixes → operator install DEPLOY → green-clock → arbitrary-repo generalization → first paying customer)
+
+P0 — Operator console v5.1 UI build [IN-FLIGHT]
+  UI roadmap v2 + S0 substrate prereqs + SvelteKit scaffold. SvelteKit promoted from MVR-1 to immediate priority per 2026-06-08 operator decision (prior SvelteKit prohibition explicitly flipped). Rationale: operator-facing surface is the dominant UX gap once autonomous loop is structurally closed; full-speed build authorized. References: spec #701 (docs/engineer/specs/2026-06-02-operator-console-design.md) · S0 substrate-prereqs plan (docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md).
+
+P1 — Cascade-rebase structural fixes [MIXED — some shipped, some spec'd this session]
+  Enables parallel velocity for every other slot. Shipped this session: Makefile glob (#960), pr-lint split (#959). Specs landed: CUE schema split (#970), serve.go split (#975), migration-number lock (#971). Rationale: cascade-rebase root cause tripped ≥6x in 2026-06-04/08 sessions per `feedback_cascade_rebase_root_cause`; structural splits unblock downstream PR throughput.
+
+P2 — DEPLOY install + GREEN-CLOCK start [READY — OPERATOR ACTION PENDING]
+  Operator-side gate; nothing downstream proceeds until install fires. See PHASE DEPLOY below for invocation options. Day-0 of 30-day-green starts only after install.
+
+P3 — Arbitrary-repo Slices 1-5 [SLICES 1-2 IN-FLIGHT]
+  Issues #965-#969 — regatta-on-any-repo generalization. External-customer enabler; pairs w/ MVR-1 first-customer wedge. Umbrella specs #963 #964 landed this session.
+
+P4 — Awareness integrations [SPECS LANDED]
+  Issues #974 (chat-notifier) · #976 (digest) · #972 (autonomous-designer). Reduce operator-touch; impl-ready specs sitting behind P0-P3.
+
+P5 — Trigger-gated cleanup [TRIGGER-GATED — do NOT pre-build]
+  #875 (soak-gated MED) · #832 (wedge) · #796 (cost-governor plan) · #895/#896 (soak-gated tests). Each has explicit reopen-trigger; no implementer dispatch until trigger fires.
+
+P6 — SOC2 [PHASE-X — enterprise-ask trigger]
+  Issue #953. Parked until external enterprise customer-ask fires.
+
+Reorder 2026-06-08 — evidence
+- 30+ PRs merged this session via parallel-implementer dispatch (`gh search prs --merged-at '>=2026-06-08' --json number,title -L 40` confirms throughput).
+- Cascade-rebase root cause hit ≥6 times across the session window — drove structural-fix promotion to P1 (#960 + #959 shipped; #970/#975/#971 spec'd).
+- Operator decision 2026-06-08: flip SvelteKit prohibition → SvelteKit becomes P0 substrate for operator console v5.1 ("full-speed build").
+- Roadmap discovery + arbitrary-repo umbrella specs landed (#963 #964) → P3 generalization slot promoted with concrete slice issues.
+
+History markers — DO NOT redo (per feedback_boot_prompt_per_wave_refresh; pruned >2 waves old)
 
 PHASE S — Self-host dogfood-ready core [COMPLETE 2026-06-02]
   S1+S2+S3 shipped. Acceptance: regatta dispatches itself on this repo end-to-end. Smoke test PASSED LIVE. (Detail in git history — pruned per feedback_boot_prompt_per_wave_refresh.)
