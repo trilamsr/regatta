@@ -151,12 +151,9 @@ while IFS= read -r pf; do
     [ "$found" -eq 1 ] && break
     d=$(dirname "$d")
   done
-  # Cross-package symbol-match fallback (#1055): wire files in cmd/
-  # are commonly exercised by unit tests in internal/, which the
-  # ancestor walk cannot reach. Extract every NEW exported symbol
-  # introduced in pf and accept any *_test.go in the PR diff that
-  # mentions one of those identifiers. Negative case is preserved:
-  # zero mentions = still fails.
+  # Cross-package symbol-match fallback (#1055): cmd/ wire files are
+  # commonly exercised by internal/ unit tests, which the ancestor
+  # walk cannot reach (cmd/ and internal/ share no ancestor below /).
   if [ "$found" -eq 0 ]; then
     symbols=$(git diff "$base" "$head" -- "$pf" \
       | awk '
