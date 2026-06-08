@@ -26,9 +26,11 @@ belong in a topic note instead.
   in `pr-lint` and walks the PR diff; any non-test `*.go` with added
   lines requires at least one `*_test.go` (with a real `func Test...`
   / `Benchmark...` / `Example...`) in a shared ancestor directory.
-  Exemptions: generated files (`Code generated` preamble), test-only
-  PRs, release-notes categories `[DOCS]` / `[CHORE]` / `[CI]` /
-  `[NONE]`, or the maintainer-set `tdd-justified` label.
+  Exemptions: generated files (`Code generated` preamble), `*.go`
+  paths under any `testdata/` subtree (Go-toolchain-reserved fixture
+  directory the compiler ignores), test-only PRs, release-notes
+  categories `[DOCS]` / `[CHORE]` / `[CI]` / `[NONE]`, or the
+  maintainer-set `tdd-justified` label.
 
 - **`make check` is the single source of truth for what is verified
   locally and in CI.** Run it before declaring a change complete or
