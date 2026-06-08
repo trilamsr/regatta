@@ -463,12 +463,7 @@ func TestDefaultPromptBuilder_TargetHasClaudeMd_NoBundledInject(t *testing.T) {
 	}
 }
 
-// TestClaudeSpawn_EmitsAgentExitedAfterChildWait asserts the spawner's
-// cmd.Wait goroutine emits an `agent.exited` slog event carrying the
-// child's exit_code, wall_time_ms, and a deterministic last-text
-// fingerprint once the process is gone — the BUG-1051 silent-exit
-// surface. Without this signal a permission-denied child stays
-// `running` in state.agents forever (#1051 c1).
+// TestClaudeSpawn_EmitsAgentExitedAfterChildWait asserts cmd.Wait goroutine emits agent.exited with exit_code + duration_ms + last_text_fingerprint (#1051).
 func TestClaudeSpawn_EmitsAgentExitedAfterChildWait(t *testing.T) {
 	cs, _, _ := newClaudeHarness(t)
 	var buf bytes.Buffer

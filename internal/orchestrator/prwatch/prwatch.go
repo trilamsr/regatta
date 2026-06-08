@@ -401,6 +401,7 @@ func (w *Watcher) observeHeadChanged(ctx context.Context, a state.Agent, pr Pull
 // `agent_branch_renamed` so the reaper has an actionable signal, then
 // resets the counter so a re-attached branch can re-fire cleanly.
 func (w *Watcher) observeBranchLost(ctx context.Context, a state.Agent) {
+	delete(w.divergedEmitted, a.ID)
 	w.missCount[a.ID]++
 	if w.missCount[a.ID] < w.branchRenameThreshold {
 		return

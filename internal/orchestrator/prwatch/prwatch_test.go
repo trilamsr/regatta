@@ -631,11 +631,7 @@ func TestNew_MissingDeps(t *testing.T) {
 	}
 }
 
-// TestWatcher_BranchDiverged_EmitsWarnOncePerDivergenceSha asserts the
-// pr_open agent whose local worktree HEAD has moved past the remote
-// PR tip (the BUG-1051 stuck-push pattern) emits a single
-// `prwatch.branch_diverged` WARN per (agent_id, divergence_sha) tuple
-// and does NOT transition agent state (#1051 c2/c3).
+// TestWatcher_BranchDiverged_EmitsWarnOncePerDivergenceSha asserts pr_open w/ local HEAD ≠ remote tip emits branch_diverged WARN once per (agent,sha) + no state advance (#1051).
 func TestWatcher_BranchDiverged_EmitsWarnOncePerDivergenceSha(t *testing.T) {
 	lister := &stubLister{byBranch: map[string][]PullRequest{
 		"regatta/agent-1": {{Number: 99, HeadRefOid: "remotesha", State: "OPEN"}},
@@ -710,8 +706,7 @@ func TestWatcher_BranchDiverged_EmitsWarnOncePerDivergenceSha(t *testing.T) {
 	}
 }
 
-// TestWatcher_BranchDiverged_NilProbeStaysSilent asserts a Watcher
-// constructed without LocalHeadFn never emits branch_diverged (#1051).
+// TestWatcher_BranchDiverged_NilProbeStaysSilent asserts nil LocalHeadFn never emits branch_diverged (#1051).
 func TestWatcher_BranchDiverged_NilProbeStaysSilent(t *testing.T) {
 	lister := &stubLister{byBranch: map[string][]PullRequest{
 		"regatta/agent-1": {{Number: 1, HeadRefOid: "remotesha", State: "OPEN"}},
@@ -726,9 +721,7 @@ func TestWatcher_BranchDiverged_NilProbeStaysSilent(t *testing.T) {
 	}
 }
 
-// TestWatcher_BranchDiverged_AbsentLocalSkipsWarn asserts a probe
-// returning ok=false (worktree gone / not accessible) suppresses the
-// WARN — no signal to compare against (#1051).
+// TestWatcher_BranchDiverged_AbsentLocalSkipsWarn asserts probe ok=false (worktree gone) suppresses WARN (#1051).
 func TestWatcher_BranchDiverged_AbsentLocalSkipsWarn(t *testing.T) {
 	lister := &stubLister{byBranch: map[string][]PullRequest{
 		"regatta/agent-1": {{Number: 1, HeadRefOid: "remotesha", State: "OPEN"}},
