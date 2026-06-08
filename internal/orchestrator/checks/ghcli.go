@@ -7,7 +7,7 @@ import (
 	"os/exec"
 )
 
-// GHShell shells `gh pr checks <pr> --json conclusion,status,name --required` and folds the rows into a single CheckRun rollup.
+// GHShell folds `gh pr checks --required` rows into a single CheckRun rollup; failure-wins, success only when every required check completed.
 type GHShell struct {
 	Runner func(ctx context.Context, name string, args ...string) ([]byte, error)
 }
@@ -18,12 +18,9 @@ const (
 	statusCompleted   = "completed"
 )
 
-// NewGHShell returns a GHShell wired to os/exec.
-func NewGHShell() *GHShell {
-	return &GHShell{Runner: defaultExec}
-}
+func NewGHShell() *GHShell { return &GHShell{Runner: defaultExec} } //nolint:revive // wires Runner to defaultExec
 
-// PRChecks returns the aggregated rollup: "failure" wins; the rollup is "success/completed" only when every required check has succeeded.
+// PRChecks aggregates required-check rows: "failure" wins; "success/completed" only when every row has succeeded.
 func (g *GHShell) PRChecks(ctx context.Context, pr string) (CheckRun, error) {
 	runner := g.Runner
 	if runner == nil {
@@ -53,10 +50,7 @@ func (g *GHShell) PRChecks(ctx context.Context, pr string) (CheckRun, error) {
 	return CheckRun{Conclusion: conclusionSuccess, Status: statusCompleted}, nil
 }
 
-// defaultExec runs name+args via os/exec; gh CLI binary + args are construction-controlled literal strings (mirrors prwatch/ghcli.go).
-//
-//nolint:gosec // gh CLI + literal-arg shell-out
 func defaultExec(ctx context.Context, name string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // gh CLI binary + literal-arg shell-out (mirrors prwatch/ghcli.go)
 	return cmd.Output()
 }

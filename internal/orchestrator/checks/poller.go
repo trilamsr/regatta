@@ -1,4 +1,3 @@
-// Package checks polls "gh pr checks" and emits one event per state change per PR. v1 ships an Emitter seam so the substrate-write wiring (HMAC keying, run_id resolution) can land separately. Spec §3.2.
 package checks
 
 import (
@@ -7,8 +6,7 @@ import (
 	"sync"
 )
 
-// GHCLI is the gh-shell seam; production wires GHShell, tests inject an in-memory fake.
-type GHCLI interface {
+type GHCLI interface { //nolint:revive // gh-shell seam; production wires GHShell, tests inject a fake
 	PRChecks(ctx context.Context, pr string) (CheckRun, error)
 }
 
@@ -18,20 +16,18 @@ type CheckRun struct {
 	Status     string
 }
 
-// Emission is the payload the poller hands to Emitter on each state change.
-type Emission struct {
+type Emission struct { //nolint:revive // payload the poller hands to Emitter on each state change
 	PR        string
 	CheckRun  CheckRun
 	PrevSeen  bool
 	PrevValue CheckRun
 }
 
-// Emitter is the substrate-write seam; production appends KindGateVerdict {pr,conclusion,status} per spec §3.2.
-type Emitter interface {
+type Emitter interface { //nolint:revive // substrate-write seam; production appends KindGateVerdict per spec §3.2
 	Emit(ctx context.Context, e Emission) error
 }
 
-// Poller observes gh pr-checks per PR and routes each state change through Emitter; concurrent Poll is safe — last-seen map is mutex-guarded.
+// Poller routes gh pr-checks state changes through Emitter; concurrent Poll is safe — last-seen map is mutex-guarded.
 type Poller struct {
 	gh   GHCLI
 	sink Emitter
@@ -40,12 +36,11 @@ type Poller struct {
 	last map[string]CheckRun
 }
 
-// New wires a Poller; last-seen cache starts empty so first observation per PR always emits.
-func New(gh GHCLI, sink Emitter) *Poller {
+func New(gh GHCLI, sink Emitter) *Poller { //nolint:revive // empty last-seen cache so first observation per PR always emits
 	return &Poller{gh: gh, sink: sink, last: map[string]CheckRun{}}
 }
 
-// Poll fetches the current rollup for pr and emits when it differs from the previous observation (first observation always emits). gh.PRChecks runs outside the lock so a slow call does not block siblings.
+// Poll fetches the rollup for pr and emits on change (first observation always emits); gh.PRChecks runs outside the lock so a slow call does not block siblings.
 func (p *Poller) Poll(ctx context.Context, pr string) error {
 	cur, err := p.gh.PRChecks(ctx, pr)
 	if err != nil {

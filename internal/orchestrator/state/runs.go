@@ -7,10 +7,7 @@ import (
 	"time"
 )
 
-// Run is one row in the runs registry. CausalHash pins the inputs the
-// dispatch was deterministic over; RerunOf links a rerun-from-hash
-// child back to its parent. DeclaredEffectClass is the policy envelope
-// the surprise detector folds tool_call observations against. Spec §3.2.
+// Run is one runs-registry row; CausalHash pins deterministic inputs, RerunOf links rerun-from-hash children, DeclaredEffectClass is the surprise-detector envelope (spec §3.2).
 type Run struct {
 	ID                  string
 	StartedAt           time.Time
@@ -28,9 +25,7 @@ type Run struct {
 	DeclaredEffectClass string
 }
 
-// InsertRun appends one runs row; duplicate id surfaces as error
-// rather than upsert — the scheduler dispatch boundary is the sole
-// writer and a collision means the ID generator is racing.
+// InsertRun appends one runs row; duplicate id surfaces as error (scheduler is sole writer; a collision means the ID generator is racing).
 func (d *DB) InsertRun(ctx context.Context, r Run) error {
 	var finishedAt sql.NullInt64
 	if r.FinishedAt != nil {

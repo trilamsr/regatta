@@ -8,8 +8,7 @@ import (
 	"github.com/trilamsr/regatta/internal/canon"
 )
 
-// CausalInputs are the bytes a regatta dispatch is deterministic over; Versions is sorted by canon.Marshal so map iteration order never leaks into Hash(). Spec §3.2 + §3.8.
-type CausalInputs struct {
+type CausalInputs struct { //nolint:revive // bytes a regatta dispatch is deterministic over; Versions is sorted by canon.Marshal so map iteration order never leaks into Hash() (spec §3.2 + §3.8)
 	SpecHash           string            `json:"spec_hash"`
 	ModelHash          string            `json:"model_hash"`
 	PromptTemplateHash string            `json:"prompt_template_hash"`
@@ -18,8 +17,7 @@ type CausalInputs struct {
 	Versions           map[string]string `json:"versions"`
 }
 
-// Hash returns lowercase-hex sha256 of canon.Marshal(c).
-func (c CausalInputs) Hash() (string, error) {
+func (c CausalInputs) Hash() (string, error) { //nolint:revive // lowercase-hex sha256 of canon.Marshal(c)
 	b, err := canon.Marshal(c)
 	if err != nil {
 		return "", fmt.Errorf("canon marshal: %w", err)
