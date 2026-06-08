@@ -67,8 +67,9 @@ L1 and L2 are file-disjoint slices that can land in current phase. L3 is Phase-X
 3.4 L2 sub-package `internal/validation/probe/`:
 
 - `parser.go` — extracts `<!--regatta:probe ... -->` HTML-comment block from issue body OR PR body. Allowed block fields: `kind: test|script|exit_code`, `cite: #NNN` (REQUIRED — must reference the issue closed by the PR), `target: <go-test-name-or-path>`, `timeout_seconds: <int<=300>`.
+  - **`closes` regex (pinned, closes #989):** `cite` matching uses the regex `(?im)^(?:closes|fixes|resolves)[[:space:]]+#([0-9]+)\b`, case-insensitive, matched against the PR body line-by-line. Body MUST contain ≥1 such line whose captured issue number equals `cite`'s. The match consumes only the `closes` family (GitHub auto-close keywords) — `see #NNN`, `re #NNN`, prose mentions DO NOT count. Multiple `closes #N` lines all valid; `cite` matches any one.
 - `runner.go` — dispatch per `kind`:
-  - `kind: test` → `go test -run <target> -count=1 -timeout <timeout>s` against the merged binary's tree; pass iff exit 0.
+  - `kind: test` → `go test -run <target> -count=1 -timeout <timeout>s` against the **merged-SHA** tree (closes #989): runner clones the repo at `${merged_sha}` into an ephemeral working dir, runs the test there. The probe NEVER runs against current `main` — the test sources at probe-execution time MUST be the test sources of the commit being validated. Pass iff exit 0.
   - `kind: script` → exec `target` (path inside repo, no shell expansion); pass iff exit 0.
   - `kind: exit_code` → spawn `regatta <target>` (regatta subcommand only) and assert exit code matches the block's `expect_exit`.
 - `verdict.go` — emits `Outcome` + structured reason; writes a `KindLiveValidation` substrate event tagged with `layer=l2`, `pr=<n>`, `probe_kind=<k>`, `verdict=<v>`.
@@ -261,7 +262,13 @@ The implementer authors these tests FIRST. Each acceptance test below is the fai
 
 7.7 `TestProbeRun_FailsClosedOnPaidLLMCall` (Slice 3): given a probe `kind: test` whose test code makes an HTTP request to any `*.anthropic.com` host, the runner intercepts via `regatta.l4.disabled=true` env propagation AND the test exits non-zero AND `regatta.llm.calls_total{ctx="validation_probe"}` stays 0.
 
-Tests 7.1, 7.3, 7.4, 7.6 are the load-bearing adversarial pins. Each MUST land as a failing-test commit FIRST per TDD.
+7.8 `TestProbeParser_AlwaysPassesProbeRejected` (Slice 3, closes #989): given a probe `kind: script, target: scripts/true.sh` (or any target whose path is NOT touched in the PR diff AND NOT under `testdata/validation/probes/`), parser returns `ErrProbeTargetUnrelated` AND L2 verdict is `skipped` with reason `probe_target_unrelated_to_pr_diff`. The reviewer-lens mechanical backstop from §6.2 row 2 moves from Slice 4 into Slice 3.
+
+7.9 `TestProbeParser_SpoofingCiteMismatchRejected` (Slice 3, closes #989): given a probe `cite: #999` while the PR body's `closes #` lines reference only `#42` and `#100`, parser returns `ErrProbeCiteMismatch` AND L2 verdict is `skipped` with reason `probe_cite_not_in_closes_list`. The `(?im)^(?:closes|fixes|resolves)[[:space:]]+#([0-9]+)\b` regex is the matching contract pinned in §3.4.
+
+7.10 `TestProbeRun_TimeoutSideChannelMitigated` (Slice 3, closes #989): given a probe with `timeout_seconds: 300` and a test that intentionally sleeps 290s, the runner enforces the timeout via `context.WithTimeout` AND emits `verdict=fail, reason=timeout` rather than allowing an attacker to wedge the queue. `kind: script` follows the same contract; the runner MUST NOT honor `timeout_seconds > 300` (parser rejects).
+
+Tests 7.1, 7.3, 7.4, 7.6, 7.8, 7.9, 7.10 are the load-bearing adversarial pins. Each MUST land as a failing-test commit FIRST per TDD.
 
 ## §8 Cross-cuts
 
@@ -297,7 +304,7 @@ Each slice is file-disjoint with the others by package boundary; parallel dispat
 
 - Package surfaces: new `internal/validation/probe/{parser.go,runner.go,verdict.go}`, new `scripts/check-validation-probe.sh` (lint-stage check that probe-block cite matches PR `closes` lines), wire scheduler tick to invoke L2 on `work_item.state == merged`.
 - Behavior: parse probe block; dispatch by `kind`; emit verdict event; reject shell injection / path escape / paid-LLM calls.
-- Acceptance: `TestProbeRun_FailsOnUnsatisfiedClaim` (§7.3), `TestProbeParser_BlockMissingDefaultsToL1Only` (§7.4), `TestProbeParser_RejectsShellInjection` (§7.6), `TestProbeRun_FailsClosedOnPaidLLMCall` (§7.7).
+- Acceptance: `TestProbeRun_FailsOnUnsatisfiedClaim` (§7.3), `TestProbeParser_BlockMissingDefaultsToL1Only` (§7.4), `TestProbeParser_RejectsShellInjection` (§7.6), `TestProbeRun_FailsClosedOnPaidLLMCall` (§7.7), `TestProbeParser_AlwaysPassesProbeRejected` (§7.8), `TestProbeParser_SpoofingCiteMismatchRejected` (§7.9), `TestProbeRun_TimeoutSideChannelMitigated` (§7.10).
 - Phase: current.
 - Reviewer-verdict required: YES (parser is attack surface).
 

@@ -352,7 +352,10 @@ T13. `TestAutotuner_PROpenAttachesAutotuneLabel` — §12 label auto-application
 
 T14. `TestSubstrate_KindAutotuneActionEnumParity` — extends `TestSubstrate_EventKindEnumMatchesSQLCheck`. Maps to A2.
 
-T15. `TestAutotuner_PhaseBDefault_NoLiveWriteCodePath` — static analysis test (grep for `--auto-merge` invocation without the Phase-C unsafe flag). Maps to A11.
+T15. `TestAutotuner_PhaseBDefault_NoLiveWriteCodePath` — static analysis test pinning A11. Scope (closes #988):
+- Grep target: `internal/selfimprove/autotuner/` + `cmd/regatta/autotune.go` (Go files only; vendor/ + testdata/ + `_test.go` excluded).
+- Failing pattern: any literal string `"--auto-merge"` OR `gh.AutoMergeArg` constant reference whose lexical neighborhood (±20 lines) does NOT also contain `phase-c-unsafe-i-know-what-im-doing` AND NOT inside a `// +build phase_c_unsafe` build-tagged file.
+- `decision_required` marker storage: substrate `events` table, `kind='autotune_decision_required'`, `payload.marker='phase-c-unattended'`. Resolution path = `regatta autotune unblock --marker phase-c-unattended` CLI subcommand (deferred until Phase C reopens; in Phase B the test asserts NO row of this kind exists). Maps to A11.
 
 T16. `TestAutotuner_HighCacheHitRateAdmitsRaise` — §7 S3 signal direction. Maps to A1.
 
@@ -368,7 +371,7 @@ Carried forward from the brief's §11. Each is reversible; each has a default pr
 
 1. **Phase C reopen-trigger threshold.** §13 picks "≥90 days green Phase B history". Operator may prefer count-based ("≥50 green autotune PRs merged, zero reverted") or hybrid. **Default proposed: 90 days AND 50 PRs.** Reopen at trigger fire.
 
-2. **Banned-phrase append authority (K5).** §6 admits autotuner to extend `scripts/doc-check.sh`. Operator may prefer this stays operator-only since the banned-phrase list is the most visible operator-authored content. **Default proposed: YES, append-only, ≤1 token / 30d damping cap, novel-token check enforced.**
+2. **Banned-phrase append authority (K5).** §6 admits autotuner to extend `scripts/doc-check.sh`. The banned-phrase array is the most visible operator-authored governance surface (CLAUDE.md cites it by name), so unrestricted autotune-mint is meta-load-bearing. **Default proposed (hardened post-#988 review): NO autotune-mint without a second-key acknowledgement** — autotuner files a `[self-improvement]` issue carrying the proposed token + its R2 fire-count evidence; only when that issue picks up an explicit `autotune-k5-approved` operator label may the autotuner open the K5 PR. The existing damping cap (≤1 token / 30d) and novel-token check still apply. Append-only shape stays. Reopen-trigger to relax (drop second-key): ≥10 K5 autotune PRs merged-then-zero-reverted under second-key, AND operator signals fatigue with the second-key step.
 
 3. **Dispatch-template ownership (K4).** §6 admits append-only changes inside fence. Operator may prefer single per-template "autotune-appended" section delimited by a fence marker. **Default proposed: YES, fenced section (already specified §6).**
 
@@ -396,3 +399,25 @@ Carried forward from the brief's §11. Each is reversible; each has a default pr
 - F3. Tracking issue for documenting the autotuner UX in `docs/operator/configure.md` once impl ships (this spec is design-only).
 - F4. Phase-C cutover spec — reopens at §16 #1 trigger. Material elaboration deferred until trigger fires.
 - F5. Audit hardening — extend `KindAutotuneAction` retention beyond default (decision_required §16 #4). Reopen at first audit need.
+
+## §19 Implementer brief (per CLAUDE.md `feedback_dispatch_brief_only`)
+
+This brief is the per-task dispatch handed to implementer subagents — full spec stays with the main thread; subagents receive ONLY this section.
+
+**Task scope:** Implement the §5 closed-loop autotuner that consumes §7 signals, applies §8 rule-based asymmetric rate-limiter, and writes §6 K1-K5 knob changes through the PR pipeline. Phase B (operator-merge backstop) only — Phase C unattended-live is `decision_required: phase-c-unattended` and not part of this dispatch.
+
+**Files to create (file-disjoint):**
+- `internal/selfimprove/autotuner/loop.go` — main loop (tick cadence per §13 Phase B latency tier).
+- `internal/selfimprove/autotuner/knobs.go` — K1-K5 dispatch table mapping signal-class → knob writer.
+- `internal/selfimprove/autotuner/damping.go` — §8 rate-limiter + §9 floor enforcement.
+- `internal/selfimprove/autotuner/scope.go` — §6 file-allowlist + §6 K5 single-token-insert shape check.
+- `cmd/regatta/autotune.go` — `regatta autotune` subcommand (revert, status, pause).
+- `scripts/check-autotune-scope.sh` — A4 mechanical gate.
+
+**TDD discipline (per CLAUDE.md):** §15 T1-T16 commit failing-FIRST. Capture failing-test output in PR body. T15 grep scope per §15 update from #988.
+
+**K5 second-key constraint (§16 #2 hardened):** autotuner MUST NOT open K5 PRs directly; instead, file a `[self-improvement]` issue carrying the candidate token + R2 evidence, then open the K5 PR only after the issue picks up the `autotune-k5-approved` label.
+
+**Acceptance:** §14 A1-A12 all green; §15 T1-T16 all green; `make check` passes including the new `scripts/check-autotune-scope.sh` gate.
+
+**Reviewer dispatch:** load-bearing per CLAUDE.md (concurrency + governance surfaces); spawn independent reviewer subagent in fresh slot, capture `Reviewer-recommendation: APPROVE` in PR body footer.
