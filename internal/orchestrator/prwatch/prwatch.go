@@ -56,6 +56,10 @@ type PullRequest struct {
 	HeadRefName string `json:"headRefName,omitempty"`
 	Title       string `json:"title,omitempty"`
 	AuthorLogin string `json:"authorLogin,omitempty"`
+	// MergeStateStatus is gh's mergeable rollup — "CLEAN", "DIRTY",
+	// "BLOCKED", "BEHIND", "UNSTABLE", "UNKNOWN". Operator-console S0
+	// uses DIRTY to drive the agent_pr_dirty chip (spec §3.5).
+	MergeStateStatus string `json:"mergeStateStatus,omitempty"`
 }
 
 // PRLister is the GitHub query seam (production shells gh; tests
@@ -121,6 +125,12 @@ type Watcher struct {
 	// missCount: per-agent consecutive empty-PR sweep count. Bounded
 	// by the pr_open set; cleared on state transition or threshold-fire.
 	missCount map[int64]int
+
+	// dirtyEmitted: per-agent flag — true while the watcher has already
+	// emitted agent_pr_dirty for the current DIRTY entry. Cleared when
+	// the PR transitions back to a non-DIRTY mergeable state so a
+	// subsequent DIRTY re-arms one fresh emission. Operator-console S0.
+	dirtyEmitted map[int64]bool
 }
 
 // New constructs a Watcher. Returns an error when required deps are
@@ -170,6 +180,7 @@ func New(cfg Config) (*Watcher, error) {
 		allowedForkAuthors:    allow,
 		strictForkAuthor:      cfg.StrictForkAuthor,
 		missCount:             make(map[int64]int),
+		dirtyEmitted:          make(map[int64]bool),
 	}, nil
 }
 
@@ -244,6 +255,8 @@ func (w *Watcher) sweepOne(ctx context.Context, a state.Agent) {
 	// strict mode, whose author is not allowlisted).
 	prs = w.filterImpersonators(prs, branch, agentSuffix(a.ID), a.ID)
 	pr := pickPR(prs, w.log, a.ID)
+
+	w.observeMergeStateStatus(ctx, a, pr)
 
 	switch a.State {
 	case state.AgentRunning:
@@ -389,6 +402,34 @@ func (w *Watcher) observeBranchLost(ctx context.Context, a state.Agent) {
 	)
 	// Reset so a re-attached branch does not re-fire on every sweep.
 	w.missCount[a.ID] = 0
+}
+
+// observeMergeStateStatus drives the agent_pr_dirty chip (spec §3.5).
+// Emits once when the rollup enters DIRTY for an agent; clears the
+// re-arm flag when the rollup leaves DIRTY (any non-DIRTY value,
+// including CLEAN, BLOCKED, BEHIND, or absent PR) so a subsequent
+// DIRTY re-fires exactly one event. Operator-console S0.
+func (w *Watcher) observeMergeStateStatus(ctx context.Context, a state.Agent, pr *PullRequest) {
+	if pr == nil || !strings.EqualFold(pr.MergeStateStatus, "DIRTY") {
+		delete(w.dirtyEmitted, a.ID)
+		return
+	}
+	if w.dirtyEmitted[a.ID] {
+		return
+	}
+	payload, _ := json.Marshal(struct {
+		PRNumber         int    `json:"pr_number"`
+		MergeStateStatus string `json:"merge_state_status"`
+	}{pr.Number, pr.MergeStateStatus})
+	if err := w.db.RecordEvent(ctx, a.ID, "agent_pr_dirty", string(payload)); err != nil {
+		w.log.Warn("prwatch.record_event_failed",
+			string(obs.KeyAgentID), a.ID,
+			"kind", "agent_pr_dirty",
+			string(obs.KeyErr), err.Error(),
+		)
+		return
+	}
+	w.dirtyEmitted[a.ID] = true
 }
 
 func agentSuffix(agentID int64) string {
