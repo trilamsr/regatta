@@ -99,14 +99,16 @@ if [ "$LOAD_BEARING" -ne 1 ]; then
 fi
 
 # Strip ```-fenced blocks so stale draft tokens cannot shadow the bare
-# footer token via `head -1` ordering (#922). Mirrors the category-extract
-# awk above; toggle state-machine flips on every ``` line.
+# footer token (#922). Mirrors the category-extract awk above; toggle
+# state-machine flips on every ``` line. Pick the LAST bare token so a
+# stale REVISE preceding a fresh APPROVE on body re-edit does not win
+# (#923).
 RECOMMENDATION=$(awk '
   /^```/ { in_fence = !in_fence; next }
   !in_fence { print }
 ' "$BODY_FILE" \
   | grep -iE '^[[:space:]]*Reviewer-recommendation:' \
-  | head -1 \
+  | tail -1 \
   | sed -E 's/^[[:space:]]*Reviewer-recommendation:[[:space:]]*//I' \
   | tr -d '[:space:]' \
   | tr '[:lower:]' '[:upper:]')

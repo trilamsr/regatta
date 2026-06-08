@@ -212,6 +212,33 @@ EOF
   rm -f "$body"
 }
 
+run_case_multiple_tokens_uses_last() {
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+Initial pass:
+Reviewer-recommendation: REVISE
+
+After addressing findings:
+Reviewer-agent-id: cavecrew-reviewer-xyz789
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing >/dev/null 2>&1; then
+    pass "stale REVISE + fresh APPROVE → last token wins (#923)"
+  else
+    fail "stale REVISE + fresh APPROVE should pass — last token must win (#923)"
+  fi
+  rm -f "$body"
+}
+
 run_case_load_bearing_missing_token
 run_case_load_bearing_approve_passes
 run_case_load_bearing_revise_fails
@@ -221,6 +248,7 @@ run_case_docs_release_notes_skips
 run_case_not_load_bearing_skips
 run_case_fenced_revise_bare_approve_passes
 run_case_fenced_approve_bare_revise_fails
+run_case_multiple_tokens_uses_last
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"
