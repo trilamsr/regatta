@@ -1,5 +1,5 @@
 ---
-status: phase-x-roadmap
+status: active
 phase: x-forward-fit
 ---
 
@@ -55,7 +55,7 @@ W12 wedge: Stripe metering / billing spec umbrella (`docs/engineer/specs/2026-06
 
 **Issues:** #548, #606, #607.
 
-Compliance pitch (SOC2, EU AI Act traceability) sells an append-only HMAC-signed hash-chained event log. `substrate_events` payloads carry PII (prompts, code with names/emails, Slack handles in approval tokens). GDPR Art.17 / CCPA right-to-erasure cannot delete a row from a hash-chained signed log without breaking downstream signatures — direct legal contradiction. Approach: per-subject/per-work-item DEK; erasure = destroy the key; ciphertext remains in chain (`docs/engineer/specs/2026-06-08-soc2-roadmap.md` companion). Two prerequisites: legal precedent confirming key-destruction satisfies Art.17 (EDPB/DPA citation), and JWE/JOSE (RFC 7516) prior-art comparison before locking the bespoke `{v,kid,ct,aad}` envelope.
+Compliance pitch (SOC2, EU AI Act traceability) sells an append-only HMAC-signed hash-chained event log. `substrate_events` payloads carry PII (prompts, code with names/emails, Slack handles in approval tokens). GDPR Art.17 / CCPA right-to-erasure cannot delete a row from a hash-chained signed log without breaking downstream signatures — direct legal contradiction. Approach: per-subject/per-work-item DEK; erasure = destroy the key; ciphertext remains in chain. SOC2 / compliance spec to be authored at reopen trigger fire — no skeleton today. Two prerequisites at that time: legal precedent confirming key-destruction satisfies Art.17 (EDPB/DPA citation), and JWE/JOSE (RFC 7516) prior-art comparison before locking the bespoke `{v,kid,ct,aad}` envelope.
 
 **Reopen trigger:** regulated/EU customer LOI requiring Art.17 compliance via crypto-shredding. Do NOT use the word "compliance" in customer-facing collateral until resolved.
 
@@ -79,7 +79,7 @@ Compliance pitch (SOC2, EU AI Act traceability) sells an append-only HMAC-signed
 
 **Reopen triggers (each falsifiable):**
 - check-tdd: ≥5 PRs blocked-on-check-tdd in 7-day window where blocker was a refactor PR with zero new prod code.
-- Windows: Windows-running operator surfaces OR Linux CI flake indicates platform-specific issue OR GH Actions Windows quota frees up.
+- Windows: Windows-running operator files a bug reproducible on Windows but green on Linux OR Linux CI flake indicates an OS-specific failure reproducible only on non-Linux runners. (Environmental availability — GH Actions Windows runner quota — is necessary infrastructure but not by itself a trigger; need a real Windows-specific failure to investigate.)
 - Mutation testing: greenclock regression bypasses `TestGreenClock_ConsecutiveStreakProperty` OR triggers misbehave under edge inputs (zero events, future-dated, DST rollover).
 - L4 gate: child PRs implementing the L4 reviewer all merge AND 7 consecutive days green property-test rejection of adversarial verdicts.
 
