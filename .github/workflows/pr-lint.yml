@@ -38,6 +38,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           REPO: ${{ github.repository }}
           GATE_JOBS: "release-notes doc-check check-tdd check-reviewer-verdict"
+          GATE_WORKFLOWS: "pr-lint-release-notes.yml pr-lint-doc-check.yml pr-lint-tdd.yml pr-lint-reviewer-verdict.yml"
         run: |
           set -euo pipefail
           # Polls the GitHub Checks API for the per-gate check-runs created
@@ -45,6 +46,45 @@ jobs:
           # ends in failure/cancelled/timed_out; succeeds when all complete
           # with conclusion=success (or skipped, which GH reports for jobs
           # whose top-level `if:` evaluates false).
+          #
+          # Fast-fail: probe workflow registration AND triggered-run at
+          # the head SHA. A missing/invalid per-gate workflow (YAML syntax
+          # error, file rename, path-filter exclusion) would otherwise
+          # spin the orchestrator until the 18-minute deadline. Grace
+          # period waits for the per-gate `pull_request` event to enqueue
+          # before declaring missing (closes #982).
+          for wf in $GATE_WORKFLOWS; do
+            if ! gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${REPO}/actions/workflows/${wf}" \
+              --jq '.state' >/dev/null 2>&1; then
+              echo "::error::per-gate workflow '${wf}' is not registered; check for YAML syntax errors or rename."
+              exit 1
+            fi
+          done
+          # Allow GitHub up to 90s to enqueue per-gate runs at HEAD_SHA;
+          # then assert at least one workflow_run row per gate workflow.
+          probe_deadline=$(( $(date +%s) + 90 ))
+          while :; do
+            missing_runs=()
+            for wf in $GATE_WORKFLOWS; do
+              count=$(gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/${REPO}/actions/workflows/${wf}/runs?head_sha=${HEAD_SHA}&per_page=1" \
+                --jq '.total_count // 0')
+              if [ "${count:-0}" -eq 0 ]; then
+                missing_runs+=("$wf")
+              fi
+            done
+            if [ "${#missing_runs[@]}" -eq 0 ]; then
+              break
+            fi
+            if [ "$(date +%s)" -ge "$probe_deadline" ]; then
+              echo "::error::per-gate workflow(s) never triggered at HEAD_SHA after 90s grace: ${missing_runs[*]}. Likely cause: path-filter exclusion or workflow trigger mismatch."
+              exit 1
+            fi
+            sleep 5
+          done
           deadline=$(( $(date +%s) + 18*60 ))
           required=( $GATE_JOBS )
           while :; do
@@ -53,11 +93,24 @@ jobs:
               echo "::error::pr-lint orchestrator timed out waiting for per-gate workflows."
               exit 1
             fi
-            # Fetch all check-runs for the head SHA. Filter to required job names.
-            runs_json=$(gh api \
-              -H "Accept: application/vnd.github+json" \
-              "repos/${REPO}/commits/${HEAD_SHA}/check-runs?per_page=100" \
-              --jq '[.check_runs[] | {name, status, conclusion}]')
+            # Fetch all check-runs for the head SHA across pages. The Checks
+            # API caps `per_page` at 100 — paginate so a check-run matrix
+            # expansion beyond 100 entries does not silently drop required
+            # gates from the result set (closes #982).
+            runs_json='[]'
+            page=1
+            while :; do
+              page_json=$(gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/${REPO}/commits/${HEAD_SHA}/check-runs?per_page=100&page=${page}" \
+                --jq '[.check_runs[] | {name, status, conclusion}]')
+              count=$(printf '%s' "$page_json" | jq 'length')
+              runs_json=$(jq -s '.[0] + .[1]' <(printf '%s' "$runs_json") <(printf '%s' "$page_json"))
+              if [ "$count" -lt 100 ]; then
+                break
+              fi
+              page=$((page + 1))
+            done
             pending=0
             failed=0
             missing=()
