@@ -239,6 +239,88 @@ EOF
   rm -f "$body"
 }
 
+run_case_load_bearing_path_classifier() {
+  # Retro audit 2026-06-08 (#985 #986): 5 structural refactors self-tagged
+  # APPROVE bypassing review because the workflow path classifier missed
+  # agent-rule + CI-gate surfaces. When --changed-paths-file lists any of
+  # CLAUDE.md, Makefile, Makefile.d/*, .github/workflows/*, scripts/check-*.sh,
+  # docs/engineer/dispatch-templates/*, the script MUST treat the PR as
+  # load-bearing AND require the Reviewer-recommendation token even when the
+  # release-notes category is [DOCS]/[CHORE]/[CI]/[NONE]/[CHANGE].
+  local paths
+  for path in \
+    "CLAUDE.md" \
+    "Makefile" \
+    "Makefile.d/check.mk" \
+    ".github/workflows/pr-lint.yml" \
+    "docs/engineer/dispatch-templates/implementer.md" \
+    "scripts/check-scorecard.sh"; do
+    local body paths_file
+    body=$(mktemp)
+    paths_file=$(mktemp)
+    write_body "$body" <<EOF
+## Summary
+
+Touches $path.
+
+\`\`\`release-notes
+[CHORE] tweak $path
+\`\`\`
+EOF
+    printf '%s\n' "$path" > "$paths_file"
+    if "$GATE" --body-file "$body" --changed-paths-file "$paths_file" 2>&1 | grep -qE "Reviewer-recommendation"; then
+      pass "load-bearing path classifier flags $path even with [CHORE] release-notes"
+    else
+      fail "load-bearing path classifier should flag $path even with [CHORE] release-notes"
+    fi
+    rm -f "$body" "$paths_file"
+  done
+
+  # APPROVE on a load-bearing-by-path PR still passes.
+  local body paths_file
+  body=$(mktemp)
+  paths_file=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Touches CLAUDE.md.
+
+Reviewer-agent-id: cavecrew-reviewer-abc123
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[DOCS] update CLAUDE.md
+```
+EOF
+  printf '%s\n' "CLAUDE.md" > "$paths_file"
+  if "$GATE" --body-file "$body" --changed-paths-file "$paths_file" >/dev/null 2>&1; then
+    pass "load-bearing-by-path + APPROVE exits 0"
+  else
+    fail "load-bearing-by-path + APPROVE should exit 0"
+  fi
+  rm -f "$body" "$paths_file"
+
+  # Non-load-bearing paths still honor [CHORE] auto-skip.
+  body=$(mktemp)
+  paths_file=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Touches docs/usage/foo.md.
+
+```release-notes
+[CHORE] tweak docs
+```
+EOF
+  printf '%s\n' "docs/usage/foo.md" > "$paths_file"
+  if "$GATE" --body-file "$body" --changed-paths-file "$paths_file" >/dev/null 2>&1; then
+    pass "non-load-bearing path + [CHORE] still auto-skips"
+  else
+    fail "non-load-bearing path + [CHORE] should auto-skip"
+  fi
+  rm -f "$body" "$paths_file"
+}
+
 run_case_load_bearing_missing_token
 run_case_load_bearing_approve_passes
 run_case_load_bearing_revise_fails
@@ -249,6 +331,7 @@ run_case_not_load_bearing_skips
 run_case_fenced_revise_bare_approve_passes
 run_case_fenced_approve_bare_revise_fails
 run_case_multiple_tokens_uses_last
+run_case_load_bearing_path_classifier
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"
