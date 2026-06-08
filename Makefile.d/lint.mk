@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test next-migration
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -66,6 +66,12 @@ check-migration-numbers-test:  ## Fixture-driven test for check-migration-number
 
 next-migration:  ## Print the next free SQLite migration number (zero-padded 4 digits). Use in dispatch prompts: $$(make next-migration).
 	@bash scripts/next-migration.sh
+
+check-spec-sections:  ## Fail when a NEW or MODIFIED spec under docs/engineer/specs/ lacks one of the 7 canonical H2 sections (Problem, Design, Acceptance, Out of scope, Adversarial, Implementer brief, Reopen trigger). Pre-existing specs warn-only (closes #1032).
+	bash scripts/check-spec-sections.sh
+
+check-spec-sections-test:  ## Fixture-driven test for check-spec-sections.sh (complete / missing-acceptance strict+diff / pre-existing-warn / skeleton-prefetch opt-out / shipped opt-out).
+	bash scripts/check-spec-sections_test.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh
