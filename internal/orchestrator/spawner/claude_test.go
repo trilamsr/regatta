@@ -374,6 +374,24 @@ func TestDefaultPromptBuilder_CommentsZeroByDefaultDirective(t *testing.T) {
 	}
 }
 
+// TestDefaultPromptBuilder_ReviewerRecommendationStrictTokenRule asserts the prompt teaches the strict single-token shape so subagents stop appending justification suffixes (recurring trap session 2026-06-08: #932/#1010/#1011/#1014, per feedback_trap_projection).
+func TestDefaultPromptBuilder_ReviewerRecommendationStrictTokenRule(t *testing.T) {
+	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-RR", Lane: "server"})
+	for _, want := range []string{
+		"`Reviewer-recommendation:` MUST be ONE of",
+		"APPROVE",
+		"REVISE",
+		"BLOCK",
+		"NEVER append justification",
+		"Reviewer-note:",
+		"unrecognized Reviewer-recommendation value",
+	} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt missing reviewer-token directive %q: %q", want, prompt)
+		}
+	}
+}
+
 // TestDefaultPromptBuilderEmptyItemBodyFallsBackToStubLine asserts the builder degrades to identifier line when ItemBody is empty.
 func TestDefaultPromptBuilderEmptyItemBodyFallsBackToStubLine(t *testing.T) {
 	prompt := defaultPromptBuilder(Request{AgentID: 3, WorkItemID: "WORK-Z", Lane: "docs"})
