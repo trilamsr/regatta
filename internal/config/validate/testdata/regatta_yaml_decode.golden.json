@@ -1,0 +1,13 @@
+{
+  "repo": {
+    "host": "github",
+    "owner": "trilamsr",
+    "name": "regatta",
+    "default_branch": "main"
+  },
+  "spec_adapter": {
+    "type": "markdown_catalog",
+    "root": "."
+  },
+  "safety": {}
+}
