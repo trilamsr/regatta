@@ -151,6 +151,40 @@ while IFS= read -r pf; do
     [ "$found" -eq 1 ] && break
     d=$(dirname "$d")
   done
+  # Cross-package symbol-match fallback (#1055): wire files in cmd/
+  # are commonly exercised by unit tests in internal/, which the
+  # ancestor walk cannot reach. Extract every NEW exported symbol
+  # introduced in pf and accept any *_test.go in the PR diff that
+  # mentions one of those identifiers. Negative case is preserved:
+  # zero mentions = still fails.
+  if [ "$found" -eq 0 ]; then
+    symbols=$(git diff "$base" "$head" -- "$pf" \
+      | awk '
+          /^\+func[[:space:]]+\(/ {
+            # method receiver: "+func (r *Recv) Method(...)"
+            for (i=1; i<=NF; i++) if ($i ~ /^[A-Z]/) { sub(/\(.*/, "", $i); print $i; next }
+            next
+          }
+          /^\+func[[:space:]]+[A-Z]/ {
+            sym=$2; sub(/\(.*/, "", sym); print sym; next
+          }
+          /^\+type[[:space:]]+[A-Z]/  { print $2; next }
+          /^\+var[[:space:]]+[A-Z]/   { print $2; next }
+          /^\+const[[:space:]]+[A-Z]/ { print $2; next }
+        ' \
+      | sort -u)
+    if [ -n "$symbols" ]; then
+      while IFS= read -r tf; do
+        [ -z "$tf" ] && continue
+        for sym in $symbols; do
+          if git show "$head:$tf" 2>/dev/null | grep -qw "$sym"; then
+            found=1
+            break 2
+          fi
+        done
+      done <<< "$test_added"
+    fi
+  fi
   if [ "$found" -eq 0 ]; then
     failures="$failures\n  $pf"
   fi
