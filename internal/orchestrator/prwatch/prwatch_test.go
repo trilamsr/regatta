@@ -547,13 +547,7 @@ func TestWatcher_BranchRenameThreshold_Configurable(t *testing.T) {
 	}
 }
 
-// TestWatcher_BranchRenamedByAgent_LogsAndTransitions covers BUG-1047:
-// the spawned worker pushed under a semantic branch name instead of the
-// orchestrator-pinned regatta/agent-N, so gh `--head regatta/agent-N`
-// returns 0 results. The title-prefix fallback still resolves the PR
-// (worker kept `[agent-N]` in the title) but Sweep must emit
-// `prwatch.branch_renamed_by_agent` WARN so the operator sees the prompt
-// drift in logs even when the in-prompt fix slips.
+// TestWatcher_BranchRenamedByAgent_LogsAndTransitions asserts WARN + pr_open on title-prefix rescue (#1047).
 func TestWatcher_BranchRenamedByAgent_LogsAndTransitions(t *testing.T) {
 	lister := &stubLister{
 		byBranch: map[string][]PullRequest{},
@@ -594,9 +588,7 @@ func TestWatcher_BranchRenamedByAgent_LogsAndTransitions(t *testing.T) {
 	}
 }
 
-// TestWatcher_LiteralBranchMatch_DoesNotEmitBranchRenamed guards the
-// happy path: when the literal-branch query returns the PR, the
-// branch_renamed_by_agent diagnostic must stay silent.
+// TestWatcher_LiteralBranchMatch_DoesNotEmitBranchRenamed asserts silence on literal-branch happy path (#1047).
 func TestWatcher_LiteralBranchMatch_DoesNotEmitBranchRenamed(t *testing.T) {
 	lister := &stubLister{byBranch: map[string][]PullRequest{
 		"regatta/agent-1": {{Number: 42, HeadRefOid: "deadbeef", State: "OPEN"}},
