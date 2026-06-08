@@ -91,7 +91,8 @@ density_for() {
   fi
   local loc cmt
   loc=$(grep -cvE '^[[:space:]]*$' "$file" || true)
-  cmt=$(grep -cE '^[[:space:]]*//' "$file" || true)
+  # `//go:` are compiler directives (embed, build, generate, linkname) — load-bearing code, not prose.
+  cmt=$(grep -E '^[[:space:]]*//' "$file" | grep -cvE '^[[:space:]]*//go:' || true)
   if [ "$loc" -eq 0 ]; then
     printf '0 0'
     return
