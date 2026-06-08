@@ -27,7 +27,7 @@ Done when ALL of:
 1. Impl PR (separate from this spec) merges referencing this spec.
 2. `wc -l cmd/regatta/serve.go` ≤ 100 (orchestration root only — flags, signal/ctx, listener bind, shutdown order).
 3. `grep -n "orchestrator.New\|reaper.New\|program.NewEdgeEvaluator\|program.NewBriefLoader\|scheduler.New" cmd/regatta/serve.go` returns 0 matches.
-4. `cmd/regatta serve --tick-once` boot trace before/after the split is byte-equal modulo timestamps (operator-observable contract preserved).
+4. `cmd/regatta serve --tick-once` substrate-event-kind sequence before/after the split is byte-equal under the mechanical `diff` in §7 #3 (operator-observable contract preserved).
 5. `make ci-check` green on impl PR.
 
 ## §1 Problem
@@ -98,9 +98,17 @@ Match the #737 pattern. Each new wire file:
 
 Out of scope (#9): rewriting subsystem APIs. Wire helpers MUST be pure refactors — same struct fields, same nil/zero defaults, same error returns.
 
-## §6 Implementer slices (4, file-disjoint, sequential — each depends on prior)
+## §6 Implementer slices (4, sequential — each touches `serve.go`)
 
-Slices are sequential because each pulls signature from the prior (`buildOrchestrator` consumes the `scheduler` returned by `buildScheduler`; `attachReaper` mutates the orchestrator returned by `buildOrchestrator`). Parallelisation is unsafe — implementer who dispatches in parallel hits a `serve.go` merge-conflict storm and contradicts the spec's purpose.
+Slices are sequential for two reasons (clarified post-#991 review):
+
+1. **Signature chain:** `buildOrchestrator` consumes the `scheduler` returned by `buildScheduler`; `attachReaper` mutates the orchestrator returned by `buildOrchestrator`. The signature dependency is acyclic but linear.
+
+2. **`serve.go` is the shared write surface:** even though each slice creates a NEW `wire_*.go` file (file-disjoint at the NEW-file boundary), every slice ALSO edits `runServe` in `cmd/regatta/serve.go` to swap an inline block for the new `build*` call. That makes `serve.go` the cascade-rebase anchor for THIS spec's own dispatch — exactly the anchor #737 warns about. Sequential ordering is the trade: pay the rebase tax during this 4-slice landing in exchange for permanent cascade-rebase reduction afterward.
+
+Once shipped (post-Slice 4), future parallel features benefit because subsystem extractions live in their own `wire_*.go` files; `serve.go` only orchestrates. The spec's own dispatch is single-threaded by necessity, not by design — and the single-threading IS the migration cost being paid.
+
+An implementer who dispatches in parallel hits a `serve.go` merge-conflict storm and contradicts the spec's purpose.
 
 ### Slice 1 — `buildScheduler` (extracts inline `scheduler.New(...)`)
 
@@ -148,7 +156,14 @@ Slices are sequential because each pulls signature from the prior (`buildOrchest
 
 1. `wc -l cmd/regatta/serve.go` ≤ 100.
 2. `grep -nE 'orchestrator\.New|reaper\.New|program\.NewEdgeEvaluator|program\.NewBriefLoader|scheduler\.New' cmd/regatta/serve.go` returns ZERO lines.
-3. `regatta serve --tick-once` boot trace before/after the four-slice impl PR is byte-equal modulo `time.Now()` timestamps. Capture via `regatta serve --tick-once 2>&1 | grep -v '^\\d\\d:\\d\\d:\\d\\d'`.
+3. `regatta serve --tick-once` boot trace before/after the four-slice impl PR is byte-equal on the substrate-event-kind sequence (closes #991). Mechanical check:
+   ```
+   regatta serve --tick-once --log-format=json 2>&1 \
+     | jq -r 'select(.event != null) | .event' \
+     > /tmp/boot-events-${SHA}.txt
+   diff /tmp/boot-events-main.txt /tmp/boot-events-after.txt
+   ```
+   Acceptance = `diff` reports zero lines. Pinned event-kind sequence (must appear in this order at boot, captured pre-refactor at `origin/main`): `config.loaded`, `secrets.attached`, `keyring.attached`, `spec_adapter.attached`, `authz.attached`, `scheduler.attached`, `orchestrator.attached`, `reaper.attached`, `evaluator.attached`, `tick.start`, `tick.end`. Wall-clock timestamps, latency histograms, and random IDs are NOT compared — only the event-kind ordering. Per CLAUDE.md `feedback_grade_rubric` this turns the predicate from operator-vibes into a single `diff` exit code.
 4. `make ci-check` green on impl PR.
 5. `git diff origin/main...HEAD -- cmd/regatta/` shows net LOC delta ≤ +20 (extractions should be near-zero-sum; godoc dedupe shrinks total).
 
