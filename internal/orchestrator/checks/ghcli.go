@@ -12,6 +12,12 @@ type GHShell struct {
 	Runner func(ctx context.Context, name string, args ...string) ([]byte, error)
 }
 
+const (
+	conclusionFailure = "failure"
+	conclusionSuccess = "success"
+	statusCompleted   = "completed"
+)
+
 // NewGHShell returns a GHShell wired to os/exec.
 func NewGHShell() *GHShell {
 	return &GHShell{Runner: defaultExec}
@@ -37,14 +43,14 @@ func (g *GHShell) PRChecks(ctx context.Context, pr string) (CheckRun, error) {
 		return CheckRun{}, fmt.Errorf("checks: parse gh json: %w", err)
 	}
 	for _, c := range arr {
-		if c.Conclusion == "failure" {
-			return CheckRun{Conclusion: "failure", Status: "completed"}, nil
+		if c.Conclusion == conclusionFailure {
+			return CheckRun{Conclusion: conclusionFailure, Status: statusCompleted}, nil
 		}
-		if c.Status != "completed" {
+		if c.Status != statusCompleted {
 			return CheckRun{Conclusion: "", Status: c.Status}, nil
 		}
 	}
-	return CheckRun{Conclusion: "success", Status: "completed"}, nil
+	return CheckRun{Conclusion: conclusionSuccess, Status: statusCompleted}, nil
 }
 
 // defaultExec runs name+args via os/exec; gh CLI binary + args are construction-controlled literal strings (mirrors prwatch/ghcli.go).

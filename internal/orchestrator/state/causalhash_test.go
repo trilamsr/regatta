@@ -61,13 +61,13 @@ func TestCausalHash_MapKeyOrderIndependent(t *testing.T) {
 	keys := []string{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"}
 	v := map[string]string{}
 	for i, k := range keys {
-		v[k] = string(rune('0' + i))
+		v[k] = string(rune('0' + (i & 0x7f)))
 	}
 	a, _ := CausalInputs{Versions: v}.Hash()
 
 	v2 := map[string]string{}
 	for i := len(keys) - 1; i >= 0; i-- {
-		v2[keys[i]] = string(rune('0' + i))
+		v2[keys[i]] = string(rune('0' + (i & 0x7f)))
 	}
 	b, _ := CausalInputs{Versions: v2}.Hash()
 

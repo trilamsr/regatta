@@ -64,7 +64,7 @@ func TestRunsMigration_IndexesExist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	want := map[string]bool{"idx_runs_started": false, "idx_runs_causal_hash": false, "idx_runs_rerun_of": false}
 	for rows.Next() {
 		var name string
