@@ -1,0 +1,2 @@
+contracts/schemas/regatta/secrets.cue
+contracts/schemas/regatta/main.cue

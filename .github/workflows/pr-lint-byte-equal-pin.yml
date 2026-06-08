@@ -1,0 +1,48 @@
+name: pr-lint-byte-equal-pin
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check-byte-equal-pin:
+    name: check-byte-equal-pin
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          fetch-depth: 0
+
+      # NOTE: pr-lint snapshots PR body at trigger event payload. After
+      # editing the body to add a parity gate citation or the
+      # <!-- byte-equal-justified: ... --> escape, push an empty commit to
+      # force re-trigger with the live body — body-edit alone reuses the
+      # stored payload.
+      - name: check-byte-equal-pin
+        if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          base="${BASE_SHA}"
+          if git rev-parse --verify origin/main >/dev/null 2>&1; then
+            live_base="$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null || echo "")"
+            if [ -n "$live_base" ]; then base="$live_base"; fi
+          fi
+          paths_file=$(mktemp)
+          git diff --name-only "$base" "${HEAD_SHA}" > "$paths_file"
+          body_file=$(mktemp)
+          printf '%s' "$BODY" > "$body_file"
+          bash scripts/check-byte-equal-pin.sh \
+            --body-file "$body_file" \
+            --changed-paths-file "$paths_file"
