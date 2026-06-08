@@ -277,6 +277,9 @@ func defaultPromptBuilder(req Request) string {
 	b.WriteString("Release-notes fence is mandatory for [FIX]/[FEATURE]/[PERF]:\n\n")
 	b.WriteString("    ```release-notes\n    [FIX] short description\n    ```\n\n")
 	b.WriteString("For [CHORE]/[DOCS]/[CI]/[NONE]/[CHANGE]/[REFACTOR]: scorecard auto-skipped only when there is NO scorecard section at all AND release-notes fence is present.\n\n")
+	b.WriteString("## Branch name (orchestrator-pinned)\n\n")
+	fmt.Fprintf(&b, "Push as `regatta/agent-%d`. Do NOT rename the branch — `git checkout -b OTHER_NAME` hides the PR from prwatch (`gh --head regatta/agent-%d` returns 0 rows; the title-prefix fallback rescues correlation but emits `prwatch.branch_renamed_by_agent` WARN and the operator must reconcile by hand). Semantic name belongs in the PR title. Per CLAUDE.md feedback_keep_orchestrator_branch_name (#1047).\n\n",
+		req.AgentID, req.AgentID)
 	b.WriteString("## PR shape contract\n\n")
 	b.WriteString("Open ONE PR for this work_item. Title format: `<type>: <short>`. ")
 	b.WriteString("Body sections: Summary / Root cause / Test plan / release-notes fence. ")

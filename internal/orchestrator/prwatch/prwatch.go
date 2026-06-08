@@ -263,6 +263,7 @@ func (w *Watcher) sweepOne(ctx context.Context, a state.Agent) {
 		if pr == nil {
 			return
 		}
+		w.observeBranchRenamedByAgent(a, branch, *pr)
 		w.transitionToPROpen(ctx, a, *pr)
 	case state.AgentPROpen:
 		if pr == nil {
@@ -430,6 +431,26 @@ func (w *Watcher) observeMergeStateStatus(ctx context.Context, a state.Agent, pr
 		return
 	}
 	w.dirtyEmitted[a.ID] = true
+}
+
+// observeBranchRenamedByAgent surfaces BUG-1047: the worker pushed the
+// PR under a different head ref than the orchestrator-pinned branch, so
+// `gh --head <branch>` returned no rows and only the title-prefix
+// fallback rescued the correlation. Emitted at running→pr_open so the
+// operator sees the prompt drift in logs even when the in-prompt
+// branch-name pin slips. Empty HeadRefName comes from in-memory stubs
+// and the same-repo upstream --head path — neither is a rename.
+func (w *Watcher) observeBranchRenamedByAgent(a state.Agent, branch string, pr PullRequest) {
+	if pr.HeadRefName == "" || pr.HeadRefName == branch {
+		return
+	}
+	w.log.Warn("prwatch.branch_renamed_by_agent",
+		string(obs.KeyAgentID), a.ID,
+		string(obs.KeyWorkItemID), a.WorkItemID,
+		"pinned_branch", branch,
+		"observed_head_ref_name", pr.HeadRefName,
+		"pr_number", pr.Number,
+	)
 }
 
 func agentSuffix(agentID int64) string {
