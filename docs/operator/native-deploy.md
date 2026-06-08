@@ -559,7 +559,7 @@ Use the verbs below when the supervisor is wedged.
 - `REGATTA_E2E_REPO` — `owner/name` of a throwaway repo the runner owns.
 - `REGATTA_E2E_GH_TOKEN` — token with `repo` + `workflow` scope on that repo.
 - `REGATTA_E2E_ANTHROPIC_API_KEY` — key the spawned worker uses.
-- `REGATTA_E2E_BINARY` — path to a built `regatta` binary (`go build -o /tmp/regatta ./cmd/regatta`).
+- `REGATTA_E2E_BINARY` — path to a built `regatta` binary (e.g. `go build -o ./bin/regatta-e2e ./cmd/regatta`; pick a non-volatile location — `/tmp` is cleared on reboot on most Linux runners).
 - `REGATTA_E2E_DEADLINE` — optional duration (default `15m`).
 
 The test files an `autonomous`-labelled issue, starts `regatta serve` pointed at a temp config, waits for a linked PR to appear, and asserts the PR body carries the release-notes fence. Source: `tests/e2e/loopclosure/loop_closure_test.go`. Tracking: #894.
