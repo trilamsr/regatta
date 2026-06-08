@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test next-migration
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -63,6 +63,9 @@ check-prompt-parity-test:  ## Fixture-driven test for check-prompt-parity.sh (mi
 
 check-reviewer-verdict-test:  ## Fixture-driven test for check-reviewer-verdict.sh (load-bearing PR missing APPROVE → fail; CHORE/DOCS → skip). Gate itself runs in pr-lint workflow against the live PR body (closes #899).
 	bash scripts/check-reviewer-verdict_test.sh
+
+check-byte-equal-pin-test:  ## Fixture-driven test for check-byte-equal-pin.sh (byte-equal claim w/o parity gate → fail; claim+gate → pass; no-claim/escape → skip). Gate itself runs in pr-lint workflow against the live PR body (closes #1031).
+	bash scripts/check-byte-equal-pin_test.sh
 
 check-no-repo-specific-slugs:  ## Fail when bundled-default prompt assets (internal/orchestrator/prompt/assets/) carry feedback_* slugs or scripts/check-*.sh refs that meaningless on arbitrary target repos (spec L1.3, #965).
 	bash scripts/check-no-repo-specific-slugs.sh
