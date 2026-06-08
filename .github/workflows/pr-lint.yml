@@ -103,11 +103,11 @@ jobs:
             runs_json='[]'
             page=1
             while :; do
-              if ! page_json=$(gh api \
+              if ! page_json=$(timeout 30s gh api \
                 -H "Accept: application/vnd.github+json" \
                 "repos/${REPO}/commits/${HEAD_SHA}/check-runs?per_page=100&page=${page}" \
                 --jq '[.check_runs[] | {name, status, conclusion}]' 2>&1); then
-                echo "::warning::gh api page=$page failed (will retry next loop): $page_json"
+                echo "::warning::gh api page=$page failed or hung >30s (will retry next loop): $page_json"
                 sleep 10
                 continue
               fi
