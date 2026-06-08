@@ -101,6 +101,14 @@ If the surface is small, low-risk, and mechanical (dependency bump that
 CI accepted, single-typo fix, comment-only edit), document the decision
 to skip review in the pull request body. The default is review.
 
+## Reviewer-recommendation token shape
+
+`Reviewer-recommendation:` MUST be ONE of `APPROVE` | `REVISE` | `BLOCK`
+ALONE on the line. NEVER append justification, conditions, or comments
+after the token. Use a separate `Reviewer-note:` line for any context.
+The check-reviewer-verdict gate regex-matches the token strictly;
+multi-token rejects with `unrecognized Reviewer-recommendation value`.
+
 ## Reviewer findings to tracking issues
 
 Every CRITICAL / HIGH / MEDIUM finding from the reviewer that is NOT

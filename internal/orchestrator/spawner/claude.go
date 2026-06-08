@@ -280,6 +280,11 @@ func defaultPromptBuilder(req Request) string {
 	b.WriteString("Open ONE PR for this work_item. Title format: `<type>: <short>`. ")
 	b.WriteString("Body sections: Summary / Root cause / Test plan / release-notes fence. ")
 	b.WriteString("Reviewer-skip per feedback_review_proportional applies for docs/scripts-only <20 LoC.\n\n")
+	b.WriteString("## PR BODY REVIEWER-TOKEN: strict format\n\n")
+	b.WriteString("- `Reviewer-recommendation:` MUST be ONE of `APPROVE` | `REVISE` | `BLOCK` ALONE on the line.\n")
+	b.WriteString("- NEVER append justification, conditions, or comments after the token.\n")
+	b.WriteString("- Use a separate `Reviewer-note:` line for any context.\n")
+	b.WriteString("- The check-reviewer-verdict gate regex-matches the token strictly; multi-token rejects with `unrecognized Reviewer-recommendation value`.\n\n")
 	if req.RepoRoot != "" && !enrichmentDisabled() {
 		if enrich := prompt.Enrich(context.Background(), req.RepoRoot, prompt.DefaultOptions()); enrich != "" {
 			b.WriteString(enrich)
