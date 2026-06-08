@@ -55,6 +55,17 @@ CROSS-DOC LINK PHASING
 DESIGN ITERATION LOCAL (no per-revision PR)
 - Strategic design + review chains iterate LOCAL: edit-in-place in one worktree, ONE PR lands final converged doc. Avoid 25-PR sprawl. (`feedback_design_iteration_local`)
 
+UMBRELLA SPEC → ONE TRACKING ISSUE WITH TASK-LIST CHECKBOXES
+- A spec covering N slices files ONE umbrella tracking issue with a markdown task-list, not N pre-filed slice issues. GitHub auto-renders the checkboxes as a progress bar; sub-tasks are tracked without separate issues.
+- Body skeleton (paste into the umbrella issue body, or directly into the spec PR body if a separate umbrella issue is not warranted):
+  ```
+  ## Slices
+  - [ ] Slice 1: <name> — dispatch via <designer|implementer>
+  - [ ] Slice 2: <name>
+  - [ ] Slice 3: <name>
+  ```
+- Slice tracking issues are created ON DEMAND at dispatch time (one per implementer wave), NOT pre-filed up-front. Pre-filing N slice issues at spec-merge time floods the tracker and inflates triage cost. Labels for the umbrella: `kind:wedge` (cross-cutting) or `kind:feat` (single-feature umbrella) + the slice-cluster label (e.g. `regatta-on-arbitrary-repo`).
+
 ## Per-dispatch payload
 - Topic: `<TOPIC>`
 - Slug: `<SPEC-SLUG>`

@@ -1,0 +1,29 @@
+name: stale-issues
+
+on:
+  schedule:
+    - cron: '23 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  scan:
+    name: scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/stale@5bef64f19d7facfb25b37b414482c7164d639639  # v9.1.0
+        with:
+          only-labels: 'kind:reviewer-finding'
+          exempt-issue-labels: 'phase-x,severity:critical,severity:high'
+          days-before-issue-stale: 90
+          days-before-issue-close: 0
+          stale-issue-label: 'stale'
+          close-issue-message: 'Auto-closed stale; reopen on trigger.'
+          stale-issue-message: ''
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          remove-stale-when-updated: true
+          operations-per-run: 200
