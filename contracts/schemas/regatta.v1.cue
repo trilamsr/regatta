@@ -33,25 +33,7 @@ import "list"
 	secrets?:       #Secrets
 }
 
-// #Secret routes one logical secret to one operator-chosen source per
-// #911. Field-shape only; cross-field invariants (name xor path) live
-// in Go because CUE struct-shaping in unified contexts is brittle.
-#Secret: {
-	source:  "env" | "keychain" | "pass" | "file"
-	name?:   string
-	path?:   string
-	key_id?: string
-}
-
-// #Secrets is the operator-facing block consolidating secret sources
-// for canonical regatta keys. Absent block ⇒ Default chain (back-compat).
-#Secrets: {
-	anthropic_api_key?: #Secret
-	gh_token?:          #Secret
-	brief_hmac?:        #Secret
-	audit_hmac?:        #Secret
-	approval_token?:    #Secret
-}
+// #Secret + #Secrets live in regatta/secrets.cue per #970 slice 1.
 
 // #AlarmWebhook configures the PHASE-AUTONOMY-W1 in-process AlertManager
 // receiver. Empty / omitted block ⇒ disabled; operator opts in by

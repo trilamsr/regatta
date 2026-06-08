@@ -1,6 +1,9 @@
 package validate
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -618,5 +621,27 @@ secrets:
 `
 	if err := LoadBytes([]byte(yaml)); err == nil {
 		t.Fatal("expected CUE rejection on typo'd canonical key under secrets; got nil")
+	}
+}
+
+// TestLoadConfig_GoldenByteEqual pins regatta.yaml decode byte-equal pre/post CUE schema modular split (#970).
+func TestLoadConfig_GoldenByteEqual(t *testing.T) {
+	yamlPath := filepath.Join("..", "..", "..", "regatta.yaml")
+	cfg, err := LoadConfigFile(yamlPath)
+	if err != nil {
+		t.Fatalf("LoadConfigFile(%q): %v", yamlPath, err)
+	}
+	got, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got = append(got, '\n')
+	goldenPath := filepath.Join("testdata", "regatta_yaml_decode.golden.json")
+	want, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("read golden %q: %v", goldenPath, err)
+	}
+	if string(got) != string(want) {
+		t.Fatalf("regatta.yaml decode drift vs golden\n--- want %s ---\n%s\n--- got ---\n%s", goldenPath, want, got)
 	}
 }
