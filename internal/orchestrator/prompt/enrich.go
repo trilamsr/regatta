@@ -1,6 +1,4 @@
-// Package prompt builds adaptive prompt enrichment (L2) for the worker
-// by scanning a target repo's convention files. Best-effort: empty
-// return on any failure keeps the L1 baseline behaviour byte-equal.
+// Package prompt builds L2 enrichment by scanning target-repo convention files; any failure returns empty to keep the L1 baseline byte-equal.
 package prompt
 
 import (
@@ -52,7 +50,6 @@ func Enrich(ctx context.Context, root string, opts Options) string {
 
 	var sections []string
 
-	// Verbatim docs: CONTRIBUTING.md, AGENTS.md, GEMINI.md, .editorconfig, PR template.
 	verbatim := []struct {
 		path  string
 		label string
@@ -72,14 +69,12 @@ func Enrich(ctx context.Context, root string, opts Options) string {
 		}
 	}
 
-	// Language + test-framework hints from manifest fingerprints.
 	if !ctxDone(scanCtx) {
 		if hints := languageHints(root); len(hints) > 0 {
 			sections = append(sections, "### Languages\n\n"+strings.Join(hints, "\n"))
 		}
 	}
 
-	// Makefile target list — derive test/build/lint commands.
 	if !ctxDone(scanCtx) {
 		if mk, ok := makefileTargets(filepath.Join(root, "Makefile"), opts.PerFileCap); ok {
 			sections = append(sections, "### Makefile targets\n\n"+mk)
