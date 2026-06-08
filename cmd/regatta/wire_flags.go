@@ -52,7 +52,7 @@ func parseServeFlags(args []string) serveFlags {
 	fs.StringVar(&f.RepoRoot, "repo", ".", "Repo root for the claude spawner (worktrees live under <repo>/.regatta/worktrees)")
 	fs.StringVar(&f.ClaudeBin, "claude", "claude", "Path to the claude binary (used when -spawner=claude)")
 	fs.StringVar(&f.BaseRef, "base-ref", "HEAD", "Git ref a new agent worktree branches from")
-	fs.Var(f.LaneCaps, "lane", "Per-lane concurrency cap, repeatable (e.g. -lane server:1)")
+	fs.Var(f.LaneCaps, "lane", "Per-lane concurrency cap, repeatable (e.g. -lane server:1). When omitted and spec_adapter.type=github_issues, regatta serve auto-applies -lane server:1 to prevent cascade-rebase on overlapping issues (#1048); pass -lane server:N to raise the cap.")
 	fs.Var(&f.LogFormat, "log-format", "Structured-log handler: text | json")
 	fs.StringVar(&f.Addr, "addr", defaultListenerAddr, "HTTP listener bind address when --ui=true")
 	fs.BoolVar(&f.UI, "ui", true, "Boot the operator HTTP listener; --ui=false skips bind entirely")

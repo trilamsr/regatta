@@ -179,6 +179,7 @@ func runServe(args []string) int {
 		logger.Printf("adapter: %v", err)
 		return 2
 	}
+	applyDefaultLaneCap(&f, slogger)
 
 	costKeyring, costKeyID := loadBriefKeyringWithActive()
 	costKey := costKeyring[costKeyID]
