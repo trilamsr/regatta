@@ -662,6 +662,79 @@ EOF
   rm -f "$body"
 }
 
+run_case_automerge_with_agent_id_on_load_bearing_fails() {
+  # Closes #1046: orchestrator rushed self-tagged APPROVE + automerge in 19s.
+  # When --automerge-enabled is passed AND the PR is load-bearing AND
+  # Reviewer-agent-id is present, the gate MUST fail closed — agent both
+  # wrote its own APPROVE and enabled automerge, leaving zero operator
+  # window between APPROVE-token landing and merge.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+Reviewer-agent-id: a69bfa533ee180bb7
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FIX] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing --automerge-enabled 2>&1 | grep -qE "automerge_with_agent_id_on_load_bearing"; then
+    pass "automerge + agent-id on load-bearing fails with stderr token (#1046)"
+  else
+    fail "automerge + agent-id on load-bearing should fail with stderr token automerge_with_agent_id_on_load_bearing"
+  fi
+  rm -f "$body"
+}
+
+run_case_automerge_without_agent_id_uses_normal_path() {
+  # When automerge is enabled but no Reviewer-agent-id is present, the
+  # standard missing-agent-id path fires — automerge guard does not
+  # short-circuit before the normal load-bearing checks.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FIX] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing --automerge-enabled 2>&1 | grep -qE "Reviewer-agent-id"; then
+    pass "automerge + missing agent-id still fails normal path"
+  else
+    fail "automerge + missing agent-id should fail normal missing-token path"
+  fi
+  rm -f "$body"
+}
+
+run_case_automerge_on_non_load_bearing_passes() {
+  # Automerge guard only fires on load-bearing PRs — trivial doc/chore
+  # PRs with automerge are still allowed (no review requirement applies).
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+```release-notes
+[DOCS] tweak readme
+```
+EOF
+  if "$GATE" --body-file "$body" --automerge-enabled >/dev/null 2>&1; then
+    pass "automerge on non-load-bearing passes (no review requirement)"
+  else
+    fail "automerge on non-load-bearing should pass"
+  fi
+  rm -f "$body"
+}
+
 run_case_no_author_flag_still_enforces_allowlist() {
   # Even without --pr-author, the independent-reviewer allowlist runs:
   # a bare author login as Reviewer-agent-id fails the allowlist shape
@@ -712,6 +785,9 @@ run_case_missing_reviewer_agent_id_on_load_bearing_fails
 run_case_operator_escape_skips_self_tag_check
 run_case_operator_escape_too_short_rejected
 run_case_no_author_flag_still_enforces_allowlist
+run_case_automerge_with_agent_id_on_load_bearing_fails
+run_case_automerge_without_agent_id_uses_normal_path
+run_case_automerge_on_non_load_bearing_passes
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"

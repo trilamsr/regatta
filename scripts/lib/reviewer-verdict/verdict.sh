@@ -1,10 +1,23 @@
 # reviewer-verdict/verdict.sh — decide pass/fail given RECOMMENDATION
 # and REVIEWER_AGENT_ID. Handles operator-escape comment, allowlist shape,
-# and self-tag mismatch vs PR_AUTHOR.
+# self-tag mismatch vs PR_AUTHOR, and the automerge-with-agent-id guard
+# (closes #1046).
 
 rv_decide_verdict() {
   case "$RECOMMENDATION" in
     APPROVE)
+      # Automerge guard (closes #1046): if the agent both writes its own
+      # APPROVE and enables automerge, zero operator window exists between
+      # APPROVE-token landing and merge. Pairs with the no-self-tag rule
+      # to keep an independent reviewer in the loop. Fires only when an
+      # agent-id is present; missing-agent-id falls through to the
+      # specific error below.
+      if [ "$AUTOMERGE_ENABLED" -eq 1 ] && [ -n "$REVIEWER_AGENT_ID" ]; then
+        echo "check-reviewer-verdict: automerge_with_agent_id_on_load_bearing — autoMergeRequest is enabled on a load-bearing PR carrying Reviewer-agent-id: $REVIEWER_AGENT_ID." >&2
+        echo "  Agent-written APPROVE + agent-enabled automerge leaves zero operator window between APPROVE-token landing and merge." >&2
+        echo "  Fix: disable automerge (gh pr merge --disable-auto <PR>), then operator merges manually after independent review." >&2
+        exit 1
+      fi
       # Token-present check (closes #999/#1001/#1002 self-tag bypass per
       # `feedback_no_self_tagged_approve`): a load-bearing APPROVE without
       # a named reviewer is a self-tagged approval — independent review
