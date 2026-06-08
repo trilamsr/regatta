@@ -10,6 +10,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/pressly/goose/v3"
 )
@@ -17,13 +18,18 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Migrate mutates goose package globals (SetBaseFS, SetLogger, SetDialect);
-// not safe to call concurrently from multiple goroutines with different settings.
-//
+// gooseMu serializes Migrate() because goose v3 stores BaseFS, Logger, and
+// dialect in package-level globals that race when concurrent goroutines
+// call SetBaseFS/SetLogger/SetDialect (observed under -race in #1018).
+var gooseMu sync.Mutex
+
 // Migrate applies every pending forward migration to db. Returns
 // ErrSchemaTooNew (wrapped) when the database has been touched by
 // a newer binary; the operator must upgrade rather than downgrade.
 func Migrate(ctx context.Context, db *sql.DB) error {
+	gooseMu.Lock()
+	defer gooseMu.Unlock()
+
 	goose.SetBaseFS(migrationsFS)
 	goose.SetLogger(goose.NopLogger())
 	if err := goose.SetDialect("sqlite3"); err != nil {
