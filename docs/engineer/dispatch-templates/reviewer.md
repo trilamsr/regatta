@@ -25,6 +25,12 @@ ROLE
 AUTO-SKIP CHECK (decide first)
 - Run `git diff --name-only origin/main...HEAD | grep -vE '^(docs/|\.github/|scripts/|.*\.md$)'`. Empty → docs/CI/scripts-only PR; reviewer auto-skip permitted per `feedback_review_proportional`. Document the skip in PR thread.
 - Also skip: dep bumps, PR-body-edit-only, trivial doc strips.
+- **Load-bearing-doc carve-out (NEVER auto-skip)** — when the diff touches any of:
+  - `docs/engineer/specs/*.md` — load-bearing design surface
+  - `docs/engineer/briefs/*.md` — load-bearing design surface
+  - `docs/engineer/dispatch-templates/*.md` — agent-rule surface
+  - `CLAUDE.md` — agent-rule surface
+  ...mandatory independent reviewer dispatch. Operator 2026-06-08: design/spec PRs landed this session w/ self-included adversarial sections (not independent). `scripts/check-reviewer-verdict.sh` mirrors this carve-out — `[DOCS]` release-notes does NOT bypass when these paths change. Per `feedback_adversarial_review_every_step`.
 
 LENSES (apply in order)
 1. Edge cases — boundary inputs, empty/nil, concurrency, partial failure.
