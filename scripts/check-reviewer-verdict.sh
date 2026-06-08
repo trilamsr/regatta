@@ -15,10 +15,20 @@
 #     --body-file <path>  read body from a local file (CI + fixtures)
 #     --load-bearing      treat the PR as load-bearing (CI passes when
 #                         the changed-paths heuristic matches)
+#     --changed-paths-file <path>  newline-delimited file of changed paths.
+#                         Any path matching the agent-rule / CI-gate
+#                         load-bearing list (CLAUDE.md, Makefile,
+#                         Makefile.d/*, .github/workflows/*,
+#                         docs/engineer/dispatch-templates/*,
+#                         scripts/check-*.sh) sets load-bearing=1 AND
+#                         BYPASSES the release-notes category auto-skip
+#                         (closes #985 #986 retro audit 2026-06-08).
 #     --skip              short-circuit pass (operator-discretion escape)
 #
 #   Auto-skip: release-notes prefix in [CHORE]/[DOCS]/[CI]/[NONE]/[CHANGE]
-#   (matches scripts/check-scorecard.sh category-exempt list).
+#   (matches scripts/check-scorecard.sh category-exempt list). NOT applied
+#   when --changed-paths-file flags a load-bearing surface above — those
+#   surfaces are themselves the category being reviewed.
 #
 #   Pass: body contains `Reviewer-recommendation: APPROVE` ON ITS OWN
 #   line (case-insensitive, leading/trailing whitespace allowed). Tokens
@@ -40,6 +50,7 @@ set -uo pipefail
 PR_NUM=""
 BODY_FILE=""
 LOAD_BEARING=0
+PATHS_FILE=""
 SKIP=0
 
 while [ $# -gt 0 ]; do
@@ -47,6 +58,7 @@ while [ $# -gt 0 ]; do
     --pr) PR_NUM="$2"; shift 2 ;;
     --body-file) BODY_FILE="$2"; shift 2 ;;
     --load-bearing) LOAD_BEARING=1; shift ;;
+    --changed-paths-file) PATHS_FILE="$2"; shift 2 ;;
     --skip) SKIP=1; shift ;;
     -h|--help)
       grep '^#' "$0" | sed 's/^# \{0,1\}//'
@@ -82,17 +94,47 @@ if [ -z "$BODY_FILE" ] || [ ! -f "$BODY_FILE" ]; then
   exit 3
 fi
 
+# Path classifier (closes #985 #986). When --changed-paths-file lists any
+# agent-rule or CI-gate surface, flag load-bearing AND bypass category
+# auto-skip — refactors to these surfaces self-tagged [CHORE]/[DOCS] in
+# the 2026-06-08 retro and slipped past review.
+LOAD_BEARING_BY_PATH=0
+if [ -n "$PATHS_FILE" ]; then
+  if [ ! -f "$PATHS_FILE" ]; then
+    echo "check-reviewer-verdict: --changed-paths-file $PATHS_FILE not found" >&2
+    exit 3
+  fi
+  while IFS= read -r changed_path; do
+    [ -z "$changed_path" ] && continue
+    case "$changed_path" in
+      CLAUDE.md|Makefile|Makefile.d/*|.github/workflows/*|docs/engineer/dispatch-templates/*)
+        LOAD_BEARING_BY_PATH=1
+        break
+        ;;
+      scripts/check-*.sh)
+        LOAD_BEARING_BY_PATH=1
+        break
+        ;;
+    esac
+  done < "$PATHS_FILE"
+  if [ "$LOAD_BEARING_BY_PATH" -eq 1 ]; then
+    LOAD_BEARING=1
+  fi
+fi
+
 CATEGORY=$(awk '
   /^```release-notes/ { in_block = 1; next }
   in_block && /^```/ { exit }
   in_block { print; exit }
 ' "$BODY_FILE" | grep -oE '^\[[A-Z]+\]' | head -1)
 
-case "$CATEGORY" in
-  '[CHORE]'|'[DOCS]'|'[CI]'|'[NONE]'|'[CHANGE]')
-    exit 0
-    ;;
-esac
+if [ "$LOAD_BEARING_BY_PATH" -ne 1 ]; then
+  case "$CATEGORY" in
+    '[CHORE]'|'[DOCS]'|'[CI]'|'[NONE]'|'[CHANGE]')
+      exit 0
+      ;;
+  esac
+fi
 
 if [ "$LOAD_BEARING" -ne 1 ]; then
   exit 0
