@@ -1,0 +1,84 @@
+name: pr-lint-release-notes
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  release-notes:
+    name: release-notes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6.0.3
+        with:
+          fetch-depth: 0
+
+      - name: release-notes block edited
+        if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # Skip the check entirely when the PR only touches paths with no
+          # user-visible runtime behavior (docs, CI, build system, tooling
+          # pins). A release-notes block on those is theatre. Exiting 0 here
+          # marks the required check passing.
+          # BASE_SHA from the event payload snapshots at PR-open and
+          # only refreshes on PR events; if main moved between events
+          # the diff window pulls in unrelated commits and the skip
+          # heuristic flips off. Recompute the live merge-base when
+          # origin/main is fetched (this checkout uses fetch-depth: 0).
+          base="${BASE_SHA}"
+          if git rev-parse --verify origin/main >/dev/null 2>&1; then
+            live_base="$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null || echo "")"
+            if [ -n "$live_base" ]; then base="$live_base"; fi
+          fi
+          mapfile -t changed < <(git diff --name-only "$base" "${HEAD_SHA}")
+          if [ "${#changed[@]}" -gt 0 ]; then
+            skip=1
+            for f in "${changed[@]}"; do
+              case "$f" in
+                *.md|docs/*) ;;
+                .github/*) ;;
+                scripts/*) ;;
+                Makefile|Makefile.d/*|.gitignore|.gitattributes) ;;
+                .claude/*|.mcp.json) ;;
+                *) skip=0; break ;;
+              esac
+            done
+            if [ "$skip" -eq 1 ]; then
+              echo "PR only touches docs/CI/build-tooling - release-notes block check skipped."
+              exit 0
+            fi
+          fi
+
+          if [ -z "${BODY:-}" ]; then
+            echo "::error::PR description is empty. Use the PR template and fill in the release-notes block."
+            exit 1
+          fi
+          block=$(printf '%s\n' "$BODY" | awk '
+            /^```release-notes/ { capture=1; next }
+            capture && /^```/    { exit }
+            capture              { print }
+          ')
+          if [ -z "$block" ]; then
+            echo "::error::No \`\`\`release-notes\`\`\` block found in the PR description."
+            exit 1
+          fi
+          trimmed=$(printf '%s' "$block" | tr -d '[:space:]')
+          if [ -z "$trimmed" ]; then
+            echo "::error::release-notes block is empty. Either describe the user-visible change or write 'NONE'."
+            exit 1
+          fi
+          echo "release-notes block ok:"
+          printf '%s\n' "$block"
