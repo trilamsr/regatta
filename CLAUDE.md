@@ -80,6 +80,7 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 ## Worktree discipline
 
 - **Agents always in worktrees** (`.claude/worktrees/agent-<id>/`). Main checkout is read-only (`git fetch`, `git log`, `git status`). Never push from primary.
+- **Keep orchestrator-pinned branch name**: spawned worker MUST push under the orchestrator-assigned `regatta/agent-<N>` ref. `git checkout -b <semantic>` inside the worktree hides the PR from `prwatch.Sweep` (`gh --head regatta/agent-<N>` returns 0; agent stays `running` forever; reaper never fires; worktree leaks). The title-prefix fallback rescues correlation but emits `prwatch.branch_renamed_by_agent` WARN — treat any such log as a prompt-drift bug, not steady state. Semantic name belongs in the PR title. Mechanically enforced via `scripts/check-prompt-parity.sh` (slug listed under `## Anchored rules` in `docs/engineer/dispatch-templates/implementer.md` and cited inline by `internal/orchestrator/spawner/claude.go::defaultPromptBuilder`). Closes #1047. (`feedback_keep_orchestrator_branch_name`)
 - **Never `git clone` or `git worktree add` from a subagent** — the harness pre-creates the worktree at `.claude/worktrees/agent-<id>/`; subagent only `cd`s to it. Writing under `/tmp/regatta-<slug>/` leaves stray edits in main worktree with no pushable branch. (#188)
 - **Per-merge cleanup**: `git worktree remove --force` after merge.
 - **Force-twice clears locks**: `git worktree remove --force --force <path>` if lock persists.
