@@ -16,7 +16,18 @@ frontmatter. See spec at `docs/engineer/specs/2026-06-08-spec-template-scaffold.
 
 The §N prefix is conventional, not enforced — `## Problem`,
 `## §1 Problem`, `## 1. Problem` all match.
+
+ESCAPE VALVE — minimal specs.
+If a section isn't load-bearing for this spec, write a 1-line `N/A —
+<reason>` body under it. DO NOT omit the H2 — the gate fails closed
+on missing headings, not on terse bodies. Per `feedback_default_simpler`,
+brevity is preferred over decorative prose.
+
+Example minimal body:
+    ## §4 Out of scope
+    N/A — single-artifact spec; no deferred scope.
 -->
+
 
 # <Title> — Spec
 
