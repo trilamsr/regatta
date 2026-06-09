@@ -5,14 +5,14 @@ description: Act as the human-in-the-loop operator of regatta running against a 
 
 # regatta-operator
 
-Operator of `regatta` — the agent-orchestration binary. **GOAL = AUTONOMY.** The orchestrator is the worker; the human is the *exception path*, not the *default path*. This skill exists so the human stays OUT of the loop while regatta builds / reviews / designs / merges against a target repo. Skill's job: keep the conditions for autonomy intact + detect when autonomy breaks + auto-file the fix-request as a `[autonomous]`-labelled issue regatta can consume.
+Operator of `regatta` — the agent-orchestration binary. **GOAL = AUTONOMY.** The orchestrator is the worker; the human is the *exception path*, not the *default path*. This skill exists so the human stays OUT of the loop while regatta builds / reviews / designs / merges against a target repo. Skill's job: keep the conditions for autonomy intact + detect when autonomy breaks + auto-file the fix-request as a `autonomous`-labelled issue regatta can consume.
 
 NOT this skill's job: write regatta code, merge PRs, or substitute for the orchestrator. If you find yourself doing the orchestrator's work, the autonomy loop is broken — file the breakage instead of papering over it.
 
 ### Autonomy mandate
 
 - **Default state = silent.** In autonomous mode (operator said "autonomous" / "loop" / "keep watching"), skill emits one heartbeat per N hours (`heartbeat_interval`, default 4h) summarizing all iterations between heartbeats; per-phase narration is suppressed. In one-shot mode (operator said "snapshot" / "check" / "report"), skill narrates one line per phase per the run loop and hands back. The per-phase narration rule in the run loop applies to one-shot mode; the heartbeat rule applies to autonomous mode. Explicit operator request wins; default when ambiguous = one-shot.
-- **Auto-act, don't ask.** Every finding routes to one of: (a) auto-filed `[autonomous]`-labelled issue (regatta consumes), (b) auto-comment on existing tracker issue (recurrence), (c) auto-updated baseline file (intended drift). `AskUserQuestion` is reserved for genuinely irreversible decisions only.
+- **Auto-act, don't ask.** Every finding routes to one of: (a) auto-filed `autonomous`-labelled issue (regatta consumes), (b) auto-comment on existing tracker issue (recurrence), (c) auto-updated baseline file (intended drift). `AskUserQuestion` is reserved for genuinely irreversible decisions only.
 - **Self-improve detector first.** Before filing a finding, search for an open issue regatta's self-improve detector already filed for the same root cause. If exists, auto-comment + bump counter. NEVER file duplicate.
 - **Autonomy regression = HIGH severity.** Any signal that the loop is going DOWN (build-green rate dropping, review-catch rate dropping, recurrence counter climbing, the orchestrator falling back to operator-prompts) is a HIGH `[OPS]` or `[AGENT]` finding, auto-filed.
 - **Green-clock signal.** Track ≥10 PRs/day green-merge consecutive days. Day count resets on any operator manual merge OR `--admin` override. Heartbeat reports `green-clock=<N>` so the operator can see autonomy compounding without reading details.
@@ -38,7 +38,7 @@ orchestrator:
   parallel_cap_cfg_key: 'ParallelCap|MaxConcurrent'
   systemd_unit: regatta                               # journalctl --user -u <unit>
   docker_service: regatta                             # docker compose logs -f <service>
-  spawn_label: '[autonomous]'                         # GH-issue label the adapter consumes
+  spawn_label: autonomous                             # GH-issue label the adapter consumes (no brackets — brackets are TITLE convention, not label name; closes #1167)
 target:
   ci_provider: github-actions                         # github-actions | gitlab-ci | buildkite | circleci
   ci_query_cmd: |                                     # must return PR -> status mapping
@@ -358,6 +358,55 @@ After 3 findings in a session, write session-end summary under `$CLAUDE_JOB_DIR/
 These are durable-design items. File as `[CORE]` issues when relevant; do NOT touch in operator session.
 
 - **Polling vs webhooks.** Regatta polls GH. Sub-`poll_interval` latency is unreachable without a transport change. Improvement ladder: (1) ETag conditional GET → 304s don't count rate-limit, (2) adaptive poll backoff, (3) GH events API single stream, (4) smee.io / webhook-relay hybrid (push notifies, regatta still pulls detail) — no public ingress, (5) full webhook + tunnel + HMAC + dedup store. Self-host phase: (1) + (2) is the smallest win; (4) is the right next step when latency complaint surfaces.
+
+## Bottleneck-resolution loop
+
+A bottleneck = a finding that blocks further observation (orchestrator wedged, dispatch loop runaway, auth precondition unresolvable, port unbound). Standard "file issue + move on" does not apply — the next snapshot is meaningless until the bottleneck clears.
+
+When a finding is flagged `bottleneck=true`:
+
+1. **STOP observation.** Halt the run loop; further snapshots add noise, not signal.
+2. **File the issue normally** (with surface prefix + `$SPAWN_LABEL`).
+3. **Spawn adversarial reviewer subagent** with the finding body. Reviewer hunts: is the proposed fix the right shape? Smallest? Reversible? Per `feedback_adversarial_review_every_step`.
+4. **Apply reviewer's narrowest fix** in a worktree. If reviewer says BLOCK, ask `AskUserQuestion` (this IS an exception to auto-act — bottlenecks are irreversible-shaped).
+5. **Verify in the live stack.** Rebuild + restart per the post-merge cycle below; replay the canary that hit the bottleneck.
+6. **If still bottlenecked → repeat** from step 3 with a fresh reviewer. Track iteration count; ≥3 attempts without resolution = escalate to operator via `AskUserQuestion`.
+7. **Resolved → close the issue** + write a follow-up canary fixture in `$CANARY_DIR_<role>` so the bottleneck cannot silently regress.
+8. **Resume observation** from a clean snapshot. Discard the pre-bottleneck baseline — orchestrator behavior pre/post-fix is not comparable.
+
+## Post-merge rebuild-and-observe (regular cycle)
+
+When a PR merges into `$ORCH_SOURCE_REPO`, the running orchestrator is now STALE relative to main. The skill must rebuild + restart + observe at every merge to confirm the new binary does not regress autonomy. Cadence: every merge to the orchestrator-source repo, OR every heartbeat if multiple merges land between heartbeats.
+
+```bash
+# 1. Pull latest. Refuse on unclean tree.
+git -C "$ORCH_CHECKOUT" fetch origin main && \
+  git -C "$ORCH_CHECKOUT" diff --quiet HEAD origin/main || \
+  { git -C "$ORCH_CHECKOUT" status -s; echo "dirty; abort"; exit 1; }
+git -C "$ORCH_CHECKOUT" pull --ff-only origin main
+
+# 2. Build (per build-method; see tight-loop step 3).
+docker compose --env-file "$ENV_FILE" build "$DOCKER_SERVICE"
+NEW_SHA=$(docker compose --env-file "$ENV_FILE" images "$DOCKER_SERVICE" -q)
+
+# 3. Graceful restart (see tight-loop step 4).
+docker compose --env-file "$ENV_FILE" up -d "$DOCKER_SERVICE"
+
+# 4. Confirm binary changed (see tight-loop step 5).
+RUNNING_SHA=$(docker inspect --format '{{.Image}}' "$DOCKER_SERVICE" | cut -d: -f2 | head -c12)
+[ "$NEW_SHA" = "$RUNNING_SHA" ] || { echo "binary unchanged"; exit 1; }
+
+# 5. Smoke-watch 60s for the spawn-loop bottleneck pattern.
+# If >K=5 agent.exited events arrive within 30s with same fingerprint → flag bottleneck.
+docker compose --env-file "$ENV_FILE" logs --since=30s "$DOCKER_SERVICE" \
+  | grep -c 'agent.exited' | awk '{ if ($1 > 5) print "bottleneck: spawn loop"; else print "ok" }'
+
+# 6. Replay all per-role canaries (see canary section).
+# 7. Write metrics → $BASELINE_FILE.
+# 8. Resume normal observation.
+```
+
+If any step fails: bottleneck-resolution loop fires.
 
 ## Hand-off
 
