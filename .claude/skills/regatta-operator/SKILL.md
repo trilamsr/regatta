@@ -5,7 +5,17 @@ description: Act as the human-in-the-loop operator of regatta running against a 
 
 # regatta-operator
 
-Operator of `regatta` — the agent-orchestration binary. Your job is to **run** regatta against a target repo, watch it work, and turn what you see into issues, learnings, and small targeted fixes. NOT to write regatta code in this session.
+Operator of `regatta` — the agent-orchestration binary. **GOAL = AUTONOMY.** The orchestrator is the worker; the human is the *exception path*, not the *default path*. This skill exists so the human stays OUT of the loop while regatta builds / reviews / designs / merges against a target repo. Skill's job: keep the conditions for autonomy intact + detect when autonomy breaks + auto-file the fix-request as a `[autonomous]`-labelled issue regatta can consume.
+
+NOT this skill's job: write regatta code, merge PRs, or substitute for the orchestrator. If you find yourself doing the orchestrator's work, the autonomy loop is broken — file the breakage instead of papering over it.
+
+### Autonomy mandate
+
+- **Default state = silent.** Skill emits one heartbeat per N hours (`heartbeat_interval`, default 4h). Between heartbeats: snapshot + diff + auto-act, no narration.
+- **Auto-act, don't ask.** Every finding routes to one of: (a) auto-filed `[autonomous]`-labelled issue (regatta consumes), (b) auto-comment on existing tracker issue (recurrence), (c) auto-updated baseline file (intended drift). `AskUserQuestion` is reserved for genuinely irreversible decisions only.
+- **Self-improve detector first.** Before filing a finding, search for an open issue regatta's self-improve detector already filed for the same root cause. If exists, auto-comment + bump counter. NEVER file duplicate.
+- **Autonomy regression = HIGH severity.** Any signal that the loop is going DOWN (build-green rate dropping, review-catch rate dropping, recurrence counter climbing, the orchestrator falling back to operator-prompts) is a HIGH `[OPS]` or `[AGENT]` finding, auto-filed.
+- **Green-clock signal.** Track ≥10 PRs/day green-merge consecutive days. Day count resets on any operator manual merge OR `--admin` override. Heartbeat reports `green-clock=<N>` so the operator can see autonomy compounding without reading details.
 
 ## Inputs
 
@@ -13,60 +23,166 @@ Skill argument: `TARGET_REPO=<owner>/<name>`. If unset, ask via `AskUserQuestion
 
 Do NOT silently switch target repos mid-session. Switching invalidates the observation baseline.
 
+## Target config (per-target YAML — keeps skill portable across orchestrators)
+
+This skill is written against `regatta` but works for any agent-orchestrator-vs-target-repo setup. Per-target literals live in `.claude/skills/regatta-operator/targets/<owner>-<name>.yaml`. Missing file = use the regatta defaults below. Treat the YAML as authoritative for THIS target; defaults are fallback only.
+
+```yaml
+# .claude/skills/regatta-operator/targets/<owner>-<name>.yaml
+orchestrator:
+  binary: regatta                                     # process name to pgrep / inspect
+  process_match: 'regatta serve'                      # ps -ef | grep <this>
+  branch_prefix: 'regatta/agent-'                     # spawner-assigned branch prefix
+  state_db_glob: '*.db *.sqlite *.sqlite3'            # find candidates
+  poll_interval_cfg_key: 'PollInterval|TickInterval'  # git grep key
+  parallel_cap_cfg_key: 'ParallelCap|MaxConcurrent'
+  systemd_unit: regatta                               # journalctl --user -u <unit>
+  docker_service: regatta                             # docker compose logs -f <service>
+  spawn_label: '[autonomous]'                         # GH-issue label the adapter consumes
+target:
+  ci_provider: github-actions                         # github-actions | gitlab-ci | buildkite | circleci
+  ci_query_cmd: |                                     # must return PR -> status mapping
+    gh pr list -R "$TARGET_REPO" --json number,statusCheckRollup,mergeStateStatus -L 50
+  roadmap_paths:                                      # filter findings against active phase
+    - ROADMAP.md
+    - docs/engineer/autonomous-session-prompt.md
+    - docs/*/roadmap*.md
+  design_paths:                                       # designer-canary inputs
+    - docs/engineer/specs/
+    - docs/engineer/briefs/
+    - docs/rfcs/
+  defer_labels: [phase-x, phase-x-forward-fit, wontfix, deferred]   # exclude from finding sweeps
+roles:                                                # subtypes for [AGENT] findings
+  - impl                                              # implementer
+  - rev                                               # reviewer
+  - des                                               # designer
+  - tri                                               # triage
+canaries:                                             # known-input fixtures for regression detection
+  impl: .claude/skills/regatta-operator/canaries/impl/
+  rev:  .claude/skills/regatta-operator/canaries/rev/
+  des:  .claude/skills/regatta-operator/canaries/des/
+  tri:  .claude/skills/regatta-operator/canaries/tri/
+baseline_file: .claude/skills/regatta-operator/baselines/<owner>-<name>.json
+```
+
+Refer to config values via the `$ORCH_BINARY`, `$BRANCH_PREFIX`, `$CI_QUERY_CMD`, etc. names below. When the YAML is missing, the regatta defaults shown above apply — DO NOT bake new literals into the skill body.
+
 ## Pre-flight (REQUIRED before first snapshot)
 
 Run discovery FIRST. Hardcoded values are bugs.
 
 ```bash
-# Find running regatta + its port (macOS uses BSD pgrep without -f flag aliasing)
-pgrep -l regatta || ps -ef | grep '[r]egatta serve'   # PID + cmdline
+# Find running orchestrator + its port (substitute $ORCH_BINARY / $PROCESS_MATCH from target YAML;
+# defaults: $ORCH_BINARY=regatta, $PROCESS_MATCH='regatta serve')
+pgrep -l "$ORCH_BINARY" || ps -ef | grep "[${ORCH_BINARY:0:1}]${ORCH_BINARY:1}"
 lsof -nP -iTCP -sTCP:LISTEN -p <PID> 2>/dev/null      # listening port (portable)
-# Linux-only fallback:
-ss -lntp 2>/dev/null | grep regatta
-# macOS-only fallback:
-netstat -anv -p tcp 2>/dev/null | grep LISTEN | grep regatta
+ss -lntp 2>/dev/null | grep "$ORCH_BINARY"            # Linux
+netstat -anv -p tcp 2>/dev/null | grep LISTEN | grep "$ORCH_BINARY"   # macOS
 
-# Find state DB
-find . -maxdepth 4 -name '*.db' -o -name '*.sqlite*' 2>/dev/null | head -5
-# Or check serve config:
-git grep -nE 'state.*\.db|sqlite|StatePath' cmd/ internal/ | head -10
+# Find state DB ($STATE_DB_GLOB defaults to '*.db *.sqlite *.sqlite3')
+find . -maxdepth 4 \( -name '*.db' -o -name '*.sqlite*' \) 2>/dev/null | head -5
 
-# Find log destination — try systemd user, then system, then fall back
-git grep -nE 'log\.Open|os\.Stderr|journal|slog\.New' cmd/regatta/serve.go | head -10
-journalctl --user -u regatta -n 1 --no-pager 2>/dev/null \
-  || journalctl -u regatta -n 1 --no-pager 2>/dev/null \
-  || echo "no systemd; tail wherever serve.go writes (or use 'docker compose logs regatta')"
+# Find log destination — try $SYSTEMD_UNIT user, then system, then docker compose
+git grep -nE 'log\.Open|os\.Stderr|journal|slog\.New' cmd/ internal/ 2>/dev/null | head -10
+journalctl --user -u "$SYSTEMD_UNIT" -n 1 --no-pager 2>/dev/null \
+  || journalctl -u "$SYSTEMD_UNIT" -n 1 --no-pager 2>/dev/null \
+  || docker compose logs --tail=1 "$DOCKER_SERVICE" 2>/dev/null \
+  || echo "no managed log; tail process stderr fd"
 
-# Discover poll interval + parallel cap
-git grep -nE 'PollInterval|TickInterval|ParallelCap|MaxConcurrent' internal/ cmd/
+# Discover poll interval + parallel cap from config keys named in target YAML
+git grep -nE "$POLL_INTERVAL_CFG_KEY" cmd/ internal/ 2>/dev/null
+git grep -nE "$PARALLEL_CAP_CFG_KEY" cmd/ internal/ 2>/dev/null
 
-# Build method (docker vs go binary)
-ps -o command= -p <PID> | head -1                              # cmdline tells you
-docker ps --filter "ancestor=regatta" --format '{{.Names}}'    # if container
-ls Dockerfile docker-compose*.y*ml 2>/dev/null                 # if compose
-which regatta && go version -m "$(which regatta)" | head -5    # if go-installed binary
+# Build method (docker / docker-compose / go-install / systemd)
+ps -o command= -p <PID> | head -1
+docker ps --filter "ancestor=$ORCH_BINARY" --format '{{.Names}}' 2>/dev/null
+ls Dockerfile docker-compose*.y*ml 2>/dev/null
+which "$ORCH_BINARY" && go version -m "$(which "$ORCH_BINARY")" | head -5
+
+# Discover active roadmap phase from $ROADMAP_PATHS (filter findings against this)
+for p in $ROADMAP_PATHS; do grep -nE '^P[0-9]|^PHASE|\[IN-FLIGHT\]|\[BLOCKED\]' "$p" 2>/dev/null; done | head -20
+
+# Load baseline file for regression detection (default missing = cold start, write one at session end)
+test -f "$BASELINE_FILE" && jq '.' "$BASELINE_FILE" || echo 'cold-start: no baseline'
 ```
 
 State the discovered values in the first narration line:
-`pre-flight: pid=<N> port=<P> db=<path> poll=<interval> cap=<N> build=<docker|go-install|systemd> kill=<signal+cmd>`
+`pre-flight: pid=<N> port=<P> db=<path> poll=<interval> cap=<N> build=<docker|go-install|systemd> kill=<signal+cmd> phase=<active-roadmap-phase> baseline=<exists|cold>`
 
-If ANY of pid/port/db is unknown, refuse to proceed per containment rule 8. Unknown `poll` means you cannot distinguish lag from stuck. Unknown `build` means you cannot operate the tight loop below.
+If ANY of pid/port/db is unknown, refuse the snapshot loop. Unknown `poll` → "is it stuck?" diagnoses are low-confidence. Unknown `build` → tight-loop section is unavailable. Unknown `phase` → roadmap-filter is disabled (warn, don't block).
 
 ## Polling cadence (read this BEFORE diagnosing "stuck")
 
-Regatta polls GitHub. It does NOT receive webhooks. This means:
+The orchestrator polls its work source (GH issues, internal queue, etc.) on `$POLL_INTERVAL`. It does NOT receive webhooks by default. This means:
 
-- **Lag** = up to `poll_interval` seconds between GH state change and regatta noticing. Expected. NOT a bug.
-- **Stuck** = ≥ 3 × `poll_interval` with no `prwatch.*` or equivalent event in logs. File `[ORCH]` finding.
-- **Silent stall** = poll runs but no state transitions over multiple intervals despite open work. File `[CORE]` finding.
+- **Lag** = up to `$POLL_INTERVAL` seconds between source change and orchestrator noticing. Expected. NOT a bug.
+- **Stuck** = ≥ 3 × `$POLL_INTERVAL` with no equivalent state-transition event in logs (e.g. `prwatch.*` / `scheduler.poll.*`). File `[ORCH]` finding.
+- **Silent stall** = poll fires but no state transitions over multiple intervals despite open work. File `[CORE]` finding.
 
-When you cannot find a `PollInterval` config or the value is unknown, treat all "is it stuck?" diagnoses as low-confidence and say so in narration.
+When `$POLL_INTERVAL` is unknown, "is it stuck?" diagnoses are low-confidence — say so in narration.
 
-Tracking issues for polling-vs-webhook design improvements live under the `[CORE]` surface (see "Things this skill notes but does not fix" below).
+Tracking issues for polling-vs-webhook design improvements live under `[CORE]`.
+
+## Output-quality channels (per-role; primary signal for autonomy health)
+
+The goal is autonomy. The orchestrator is healthy when its OUTPUT is good — green builds, real reviews, mergeable designs. Watching state transitions without watching output is watching the wrong thing.
+
+Every channel below produces a metric. Each session's metrics are written to `$BASELINE_FILE` at hand-off. Next session compares vs baseline; regression > 10% on any metric → HIGH `[AGENT][<role>]` auto-filed finding.
+
+| Metric | Source | Auto-action on regression |
+|---|---|---|
+| `build_green_rate_impl` | `$CI_QUERY_CMD` → count `statusCheckRollup=SUCCESS` / total per implementer agent | file `[AGENT][impl]` regression issue |
+| `tdd_order_rate_impl` | per merged PR: `git log --reverse <head>...<base>` first commit subject matches `^(test\|red)\|FAIL` | file `[AGENT][impl]` |
+| `comment_density_impl` | `bash scripts/check-comment-density.sh` over merged PRs (regatta-only; generic equivalent: `cloc` + comment lines / total) | file `[AGENT][impl]` |
+| `mock_vs_real_ratio_impl` | `bash scripts/check-mock-vs-real.sh` (regatta) OR grep `mock\|stub\|fake` in `*_test.go` per merged PR | file `[AGENT][impl]` if > 70% |
+| `scope_creep_impl` | merged-PR LoC + file-count rolling avg | file `[AGENT][impl]` if 1.5× baseline |
+| `review_catch_rate_rev` | sample N merged PRs/session, dispatch independent reviewer-replay, diff findings | file `[AGENT][rev]` if catch < baseline |
+| `review_false_positive_rate_rev` | reviewer findings that got dismissed inline | file `[AGENT][rev]` if rising |
+| `review_approve_no_finding_rev` | APPROVE recommendations with zero findings | file `[AGENT][rev]` if > baseline |
+| `spec_to_impl_conversion_des` | designer specs that landed mergeable impl within K dispatches | file `[AGENT][des]` if dropping |
+| `spec_churn_des` | specs re-edited > 2 times before impl dispatch | file `[AGENT][des]` |
+| `triage_misclass_tri` | findings ended up needing different surface than triaged | file `[AGENT][tri]` |
+| `green_clock_days` | consecutive days ≥10 PRs merged unattended (no operator `--admin`, no manual merge) | heartbeat report only |
+| `recurrence_counter_<root>` | open issue with same `<root>` keyword | comment on existing issue, never new |
+
+Read `$BASELINE_FILE` at pre-flight; write at hand-off:
+```json
+{ "session_id": "<id>", "ts": "<unix>",
+  "metrics": { "build_green_rate_impl": 0.94, "tdd_order_rate_impl": 0.81, ... },
+  "phase": "<active-roadmap-phase>", "green_clock_days": 7 }
+```
+
+## Per-role canary suite
+
+Per-role known-input fixtures live under `$CANARY_DIR_<role>`. Canaries are RE-PLAYED on a schedule, not human-invoked. Default cadence = once per heartbeat (4h). Each canary is one of:
+
+- `impl/`: a known-broken test fixture or known-needed-feature issue. Expected output: a PR that fixes/adds, green CI, single commit.
+- `rev/`: a PR with a known bug seeded in. Expected output: a reviewer finding at the seeded line.
+- `des/`: a feature request with known-correct spec sketch. Expected output: a spec close in shape to the sketch.
+- `tri/`: a multi-surface issue. Expected output: correct surface assignment.
+
+Auto-action on canary divergence: HIGH `[AGENT][<role>]` finding auto-filed with diff of expected vs actual.
+
+Skipping canaries because "the orchestrator is busy" is a containment fail. Canaries replay regardless; the orchestrator is supposed to be busy.
+
+## Roadmap awareness (filter findings against active phase)
+
+Findings against deferred / phase-x / wontfix work waste tracker space. Before filing, check:
+
+```bash
+# Issue's labels (target repo)
+gh issue view <N> -R "$TARGET_REPO" --json labels --jq '.labels[].name' \
+  | grep -E "$(echo $DEFER_LABELS | tr ' ' '|')" && echo "skip: deferred"
+
+# Active roadmap phase (per $ROADMAP_PATHS)
+grep -E '^P[0-9]+ —.*\[IN-FLIGHT\]' $ROADMAP_PATHS 2>/dev/null | head -3
+```
+
+Findings against the active phase: file. Findings against deferred phases: capture in `$BASELINE_FILE` only; do not file. Findings against unknown phase: warn + file with `phase=unknown` tag.
 
 ## Tight feedback loop (edit → rebuild → restart → canary → observe)
 
-The most common operator move during a session is: change a regatta source file (orchestrator logic / prompt template / gate script) and watch the next agent pick it up. The skill MUST keep this loop fast and safe. Default recipe:
+PRIMARY USE: the orchestrator's OWN self-improve detector landed a change to its source; skill verifies the new binary is live and the canary suite still passes. SECONDARY USE: an operator (you-the-human or a one-shot skill invocation) makes a deliberate change. If neither, skip this section — autonomous loop runs without it. Default recipe applies to both:
 
 1. **Checkpoint state DB** before edit. SQLite with WAL is multi-file (`-wal`, `-shm`); a bare `cp` of `$DB` while a writer is connected yields a corrupt snapshot. A bare `PRAGMA wal_checkpoint` + `cp` sequence also races — if the writer resumes between checkpoint and copy, the main DB and WAL drift. The safe primitive is `.backup`, which acquires the necessary locks internally:
    ```bash
@@ -77,27 +193,27 @@ The most common operator move during a session is: change a regatta source file 
    `.backup` produces ONE file with no sidecars needed for restore. If `.backup` is unavailable (very old sqlite3 CLI), fall back to: stop the orchestrator first (`kill -TERM <PID>` + wait for exit), THEN `cp` all three of `$DB`, `$DB-wal`, `$DB-shm` together. Never `cp` while a writer is live.
 2. **Edit in a worktree.** Operator-side edits MUST land in a separate working tree so the running binary's checkout stays untouched. Two reasons: (a) on rebuild the operator's worktree is the build input, and a clean baseline is recoverable via `git switch -`; (b) the running process holds its text segment in RAM, so source edits do not affect it until the next launch — editing in the binary's own checkout offers zero runtime benefit and adds risk of an unstaged change leaking into the next rebuild.
 3. **Build verification.** Compile errors surface immediately; startup errors only surface after restart. Always run the compile check FIRST so you don't conflate them.
-   - `go-install` build: `go build ./cmd/regatta` (does NOT install) → on success `go install ./cmd/regatta`.
-   - `docker` build: `docker build -t regatta:dev .` then capture image SHA — comparing this SHA to the running container's image SHA tells you if the rebuild actually changed anything.
-   - `docker-compose` build: `docker compose build regatta` then `docker compose images regatta`.
+   - `go-install` build: `go build "./cmd/$ORCH_BINARY"` (does NOT install) → on success `go install "./cmd/$ORCH_BINARY"`.
+   - `docker` build: `docker build -t "$ORCH_BINARY:dev" .` then capture image SHA — comparing this SHA to the running container's image SHA tells you if the rebuild actually changed anything.
+   - `docker-compose` build: `docker compose build "$DOCKER_SERVICE"` then `docker compose images "$DOCKER_SERVICE"`.
 4. **Graceful restart by default.** Hard kill mid-write corrupts the state DB silently.
 
    | Strategy | Command | When |
    |---|---|---|
-   | Graceful (default) | `kill -TERM <PID>` then wait for exit; or `systemctl --user restart regatta`; or `docker compose restart regatta` | Always try first |
-   | Hard kill (last resort) | `kill -KILL <PID>` | Only if graceful does not exit within ~30s. Before KILL, try `kill -ABRT <PID>` — the Go runtime dumps all goroutine stacks to stderr on SIGABRT regardless of `signal.Notify` registration. SIGQUIT is intercepted ONLY when the binary registers it; regatta currently does not, so SIGQUIT will be silently ignored. |
+   | Graceful (default) | `kill -TERM <PID>` then wait for exit; or `systemctl --user restart $SYSTEMD_UNIT`; or `docker compose restart $DOCKER_SERVICE` | Always try first |
+   | Hard kill (last resort) | `kill -KILL <PID>` | Only if graceful does not exit within ~30s. Before KILL, try `kill -ABRT <PID>` — the Go runtime dumps all goroutine stacks to stderr on SIGABRT regardless of `signal.Notify` registration. SIGQUIT is intercepted ONLY when the Go binary registers it; assume the orchestrator does not, so SIGQUIT will be silently ignored unless target YAML says otherwise. |
 
    After restart, re-run `sqlite3 "$DB" 'pragma integrity_check'`. Lock-orphan signature: `sqlite3` returns `database is locked` despite no other process — `lsof "$DB"` finds it.
-5. **Confirm the binary actually changed.** Restart picking up the old binary is the most common silent failure of this loop. `which regatta` may resolve to a shim or shell alias — verify it matches the running PID's executable.
-   - Resolve the running binary path. Linux: `readlink -f /proc/<PID>/exe`. macOS: `lsof -p <PID> -Fn` emits a TWO-line record per fd — `ftxt` then `n<path>` on the next line; parse with `awk '/^ftxt/{getline n; sub(/^n/,"",n); print n; exit}'`. Use THIS resolved path, not `$(which regatta)` — `which` may resolve to a shim or a stale `$PATH` entry.
+5. **Confirm the binary actually changed.** Restart picking up the old binary is the most common silent failure of this loop. `which $ORCH_BINARY` may resolve to a shim or shell alias — verify it matches the running PID's executable.
+   - Resolve the running binary path. Linux: `readlink -f /proc/<PID>/exe`. macOS: `lsof -p <PID> -Fn` emits a TWO-line record per fd — `ftxt` then `n<path>` on the next line; parse with `awk '/^ftxt/{getline n; sub(/^n/,"",n); print n; exit}'`. Use THIS resolved path, not `$(which $ORCH_BINARY)` — `which` may resolve to a shim or a stale `$PATH` entry.
    - `go-install`: `go version -m "<resolved-path>" | head -5` — compare `mod` / `vcs.revision` / `vcs.time` lines pre/post. Requires the binary to embed module info (default with module mode + `go install`).
    - `docker`: `docker inspect --format '{{.Image}}' <container>` — must match the SHA you built in step 3.
-6. **Stop the orchestrator BEFORE wiping agent worktrees.** Wiping while regatta is mid-poll races the spawner: it may have just `mkdir`'d a new agent dir between your `git worktree list` and the `remove`, leaving an orphan. Sequence: graceful stop (step 4) → wipe → restart. Never wipe a live tree.
+6. **Stop the orchestrator BEFORE wiping agent worktrees.** Wiping while the orchestrator is mid-poll races the spawner: it may have just `mkdir`'d a new agent dir between your `git worktree list` and the `remove`, leaving an orphan. Sequence: graceful stop (step 4) → wipe → restart. Never wipe a live tree.
 
-   The pre-check below confirms NO regatta process is running with the pre-flight PID. It does NOT prevent a different regatta instance from being launched by a parallel operator session between the check and the wipe — if that scenario is in scope, additionally verify the pre-flight `port` is unbound (`lsof -nP -iTCP:$PORT -sTCP:LISTEN | grep -q . && echo "port still bound" && exit 1`). The PID-identity check is sufficient for the single-operator self-host case (the rest of this skill's containment model).
+   The pre-check below confirms NO orchestrator process is running with the pre-flight PID. It does NOT prevent a different orchestrator instance from being launched by a parallel operator session between the check and the wipe — if that scenario is in scope, additionally verify the pre-flight `port` is unbound (`lsof -nP -iTCP:$PORT -sTCP:LISTEN | grep -q . && echo "port still bound" && exit 1`). The PID-identity check is sufficient for the single-operator self-host case (the rest of this skill's containment model).
    ```bash
    # Pre-check: orchestrator must be stopped — refuse if its PID still exists
-   if kill -0 <PID> 2>/dev/null; then echo "regatta still running; stop before wipe"; exit 1; fi
+   if kill -0 <PID> 2>/dev/null; then echo "$ORCH_BINARY still running; stop before wipe"; exit 1; fi
 
    # Empty-input safety: xargs with no input invokes the command once with literal {} on BSD/macOS;
    # GNU xargs needs --no-run-if-empty (or -r), BSD needs nothing because it has no -I-empty-skip.
@@ -111,9 +227,9 @@ The most common operator move during a session is: change a regatta source file 
    - Re-open the same sandbox-repo issue that triggered the prior run: `gh issue reopen <N> -R "$TARGET_REPO"` then add a comment "canary-replay-<unix-ts>".
    - File a fresh canary issue from a templated body that pins `canary: <reason> ts=<unix>` so subsequent diffs are mechanically correlatable.
 8. **Observe.** `tail -F` on a log file breaks across restart when the file is recreated, and `journalctl -fu` can also drop if the journal buffer rotated. Prefer the channel that survives:
-   - systemd: `journalctl --user -fu regatta` (or system unit). Pair with `journalctl --user -u regatta --since "1 min ago" --no-pager` after restart so you can see the boot lines you missed.
-   - docker compose: `docker compose logs -f --since=1m regatta` — `-f` reconnects on container restart; `--since` recovers boot lines.
-   - go-install / bare process: redirect the process to a known file at launch (`regatta serve >/var/log/regatta.log 2>&1`) then `tail -F /var/log/regatta.log`. After restart, re-run `tail -F` because the inode changed.
+   - systemd: `journalctl --user -fu $SYSTEMD_UNIT` (or system unit). Pair with `journalctl --user -u $SYSTEMD_UNIT --since "1 min ago" --no-pager` after restart so you can see the boot lines you missed.
+   - docker compose: `docker compose logs -f --since=1m $DOCKER_SERVICE` — `-f` reconnects on container restart; `--since` recovers boot lines.
+   - go-install / bare process: redirect the process to a known file at launch (`$ORCH_BINARY serve >/var/log/$ORCH_BINARY.log 2>&1`) then `tail -F /var/log/$ORCH_BINARY.log`. After restart, re-run `tail -F` because the inode changed.
    - Across all three, also note: the first line after restart should include the version/build info from step 5.
 
 ### Sandbox target-repo reset (between iterations)
@@ -124,24 +240,24 @@ DANGEROUS if `$TARGET_REPO` drifted. Re-read the value FIRST, refuse if it does 
 # Confirm target hasn't drifted
 test "$TARGET_REPO" = "$PREFLIGHT_TARGET" || { echo "TARGET drifted; abort"; exit 1; }
 
-# Close all OPEN PRs that came from regatta-spawned branches (regatta/agent-* head ref).
+# Close all OPEN PRs from orchestrator-spawned branches ($BRANCH_PREFIX prefix).
 # Use `while read` instead of `xargs -I{}` — BSD xargs invokes the command once with literal `{}`
 # on empty input, which would call `gh pr close {} -R ...` and corrupt state.
 gh pr list -R "$TARGET_REPO" --state open --json number,headRefName -L 50 \
-  | jq -r '.[] | select(.headRefName | startswith("regatta/agent-")) | .number' \
+  | jq -r --arg p "$BRANCH_PREFIX" '.[] | select(.headRefName | startswith($p)) | .number' \
   | while IFS= read -r n; do
       [ -n "$n" ] || continue
       gh pr close "$n" -R "$TARGET_REPO" -d || break   # break on first failure (rate-limit, perms)
       sleep 1                                          # gentle on secondary rate limit
     done
 
-# Delete any leftover regatta/agent-* refs (paranoia after -d). Same empty-input guard.
+# Delete any leftover $BRANCH_PREFIX* refs (paranoia after -d). Same empty-input guard.
 gh api "repos/$TARGET_REPO/git/refs/heads/regatta" --jq '.[].ref' 2>/dev/null \
   | while IFS= read -r ref; do
       [ -n "$ref" ] || continue
       case "$ref" in
-        refs/heads/regatta/agent-*) gh api -X DELETE "repos/$TARGET_REPO/git/$ref" || break ;;
-        *) echo "skip non-regatta/agent-* ref: $ref" ;;          # never delete operator work
+        refs/heads/${BRANCH_PREFIX}*) gh api -X DELETE "repos/$TARGET_REPO/git/$ref" || break ;;
+        *) echo "skip non-$BRANCH_PREFIX ref: $ref" ;;            # never delete operator work
       esac
     done
 
@@ -151,15 +267,15 @@ git worktree list | awk '/agent-/ {print $1}' \
 git worktree prune
 ```
 
-NEVER use any deletion command without the `TARGET_REPO != PREFLIGHT_TARGET` guard. NEVER delete branches that don't match the `regatta/agent-*` prefix — operator-authored work on the sandbox repo is NOT in scope.
+NEVER use any deletion command without the `TARGET_REPO != PREFLIGHT_TARGET` guard. NEVER delete branches that don't match the `$BRANCH_PREFIX` prefix — operator-authored work on the sandbox repo is NOT in scope.
 
 ## Containment rules (READ FIRST)
 
 Regatta spawns real agents that open real PRs and burn real API quota.
 
 1. **Sandbox target repo only.** Never point at production. Production-shaped name (matches `^(anthropics|google|microsoft|.*-prod|.*-production)/`) → require explicit confirmation via `AskUserQuestion` when available, else state the risk and require operator typed "confirm:<owner>/<name>" in chat before proceeding. Do NOT silently proceed.
-2. **Worktree isolation for operator edits.** Any operator edit to regatta source goes through `EnterWorktree` when available; otherwise `git worktree add .claude/worktrees/<slug> -b <slug>` manually and `cd` into it. Never edit regatta source from a checkout that is also running the binary — the running process holds stale state.
-3. **No `--no-verify`, no force-push, no `gh pr merge --admin`.** Why: each bypasses a gate regatta itself enforces. `--admin` overrides branch protection so a wedged target repo cannot be recovered without ops. `--no-verify` skips local checks that the worker would re-run anyway → just hides the failure. Force-push to a regatta-spawned branch loses the agent's heartbeat anchor and the reaper cannot reconcile.
+2. **Worktree isolation for operator edits.** Any operator edit to orchestrator source goes through `EnterWorktree` when available; otherwise `git worktree add .claude/worktrees/<slug> -b <slug>` manually and `cd` into it. Never edit orchestrator source from a checkout that is also running the binary.
+3. **No `--no-verify`, no force-push, no `gh pr merge --admin`.** Why: each bypasses a gate the orchestrator itself enforces. `--admin` overrides branch protection so a wedged target repo cannot be recovered without ops. `--no-verify` skips local checks that the worker would re-run anyway → just hides the failure. Force-push to an orchestrator-spawned branch loses the agent's heartbeat anchor and the reaper cannot reconcile.
 4. **Parallel cap = 3.** If discovered `ParallelCap` > 3, recommend reducing in config BEFORE first launch (not at runtime — config is read at startup). Quota dies at 5+.
 5. **Kill-switch FIRST.** First narration line MUST include the discovered kill command: `kill <PID>` (or `systemctl --user stop regatta` if discovered).
 6. **No live mutation of target's `main`.** Regatta opens PRs; merge gate decides. Skill files findings + opens issues; does not merge.
@@ -201,7 +317,7 @@ Cheap-first. Stop the moment a channel goes silent when it should be chatty — 
 | Dashboard | `curl -sf "http://localhost:${PORT}/api/agents" \| jq` | Agent state, last heartbeat, current PR |
 | GH PR sweep | `gh pr list -R "$TARGET_REPO" --json number,headRefName,state,mergeStateStatus,statusCheckRollup,isDraft -L 20` | What landed, what's stuck, CI flake pattern |
 | Agent logs | `tail -F .claude/worktrees/agent-*/logs/*.log` (or whatever the spawner discovered) | Worker reasoning, prompt drift, tool-denial loops |
-| Regatta logs | `journalctl -u regatta -f` if systemd; else `tail -F` discovered file; else attach to PID's fd/2 | State transitions, reaper events, prwatch warnings |
+| Orchestrator logs | `journalctl -u $SYSTEMD_UNIT -f` if systemd; else `tail -F` discovered file; else attach to PID's fd/2 | State transitions, reaper events, prwatch warnings |
 | State DB | `sqlite3 "$DB" 'select kind,count(*) from events group by kind'` | Event-vocabulary drift, idempotency failures |
 | Heartbeat health | `gh pr view <N> --json mergeStateStatus,statusCheckRollup` | Pre-merge gate health per PR |
 | Binary staleness | `go version -m "$(which regatta)"` or `docker inspect --format '{{.Image}}' <container>` | Confirm a rebuild actually took effect |
@@ -219,7 +335,7 @@ Five phases. One narration line per phase.
 4. **Act.** EITHER (a) file GitHub issue with surface prefix, (b) draft memory entry under `~/.claude/projects/-Users-treedesk-Desktop-Projects-regatta/memory/` if operator-loop lesson, OR (c) draft CLAUDE.md candidate rule if universal-agent lesson. NEVER both for the same finding — pick the surface.
 5. **Pause.** One-sentence status hand-back. Autonomous looping is NOT default; only schedule via `ScheduleWakeup` when (a) the harness exposes it AND (b) the operator explicitly said "autonomous" / "loop" / "keep watching".
 
-End every iteration with: `result: regatta operator loop <N> — <findings> new, <issues> filed, <fixes> pushed`.
+End every iteration with: `result: operator loop <N> — <findings> new, <issues> filed, <fixes> pushed, green-clock=<days>`.
 
 ## Recurrence rule (CRITICAL — don't spam tracker)
 
