@@ -414,6 +414,8 @@ func statusLabel(s state.AgentState) string {
 }
 
 // eventVerb turns the substrate's state-machine event tokens into one short operator-readable sentence so the recent-activity panel reads as narrative not log noise. Unknown kinds fall through to template.HTMLEscapeString(e.Kind) so a future event_kind addition stays XSS-safe; the hardcoded branches concatenate only numeric ids (%d-formatted) and static spans, never user-controlled text — keep that invariant by routing any new string field through HTMLEscapeString before splicing it into the returned HTML.
+//
+//nolint:gosec // see godoc above — every branch returns either static HTML, %d-formatted numeric ids, or HTMLEscapeString(kind)
 func eventVerb(e state.Event) template.HTML {
 	id := ""
 	if e.AgentID.Valid {
@@ -452,6 +454,8 @@ func relTimeFn(clock func() time.Time) func(time.Time) string {
 }
 
 // sparkSVG renders a 24h spend histogram as a tiny inline SVG so the spend panel carries a trend signal without a charting dep. Empty / zero series collapses to a flat baseline so the metric reads "—" visually instead of confusing the operator with a flat-line-at-zero overlay.
+//
+//nolint:gosec // returned HTML wraps fmt.Sprintf'd static SVG with %d/%.1f-formatted numeric coords — no caller-controlled string interpolation
 func sparkSVG(series []int64) template.HTML {
 	if len(series) == 0 {
 		return template.HTML(fmt.Sprintf(`<svg class="spark" width="%d" height="%d"></svg>`, dashboardSparkWidth, dashboardSparkHeight))

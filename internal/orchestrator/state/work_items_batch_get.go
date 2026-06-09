@@ -17,7 +17,7 @@ func (d *DB) GetWorkItemsByIDs(ctx context.Context, ids []string) (map[string]st
 	for i, id := range ids {
 		args[i] = id
 	}
-	q := fmt.Sprintf(`SELECT id, title FROM work_items WHERE id IN (%s)`, placeholders)
+	q := fmt.Sprintf(`SELECT id, title FROM work_items WHERE id IN (%s)`, placeholders) //nolint:gosec // placeholders is "?,?,..." constructed from len(ids), no caller-controlled bytes interpolated
 	rows, err := d.sql.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("state: batch get work_items: %w", err)
