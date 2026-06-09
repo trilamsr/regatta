@@ -126,9 +126,7 @@ func formatUSDMicros(micros int64) string {
 	return fmt.Sprintf("$%.2f", usd)
 }
 
-// truncate caps a string to n bytes on a UTF-8 rune boundary; the trailing
-// `…` keeps the cut visible. Walking back to the nearest RuneStart avoids
-// emitting partial multi-byte sequences that render as U+FFFD (#1134).
+// truncate caps s to n bytes on a UTF-8 rune boundary to avoid U+FFFD on partial multi-byte sequences; appended `…` (3 bytes) means result is ≤ n+3 bytes (#1134).
 func truncate(n int, s string) string {
 	if len(s) <= n {
 		return s

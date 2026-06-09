@@ -76,6 +76,14 @@ func TestTruncate_PreservesUTF8RuneBoundary(t *testing.T) {
 	if !strings.HasSuffix(got, "…") {
 		t.Fatalf("truncate output missing trailing ellipsis: %q", got)
 	}
+	// n=50 lands mid-🚀 (bytes 48-51); RuneStart backoff cuts at 48, then "…" (3 bytes) appends → 51 bytes total.
+	if want := 48 + len("…"); len(got) != want {
+		t.Fatalf("truncate len=%d want=%d for %q", len(got), want, got)
+	}
+	// Partial 🚀 must not survive as a prefix of the head — only safe head bytes plus ellipsis.
+	if strings.ContainsRune(got, '🚀') {
+		t.Fatalf("truncate preserved 🚀 past byte budget in %q", got)
+	}
 	head := strings.TrimSuffix(got, "…")
 	for i, r := range head {
 		if r == '�' {
