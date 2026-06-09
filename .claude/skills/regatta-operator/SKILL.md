@@ -18,23 +18,24 @@ Do NOT silently switch target repos mid-session. Switching invalidates the obser
 Run discovery FIRST. Hardcoded values are bugs.
 
 ```bash
-# Find running regatta + its port
-pgrep -fl 'regatta serve'                          # PID + cmdline
-lsof -nP -iTCP -sTCP:LISTEN -p <PID> 2>/dev/null   # listening port
-# OR fallback:
-ss -lntp 2>/dev/null | grep regatta || \
-  netstat -anv -p tcp | grep LISTEN | grep regatta
+# Find running regatta + its port (macOS uses BSD pgrep without -f flag aliasing)
+pgrep -l regatta || ps -ef | grep '[r]egatta serve'   # PID + cmdline
+lsof -nP -iTCP -sTCP:LISTEN -p <PID> 2>/dev/null      # listening port (portable)
+# Linux-only fallback:
+ss -lntp 2>/dev/null | grep regatta
+# macOS-only fallback:
+netstat -anv -p tcp 2>/dev/null | grep LISTEN | grep regatta
 
 # Find state DB
 find . -maxdepth 4 -name '*.db' -o -name '*.sqlite*' 2>/dev/null | head -5
 # Or check serve config:
 git grep -nE 'state.*\.db|sqlite|StatePath' cmd/ internal/ | head -10
 
-# Find log destination
+# Find log destination — try systemd user, then system, then fall back
 git grep -nE 'log\.Open|os\.Stderr|journal|slog\.New' cmd/regatta/serve.go | head -10
-# Try systemd, fall back to stderr capture
-journalctl -u regatta -n 1 --no-pager 2>/dev/null || \
-  echo "no systemd; tail wherever serve.go writes"
+journalctl --user -u regatta -n 1 --no-pager 2>/dev/null \
+  || journalctl -u regatta -n 1 --no-pager 2>/dev/null \
+  || echo "no systemd; tail wherever serve.go writes (or use 'docker compose logs regatta')"
 
 # Discover poll interval + parallel cap
 git grep -nE 'PollInterval|TickInterval|ParallelCap|MaxConcurrent' internal/ cmd/
@@ -67,12 +68,16 @@ Tracking issues for polling-vs-webhook design improvements live under the `[CORE
 
 The most common operator move during a session is: change a regatta source file (orchestrator logic / prompt template / gate script) and watch the next agent pick it up. The skill MUST keep this loop fast and safe. Default recipe:
 
-1. **Checkpoint state DB** before edit. Read-only snapshot — if the change breaks startup, you can compare events against the baseline.
+1. **Checkpoint state DB** before edit. SQLite with WAL is multi-file (`-wal`, `-shm`); a bare `cp` of `$DB` while a writer is connected yields a corrupt snapshot. Force a checkpoint first, then copy all sidecars.
    ```bash
-   cp "$DB" "$DB.ckpt-$(date +%s)"
-   sqlite3 "$DB" 'pragma integrity_check' | head -3
+   sqlite3 "$DB" 'PRAGMA wal_checkpoint(TRUNCATE);'   # flush WAL into main DB
+   TS=$(date +%s)
+   cp "$DB" "$DB.ckpt-$TS"
+   [ -f "$DB-wal" ] && cp "$DB-wal" "$DB-wal.ckpt-$TS"
+   [ -f "$DB-shm" ] && cp "$DB-shm" "$DB-shm.ckpt-$TS"
+   sqlite3 "$DB.ckpt-$TS" 'pragma integrity_check' | head -3
    ```
-2. **Edit in a worktree.** Never edit the source tree of the running binary's checkout — file changes can flush partial state on the next syscall and the running process holds the prior binary anyway.
+2. **Edit in a worktree.** Operator-side edits MUST land in a separate working tree so the running binary's checkout stays untouched. Two reasons: (a) on rebuild the operator's worktree is the build input, and a clean baseline is recoverable via `git switch -`; (b) the running process holds its text segment in RAM, so source edits do not affect it until the next launch — editing in the binary's own checkout offers zero runtime benefit and adds risk of an unstaged change leaking into the next rebuild.
 3. **Build verification.** Compile errors surface immediately; startup errors only surface after restart. Always run the compile check FIRST so you don't conflate them.
    - `go-install` build: `go build ./cmd/regatta` (does NOT install) → on success `go install ./cmd/regatta`.
    - `docker` build: `docker build -t regatta:dev .` then capture image SHA — comparing this SHA to the running container's image SHA tells you if the rebuild actually changed anything.
@@ -82,22 +87,34 @@ The most common operator move during a session is: change a regatta source file 
    | Strategy | Command | When |
    |---|---|---|
    | Graceful (default) | `kill -TERM <PID>` then wait for exit; or `systemctl --user restart regatta`; or `docker compose restart regatta` | Always try first |
-   | Hard kill (last resort) | `kill -KILL <PID>` | Only if graceful does not exit within ~30s. Capture stack trace via `kill -QUIT <PID>` BEFORE the KILL so the hang is debuggable. |
+   | Hard kill (last resort) | `kill -KILL <PID>` | Only if graceful does not exit within ~30s. Before KILL, try `kill -ABRT <PID>` — the Go runtime dumps all goroutine stacks to stderr on SIGABRT regardless of `signal.Notify` registration. SIGQUIT is intercepted ONLY when the binary registers it; regatta currently does not, so SIGQUIT will be silently ignored. |
 
    After restart, re-run `sqlite3 "$DB" 'pragma integrity_check'`. Lock-orphan signature: `sqlite3` returns `database is locked` despite no other process — `lsof "$DB"` finds it.
-5. **Confirm the binary actually changed.** Restart picking up the old binary is the most common silent failure of this loop.
-   - `go-install`: `go version -m "$(which regatta)" | head -5` — compare `mod` line or `build` timestamps pre/post.
+5. **Confirm the binary actually changed.** Restart picking up the old binary is the most common silent failure of this loop. `which regatta` may resolve to a shim or shell alias — verify it matches the running PID's executable.
+   - Resolve the running binary path: `readlink -f /proc/<PID>/exe` (Linux) or `lsof -p <PID> -Fn | awk -F'n' '/txt/{print $2; exit}'` (macOS). Use THIS path, not `$(which regatta)`.
+   - `go-install`: `go version -m "<resolved-path>" | head -5` — compare `mod` / `vcs.revision` / `vcs.time` lines pre/post. Requires the binary to embed module info (default with module mode + `go install`).
    - `docker`: `docker inspect --format '{{.Image}}' <container>` — must match the SHA you built in step 3.
-6. **Wipe stale agent worktrees** before launching a canary. Old orchestrator logic may have left worktrees with stale prompt assumptions.
+6. **Stop the orchestrator BEFORE wiping agent worktrees.** Wiping while regatta is mid-poll races the spawner: it may have just `mkdir`'d a new agent dir between your `git worktree list` and the `remove`, leaving an orphan. Sequence: graceful stop (step 4) → wipe → restart. Never wipe a live tree.
    ```bash
-   git worktree list | awk '/agent-/ {print $1}' | xargs -I{} git worktree remove --force {} 2>/dev/null
-   rm -rf .claude/worktrees/agent-* 2>/dev/null
+   # Pre-check: orchestrator must be stopped — refuse if its PID still exists
+   if kill -0 <PID> 2>/dev/null; then echo "regatta still running; stop before wipe"; exit 1; fi
+
+   # Empty-input safety: xargs with no input invokes the command once with literal {} on BSD/macOS;
+   # GNU xargs needs --no-run-if-empty (or -r), BSD needs nothing because it has no -I-empty-skip.
+   # Use `while read` to be portable.
+   git worktree list | awk '/agent-/ {print $1}' \
+     | while IFS= read -r path; do [ -n "$path" ] && git worktree remove --force "$path"; done
+   find .claude/worktrees -maxdepth 1 -name 'agent-*' -type d -exec rm -rf {} + 2>/dev/null
    git worktree prune
    ```
 7. **Replay a canary.** Re-trigger the same synthetic input you used before the edit. Two options:
    - Re-open the same sandbox-repo issue that triggered the prior run: `gh issue reopen <N> -R "$TARGET_REPO"` then add a comment "canary-replay-<unix-ts>".
    - File a fresh canary issue from a templated body that pins `canary: <reason> ts=<unix>` so subsequent diffs are mechanically correlatable.
-8. **Observe.** Tail logs through the restart — file-descriptor breaks on restart, so use `journalctl -fu regatta` or `docker compose logs -f regatta` (both reconnect across restarts) rather than `tail -F` on a file the process may rotate.
+8. **Observe.** `tail -F` on a log file breaks across restart when the file is recreated, and `journalctl -fu` can also drop if the journal buffer rotated. Prefer the channel that survives:
+   - systemd: `journalctl --user -fu regatta` (or system unit). Pair with `journalctl --user -u regatta --since "1 min ago" --no-pager` after restart so you can see the boot lines you missed.
+   - docker compose: `docker compose logs -f --since=1m regatta` — `-f` reconnects on container restart; `--since` recovers boot lines.
+   - go-install / bare process: redirect the process to a known file at launch (`regatta serve >/var/log/regatta.log 2>&1`) then `tail -F /var/log/regatta.log`. After restart, re-run `tail -F` because the inode changed.
+   - Across all three, also note: the first line after restart should include the version/build info from step 5.
 
 ### Sandbox target-repo reset (between iterations)
 
@@ -107,17 +124,30 @@ DANGEROUS if `$TARGET_REPO` drifted. Re-read the value FIRST, refuse if it does 
 # Confirm target hasn't drifted
 test "$TARGET_REPO" = "$PREFLIGHT_TARGET" || { echo "TARGET drifted; abort"; exit 1; }
 
-# Close all OPEN PRs that came from regatta-spawned branches (regatta/agent-* head ref)
+# Close all OPEN PRs that came from regatta-spawned branches (regatta/agent-* head ref).
+# Use `while read` instead of `xargs -I{}` — BSD xargs invokes the command once with literal `{}`
+# on empty input, which would call `gh pr close {} -R ...` and corrupt state.
 gh pr list -R "$TARGET_REPO" --state open --json number,headRefName -L 50 \
   | jq -r '.[] | select(.headRefName | startswith("regatta/agent-")) | .number' \
-  | xargs -I{} gh pr close {} -R "$TARGET_REPO" -d   # -d deletes the branch on close
+  | while IFS= read -r n; do
+      [ -n "$n" ] || continue
+      gh pr close "$n" -R "$TARGET_REPO" -d || break   # break on first failure (rate-limit, perms)
+      sleep 1                                          # gentle on secondary rate limit
+    done
 
-# Delete any leftover regatta/agent-* refs (paranoia after -d)
+# Delete any leftover regatta/agent-* refs (paranoia after -d). Same empty-input guard.
 gh api "repos/$TARGET_REPO/git/refs/heads/regatta" --jq '.[].ref' 2>/dev/null \
-  | xargs -I{} gh api -X DELETE "repos/$TARGET_REPO/git/{}"
+  | while IFS= read -r ref; do
+      [ -n "$ref" ] || continue
+      case "$ref" in
+        refs/heads/regatta/agent-*) gh api -X DELETE "repos/$TARGET_REPO/git/$ref" || break ;;
+        *) echo "skip non-regatta/agent-* ref: $ref" ;;          # never delete operator work
+      esac
+    done
 
-# Local agent worktrees (separate from target repo)
-git worktree list | awk '/agent-/ {print $1}' | xargs -I{} git worktree remove --force {} 2>/dev/null
+# Local agent worktrees (separate from target repo). Orchestrator MUST be stopped before this.
+git worktree list | awk '/agent-/ {print $1}' \
+  | while IFS= read -r path; do [ -n "$path" ] && git worktree remove --force "$path"; done
 git worktree prune
 ```
 
