@@ -76,6 +76,7 @@ var subcommands = []subcommand{
 	{subcmdUninstallService, runUninstallService},
 	{subcmdDoctor, runDoctor},
 	{subcmdAgents, runAgents},
+	{subcmdEvents, runEvents},
 }
 
 func main() {
@@ -133,6 +134,7 @@ func usage(w io.Writer) {
   regatta uninstall-service [--user|--system]         Reverse install-service (idempotent)
   regatta doctor [--json] [--skip <name>]             Preflight: secrets, binaries, gh auth, git, config, branch protection
   regatta agents list [--state=<s>] [--lane=<l>] [--format=table|json]  List agents from state.db (read-only; closes #1078)
+  regatta events tail [--db PATH] [--agent N] [--kind K] [--since DUR] [-f]  Read-only tail of substrate events (table | json; closes #1078 c2)
   regatta version                                     Print build info
   regatta help                                        This message
 
