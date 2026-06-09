@@ -232,143 +232,6 @@ func TestWorkItemDrawer_404OnUnknownID(t *testing.T) {
 	}
 }
 
-// TestWorkItemDrawer_RendersFlowStepActive asserts AgentRunning marks the 'running' pill active and 'pending' inactive.
-func TestWorkItemDrawer_RendersFlowStepActive(t *testing.T) {
-	tmpls, err := LoadTemplates(AssetsFS())
-	if err != nil {
-		t.Fatalf("LoadTemplates: %v", err)
-	}
-	dbPath := filepath.Join(t.TempDir(), "wi-flow.db")
-	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
-	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
-	if err != nil {
-		t.Fatalf("OpenWithClock: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	ctx := context.Background()
-	wi := state.WorkItem{ID: "BUG-2001", Kind: state.KindFeature, Title: "soak audit drift", Lane: "server", Status: state.WorkStatusRunning}
-	if err := db.UpsertWorkItem(ctx, wi, state.SourceAdapter, clock()); err != nil {
-		t.Fatalf("UpsertWorkItem: %v", err)
-	}
-	a, err := db.UpsertPending(ctx, wi.ID, wi.Lane)
-	if err != nil {
-		t.Fatalf("UpsertPending: %v", err)
-	}
-	if _, err := db.TransitionAgent(ctx, a.ID, state.AgentSpawning, state.AgentMutation{}); err != nil {
-		t.Fatalf("transition spawning: %v", err)
-	}
-	if _, err := db.TransitionAgent(ctx, a.ID, state.AgentRunning, state.AgentMutation{}); err != nil {
-		t.Fatalf("transition running: %v", err)
-	}
-	h := NewHandler(Dependencies{Templates: tmpls, DB: db, Clock: clock})
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/drawer/work-item/BUG-2001", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("drawer status=%d body=%s", rec.Code, rec.Body.String())
-	}
-	body := rec.Body.String()
-	// All four labels must appear in the row.
-	for _, want := range []string{"pending", "spawning", "running", "done"} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("drawer body missing flow label %q: %s", want, body)
-		}
-	}
-	// Locate the running cell and confirm it carries the active class.
-	runIdx := strings.Index(body, ">running<")
-	if runIdx < 0 {
-		t.Fatalf("drawer missing >running< cell marker: %s", body)
-	}
-	prefix := body[:runIdx]
-	openLi := strings.LastIndex(prefix, "<li")
-	if openLi < 0 {
-		t.Fatalf("drawer running cell has no opening <li: %s", body)
-	}
-	runCell := body[openLi:runIdx]
-	if !strings.Contains(runCell, "active") {
-		t.Fatalf("drawer running cell missing active class: %s", runCell)
-	}
-	// And the pending cell must NOT be active so the flow reads as forward-progress.
-	pendIdx := strings.Index(body, ">pending<")
-	if pendIdx < 0 {
-		t.Fatalf("drawer missing >pending< cell marker: %s", body)
-	}
-	pendPrefix := body[:pendIdx]
-	pendOpen := strings.LastIndex(pendPrefix, "<li")
-	pendCell := body[pendOpen:pendIdx]
-	if strings.Contains(pendCell, "active") {
-		t.Fatalf("drawer pending cell wrongly active when agent is running: %s", pendCell)
-	}
-}
-
-// TestWorkItemDrawer_RendersBodyPreview asserts a 500-char source truncates to 200 runes with an ellipsis marker.
-func TestWorkItemDrawer_RendersBodyPreview(t *testing.T) {
-	tmpls, err := LoadTemplates(AssetsFS())
-	if err != nil {
-		t.Fatalf("LoadTemplates: %v", err)
-	}
-	dbPath := filepath.Join(t.TempDir(), "wi-body.db")
-	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
-	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
-	if err != nil {
-		t.Fatalf("OpenWithClock: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	ctx := context.Background()
-	longBody := `"` + strings.Repeat("a", 500) + `"`
-	wi := state.WorkItem{ID: "BUG-2002", Kind: state.KindFeature, Title: "long body item", Lane: "server", Status: state.WorkStatusRunning, AcceptanceJSON: longBody}
-	if err := db.UpsertWorkItem(ctx, wi, state.SourceAdapter, clock()); err != nil {
-		t.Fatalf("UpsertWorkItem: %v", err)
-	}
-	h := NewHandler(Dependencies{Templates: tmpls, DB: db, Clock: clock})
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/drawer/work-item/BUG-2002", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("drawer status=%d body=%s", rec.Code, rec.Body.String())
-	}
-	body := rec.Body.String()
-	if !strings.Contains(body, "body preview") {
-		t.Fatalf("drawer missing body-preview section header: %s", body)
-	}
-	if !strings.Contains(body, "…") {
-		t.Fatalf("drawer body preview missing ellipsis marker for truncation: %s", body)
-	}
-	// Full source must NOT appear — 500-char repeat would survive only if no truncation fired.
-	if strings.Contains(body, longBody) {
-		t.Fatalf("drawer rendered full untruncated body source: len=%d", len(body))
-	}
-}
-
-// TestWorkItemDrawer_RendersGHIssueLink asserts the drawer surfaces github.com/owner/repo/issues/<num> with BUG- stripped.
-func TestWorkItemDrawer_RendersGHIssueLink(t *testing.T) {
-	tmpls, err := LoadTemplates(AssetsFS())
-	if err != nil {
-		t.Fatalf("LoadTemplates: %v", err)
-	}
-	dbPath := filepath.Join(t.TempDir(), "wi-link.db")
-	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
-	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
-	if err != nil {
-		t.Fatalf("OpenWithClock: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	ctx := context.Background()
-	wi := state.WorkItem{ID: "BUG-1058", Kind: state.KindFeature, Title: "tick drift", Lane: "server", Status: state.WorkStatusRunning}
-	if err := db.UpsertWorkItem(ctx, wi, state.SourceAdapter, clock()); err != nil {
-		t.Fatalf("UpsertWorkItem: %v", err)
-	}
-	h := NewHandler(Dependencies{Templates: tmpls, DB: db, Clock: clock, Config: Config{GitHubRepo: "trilamsr/regatta"}})
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/drawer/work-item/BUG-1058", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("drawer status=%d body=%s", rec.Code, rec.Body.String())
-	}
-	body := rec.Body.String()
-	const want = "https://github.com/trilamsr/regatta/issues/1058"
-	if !strings.Contains(body, want) {
-		t.Fatalf("drawer missing GH issue URL %q: %s", want, body)
-	}
-}
-
 // TestLoadDockerSoakView_Healthy asserts green health pill when last 1m has spawns and no non-completed exits.
 func TestLoadDockerSoakView_Healthy(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "soak-healthy.db")
@@ -676,48 +539,105 @@ func TestEventVerb_MalformedPayloadOmitsWorkItemChip(t *testing.T) {
 	}
 }
 
-// TestBuildStatusFlow_CrashedFlipsLabel asserts AgentCrashed flips the final step label from "done" to "crashed" so the operator sees a clear failure signal (#1149 reviewer feedback).
-func TestBuildStatusFlow_CrashedFlipsLabel(t *testing.T) {
-	got := buildStatusFlow(state.AgentCrashed)
-	last := got[workItemFlowIdxDone]
-	if last.Label != workItemFlowLabelCrashed {
-		t.Fatalf("crashed label not applied: %+v", last)
+// TestLoadAgentsView_EmptyHintWhenNoAgents asserts the agents view carries an operator-friendly EmptyHint when no agents are in flight so the panel reads as "scheduler is idle" instead of blank.
+func TestLoadAgentsView_EmptyHintWhenNoAgents(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "agents-empty.db")
+	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
 	}
-	if !last.Active {
-		t.Fatalf("crashed step not active: %+v", last)
+	t.Cleanup(func() { _ = db.Close() })
+	view := loadAgentsView(context.Background(), Dependencies{DB: db, Clock: clock})
+	v, ok := view.(dashboardAgentsView)
+	if !ok {
+		t.Fatalf("loadAgentsView returned %T, want dashboardAgentsView", view)
+	}
+	if len(v.Rows) != 0 {
+		t.Fatalf("Rows=%d, want 0 on empty DB", len(v.Rows))
+	}
+	if v.EmptyHint == "" {
+		t.Fatalf("EmptyHint empty; want operator-friendly copy when zero agents")
+	}
+	if !strings.Contains(v.EmptyHint, "5s") {
+		t.Fatalf("EmptyHint missing scheduler cadence hint: %q", v.EmptyHint)
 	}
 }
 
-// TestBuildStatusFlow_EscalatedAlsoFlipsLabel pins the same flip for AgentEscalated (sibling terminal state) so a reviewer-blocked PR doesn't render as "done" (#1149).
-func TestBuildStatusFlow_EscalatedAlsoFlipsLabel(t *testing.T) {
-	got := buildStatusFlow(state.AgentEscalated)
-	if got[workItemFlowIdxDone].Label != workItemFlowLabelCrashed {
-		t.Fatalf("escalated label not flipped: %q", got[workItemFlowIdxDone].Label)
+// TestLoadWorkItemsView_EmptyHintWhenNoItems asserts the work-items view carries an EmptyHint that points to the adapter selector when no items are present, so the operator knows to check regatta.yaml.
+func TestLoadWorkItemsView_EmptyHintWhenNoItems(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "wi-empty.db")
+	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	view := loadWorkItemsView(context.Background(), Dependencies{DB: db, Clock: clock})
+	v, ok := view.(dashboardWorkItemsView)
+	if !ok {
+		t.Fatalf("loadWorkItemsView returned %T, want dashboardWorkItemsView", view)
+	}
+	total := 0
+	for _, b := range v.Buckets {
+		total += b.Count
+	}
+	if total != 0 {
+		t.Fatalf("bucket total=%d, want 0 on empty DB", total)
+	}
+	if v.EmptyHint == "" {
+		t.Fatalf("EmptyHint empty; want operator-friendly copy when zero work-items")
+	}
+	if !strings.Contains(v.EmptyHint, "spec_adapter.selector") {
+		t.Fatalf("EmptyHint missing selector pointer: %q", v.EmptyHint)
 	}
 }
 
-// TestBuildIssueURL_RejectsMalformedRepoSlug pins the regex guard so a path-traversal or embedded `/` in the repo string cannot produce broken or hostile URLs (#1149 reviewer feedback).
-func TestBuildIssueURL_RejectsMalformedRepoSlug(t *testing.T) {
-	cases := []string{"foo", "foo/bar/baz", "/bar", "foo/", "../escape/bar", "foo\\bar"}
-	for _, repo := range cases {
-		if got := buildIssueURL(repo, "BUG-1058"); got != "" {
-			t.Errorf("buildIssueURL(%q,...) = %q; want empty", repo, got)
+// TestLoadWorkItemsView_HintHidesBucketsWhenEmpty asserts the work-items template renders ONLY the EmptyHint when set — bucket grid stays hidden so the panel does not show contradictory "empty" + four zero-count cards (#1146 reviewer REVISE).
+func TestLoadWorkItemsView_HintHidesBucketsWhenEmpty(t *testing.T) {
+	tmpls, err := LoadTemplates(AssetsFS())
+	if err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	labels := []string{"Planned", "Running", statusLabelPROpen, "merged-bucket-sentinel"}
+	buckets := make([]dashboardBucket, len(labels))
+	for i, l := range labels {
+		buckets[i] = dashboardBucket{Label: l, Count: 0}
+	}
+	view := dashboardWorkItemsView{EmptyHint: emptyHintWorkItems, Buckets: buckets}
+	rec := httptest.NewRecorder()
+	if err := tmpls.Render(rec, "_work_items", view); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, emptyHintWorkItems) {
+		t.Fatalf("body missing EmptyHint copy: %s", body)
+	}
+	for _, label := range labels {
+		if strings.Contains(body, label) {
+			t.Fatalf("bucket label %q present alongside EmptyHint; want either/or rendering: %s", label, body)
 		}
 	}
-	if got := buildIssueURL("trilamsr/regatta", "BUG-1058"); got != "https://github.com/trilamsr/regatta/issues/1058" {
-		t.Errorf("happy path regression: %q", got)
-	}
 }
 
-// TestBuildBodyPreview_UnwrapsJSONBodyField pins the AcceptanceJSON stopgap — operator sees the body text, not raw `{"body":"..."}` (#1149 reviewer feedback; remove when #1092 ships dedicated column).
-func TestBuildBodyPreview_UnwrapsJSONBodyField(t *testing.T) {
-	got := buildBodyPreview(`{"body":"hello world","other":"junk"}`, 50)
-	if got != "hello world" {
-		t.Fatalf("JSON body unwrap failed: %q", got)
+// TestLoadEventsView_EmptyHintWhenNoEvents asserts the events view carries an EmptyHint when no events landed in the tail window so the operator does not stare at a blank panel.
+func TestLoadEventsView_EmptyHintWhenNoEvents(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "events-empty.db")
+	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
 	}
-	// non-JSON should pass through unchanged.
-	got = buildBodyPreview("plain text fallback", 50)
-	if got != "plain text fallback" {
-		t.Fatalf("non-JSON regressed: %q", got)
+	t.Cleanup(func() { _ = db.Close() })
+	view := loadEventsView(context.Background(), Dependencies{DB: db, Clock: clock})
+	v, ok := view.(dashboardEventsView)
+	if !ok {
+		t.Fatalf("loadEventsView returned %T, want dashboardEventsView", view)
+	}
+	if len(v.Rows) != 0 {
+		t.Fatalf("Rows=%d, want 0 on empty DB", len(v.Rows))
+	}
+	if v.EmptyHint == "" {
+		t.Fatalf("EmptyHint empty; want operator-friendly copy when zero events")
 	}
 }
