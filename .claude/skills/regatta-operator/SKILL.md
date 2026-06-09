@@ -154,12 +154,7 @@ Every channel below produces a metric. Each session's metrics are written to `$B
 | `green_clock_days` | consecutive days ≥10 PRs merged unattended (no operator `--admin`, no manual merge) | heartbeat report only |
 | `recurrence_counter_<root>` | open issue with same `<root>` keyword | comment on existing issue, never new |
 
-Read `$BASELINE_FILE` at pre-flight; write at hand-off:
-```json
-{ "session_id": "<id>", "ts": "<unix>",
-  "metrics": { "build_green_rate_impl": 0.94, "tdd_order_rate_impl": 0.81, ... },
-  "phase": "<active-roadmap-phase>", "green_clock_days": 7 }
-```
+Read `$BASELINE_FILE` at pre-flight; write at hand-off. Schema: `{session_id, ts, metrics:{<name>: <value>, ...}, phase, green_clock_days}`. Cold start = no baseline → no regression alerts until N≥2 sessions exist.
 
 ## Per-role canary suite
 
@@ -200,16 +195,15 @@ When MULTIPLE phases are marked `[IN-FLIGHT]` simultaneously (e.g. P0 + P3), tre
 
 ## Tight feedback loop (edit → rebuild → restart → canary → observe)
 
-PRIMARY USE: the orchestrator's OWN self-improve detector landed a change to its source; skill verifies the new binary is live and the canary suite still passes. SECONDARY USE: an operator (you-the-human or a one-shot skill invocation) makes a deliberate change. If neither, skip this section — autonomous loop runs without it. Default recipe applies to both:
+Default recipe when the orchestrator's self-improve detector lands a source change, or when an operator edits deliberately. Skip in steady autonomous state.
 
-1. **Checkpoint state DB** before edit. SQLite with WAL is multi-file (`-wal`, `-shm`); a bare `cp` of `$DB` while a writer is connected yields a corrupt snapshot. A bare `PRAGMA wal_checkpoint` + `cp` sequence also races — if the writer resumes between checkpoint and copy, the main DB and WAL drift. The safe primitive is `.backup`, which acquires the necessary locks internally:
+1. **Checkpoint state DB** before edit. WAL DBs are multi-file; never `cp` live. Use `.backup` (atomic, lock-aware, single-file). Fallback when `.backup` is unavailable: stop orchestrator first, then `cp` all three of `$DB` / `$DB-wal` / `$DB-shm` together.
    ```bash
    TS=$(date +%s)
-   sqlite3 "$DB" ".backup '$DB.ckpt-$TS'"            # atomic, lock-aware, single-file output
+   sqlite3 "$DB" ".backup '$DB.ckpt-$TS'"
    sqlite3 "$DB.ckpt-$TS" 'pragma integrity_check' | head -3
    ```
-   `.backup` produces ONE file with no sidecars needed for restore. If `.backup` is unavailable (very old sqlite3 CLI), fall back to: stop the orchestrator first (`kill -TERM <PID>` + wait for exit), THEN `cp` all three of `$DB`, `$DB-wal`, `$DB-shm` together. Never `cp` while a writer is live.
-2. **Edit in a worktree.** Operator-side edits MUST land in a separate working tree so the running binary's checkout stays untouched. Two reasons: (a) on rebuild the operator's worktree is the build input, and a clean baseline is recoverable via `git switch -`; (b) the running process holds its text segment in RAM, so source edits do not affect it until the next launch — editing in the binary's own checkout offers zero runtime benefit and adds risk of an unstaged change leaking into the next rebuild.
+2. **Edit in a worktree.** Running process holds its text segment in RAM — source edits don't affect it until next launch. Editing the running checkout offers zero runtime benefit and risks unstaged leak into rebuild. Worktree gives clean `git switch -` baseline.
 3. **Build verification.** Compile errors surface immediately; startup errors only surface after restart. Always run the compile check FIRST so you don't conflate them.
    - `go-install` build: `go build "./cmd/$ORCH_BINARY"` (does NOT install) → on success `go install "./cmd/$ORCH_BINARY"`.
    - `docker` build: `docker build -t "$ORCH_BINARY:dev" .` then capture image SHA — comparing this SHA to the running container's image SHA tells you if the rebuild actually changed anything.
@@ -222,33 +216,17 @@ PRIMARY USE: the orchestrator's OWN self-improve detector landed a change to its
    | Hard kill (last resort) | `kill -KILL <PID>` | Only if graceful does not exit within ~30s. Before KILL, try `kill -ABRT <PID>` — the Go runtime dumps all goroutine stacks to stderr on SIGABRT regardless of `signal.Notify` registration. SIGQUIT is intercepted ONLY when the Go binary registers it; assume the orchestrator does not, so SIGQUIT will be silently ignored unless target YAML says otherwise. |
 
    After restart, re-run `sqlite3 "$DB" 'pragma integrity_check'`. Lock-orphan signature: `sqlite3` returns `database is locked` despite no other process — `lsof "$DB"` finds it.
-5. **Confirm the binary actually changed.** Restart picking up the old binary is the most common silent failure of this loop. `which $ORCH_BINARY` may resolve to a shim or shell alias — verify it matches the running PID's executable.
-   - Resolve the running binary path. Linux: `readlink -f /proc/<PID>/exe`. macOS: `lsof -p <PID> -Fn` emits a TWO-line record per fd — `ftxt` then `n<path>` on the next line; parse with `awk '/^ftxt/{getline n; sub(/^n/,"",n); print n; exit}'`. Use THIS resolved path, not `$(which $ORCH_BINARY)` — `which` may resolve to a shim or a stale `$PATH` entry.
-   - `go-install`: `go version -m "<resolved-path>" | head -5` — compare `mod` / `vcs.revision` / `vcs.time` lines pre/post. Requires the binary to embed module info (default with module mode + `go install`).
-   - `docker`: `docker inspect --format '{{.Image}}' <container>` — must match the SHA you built in step 3.
-6. **Stop the orchestrator BEFORE wiping agent worktrees.** Wiping while the orchestrator is mid-poll races the spawner: it may have just `mkdir`'d a new agent dir between your `git worktree list` and the `remove`, leaving an orphan. Sequence: graceful stop (step 4) → wipe → restart. Never wipe a live tree.
-
-   The pre-check below confirms NO orchestrator process is running with the pre-flight PID. It does NOT prevent a different orchestrator instance from being launched by a parallel operator session between the check and the wipe — if that scenario is in scope, additionally verify the pre-flight `port` is unbound (`lsof -nP -iTCP:$PORT -sTCP:LISTEN | grep -q . && echo "port still bound" && exit 1`). The PID-identity check is sufficient for the single-operator self-host case (the rest of this skill's containment model).
+5. **Confirm the binary changed.** Restart picking up the old binary is this loop's most common silent failure. Resolve the running binary by PID (NOT `which`, which may shim): Linux `readlink -f /proc/<PID>/exe`; macOS `lsof -p <PID> -Fn | awk '/^ftxt/{getline n; sub(/^n/,"",n); print n; exit}'`. Compare against step-3 build output: `go version -m <path>` (go-install) or `docker inspect --format '{{.Image}}' <container>` (docker).
+6. **Stop the orchestrator BEFORE wiping agent worktrees.** Wiping live races the spawner's `mkdir`. PID-identity check is sufficient for single-operator self-host; for parallel-operator scenarios also verify the port is unbound (`lsof -nP -iTCP:$PORT -sTCP:LISTEN | grep -q . && exit 1`).
    ```bash
-   # Pre-check: orchestrator must be stopped — refuse if its PID still exists
-   if kill -0 <PID> 2>/dev/null; then echo "$ORCH_BINARY still running; stop before wipe"; exit 1; fi
-
-   # Empty-input safety: xargs with no input invokes the command once with literal {} on BSD/macOS;
-   # GNU xargs needs --no-run-if-empty (or -r), BSD needs nothing because it has no -I-empty-skip.
-   # Use `while read` to be portable.
+   if kill -0 <PID> 2>/dev/null; then echo "$ORCH_BINARY still running"; exit 1; fi
    git worktree list | awk '/agent-/ {print $1}' \
-     | while IFS= read -r path; do [ -n "$path" ] && git worktree remove --force "$path"; done
+     | while IFS= read -r path; do [ -n "$path" ] && git worktree remove --force --force "$path"; done
    find .claude/worktrees -maxdepth 1 -name 'agent-*' -type d -exec rm -rf {} + 2>/dev/null
    git worktree prune
    ```
-7. **Replay a canary.** Re-trigger the same synthetic input you used before the edit. Two options:
-   - Re-open the same sandbox-repo issue that triggered the prior run: `gh issue reopen <N> -R "$TARGET_REPO"` then add a comment "canary-replay-<unix-ts>".
-   - File a fresh canary issue from a templated body that pins `canary: <reason> ts=<unix>` so subsequent diffs are mechanically correlatable.
-8. **Observe.** `tail -F` on a log file breaks across restart when the file is recreated, and `journalctl -fu` can also drop if the journal buffer rotated. Prefer the channel that survives:
-   - systemd: `journalctl --user -fu $SYSTEMD_UNIT` (or system unit). Pair with `journalctl --user -u $SYSTEMD_UNIT --since "1 min ago" --no-pager` after restart so you can see the boot lines you missed.
-   - docker compose: `docker compose logs -f --since=1m $DOCKER_SERVICE` — `-f` reconnects on container restart; `--since` recovers boot lines.
-   - go-install / bare process: redirect the process to a known file at launch (`$ORCH_BINARY serve >/var/log/$ORCH_BINARY.log 2>&1`) then `tail -F /var/log/$ORCH_BINARY.log`. After restart, re-run `tail -F` because the inode changed.
-   - Across all three, also note: the first line after restart should include the version/build info from step 5.
+7. **Replay a canary** — see per-role canary suite section. Single-operator-shot: re-open prior canary issue or file fresh issue tagged `canary:<role>:<fixture>:<ts>`.
+8. **Observe through restart.** `tail -F` breaks on inode change; `journalctl -fu` drops on journal rotation. Survivor channels: `journalctl --user -fu $SYSTEMD_UNIT` (systemd, pair with `--since "1 min ago"` to catch boot), `docker compose logs -f --since=1m $DOCKER_SERVICE` (docker, reconnects on restart), or redirect-to-file + re-`tail -F` after restart (bare process). First post-restart line should carry the build info from step 5.
 
 ### Sandbox target-repo reset (between iterations)
 
@@ -287,18 +265,21 @@ git worktree prune
 
 NEVER use any deletion command without the `TARGET_REPO != PREFLIGHT_TARGET` guard. NEVER delete branches that don't match the `$BRANCH_PREFIX` prefix — operator-authored work on the sandbox repo is NOT in scope.
 
-## Containment rules (READ FIRST)
+## Containment rules
 
-Regatta spawns real agents that open real PRs and burn real API quota.
+The orchestrator spawns real agents that open real PRs and burn real API quota.
 
-1. **Sandbox target repo only.** Never point at production. Production-shaped name (matches `^(anthropics|google|microsoft|.*-prod|.*-production)/`) → require explicit confirmation via `AskUserQuestion` when available, else state the risk and require operator typed "confirm:<owner>/<name>" in chat before proceeding. Do NOT silently proceed.
-2. **Worktree isolation for operator edits.** Any operator edit to orchestrator source goes through `EnterWorktree` when available; otherwise `git worktree add .claude/worktrees/<slug> -b <slug>` manually and `cd` into it. Never edit orchestrator source from a checkout that is also running the binary.
-3. **No `--no-verify`, no force-push, no `gh pr merge --admin`.** Why: each bypasses a gate the orchestrator itself enforces. `--admin` overrides branch protection so a wedged target repo cannot be recovered without ops. `--no-verify` skips local checks that the worker would re-run anyway → just hides the failure. Force-push to an orchestrator-spawned branch loses the agent's heartbeat anchor and the reaper cannot reconcile.
-4. **Parallel cap = 3.** If discovered `ParallelCap` > 3, recommend reducing in config BEFORE first launch (not at runtime — config is read at startup). Quota dies at 5+.
-5. **Kill-switch FIRST.** First narration line MUST include the discovered kill command: `kill <PID>` (or `systemctl --user stop regatta` if discovered).
-6. **No live mutation of target's `main`.** Regatta opens PRs; merge gate decides. Skill files findings + opens issues; does not merge.
-7. **Token budget per loop.** Soft target ~20 tool calls per snapshot iteration. After 20, halt the current loop iteration, write what you have, hand back. Do NOT continue in the same iteration; spawn a subagent if more is needed.
-8. **Pre-flight refusal.** If pre-flight discovery returns "unknown" for `port` OR `db` OR `pid`, do NOT proceed to snapshot. State "pre-flight incomplete" + the missing values; hand back to operator.
+1. **Sandbox target only.** Production-shaped name → require typed `confirm:<owner>/<name>` (or `AskUserQuestion` when available) before proceeding.
+2. **Parallel cap = 3.** If discovered `$PARALLEL_CAP_CFG_KEY` > 3, reduce in config BEFORE first launch (config is read at startup). Quota dies at 5+.
+3. **Kill-switch in first narration line.** `kill <PID>` (or `systemctl --user stop $SYSTEMD_UNIT` when discovered).
+4. **Token budget per loop.** ~20 tool calls per snapshot iteration; finish current phase then hand back. Spawn subagent if larger sweep needed.
+5. **Pre-flight refusal.** Unknown `port` OR `db` OR `pid` → "pre-flight incomplete" + hand back.
+
+### Pre-action self-check (every tool call)
+
+Before any mutating tool call, ask: am I about to (a) merge a PR, (b) disable branch protection, (c) mutate target's `main`, (d) force-push, (e) `--admin` anything, (f) bypass a `scripts/check-*.sh`, (g) edit orchestrator source from the running binary's checkout? If yes → STOP, file HIGH `[OPS]` finding, hand back.
+
+WHY these are forbidden: `--admin` overrides branch protection (wedged target unrecoverable without ops); `--no-verify` hides failures the worker re-runs anyway; force-push to `$BRANCH_PREFIX*` loses the agent's heartbeat anchor (reaper cannot reconcile); editing the running binary's checkout risks unstaged leak into the next rebuild. Worktree isolation per the tight-feedback-loop section is the canonical path for any operator edit.
 
 ## Activation
 
@@ -328,7 +309,7 @@ Misclassifying a finding wastes a fix — a prompt-drift bug shipped as a `[CORE
 
 ## Observation channels
 
-Cheap-first. Stop the moment a channel goes silent when it should be chatty — that silence is itself a finding.
+Cheap-first (PR sweep before logs before DB). Silence on a channel that should be chatty is itself a finding.
 
 | Channel | Command shape (uses pre-flight values) | What it tells you |
 |---|---|---|
@@ -341,7 +322,6 @@ Cheap-first. Stop the moment a channel goes silent when it should be chatty — 
 | Binary staleness | `go version -m "$(which regatta)"` or `docker inspect --format '{{.Image}}' <container>` | Confirm a rebuild actually took effect |
 | State DB health | `sqlite3 "$DB" 'pragma integrity_check'` + `sqlite3 "$DB" "select max(ts) from events"` | Lock orphans, recent event freshness |
 
-Open PR sweep FIRST (cheapest, public, no infra). Escalate inward only when ambiguous.
 
 ## Run loop
 
@@ -378,16 +358,6 @@ After 3 findings in a session, write session-end summary under `$CLAUDE_JOB_DIR/
 These are durable-design items. File as `[CORE]` issues when relevant; do NOT touch in operator session.
 
 - **Polling vs webhooks.** Regatta polls GH. Sub-`poll_interval` latency is unreachable without a transport change. Improvement ladder: (1) ETag conditional GET → 304s don't count rate-limit, (2) adaptive poll backoff, (3) GH events API single stream, (4) smee.io / webhook-relay hybrid (push notifies, regatta still pulls detail) — no public ingress, (5) full webhook + tunnel + HMAC + dedup store. Self-host phase: (1) + (2) is the smallest win; (4) is the right next step when latency complaint surfaces.
-
-## Hard nos (pre-flight self-check before every action)
-
-Before any tool call that mutates state, ask: am I about to (a) merge a PR, (b) disable branch protection, (c) mutate target's `main`, (d) force-push, (e) `--admin` anything, (f) bypass a `scripts/check-*.sh`? If yes → STOP, file the situation as HIGH `[OPS]` finding, hand back.
-
-- **Does not merge PRs.** Branch protection + automerge gate + human review decide.
-- **Does not bypass any `scripts/check-*.sh`.** Gates are operator authority; bypassing turns the operator into the bug.
-- **Does not edit regatta config from inside the running binary's checkout.** Use a worktree.
-- **Does not silently switch target repos.** State + confirm.
-- **Does not write multi-page status reports.** One-line snapshots, one-line deltas, one issue per finding. The CLAUDE.md ceremony rule applies here too.
 
 ## Hand-off
 
