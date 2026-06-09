@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/trilamsr/regatta/internal/cost/spend"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
@@ -13,14 +14,23 @@ import (
 const (
 	spawnerNameStub   = "stub"
 	spawnerNameClaude = "claude"
+
+	// envSpawnerMCPConfig overrides the default /dev/null MCP config
+	// passed to spawned claude children. Empty = use /dev/null (no MCPs).
+	envSpawnerMCPConfig = "REGATTA_SPAWNER_MCP_CONFIG"
+	defaultMCPConfigArg = "/dev/null"
 )
 
 // claudeFlagStreamJSON pins the stream-json output flag (shared by impl + tests).
 const claudeFlagStreamJSON = "--output-format=stream-json"
 
-// defaultClaudeArgs are the headless flags the orchestrator stamps onto every claude CLI spawn so the binary emits machine-readable JSONL on stdout (consumed by spawner.ParseStream → OTel + cost-gov). Closes #1085: pre-fix dogfood logged 0 lines per agent because the CLI ran in TUI mode under a non-TTY pipe.
+// defaultClaudeArgs are the headless flags the orchestrator stamps onto every claude CLI spawn. #1085 closes the TUI-mode silence (--print + stream-json + verbose); #1086 closes the MCP-inheritance blast (--mcp-config defaults to /dev/null so children do not fork the host's MCP server set; override via REGATTA_SPAWNER_MCP_CONFIG).
 func defaultClaudeArgs() []string {
-	return []string{"--print", claudeFlagStreamJSON, "--verbose"}
+	mcp := os.Getenv(envSpawnerMCPConfig)
+	if mcp == "" {
+		mcp = defaultMCPConfigArg
+	}
+	return []string{"--print", claudeFlagStreamJSON, "--verbose", "--mcp-config=" + mcp}
 }
 
 // spawnerSet bundles the three handles a serve invocation needs to

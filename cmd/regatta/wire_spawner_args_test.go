@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
@@ -10,6 +11,7 @@ import (
 
 // TestDefaultClaudeArgs asserts the headless flag set is non-empty so #1085's silent-stdout regression cannot return.
 func TestDefaultClaudeArgs(t *testing.T) {
+	t.Setenv(envSpawnerMCPConfig, "")
 	args := defaultClaudeArgs()
 	if len(args) == 0 {
 		t.Fatalf("defaultClaudeArgs() returned empty; agents will spawn in TUI mode and emit no stdout (#1085)")
@@ -59,5 +61,23 @@ func TestBuildSpawner_ClaudeWiresArgs(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("ClaudeSpawnerConfig.Args=%v, missing %q", args, wantOne)
+	}
+}
+
+// TestDefaultClaudeArgs_MCPConfigDefaultsToDevNull pins the #1086 zero-MCP child default — every spawn passes --mcp-config=/dev/null when REGATTA_SPAWNER_MCP_CONFIG is unset.
+func TestDefaultClaudeArgs_MCPConfigDefaultsToDevNull(t *testing.T) {
+	t.Setenv(envSpawnerMCPConfig, "")
+	args := defaultClaudeArgs()
+	if !slices.Contains(args, "--mcp-config=/dev/null") {
+		t.Fatalf("want --mcp-config=/dev/null in args, got %v", args)
+	}
+}
+
+// TestDefaultClaudeArgs_MCPConfigEnvOverride confirms operator can override the default via env (#1086 escape hatch).
+func TestDefaultClaudeArgs_MCPConfigEnvOverride(t *testing.T) {
+	t.Setenv(envSpawnerMCPConfig, "/tmp/custom.json")
+	args := defaultClaudeArgs()
+	if !slices.Contains(args, "--mcp-config=/tmp/custom.json") {
+		t.Fatalf("want --mcp-config=/tmp/custom.json in args, got %v", args)
 	}
 }
