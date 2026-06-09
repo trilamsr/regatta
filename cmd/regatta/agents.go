@@ -34,18 +34,50 @@ func runAgents(args []string) int {
 	}
 }
 
+// knownAgentStates returns every AgentState the substrate currently defines so the default --state filter shows the full universe (closes a reviewer a57487820abd65001 risk: AgentEscalated was previously omitted, hiding escalated agents from the operator).
+func knownAgentStates() []state.AgentState {
+	return []state.AgentState{
+		state.AgentPending, state.AgentSpawning, state.AgentRunning,
+		state.AgentPROpen, state.AgentGatesRunning, state.AgentAwaitingMerge,
+		state.AgentDone, state.AgentWithdrawn, state.AgentCrashed,
+		state.AgentGatesFailed, state.AgentEscalated,
+	}
+}
+
+func isKnownAgentState(s state.AgentState) bool {
+	for _, k := range knownAgentStates() {
+		if k == s {
+			return true
+		}
+	}
+	return false
+}
+
+func knownAgentStateLabels() []string {
+	all := knownAgentStates()
+	out := make([]string, len(all))
+	for i, s := range all {
+		out[i] = string(s)
+	}
+	return out
+}
+
 func runAgentsList(args []string) int {
 	fs := flag.NewFlagSet("agents list", flag.ExitOnError)
-	dbPath := fs.String("db", "regatta.db", "Path to sqlite state DB")
+	dbPath := fs.String("db", "regatta.db", "Path to sqlite state DB (relative to cwd unless absolute; ENV: REGATTA_DB)")
 	stateFlag := fs.String("state", "", "Filter by agent state (eg running,pr_open). Comma-separated for multiple.")
 	laneFlag := fs.String("lane", "", "Filter by lane")
 	format := fs.String("format", agentsFormatTable, "Output format: table | json")
 	_ = fs.Parse(args)
 
+	resolved := *dbPath
+	if envDB := os.Getenv("REGATTA_DB"); resolved == "regatta.db" && envDB != "" {
+		resolved = envDB
+	}
 	ctx := context.Background()
-	db, err := state.Open(ctx, state.DSN(*dbPath))
+	db, err := state.Open(ctx, state.DSN(resolved))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "regatta agents list: open db %q: %v\n", *dbPath, err)
+		fmt.Fprintf(os.Stderr, "regatta agents list: open db %q: %v\n", resolved, err)
 		return 1
 	}
 	defer func() { _ = db.Close() }()
@@ -54,16 +86,20 @@ func runAgentsList(args []string) int {
 	if *stateFlag != "" {
 		for _, s := range strings.Split(*stateFlag, ",") {
 			s = strings.TrimSpace(s)
-			if s != "" {
-				states = append(states, state.AgentState(s))
+			if s == "" {
+				continue
 			}
+			as := state.AgentState(s)
+			if !isKnownAgentState(as) {
+				fmt.Fprintf(os.Stderr,
+					"regatta agents list: unknown state %q (known: %s)\n",
+					s, strings.Join(knownAgentStateLabels(), ","))
+				return 2
+			}
+			states = append(states, as)
 		}
 	} else {
-		states = []state.AgentState{
-			state.AgentPending, state.AgentSpawning, state.AgentRunning,
-			state.AgentPROpen, state.AgentGatesRunning, state.AgentAwaitingMerge,
-			state.AgentDone, state.AgentWithdrawn, state.AgentCrashed, state.AgentGatesFailed,
-		}
+		states = knownAgentStates()
 	}
 	rows, err := db.ListAgentsByState(ctx, states...)
 	if err != nil {

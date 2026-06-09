@@ -62,3 +62,39 @@ func TestAgents_NoSubcommand(t *testing.T) {
 		t.Fatalf("stderr = %q; want substring %q", buf.String(), "expected sub-subcommand")
 	}
 }
+
+// TestAgentsList_UnknownStateFlag pins the reviewer-flagged contract: invalid --state value fails fast with a known-set hint (#1078 reviewer a57487820abd65001).
+func TestAgentsList_UnknownStateFlag(t *testing.T) {
+	tmp := t.TempDir()
+	_ = openTempDB(t, tmp)
+	dbPath := filepath.Join(tmp, "subs.db")
+	r, w, _ := os.Pipe()
+	origStderr := os.Stderr
+	os.Stderr = w
+	t.Cleanup(func() { os.Stderr = origStderr })
+	code := runAgentsList([]string{"--db", dbPath, "--state", "foo"})
+	_ = w.Close()
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	if code != 2 {
+		t.Fatalf("unknown state exit = %d; want 2", code)
+	}
+	if !strings.Contains(buf.String(), "unknown state") {
+		t.Fatalf("stderr = %q; want 'unknown state'", buf.String())
+	}
+}
+
+// TestKnownAgentStatesIncludesEscalated pins that escalated agents do not silently drop from the default --state list (reviewer-named risk).
+func TestKnownAgentStatesIncludesEscalated(t *testing.T) {
+	all := knownAgentStateLabels()
+	found := false
+	for _, s := range all {
+		if s == "escalated" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("escalated missing from knownAgentStates; reaper-escalated agents will be hidden")
+	}
+}
