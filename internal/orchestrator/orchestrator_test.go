@@ -378,12 +378,19 @@ func TestOrchestrator_Tick_EmitsStartedAndCompleted(t *testing.T) {
 		t.Fatalf("schedule: %v", err)
 	}
 
-	if _, ok := h.FindEvent(obs.EventTickStarted); !ok {
+	started, ok := h.FindEvent(obs.EventTickStarted)
+	if !ok {
 		t.Fatalf("expected event %q in captured records; got %d records", obs.EventTickStarted, len(h.Records()))
+	}
+	if started.Level != slog.LevelInfo {
+		t.Fatalf("non-zero tick.started level=%s, want INFO (#1066 — must stay loud when dispatch happens)", started.Level)
 	}
 	completed, ok := h.FindEvent(obs.EventTickCompleted)
 	if !ok {
 		t.Fatalf("expected event %q in captured records; got %d records", obs.EventTickCompleted, len(h.Records()))
+	}
+	if completed.Level != slog.LevelInfo {
+		t.Fatalf("non-zero tick.completed level=%s, want INFO (#1066)", completed.Level)
 	}
 	if _, ok := recordHasAttr(completed, string(obs.KeyWorkItemsEvaluated)); !ok {
 		t.Fatalf("tick.completed missing attr %q", obs.KeyWorkItemsEvaluated)
@@ -413,6 +420,32 @@ func TestOrchestrator_Tick_EmitsOnEmptyQueue(t *testing.T) {
 	}
 	if v.Int64() != 0 {
 		t.Fatalf("work_items_evaluated=%d, want 0 on empty queue", v.Int64())
+	}
+}
+
+// TestOrchestrator_Tick_EmptyQueueLogsAtDebug pins #1066: zero-work ticks demote tick.started/completed to DEBUG so the operator log surface is not 98% scheduler heartbeat.
+func TestOrchestrator_Tick_EmptyQueueLogsAtDebug(t *testing.T) {
+	ctx := context.Background()
+	o, _, _, _ := newHarness(t, 0)
+	h := obstest.New()
+	o.log = slog.New(h)
+
+	if err := o.ScheduleOnce(ctx); err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+	started, ok := h.FindEvent(obs.EventTickStarted)
+	if !ok {
+		t.Fatalf("tick.started missing")
+	}
+	if started.Level != slog.LevelDebug {
+		t.Fatalf("zero-work tick.started level=%s, want DEBUG (#1066)", started.Level)
+	}
+	completed, ok := h.FindEvent(obs.EventTickCompleted)
+	if !ok {
+		t.Fatalf("tick.completed missing")
+	}
+	if completed.Level != slog.LevelDebug {
+		t.Fatalf("zero-work tick.completed level=%s, want DEBUG (#1066)", completed.Level)
 	}
 }
 
