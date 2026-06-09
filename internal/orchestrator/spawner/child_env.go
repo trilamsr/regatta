@@ -1,8 +1,10 @@
 package spawner
 
 import (
+	"log/slog"
 	"os"
 	"strings"
+	"sync"
 )
 
 // envStripAPIKey opts the spawner into removing ANTHROPIC_API_KEY +
@@ -35,6 +37,7 @@ func scrubChildEnv(parent []string) []string {
 	if !shouldStripAPIKey() || len(parent) == 0 {
 		return parent
 	}
+	logStripOnce()
 	out := make([]string, 0, len(parent))
 	for _, kv := range parent {
 		eq := strings.IndexByte(kv, '=')
@@ -56,6 +59,22 @@ func scrubChildEnv(parent []string) []string {
 	}
 	return out
 }
+
+var stripLogOnce sync.Once
+
+// logStripOnce emits one operator-visible record the first time the spawner scrubs a child env so a later "child claude exited: auth required" failure on macOS docker has a paired breadcrumb explaining why ANTHROPIC_API_KEY went missing from the child's view.
+func logStripOnce() {
+	stripLogOnce.Do(func() {
+		slog.Default().Info("spawner.api_key_stripped_from_children",
+			"env_var", envStripAPIKey,
+			"hint", "ANTHROPIC_API_KEY + ANTHROPIC_AUTH_TOKEN scrubbed from spawned claude CLI env; children authenticate via subscription credentials. Unset REGATTA_SPAWNER_STRIP_API_KEY to restore pre-#1099 pass-through.",
+		)
+	})
+}
+
+// resetStripLogOnceForTest re-arms the sync.Once so per-test assertions on the
+// log surface are deterministic.
+func resetStripLogOnceForTest() { stripLogOnce = sync.Once{} }
 
 func shouldStripAPIKey() bool {
 	switch strings.ToLower(strings.TrimSpace(os.Getenv(envStripAPIKey))) {
