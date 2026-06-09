@@ -17,7 +17,6 @@ const (
 	ExitReasonToolDenied              = ExitReason("tool_denied")
 )
 
-// Ordering = precedence: credit_exhausted first (halt-worthy); tool_denied last.
 var classifySignatures = []struct {
 	reason ExitReason
 	tokens [][]byte
