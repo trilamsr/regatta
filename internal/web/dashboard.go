@@ -371,7 +371,7 @@ func annotateSpendEmptyReason(ctx context.Context, db *state.DB, view *dashboard
 		if err := json.Unmarshal([]byte(payload), &p); err != nil {
 			continue
 		}
-		if p.ExitReason != "" && p.ExitReason != "completed" {
+		if p.ExitReason != "" && p.ExitReason != exitReasonCompleted {
 			exitedNonCompleted++
 		}
 		if p.ExitReason == "provider_credit_exhausted" {
@@ -658,7 +658,7 @@ func exitReasonBadge(payload string) template.HTML {
 	}
 	var color string
 	switch p.ExitReason {
-	case "completed":
+	case exitReasonCompleted:
 		return ""
 	case "provider_credit_exhausted":
 		color = "red"
