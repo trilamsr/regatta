@@ -21,7 +21,7 @@ Memory rules in force: `feedback_research_design_principles`, `feedback_default_
 The wedge gates listed in #832 have since cleared:
 
 - **MVR-1-T4 GH-issue adapter** shipped in PR #846 on 2026-06-04 (`docs/engineer/autonomous-session-prompt.md` line: "PHASE MVR-1-T4 — Autonomous-loop CLOSED [SHIPPED 2026-06-04 #846]"; spec `docs/engineer/specs/2026-06-04-mvr-1-t4-github-issues-adapter-impl.md` with `spec_id: MVR-1-T4`). The closed-loop consumer side of the issue surface is operational.
-- **Baseline volume.** `gh pr list --search 'merged:>=2026-06-01' --state merged --json number -L 1000 | jq length` returns **565** at HEAD (2026-06-09). The #832 reopen trigger named "30 autonomously merged PRs"; the count exceeds that by 18×.
+- **Baseline volume.** `gh pr list --search 'merged:>=2026-06-01' --state merged --json number -L 1000 | jq length` returns **567** at HEAD (2026-06-09, verified inline). The #832 reopen trigger named "30 autonomously merged PRs"; the count exceeds that by 18×.
 - **Autotuner closed-loop** spec `docs/engineer/specs/2026-06-07-autotuner-closed-loop.md` is `status: active` ("ready for review", dated 2026-06-07), declaring the K1-K5 knob table R7 / R11 / R8 feed into.
 
 Per `feedback_recognize_session_end` + `feedback_default_simpler`: with the wedge gates met, the wedge itself stops being load-bearing. The question is no longer "wait or build" — it is "which of the six rules survive an audit-before-build pass TODAY with the present plumbing, and which still defer".
@@ -66,8 +66,8 @@ Per-rule verdict table — the load-bearing decision of this spec.
 | **R6 latency-outlier** | **DEFERRED** | Needs 7d MAD baseline per-`(event_kind, agent_id_redacted)` bucket. Sibling spec §3.1 G6a hard-codes `count_7d ≥ 100` per bucket; substrate event volume at HEAD is ~hundreds/day across all kinds, so per-kind buckets won't accumulate 100 samples for ≥30 days. Also needs new `slo_alert_firing` substrate event-kind for the §2.2 SLO-suppression composition. | Reopen when (a) per-kind substrate-event volume reaches ≥100/7d for ≥3 of the four kinds named in sibling §3.1 (dispatch_completed, pr_stage_transition, scheduler_tick, l4_gate_completed) AND (b) `slo_alert_firing` event-kind lands. Audit at 30-day soak: `regatta self-improve baseline-audit --window 7d --min-samples 100`. |
 | **R7 cost-outlier** | **DEFERRED** | Per autotuner spec `2026-06-07-autotuner-closed-loop.md` §9 denylist: R7 → K1/K2/K3 (cost caps) is admissible ONLY after §8 damping wired AND R11 has fired ≥3× in 14d. R11 has fired zero times (not yet shipped). Mechanical sequencing: R11 ships in this wave; R7 lands AFTER R11 has soaked. | Reopen when (a) R11 has fired ≥3× in a 14d window AND (b) autotuner §8 damping landed AND (c) 7d cost-spend MAD baseline ≥30 `pr_completed` events per sibling §3.2 G7a. |
 | **R8 rework-cycle** | **SHIPPABLE NOW** | Count-based (≥3 force-pushes pre-merge), zero baseline. Source event `agent_pr_head_changed` already emitted by `internal/orchestrator/prwatch`. MVR-1-T4 issue surface shipped (#846). Closed-loop K4 (append-only dispatch-template) admissible immediately per autotuner spec §9. Sibling skeleton §3.3 mechanics verbatim. | N/A — ships in §7 follow-up PR. |
-| **R9 success-pattern-extract** | **DEFERRED** | Two-step staircase: (a) R6/R7/R8 each fire ≥10 times (proves rule shape produces actionable signal before R9 mines patterns across the same surface) AND (b) MVR-3-T4 research-mode methodology gates (`docs/engineer/specs/2026-06-03-mvr-3-t4-research-mode-overlay-skeleton.md`) ship to block selection-bias / leakage poisoning of dispatch templates via #926 K4. | Reopen when (a) `regatta self-improve scan --summary` shows ≥10 findings for EACH of R6, R7, R8 cumulatively AND (b) MVR-3-T4 spec status transitions to `shipped` AND (c) leakage check + counterfactual-probe primitives per sibling §3.4 G9c/G9d are wired into the methodology-gate suite. |
-| **R10 priority-thrash** | **SHIPPABLE NOW** | Count-based (N>3 picks in 14d without progress), zero baseline. Source event `scheduler_picked` already emitted. Operator-visibility only — does NOT feed autotuner (per autotuner §4.4: scheduler knobs are Phase-X). No autotuner dependency to wait on. Sibling skeleton §3.5 mechanics verbatim including the §6.1 v1 progress definition (`pr_merged` only). | N/A — ships in §7 follow-up PR. |
+| **R9 success-pattern-extract** | **DEFERRED** | **Compound gate** (not three independent gates): R9 unblocks ONLY AFTER each of R6 + R7 + R8 satisfies (a) impl PR lands, (b) baseline ≥30d wall-clock soak, (c) accumulates ≥10 findings. Because R6 + R7 are themselves deferred behind their own multi-condition reopen triggers, the R9 gate is a chained dependency, not a near-term milestone. Plus (d) MVR-3-T4 research-mode methodology gates (`docs/engineer/specs/2026-06-03-mvr-3-t4-research-mode-overlay-skeleton.md`) ship to block selection-bias / leakage poisoning of dispatch templates via #926 K4. | Reopen when (a) R6 + R7 + R8 each: impl PR merged AND baseline ≥30d wall-clock AND ≥10 findings (verify via `regatta self-improve scan --summary`) AND (b) MVR-3-T4 spec status transitions to `shipped` AND (c) leakage check + counterfactual-probe primitives per sibling §3.4 G9c/G9d are wired into the methodology-gate suite. |
+| **R10 priority-thrash** | **SHIPPABLE NOW** | Count-based (N>3 picks in 14d without progress), zero baseline. Source event `scheduler_picked` already emitted. Operator-visibility only — does NOT feed autotuner (per autotuner §4.4: scheduler knobs are Phase-X). No autotuner dependency to wait on. Sibling skeleton §3.5 mechanics verbatim. **Progress definition (tightened from sibling §6.1 v1 `pr_merged` only)**: `progress = pr_merged OR pr_closed_by_operator_with_reason=quality` (mechanism — label `thrash-ok`/`superseded`/`not-thrash` OR a close-comment grammar — deferred to impl per BUG-R10-progress tracker #1151). Without this tightening, R10 over-counts thrash when the operator legitimately closes PRs pre-merge. | N/A — ships in §7 follow-up PR. R10 impl MUST consume the BUG-R10-progress tracker #1151 resolution before merge. |
 | **R11 cap-thrash** | **SHIPPABLE NOW** | Count-based (>2 distinct cap-throttled items same UTC day), zero baseline. Source events `KindTokenSpend` + `regatta_cost_cap_throttled_total` already emitted. Autotuner spec is `status: active` and explicitly names R11 as the primary upstream signal for K1/K2/K3 (per autotuner §9 admissibility predicate). Shipping R11 unblocks the autotuner co-fire window for R7. Sibling skeleton §3.6 mechanics verbatim. | N/A — ships in §7 follow-up PR. |
 
 ### 3.1 Sibling spec interplay — non-redundancy verdict
@@ -91,7 +91,7 @@ Zero overlap. NO rule is REDUNDANT. The R12-friction *plumbing* (dedup, throttle
 1. Spec lands at `docs/engineer/specs/2026-06-09-w45-detector-rules-actionable.md`.
 2. `bash scripts/check-spec-sections.sh` clean for this file (canonical seven H2 sections present).
 3. `bash scripts/check-phase-x-leak.sh` clean (`phase: self-host-s2`, no Phase-X tokens without `phase: x-forward-fit`).
-4. `bash scripts/check-doc-links.sh` clean (every `](docs/…)` / `](internal/…)` / `](scripts/…)` link resolves at HEAD).
+4. `bash scripts/check-doc-links.sh` clean (every markdown link of form `[text]` then `(path)` to `docs/…`, `internal/…`, or `scripts/…` resolves at HEAD).
 5. PR body declares `[DOCS]` release-notes block per CLAUDE.md release-notes-fence rule.
 6. PR body does NOT carry `Reviewer-recommendation:` token (per the dispatch brief — independent reviewer pass to follow).
 7. Per `feedback_no_self_tagged_approve`: no author-written APPROVE token. Reviewer-verdict gate auto-skips on `[DOCS]` release-notes EXCEPT for load-bearing-doc paths; `docs/engineer/specs/*.md` IS load-bearing, so an independent reviewer subagent must be dispatched before any APPROVE token lands.
@@ -106,7 +106,7 @@ Per `feedback_default_simpler`:
 - **R7 cost-outlier follow-up.** Deferred per §3. Reopen-trigger pinned; no impl in this spec series.
 - **R9 success-pattern-extract follow-up.** Two-step staircase per §5. Reopen-trigger pinned.
 - **Autotuner K-knob wiring for R8.** Sibling §8 ratifies R8 → K4 (append-only dispatch-template). The wiring lands as part of the autotuner spec #926 impl, NOT in the R8-ship PR — R8 emits findings; autotuner consumes them.
-- **Tuning of R12-friction throttle caps to accommodate three additional rules.** Sibling spec §2.5 chose 5/day + 50/week. The cap is per-PROCESS; adding R8 + R10 + R11 increases potential fire volume. If observed throttle exhaustion exceeds 1/week post-ship, file tracker. Do NOT pre-bump caps.
+- **Tuning of R12-friction throttle caps to accommodate three additional rules.** Sibling spec §2.5 chose 5/day + 50/week. The cap is per-PROCESS and now serves four rules (R12-friction + R8 + R10 + R11) under one shared budget. **Concrete reopen-trigger**: if `friction_tracker_throttled` substrate events fire >1/week post-ship for ≥2 consecutive weeks, file tracker `BUG-R11-throttle-tune` to either (a) per-rule sub-cap split or (b) lift the global cap. Do NOT pre-bump caps; let observed volume drive the decision.
 - **Per-rule numeric threshold tuning.** Sibling skeleton spec defaults (R8: ≥3 force-pushes, R10: N>3 picks in 14d, R11: >2 items/day) ship as-is. Calibration follows the sibling spec §2.2 pattern: tracker on first mis-fire, not a YAML tier.
 
 ## §5 Adversarial
@@ -116,11 +116,11 @@ Per `feedback_adversarial_review_every_step` + the CLAUDE.md "Adversarial pass o
 Likely adversarial-review hunting grounds (the reviewer should NOT trust this list — hunt fresh):
 
 - **MVR-1-T4 closed-loop claim.** This spec cites #846 as the MVR-1-T4 shipping evidence. Reviewer: verify (a) `gh pr view 846 --json mergedAt,state` shows `MERGED` (not OPEN/BLOCKED post-automerge-flake per `feedback_watch_pr_until_merged`) and (b) the github_issues adapter is wired into a running orchestrator's loop, not just the package. The closed-loop claim is FALSE if the operator is still hand-filing every R12 issue.
-- **565-PR baseline count.** Reviewer: re-run `gh pr list --search 'merged:>=2026-06-01' --state merged --json number -L 1000 | jq length` and verify the number AND verify the PRs are agent-authored, not operator-hand-merged. Per `feedback_cite_origin_main_not_local`, numeric claims must be paired with the exact command — this spec cites it inline, but the reviewer should re-run.
-- **R12-friction primitive reuse.** This spec assumes #1077 / `2026-06-09-auto-friction-trackers.md` ships first AND that R8/R10/R11 plug into the same dedup table + throttle. If #1077 ships AFTER this spec's follow-up impl PR, the R8/R10/R11 PR would re-invent the dedup table. Reviewer: confirm the ship order in the §7 implementer brief is sequenced correctly (R12-friction PR-A/B/C lands BEFORE the R8+R10+R11 PR).
+- **567-PR baseline count.** Reviewer: re-run `gh pr list --search 'merged:>=2026-06-01' --state merged --json number -L 1000 | jq length` and verify the number AND verify the PRs are agent-authored, not operator-hand-merged. Per `feedback_cite_origin_main_not_local`, numeric claims must be paired with the exact command — this spec cites it inline, but the reviewer should re-run.
+- **R12-friction primitive reuse.** This spec assumes R12-friction (spec #1077) ships its dedup table + throttle gate + override label + serve-loop cadence as a precondition for R8/R10/R11 reuse. As of HEAD, #1077 is spec-only — no R12-friction implementation PRs exist on main yet. The two impl waves are therefore dispatched IN PARALLEL: R12-friction impl spawn first to anchor the shared primitives, then R8/R10/R11 impl spawn referencing the same files. The two waves MUST land within the same release cycle so that no R12-friction-primitive PR ships without its consumers (and vice versa); cross-PR rebase coordination owned by the dispatching session. Reviewer: confirm the §7 implementer brief reflects parallel dispatch + shared-release-cycle landing, NOT a false "R12-friction PR-A/B/C merges first" precondition.
 - **R8 G8a operator-author exclusion in autonomous loops.** The sibling §3.3 G8a guard excludes commits authored by the operator login. In a long autonomous loop, the operator may not push at all for days; R8 then over-fires on legitimate agent force-pushes. Reviewer: confirm the exclusion is checking the GH bot/app login allowlist correctly, not just one operator-pinned login.
 - **R11 daily-bucket UTC boundary.** Sibling §6.4 leaves this as a v1 default (UTC). Reviewer: confirm test fixtures pass with daylight-saving aware timestamps in operator timezone.
-- **Staircase for R9.** §5 specifies "R6/R7/R8 each fire ≥10 times". R6 and R7 are also deferred — the staircase is satisfied only after BOTH the R6/R7 deferred-rule unblocks AND those rules accumulate 10 fires each. Reviewer: confirm the spec author noticed this is a compound gate, not three independent gates.
+- **Staircase for R9 is a COMPOUND gate, not three independent gates.** R9 unblocks ONLY AFTER each of R6 + R7 + R8 satisfies (a) impl PR lands, (b) baseline ≥30d wall-clock soak, (c) accumulates ≥10 findings. Because R6 and R7 are themselves DEFERRED behind their own multi-condition reopen triggers (§3 + §8), the R9 gate is effectively a chained dependency: R6 reopen-trigger fires → R6 ships → R6 soaks 30d → R6 ≥10 findings → (concurrently) same chain for R7 → then R9 candidate. Operator cannot read "R9 unblocks at 10 fires of each rule" as a near-term milestone; the soonest R9 is eligible is months out under steady autonomous load. Reviewer: confirm the spec explicitly surfaces this as a compound gate (§3 R9 row + §8 R9 bullet) instead of leaving the chain implicit.
 - **Phase-x-leak gate behavior.** This spec's frontmatter sets `phase: self-host-s2`. The gate fires on Phase-X tokens (`tenant_id`, `RBAC`, etc.) in active specs. None present in this spec, but reviewer should confirm the gate still passes.
 - **Reuse of R12-friction throttle.** The sibling spec sets 5/day + 50/week as caps. Adding three more rules can increase fire volume by up to 4×. Reviewer: confirm the spec accepts the cap-budget collision as documented (per §4 out-of-scope) and the tracker-on-throttle-exhaustion is the operator's signal.
 
@@ -138,9 +138,22 @@ Scope: Implement R8 + R10 + R11 per the sibling skeleton spec
   `docs/engineer/specs/2026-06-09-auto-friction-trackers.md` §2.3-§2.7.
   DO NOT fork a parallel pipeline.
 
-Sequencing: Land AFTER the R12-friction PR series (#1077 PR-A/B/C) merges.
-  Verify before dispatch: `gh pr list --search '#1077 in:body' --state merged`
-  returns at least the dedup-table + throttle + cadence PRs.
+Sequencing: R12-friction impl (per spec #1077) and R8/R10/R11 impl are
+  dispatched IN PARALLEL — #1077 is spec-only at HEAD; no impl PRs exist
+  yet. Both waves share the dedup-table + throttle gate + override label +
+  serve-loop primitives, so they MUST land within the same release cycle;
+  the dispatching session owns cross-PR rebase coordination. R8/R10/R11
+  PR opens against the same files R12-friction-impl creates. If R12-friction
+  impl lands first, this PR rebases onto it; if this PR lands first, the
+  R12-friction-impl PR rebases. Do NOT block dispatch on a precondition
+  that does not exist.
+
+R10-specific gate: BUG-R10-progress tracker #1151 MUST resolve before R10
+  impl merges — the v1 sibling-spec progress definition (`pr_merged` only)
+  over-counts thrash when operator legitimately closes PRs pre-merge. R10
+  impl consumes the tightened definition: `progress = pr_merged OR
+  pr_closed_by_operator_with_reason=quality`. Mechanism (label vs comment
+  grammar) per #1151 resolution.
 
 Files (one PR, three rules):
   - internal/selfimprove/rules.go:
@@ -186,14 +199,18 @@ Per `feedback_recognize_session_end`: reopen this spec ONLY on a load-bearing ch
   - Autotuner §8 damping wired in PR series tracked under #926, AND
   - 7d cost-spend baseline accumulates ≥30 `pr_completed` events per sibling §3.2 G7a.
 
-- **R9 success-pattern-extract — reopen when** (compound staircase):
-  - R6 + R7 unblock per their own reopen triggers above (no R9 without baseline-bearing rules), AND
-  - R6, R7, R8 each emit ≥10 findings cumulatively (`regatta self-improve scan --summary` per-rule count), AND
+- **R9 success-pattern-extract — reopen when** (compound staircase — NOT three independent gates; each rule's own chain must complete first):
+  - R6 unblock: per the R6 reopen-trigger above (substrate volume ≥100/7d × 3 kinds AND `slo_alert_firing` AND MAD primitive), AND R6 impl PR merged AND R6 baseline ≥30d wall-clock soak AND R6 ≥10 findings, AND
+  - R7 unblock: per the R7 reopen-trigger above (R11 fired ≥3× in 14d AND autotuner §8 damping AND 7d cost-spend baseline), AND R7 impl PR merged AND R7 baseline ≥30d wall-clock soak AND R7 ≥10 findings, AND
+  - R8: impl PR merged (ships in this wave) AND R8 baseline ≥30d wall-clock soak AND R8 ≥10 findings, AND
+  - Per-rule fire counts verified via `regatta self-improve scan --summary` per-rule count, AND
   - MVR-3-T4 spec `docs/engineer/specs/2026-06-03-mvr-3-t4-research-mode-overlay-skeleton.md` transitions to `status: shipped`, AND
   - Leakage check + counterfactual-probe primitives per sibling §3.4 G9c/G9d wire into the methodology-gate suite.
 
 - **This spec (overall) — reopen when** any of:
   - R8 / R10 / R11 ship and the verdict table needs updating to `status: shipped` per rule, OR
-  - The 565-PR baseline reverses (autonomous loop pause for ≥30d, baseline ages out) — wedge state needs re-derivation, OR
+  - The 567-PR baseline reverses (autonomous loop pause for ≥30d, baseline ages out) — wedge state needs re-derivation, OR
   - Sibling skeleton spec `2026-06-08-w45-detector-rules-r6-r11.md` is amended in a way that invalidates a verdict here, OR
+  - BUG-R10-progress tracker #1151 resolves with a definition different from the §3 R10-row claim — update R10 row accordingly, OR
+  - `friction_tracker_throttled` events fire >1/week for ≥2 consecutive weeks post-ship → file BUG-R11-throttle-tune, reopen this spec to record the per-rule cap-split or global-lift decision, OR
   - Operator observes that an autotuner mis-fire was caused by a deferred rule's absence — the deferral was too conservative, escalate the rule's verdict.
