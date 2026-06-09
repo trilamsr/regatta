@@ -1,0 +1,67 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// TestCheckGitdirReachable_RegularGitDirectoryPasses: normal repo with .git/ as a directory returns nil (#1095 c1).
+func TestCheckGitdirReachable_RegularGitDirectoryPasses(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatalf("mkdir .git: %v", err)
+	}
+	if err := checkGitdirReachable(root); err != nil {
+		t.Fatalf("regular .git dir should pass: %v", err)
+	}
+}
+
+// TestCheckGitdirReachable_MissingDotGitPasses: zero-config fixture with no .git at all passes through so smoke-test setups still boot (#1095 c2).
+func TestCheckGitdirReachable_MissingDotGitPasses(t *testing.T) {
+	root := t.TempDir()
+	if err := checkGitdirReachable(root); err != nil {
+		t.Fatalf("missing .git should pass: %v", err)
+	}
+}
+
+// TestCheckGitdirReachable_BrokenGitdirPointerFails: worktree-mount with .git as a pointer to an unreachable host path returns a named error so the operator sees the misconfig at boot instead of every spawn dying with `fatal: not a git repository` (#1095 c3).
+func TestCheckGitdirReachable_BrokenGitdirPointerFails(t *testing.T) {
+	root := t.TempDir()
+	dotGit := filepath.Join(root, ".git")
+	unreachable := "/this/path/does/not/exist/anywhere"
+	if err := os.WriteFile(dotGit, []byte("gitdir: "+unreachable+"\n"), 0o600); err != nil {
+		t.Fatalf("write .git pointer: %v", err)
+	}
+	err := checkGitdirReachable(root)
+	if err == nil {
+		t.Fatalf("broken gitdir pointer should fail")
+	}
+	if !strings.Contains(err.Error(), "gitdir") || !strings.Contains(err.Error(), unreachable) {
+		t.Fatalf("error should name gitdir + path; got: %v", err)
+	}
+}
+
+// TestCheckGitdirReachable_ReachableGitdirPointerPasses: legitimate worktree usage where the gitdir target IS reachable still passes — a host running regatta natively from inside a git worktree must not be blocked (#1095 c4).
+func TestCheckGitdirReachable_ReachableGitdirPointerPasses(t *testing.T) {
+	root := t.TempDir()
+	target := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: "+target+"\n"), 0o600); err != nil {
+		t.Fatalf("write .git pointer: %v", err)
+	}
+	if err := checkGitdirReachable(root); err != nil {
+		t.Fatalf("reachable gitdir pointer should pass: %v", err)
+	}
+}
+
+// TestCheckGitdirReachable_NonGitdirFilePasses: someone wrote a non-gitdir line into .git (unlikely but plausible); not our problem, pass through and let git itself decide (#1095 c5).
+func TestCheckGitdirReachable_NonGitdirFilePasses(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".git"), []byte("not a gitdir line\n"), 0o600); err != nil {
+		t.Fatalf("write .git: %v", err)
+	}
+	if err := checkGitdirReachable(root); err != nil {
+		t.Fatalf("non-gitdir .git file should pass: %v", err)
+	}
+}

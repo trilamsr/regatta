@@ -181,6 +181,11 @@ func runServe(args []string) int {
 	}
 	applyDefaultLaneCap(&f, slogger)
 
+	if err := checkGitdirReachable(f.RepoRoot); err != nil {
+		logger.Printf("repo preflight: %v", err)
+		return 2
+	}
+
 	costKeyring, costKeyID := loadBriefKeyringWithActive()
 	costKey := costKeyring[costKeyID]
 	set, err := buildSpawner(f.SpawnerName, f.RepoRoot, f.ClaudeBin, f.BaseRef, slogger, db, costKey, costKeyID)
