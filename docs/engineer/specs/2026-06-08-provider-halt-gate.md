@@ -33,7 +33,7 @@ Adversarial framing: a single `provider_credit_exhausted` exit is recoverable (r
 
 Closes the loop: spawner classifies (#1063, shipped) → tick-level gate counts streaks and halts dispatch (#1096, this spec) → operator surface (`regatta dispatch status` + `regatta dispatch resume`) makes the halt observable + releasable.
 
-## §2 Goal
+## §2 Design (Goal)
 
 Operators can answer "is the dispatch loop currently making any forward progress, or is it just retrying against a dead provider?" with `regatta dispatch status` and release the halt with `regatta dispatch resume` once credits are topped up — without the daemon needing a restart, without losing the pending queue, and without any work item retry counter being bumped while the halt is active.
 
@@ -227,3 +227,19 @@ File scope:
 Independent reviewer required (load-bearing — scheduler hot path + new CLI verbs). Per `feedback_no_self_tagged_approve`: spawn fresh-slot reviewer BEFORE the APPROVE token lands. `Reviewer-agent-id:` + `Reviewer-recommendation: APPROVE` in PR body footer (bare, not in a code block).
 
 No automerge from implementer; `gh pr ready <N>` only.
+
+## §13 Adversarial
+
+Independent reviewer (cavecrew-reviewer or equivalent) MUST be spawned BEFORE the APPROVE token lands on any implementer PR. Findings:
+
+- Counter-state lost across restarts: tolerable by design (operator credit-load is the upstream fix, not in-memory persistence).
+- Window race under concurrent agent.exited bursts: counter MUST guard with a mutex; covered in `counter_test.go::TestRace_ConcurrentRecord`.
+- Auto-release cool-off vs operator-manual resume: cool-off path MUST emit KindDispatchResumed with `actor=auto`; operator path with `actor=<id>`. Substrate audit must distinguish.
+
+## §14 Reopen trigger
+
+Reopen this spec when ANY of:
+
+- A second provider's credit-exhausted signal lands (BYOM): the `provider_credit_exhausted` enum value becomes per-provider and the gate keys by `(provider, account)`.
+- Operator overrides cool-off > 5x per week: indicates default window is wrong.
+- A non-credit `exit_reason` recurs N≥3 consecutive and should also halt (e.g. `provider_rate_limited` storm).
