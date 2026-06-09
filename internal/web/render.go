@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"html/template"
@@ -39,9 +40,14 @@ func LoadTemplates(fsys fs.FS) (*Templates, error) {
 	return t, nil
 }
 
-// Render writes the named template to w. Centralising the html/template
-// invocation here means handlers cannot bypass auto-escape by writing raw
-// bytes — auto-escape is the spec §8 XSS gate.
+// Render writes the named template to w. Buffers the rendered output
+// first so a mid-template execution error does not leave half-written
+// headers + the double-WriteHeader stderr noise observed on the
+// dashboard drawer routes.
+//
+// Centralising the html/template invocation here means handlers cannot
+// bypass auto-escape by writing raw bytes — auto-escape is the spec
+// §8 XSS gate.
 func (t *Templates) Render(w http.ResponseWriter, name string, data any) error {
 	t.mu.RLock()
 	parsed := t.parsed
@@ -49,7 +55,12 @@ func (t *Templates) Render(w http.ResponseWriter, name string, data any) error {
 	if parsed == nil {
 		return errors.New("web: templates not loaded")
 	}
-	return parsed.ExecuteTemplate(w, name, data)
+	var buf bytes.Buffer
+	if err := parsed.ExecuteTemplate(&buf, name, data); err != nil {
+		return err
+	}
+	_, err := w.Write(buf.Bytes())
+	return err
 }
 
 // RegisterFunc extends the template func registry with a fresh name. Spec

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"html/template"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -48,5 +49,36 @@ func TestTemplates_RegisterFunc_RejectsDuplicate(t *testing.T) {
 	}
 	if err := tmpls.RegisterFunc("freshName", func() string { return "" }); err != nil {
 		t.Errorf("RegisterFunc rejected fresh name: %v", err)
+	}
+}
+
+// TestRender_BuffersBeforeWrite pins the contract that a template execution error returns the error WITHOUT having written any bytes to the http.ResponseWriter — closes the operator-dashboard log noise where serveAgentDrawer called http.Error after Render had already emitted a 200 OK.
+func TestRender_BuffersBeforeWrite(t *testing.T) {
+	const tmpl = "{{define \"flaky\"}}{{.MustExplode}}{{end}}"
+	parsed := template.Must(template.New("layout").Parse(tmpl))
+	tt := &Templates{parsed: parsed}
+	rec := httptest.NewRecorder()
+	if err := tt.Render(rec, "flaky", struct{}{}); err == nil {
+		t.Fatalf("Render should propagate the template error")
+	}
+	if rec.Body.Len() != 0 {
+		t.Fatalf("Render must not write bytes on failure; got %d", rec.Body.Len())
+	}
+}
+
+// TestRender_WritesBufferOnSuccess pins the success-path contract — the buffer is flushed to the writer exactly once. Bracket to TestRender_BuffersBeforeWrite (per reviewer a5dd8614e5604c5e5).
+func TestRender_WritesBufferOnSuccess(t *testing.T) {
+	const tmpl = `{{define "ok"}}<b>{{.Msg}}</b>{{end}}`
+	parsed := template.Must(template.New("layout").Parse(tmpl))
+	tt := &Templates{parsed: parsed}
+	rec := httptest.NewRecorder()
+	if err := tt.Render(rec, "ok", struct{ Msg string }{Msg: "hello"}); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if rec.Body.Len() == 0 {
+		t.Fatalf("Render must write bytes on success; got empty body")
+	}
+	if !strings.Contains(rec.Body.String(), "<b>hello</b>") {
+		t.Fatalf("body missing rendered template: %q", rec.Body.String())
 	}
 }
