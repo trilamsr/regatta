@@ -147,6 +147,8 @@ type SpecAdapter struct {
 	Selector string `yaml:"selector,omitempty" json:"selector,omitempty"`
 	// AcceptanceSection overrides the github_issues H2 anchor; empty falls back to the package default.
 	AcceptanceSection string `yaml:"acceptance_section,omitempty" json:"acceptance_section,omitempty"`
+	// DefaultLane backfills WorkItem.Lane on github_issues items whose body has no `lane:` metadata. Mirror of the scheduler default-lane wedge from #1048; without it adaptersync drops every operator-filed unlabelled issue with `empty_lane` WARN (#1117). Empty = preserve the original "operator must label every issue" contract.
+	DefaultLane string `yaml:"default_lane,omitempty" json:"default_lane,omitempty"`
 }
 
 // PlannerPromptSHA returns the operator-pinned planner-prompt sha256; nil-safe at every level. Empty when unpinned.

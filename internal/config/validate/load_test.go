@@ -187,6 +187,28 @@ func TestLoad_MarkdownCatalog_RootDefaultSurfaced(t *testing.T) {
 	}
 }
 
+// TestLoad_GitHubIssues_DefaultLaneSurfaced pins #1117: regatta.yaml::spec_adapter.default_lane parses through to Config.SpecAdapter.DefaultLane so cmd/regatta/wire_spec_adapter.go can forward it to the github_issues adapter.
+func TestLoad_GitHubIssues_DefaultLaneSurfaced(t *testing.T) {
+	yaml := strings.Replace(minimalValid, `spec_adapter:
+  type: github_issues
+  selector: "label:planned"
+`, `spec_adapter:
+  type: github_issues
+  selector: "label:planned"
+  default_lane: server
+`, 1)
+	cfg, err := LoadConfig([]byte(yaml))
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	if cfg.SpecAdapter == nil {
+		t.Fatal("SpecAdapter is nil")
+	}
+	if got := cfg.SpecAdapter.DefaultLane; got != "server" {
+		t.Fatalf("DefaultLane=%q; want %q", got, "server")
+	}
+}
+
 // TestLoad_NonMarkdownAdapter_RootEmpty pins MarkdownCatalogRoot() == "" for non-markdown adapter types, so serve.go can distinguish "yaml did
 func TestLoad_NonMarkdownAdapter_RootEmpty(t *testing.T) {
 	cfg, err := LoadConfig([]byte(minimalValid))

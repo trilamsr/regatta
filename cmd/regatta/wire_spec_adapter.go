@@ -35,6 +35,7 @@ func buildSpecAdapter(f serveFlags, logger *slog.Logger) (schemas.SpecAdapter, e
 			Repo:              githubissues.Repo{Owner: cfg.Repo.Owner, Name: cfg.Repo.Name},
 			Selector:          cfg.SpecAdapter.Selector,
 			AcceptanceSection: cfg.SpecAdapter.AcceptanceSection,
+			DefaultLane:       cfg.SpecAdapter.DefaultLane,
 		})
 	}
 	logger.Info("adapter.configured",

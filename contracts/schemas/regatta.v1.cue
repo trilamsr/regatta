@@ -69,6 +69,7 @@ import "list"
 	if type == "github_issues" || type == "gitlab_issues" {
 		selector:            string                  // e.g. "label:autonomous"
 		acceptance_section?: *"## Acceptance criteria" | string
+		default_lane?:       string                  // backfills WorkItem.Lane when body has no `lane:` metadata (#1117)
 	}
 	if type == "markdown_catalog" {
 		// Directory containing .regatta/items/*.md, relative to repo

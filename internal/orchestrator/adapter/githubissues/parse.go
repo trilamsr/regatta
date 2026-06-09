@@ -53,8 +53,8 @@ type projection struct {
 	DedupKey           string
 }
 
-// parseIssueBody normalizes body bytes (CRLF→LF + NFC) and extracts metadata, dedup marker, and acceptance criteria; SkipReason on projection failure (spec §7.6).
-func parseIssueBody(rawBody string) (projection, SkipReason, error) {
+// parseIssueBody normalizes body bytes (CRLF→LF + NFC) and extracts metadata, dedup marker, and acceptance criteria; SkipReason on projection failure (spec §7.6). When the body has no `lane:` metadata, defaultLane (when non-empty) backfills Lane so adaptersync stops emitting `empty_lane` WARN on operator-filed issues (#1117, mirrors the scheduler default added in #1048).
+func parseIssueBody(rawBody, defaultLane string) (projection, SkipReason, error) {
 	body := normalize(rawBody)
 	var p projection
 
@@ -73,6 +73,9 @@ func parseIssueBody(rawBody string) (projection, SkipReason, error) {
 				}
 			}
 		}
+	}
+	if p.Lane == "" && defaultLane != "" {
+		p.Lane = defaultLane
 	}
 
 	if m := dedupMarkerLine.FindStringSubmatch(body); m != nil {

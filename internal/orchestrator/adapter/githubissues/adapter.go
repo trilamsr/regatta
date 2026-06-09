@@ -41,6 +41,8 @@ type GitHubIssuesConfig struct {
 	Tracer            trace.Tracer
 	Meter             metric.Meter
 	Clock             func() time.Time
+	// DefaultLane mirrors the scheduler default-lane wedge (#1048): when the issue body has no `lane:` metadata, items inherit this lane instead of being dropped by adaptersync as `empty_lane`. Empty preserves the original "operator must label every issue" contract (#1117).
+	DefaultLane string
 }
 
 // NewGitHubIssues returns a schemas.SpecAdapter consuming GH issues labelled `autonomous`; fails closed when Client or Repo is unset.
@@ -143,7 +145,7 @@ func (a *adapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
 		if collided[id] {
 			continue
 		}
-		p, reason, perr := parseIssueBody(iss.Body)
+		p, reason, perr := parseIssueBody(iss.Body, a.cfg.DefaultLane)
 		if perr != nil {
 			a.warnSkip(iss.Number, reason)
 			continue
@@ -241,7 +243,7 @@ func (a *adapter) projectIssue(iss ghclient.Issue) (schemas.WorkItem, error) {
 	if !ok {
 		return schemas.WorkItem{}, fmt.Errorf("%w: title", schemas.ErrPermanent)
 	}
-	p, reason, perr := parseIssueBody(iss.Body)
+	p, reason, perr := parseIssueBody(iss.Body, a.cfg.DefaultLane)
 	if perr != nil {
 		return schemas.WorkItem{}, fmt.Errorf("%w: %s", schemas.ErrPermanent, reason)
 	}
