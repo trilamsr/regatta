@@ -45,7 +45,8 @@ type dashboardAgentRow struct {
 }
 
 type dashboardAgentsView struct {
-	Rows []dashboardAgentRow
+	Rows      []dashboardAgentRow
+	EmptyHint string
 }
 
 type dashboardWorkItemRow struct {
@@ -62,11 +63,13 @@ type dashboardBucket struct {
 }
 
 type dashboardWorkItemsView struct {
-	Buckets []dashboardBucket
+	Buckets   []dashboardBucket
+	EmptyHint string
 }
 
 type dashboardEventsView struct {
-	Rows []state.Event
+	Rows      []state.Event
+	EmptyHint string
 }
 
 type dashboardFlowNode struct {
@@ -162,6 +165,13 @@ const (
 	exitReasonCompleted = "completed"
 )
 
+// emptyHint* constants pin the operator-facing copy for blank dashboard panels so a future palette / cadence change edits one source instead of N templates. WHY: a blank "loading…" or empty div leaves the operator guessing whether the scheduler is wedged or simply idle.
+const (
+	emptyHintAgents    = "No agents in flight. Scheduler ticks every 5s."
+	emptyHintWorkItems = "No work-items found. Adapter polls every 30s; check spec_adapter.selector in regatta.yaml."
+	emptyHintEvents    = "No events in last 24h."
+)
+
 type dashboardDockerSoakView struct {
 	Uptime         string
 	SpawnsLast1m   int
@@ -229,7 +239,7 @@ func loadAgentsView(ctx context.Context, deps Dependencies) any {
 		state.AgentPROpen, state.AgentGatesRunning, state.AgentAwaitingMerge,
 	)
 	if err != nil || len(rows) == 0 {
-		return dashboardAgentsView{}
+		return dashboardAgentsView{EmptyHint: emptyHintAgents}
 	}
 	ids := make([]string, 0, len(rows))
 	for _, a := range rows {
@@ -282,7 +292,15 @@ func loadWorkItemsView(ctx context.Context, deps Dependencies) any {
 		}
 		buckets[i] = dashboardBucket{Label: labels[i], Count: sum.Count, Top: top}
 	}
-	return dashboardWorkItemsView{Buckets: buckets}
+	view := dashboardWorkItemsView{Buckets: buckets}
+	total := 0
+	for _, b := range buckets {
+		total += b.Count
+	}
+	if total == 0 {
+		view.EmptyHint = emptyHintWorkItems
+	}
+	return view
 }
 
 func loadFlowView(ctx context.Context, deps Dependencies) any {
@@ -453,8 +471,8 @@ func agentsForPipelineSlug(ctx context.Context, db *state.DB, slug string) []sta
 
 func loadEventsView(ctx context.Context, deps Dependencies) any {
 	rows, err := deps.DB.ListEvents(ctx, dashboardEventsTailLimit)
-	if err != nil {
-		return dashboardEventsView{}
+	if err != nil || len(rows) == 0 {
+		return dashboardEventsView{EmptyHint: emptyHintEvents}
 	}
 	return dashboardEventsView{Rows: rows}
 }
