@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,6 +12,19 @@ import (
 )
 
 const gitdirPointerReadCap = 64 << 10
+
+// runBootPreflights executes the loud-at-boot gates that must pass before any DB open: UI-HMAC contract + git-repo-root reachability. Centralising the two checks here keeps serve.go below the file-size ceiling (#737).
+func runBootPreflights(f serveFlags, logger *log.Logger) error {
+	if err := preflightUIBoot(f.UI); err != nil {
+		logger.Printf("%v", err)
+		return err
+	}
+	if err := checkGitdirReachable(f.RepoRoot); err != nil {
+		logger.Printf("repo preflight: %v", err)
+		return err
+	}
+	return nil
+}
 
 var gitdirPointerRx = regexp.MustCompile(`(?m)^gitdir:\s+(.+)$`)
 
@@ -27,7 +41,7 @@ func checkGitdirReachable(repoRoot string) error {
 	if st.IsDir() {
 		return nil
 	}
-	f, err := os.Open(gitPath)
+	f, err := os.Open(gitPath) //nolint:gosec // gitPath is repoRoot + ".git"; repoRoot is the operator-supplied --repo flag
 	if err != nil {
 		return fmt.Errorf("open %s: %w", gitPath, err)
 	}

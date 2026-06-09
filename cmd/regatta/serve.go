@@ -157,14 +157,7 @@ func runServe(args []string) int {
 	// the explicit wiring exists to remove the silent-default footgun.
 	clock := time.Now
 
-	// Loud-at-boot before any DB open (spec §1.3 open-q 9.8): refuse to
-	// start the listener when its HMAC key dependency is missing.
-	if err := preflightUIBoot(f.UI); err != nil {
-		logger.Printf("%v", err)
-		return 2
-	}
-	if err := checkGitdirReachable(f.RepoRoot); err != nil {
-		logger.Printf("repo preflight: %v", err)
+	if err := runBootPreflights(f, logger); err != nil {
 		return 2
 	}
 
