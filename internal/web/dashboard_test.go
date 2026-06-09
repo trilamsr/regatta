@@ -374,3 +374,62 @@ func TestLoadSpendView_ZeroSpendNoExitEvents(t *testing.T) {
 		t.Fatalf("CreditExhaustedCount=%d on zero-event boot, want 0", sv.CreditExhaustedCount)
 	}
 }
+
+// TestLoadDockerSoakView_Idle asserts the IDLE state on a fresh boot with no spawns or exits.
+func TestLoadDockerSoakView_Idle(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "soak-idle.db")
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	deps := Dependencies{DB: db, Clock: clock, BootedAt: now.Add(-30 * time.Second)}
+	view := loadDockerSoakView(context.Background(), deps)
+	sv, ok := view.(dashboardDockerSoakView)
+	if !ok {
+		t.Fatalf("loadDockerSoakView returned %T, want dashboardDockerSoakView", view)
+	}
+	if sv.Health != "green" {
+		t.Fatalf("Health=%q, want green on idle", sv.Health)
+	}
+	if sv.HealthLabel != "IDLE" {
+		t.Fatalf("HealthLabel=%q, want IDLE", sv.HealthLabel)
+	}
+	if sv.SpawnsLast1m != 0 || sv.ExitedLast1m != 0 {
+		t.Fatalf("idle counts spawns=%d exits=%d, want 0/0", sv.SpawnsLast1m, sv.ExitedLast1m)
+	}
+}
+
+// TestLoadDockerSoakView_EmptyExitReasonNotMaskedAsHealthy asserts an agent.exited row whose exit_reason is empty (classifier didn't tag; pre-#1063 row) counts as non-completed so the HEALTHY pill cannot mask data drift.
+func TestLoadDockerSoakView_EmptyExitReasonNotMaskedAsHealthy(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "soak-empty-reason.db")
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+	a, err := db.UpsertPending(ctx, "WORK-EMPTY", "server")
+	if err != nil {
+		t.Fatalf("UpsertPending: %v", err)
+	}
+	if err := db.RecordEvent(ctx, a.ID, "spawn.started", `{}`); err != nil {
+		t.Fatalf("RecordEvent spawn: %v", err)
+	}
+	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"exit_code":1}`); err != nil {
+		t.Fatalf("RecordEvent exit: %v", err)
+	}
+	deps := Dependencies{DB: db, Clock: clock, BootedAt: now.Add(-60 * time.Second)}
+	view := loadDockerSoakView(ctx, deps)
+	sv, ok := view.(dashboardDockerSoakView)
+	if !ok {
+		t.Fatalf("loadDockerSoakView returned %T", view)
+	}
+	if sv.Health == "green" {
+		t.Fatalf("empty-exit_reason masked as healthy: Health=%q HealthLabel=%q", sv.Health, sv.HealthLabel)
+	}
+}

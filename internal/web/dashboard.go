@@ -306,10 +306,11 @@ func tallyDockerSoakWindow(ctx context.Context, db *state.DB, since int64) (spaw
 			lastReason = p.ExitReason
 			lastPayload = payload
 		}
-		switch {
-		case p.ExitReason == exitReasonCompleted:
+		switch p.ExitReason {
+		case exitReasonCompleted:
 			completed++
-		case p.ExitReason != "":
+		default:
+			// empty exit_reason = classifier didn't tag (data drift, pre-#1063 row, or payload schema break). Treat as non-completed so the HEALTHY-pill case (exited>0 && nonCompleted==0) cannot mask silent data corruption.
 			nonCompleted++
 		}
 	}
