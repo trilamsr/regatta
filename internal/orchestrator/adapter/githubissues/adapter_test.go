@@ -536,7 +536,7 @@ func FuzzGitHubIssues_ParseMetadata_NoPanic(f *testing.F) {
 	f.Add([]byte("<!--regatta\nlane: x\n-->"))
 	f.Add([]byte("garbage <!--regatta\n: : :\n-->"))
 	f.Fuzz(func(_ *testing.T, body []byte) {
-		_, _, _ = parseIssueBody(string(body))
+		_, _, _ = parseIssueBody(string(body), "")
 	})
 }
 
