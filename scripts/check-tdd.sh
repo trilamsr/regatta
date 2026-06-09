@@ -183,16 +183,22 @@ while IFS= read -r pf; do
     if [ -n "$symbols" ]; then
       while IFS= read -r tf; do
         [ -z "$tf" ] && continue
-        # Strip Go string literals and line comments before symbol
-        # search so a test file that mentions the prod symbol ONLY
-        # inside `"..."` or after `//` cannot game the gate (#1057).
-        # Line-oriented and intentionally simple: gsub collapses
-        # single-line `"..."` runs, sub drops everything after `//`.
-        # Raw-string backticks and block `/* ... */` comments are
-        # NOT stripped; reopen #1057 if a real bypass surfaces using
-        # either form (escalate to a go/scanner helper at that point).
+        # Strip Go string literals (handling escaped quotes), raw-string
+        # backticks, and line comments before symbol search so a test file
+        # that mentions the prod symbol ONLY inside `"..."`, `` `...` ``, or
+        # after `//` cannot game the gate (#1057). Block `/* ... */` comments
+        # are NOT stripped; reopen #1057 if a real bypass surfaces (escalate
+        # to a go/scanner helper at that point).
         tf_stripped=$(git show "$head:$tf" 2>/dev/null | awk '
-          { gsub(/"[^"]*"/, ""); sub(/\/\/.*/, ""); print }
+          {
+            # 1. Strip line comments first so any // in code drops symbol mentions.
+            sub(/\/\/.*/, "")
+            # 2. Strip double-quoted Go strings, honoring \" escape sequences.
+            gsub(/"([^"\\]|\\.)*"/, "")
+            # 3. Strip raw-string backticks (no escape semantics inside).
+            gsub(/`[^`]*`/, "")
+            print
+          }
         ')
         for sym in $symbols; do
           if printf '%s\n' "$tf_stripped" | grep -qw "$sym"; then

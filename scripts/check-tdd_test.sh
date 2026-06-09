@@ -478,5 +478,37 @@ run_case cross_pkg_real_symbol_usage_passes     0 "every production"   case_cros
 run_stale_base_case
 
 echo
+
 echo "summary: $pass passed, $failed failed"
 exit $failed
+
+# c1 negative (#1057 reviewer af5d41c1a7a01a792): test mentions the prod
+# symbol ONLY inside a Go string literal with escaped quotes. Pre-fix the
+# strip pattern stopped at the first internal escape, leaving the rest
+# of the literal — including the symbol — exposed.
+case_cross_pkg_symbol_in_escaped_string_only_fails() {
+  mkdir -p cmd/regatta internal/foo
+  printf 'package main\n\nfunc Wire() int { return 1 }\n' > cmd/regatta/wire.go
+  printf 'package foo\n\nimport "testing"\n\nfunc TestNothing(t *testing.T) {\n  _ = "foo\\"Wire\\"bar"\n}\n' > internal/foo/foo_test.go
+}
+
+# c1 negative (#1057 reviewer af5d41c1a7a01a792): test mentions the prod
+# symbol ONLY inside a Go raw-string backtick literal.
+case_cross_pkg_symbol_in_raw_string_only_fails() {
+  mkdir -p cmd/regatta internal/foo
+  printf 'package main\n\nfunc Wire() int { return 1 }\n' > cmd/regatta/wire.go
+  printf 'package foo\n\nimport "testing"\n\nfunc TestNothing(t *testing.T) {\n  _ = `Wire`\n}\n' > internal/foo/foo_test.go
+}
+
+# c1 positive (#1057 reviewer af5d41c1a7a01a792): test that USES the
+# symbol in a real call AND happens to mention it in a comment. The
+# tightening must keep this case green.
+case_cross_pkg_symbol_in_call_plus_comment_passes() {
+  mkdir -p cmd/regatta internal/foo
+  printf 'package main\n\nfunc Wire() int { return 1 }\n' > cmd/regatta/wire.go
+  printf 'package foo\n\nimport (\n  "testing"\n\n  main "github.com/example/main"\n)\n\n// TestWire calls Wire from prod (#1057 reopen audit).\nfunc TestWire(t *testing.T) {\n  if main.Wire() != 1 {\n    t.Fatal("want 1")\n  }\n}\n' > internal/foo/foo_test.go
+}
+run_case cross_pkg_escaped_string_bypass_rejected 1 "without a matching" case_cross_pkg_symbol_in_escaped_string_only_fails
+run_case cross_pkg_raw_string_bypass_rejected     1 "without a matching" case_cross_pkg_symbol_in_raw_string_only_fails
+run_case cross_pkg_call_plus_comment_passes       0 "every production"   case_cross_pkg_symbol_in_call_plus_comment_passes
+
