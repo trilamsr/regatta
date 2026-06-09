@@ -106,7 +106,7 @@ func runProgramPlan(args []string) int {
 			return 2
 		}
 		client = c
-	case "stub":
+	case plannerNameStub:
 		client = program.NewStubPlanner()
 	default:
 		fmt.Fprintf(os.Stderr, "regatta program plan: unknown -planner %q (want anthropic|stub)\n", *plannerName)
@@ -199,6 +199,8 @@ func validateWriteDirUnderCwd(target, cwd string) error {
 // case-insensitive); Linux and macOS use byte-exact comparison. We
 // pivot on runtime.GOOS rather than separator so a Linux operator
 // writing to a case-sensitive filesystem stays strict.
+const plannerNameStub = "stub"
+
 const goosWindows = "windows"
 
 var pathCaseFold = runtime.GOOS == goosWindows

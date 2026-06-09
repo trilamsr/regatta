@@ -67,7 +67,7 @@ services:
       OTEL_SERVICE_NAME: "regatta"
       OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=self-host"
       REGATTA_HMAC_KEY: ${REGATTA_HMAC_KEY:?REGATTA_HMAC_KEY must be set in .env or shell env to enable the UI}
-    command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=true"]
+    command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=true", "--spawner=claude"]
     volumes:
       - ${REPO_PATH:-.}:/repo
       - regatta-data:/data

@@ -188,6 +188,7 @@ func runServe(args []string) int {
 		logger.Printf("spawner: %v", err)
 		return 2
 	}
+	warnIfStubWithGitHubIssues(f.SpawnerName, f.RepoRoot, slogger)
 
 	briefsDir := filepath.Join(f.RepoRoot, ".regatta", "programs")
 	if err := os.MkdirAll(briefsDir, 0o750); err != nil {
