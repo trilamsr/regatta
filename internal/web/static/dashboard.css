@@ -125,7 +125,14 @@ body { font-feature-settings: "ss01", "cv11"; }
   border: 1px solid currentColor;
   line-height: 1.4;
 }
-.pill-running { color: var(--accent); }
+.pill-running {
+  color: var(--accent);
+  animation: pill-pulse 1.5s ease-in-out infinite alternate;
+}
+@keyframes pill-pulse {
+  from { opacity: 1; }
+  to   { opacity: 0.55; }
+}
 .pill-pr-open { color: var(--accent-2); }
 .pill-gates { color: var(--warn); }
 .pill-merged { color: var(--ink); background: var(--ink); color: var(--paper); border-color: var(--ink); }
@@ -246,4 +253,13 @@ body { font-feature-settings: "ss01", "cv11"; }
   font-weight: 500;
   letter-spacing: -0.01em;
   margin-top: 0.25rem;
+}
+
+/* Empty-state copy — quiet, centered, italic. */
+.empty-state {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.9rem;
+  color: #94a3b8;
+  text-align: center;
 }
