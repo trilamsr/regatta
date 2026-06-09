@@ -3,17 +3,98 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>regatta</title>
+<title>regatta · operator</title>
+<link rel="preload" href="/ui/static/fonts/JetBrainsMono-Regular.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/ui/static/tailwind.min.css">
+<link rel="stylesheet" href="/ui/static/dashboard.css">
 <script src="/ui/static/htmx.min.js" defer></script>
 <script src="/ui/static/htmx-config.js" defer></script>
 </head>
-<body class="min-h-screen bg-slate-50 text-slate-900">
-<main id="main" class="mx-auto max-w-3xl p-6">
-{{- block "content" . -}}
-<h1 class="text-xl font-semibold">regatta operator UI</h1>
-<p class="mt-2 text-sm text-slate-600">Surface scaffold; approval + run views land in Wave 1 T6 and Wave 2.</p>
-{{- end -}}
+<body class="min-h-screen">
+
+<header class="topbar">
+  <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
+    <div class="flex items-baseline gap-4">
+      <span class="brand text-xl">regatta</span>
+      <span class="ticker text-slate-500">OPERATOR · STAGE 2 · {{formatTime .Now}}</span>
+    </div>
+    <div class="ticker text-slate-600 flex gap-4">
+      <span>STATUS: <span class="text-emerald-700">●&nbsp;LIVE</span></span>
+      <span>POLL: 5s</span>
+    </div>
+  </div>
+</header>
+
+<main class="mx-auto max-w-6xl px-6 py-10 space-y-14">
+
+  <section>
+    <div class="section-head">
+      <div class="flex items-baseline gap-3">
+        <span class="num">01 / AGENTS</span>
+        <span class="title">in flight</span>
+      </div>
+      <span class="meta">click row for detail</span>
+    </div>
+    <div id="agents-panel" hx-get="/ui/panels/agents" hx-trigger="load, every 5s" hx-swap="innerHTML">
+      <div class="panel p-6 text-sm text-slate-500">loading…</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="flex items-baseline gap-3">
+        <span class="num">02 / FLOW</span>
+        <span class="title">work in transit</span>
+      </div>
+      <span class="meta">stage → stage</span>
+    </div>
+    <div id="flow-panel" hx-get="/ui/panels/flow" hx-trigger="load, every 10s" hx-swap="innerHTML">
+      <div class="panel p-6 text-sm text-slate-500">loading…</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="flex items-baseline gap-3">
+        <span class="num">03 / BACKLOG</span>
+        <span class="title">work items</span>
+      </div>
+      <span class="meta">click for body</span>
+    </div>
+    <div id="work-items-panel" hx-get="/ui/panels/work-items" hx-trigger="load, every 10s" hx-swap="innerHTML">
+      <div class="panel p-6 text-sm text-slate-500">loading…</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="flex items-baseline gap-3">
+        <span class="num">04 / LOG</span>
+        <span class="title">recent activity</span>
+      </div>
+      <span class="meta">live</span>
+    </div>
+    <div id="events-panel" hx-get="/ui/panels/events" hx-trigger="load, every 5s" hx-swap="innerHTML">
+      <div class="panel p-6 text-sm text-slate-500">loading…</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="flex items-baseline gap-3">
+        <span class="num">05 / SPEND</span>
+        <span class="title">token cost</span>
+      </div>
+      <span class="meta">substrate · usd</span>
+    </div>
+    <div id="spend-panel" hx-get="/ui/panels/spend" hx-trigger="load, every 30s" hx-swap="innerHTML">
+      <div class="panel p-6 text-sm text-slate-500">loading…</div>
+    </div>
+  </section>
+
 </main>
+
+<div id="drawer-mount"></div>
+
 </body>
 </html>

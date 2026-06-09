@@ -1,0 +1,249 @@
+/* regatta operator dashboard — maritime-instrumentation aesthetic.
+   Tailwind utilities cover layout; this file owns design tokens, font
+   loading, and the bespoke micro-components that do not exist as
+   utilities (section heads, status pills, sparkline). */
+
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/ui/static/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/ui/static/fonts/JetBrainsMono-Medium.woff2") format("woff2");
+}
+
+:root {
+  --ink:       #0e1216;
+  --ink-2:     #1f2937;
+  --paper:     #f4f1ea;
+  --paper-2:   #ebe7dd;
+  --rule:      #1f2937;
+  --rule-soft: #c8c3b6;
+  --accent:    #c2410c;
+  --accent-2:  #115e59;
+  --warn:      #b45309;
+  --alarm:     #991b1b;
+  --dim:       #6b7280;
+
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-serif: ui-serif, "Iowan Old Style", "Apple Garamond", "Palatino Linotype", Georgia, serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+html, body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-body);
+}
+
+body { font-feature-settings: "ss01", "cv11"; }
+
+.font-mono { font-family: var(--font-mono); }
+.font-serif { font-family: var(--font-serif); }
+
+/* Section head — small-caps numeral + rule. */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 1rem;
+}
+.section-head .num {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.section-head .title {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+.section-head .meta {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+
+/* Top bar ticker. */
+.topbar {
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper-2);
+}
+.topbar .brand {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.topbar .ticker {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+}
+
+/* Data row — densest readable. */
+.row {
+  display: grid;
+  align-items: center;
+  border-bottom: 1px solid var(--rule-soft);
+  padding: 0.55rem 0.85rem;
+  font-size: 0.875rem;
+}
+.row:last-child { border-bottom: 0; }
+.row .ident {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--dim);
+  letter-spacing: 0.03em;
+}
+.row .title {
+  font-family: var(--font-body);
+  color: var(--ink);
+}
+.row.click-row { cursor: pointer; }
+.row.click-row:hover { background: var(--paper-2); }
+
+/* Status pill — flat, not rounded; uses signal palette. */
+.pill {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid currentColor;
+  line-height: 1.4;
+}
+.pill-running { color: var(--accent); }
+.pill-pr-open { color: var(--accent-2); }
+.pill-gates { color: var(--warn); }
+.pill-merged { color: var(--ink); background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.pill-blocked { color: var(--alarm); }
+.pill-planned { color: var(--ink-2); }
+.pill-done { color: var(--accent-2); }
+
+/* Panel — surface tone, hard rule, no shadow. */
+.panel {
+  background: #fdfaf3;
+  border: 1px solid var(--rule);
+}
+
+/* Flow diagram nodes. */
+.flow-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.6rem 0.5rem;
+  border: 1px solid var(--rule);
+  background: var(--paper-2);
+  min-width: 6.5rem;
+}
+.flow-node .count {
+  font-family: var(--font-mono);
+  font-size: 1.4rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+.flow-node .lbl {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.flow-arrow {
+  font-family: var(--font-mono);
+  font-size: 1.2rem;
+  color: var(--dim);
+  line-height: 1;
+}
+
+/* Drawer — slide-from-right detail pane. */
+.drawer-bg {
+  position: fixed; inset: 0;
+  background: rgba(14,18,22,0.45);
+  z-index: 40;
+}
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0;
+  width: min(560px, 92vw);
+  background: var(--paper);
+  border-left: 1px solid var(--rule);
+  z-index: 41;
+  overflow-y: auto;
+  padding: 1.25rem 1.5rem;
+}
+.drawer h3 {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  margin-bottom: 0.4rem;
+}
+.drawer dt {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-top: 0.9rem;
+}
+.drawer dd {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--ink);
+  word-break: break-all;
+}
+
+/* Sparkline — tiny inline svg. */
+.spark { display: inline-block; vertical-align: middle; }
+
+/* Event log — verb-first line. */
+.event-line {
+  display: grid;
+  grid-template-columns: 5rem 1fr;
+  gap: 0.75rem;
+  padding: 0.35rem 0.85rem;
+  border-bottom: 1px solid var(--rule-soft);
+  font-size: 0.84rem;
+}
+.event-line .ts {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+.event-line .verb { color: var(--ink); }
+.event-line .verb .strong { font-weight: 500; }
+.event-line .verb .acc { color: var(--accent); }
+.event-line .verb .acc-2 { color: var(--accent-2); }
+
+/* Big number cards (spend). */
+.metric {
+  border: 1px solid var(--rule);
+  padding: 1rem 1.1rem;
+  background: var(--paper-2);
+}
+.metric .lbl {
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.metric .val {
+  font-family: var(--font-mono);
+  font-size: 1.8rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  margin-top: 0.25rem;
+}

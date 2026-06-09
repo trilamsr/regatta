@@ -38,6 +38,27 @@ re-derive the supply chain from this file alone.
   Requires `npx` + node ≥ 18 on the developer machine. CI does NOT run
   the build; the committed output is what ships.
 
+## JetBrainsMono-Regular.woff2
+
+- Asset path: `internal/web/static/fonts/JetBrainsMono-Regular.woff2`
+- URL served from: `/ui/static/fonts/JetBrainsMono-Regular.woff2`
+- Upstream URL: https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip
+- Upstream release: https://github.com/JetBrains/JetBrainsMono/releases/tag/v2.304
+- Version pinned: `v2.304`
+- License: SIL Open Font License 1.1 — https://github.com/JetBrains/JetBrainsMono/blob/v2.304/OFL.txt
+- SHA-256: `a9cb1cd82332b23a47e3a1239d25d13c86d16c4220695e34b243effa999f45f2`
+- Retrieved on: 2026-06-08
+
+## JetBrainsMono-Medium.woff2
+
+- Asset path: `internal/web/static/fonts/JetBrainsMono-Medium.woff2`
+- URL served from: `/ui/static/fonts/JetBrainsMono-Medium.woff2`
+- Upstream URL: https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip
+- Version pinned: `v2.304`
+- License: SIL Open Font License 1.1
+- SHA-256: `086c48dfbea9ddaff1320f7e09399b8e2924e88ce67453721255db3bdbb5a353`
+- Retrieved on: 2026-06-08
+
 ## Why this file is load-bearing
 
 Closes spec §3.5 (Tailwind compiled at build time, committed; CI does

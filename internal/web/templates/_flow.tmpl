@@ -1,0 +1,18 @@
+{{define "_flow"}}
+<div class="panel p-6">
+  <div class="flex items-center justify-between gap-2 flex-wrap">
+    {{- range $i, $node := .Nodes}}
+    {{- if gt $i 0}}<span class="flow-arrow">→</span>{{- end}}
+    <div class="flow-node">
+      <span class="count">{{.Count}}</span>
+      <span class="lbl">{{.Label}}</span>
+    </div>
+    {{- end}}
+  </div>
+  {{- if .Halt}}
+  <div class="mt-6 border-t border-slate-300 pt-3 text-xs font-mono text-amber-800">
+    LANE CAP HOLD · lane=server has {{.Halt}} item(s) in flight · cap reached
+  </div>
+  {{- end}}
+</div>
+{{end}}

@@ -61,10 +61,15 @@ func NewHandler(deps Dependencies) http.Handler {
 			http.Error(w, "templates not loaded", http.StatusInternalServerError)
 			return
 		}
-		if err := deps.Templates.Render(w, "layout.tmpl", nil); err != nil {
+		clock := deps.Clock
+		if clock == nil {
+			clock = time.Now
+		}
+		if err := deps.Templates.Render(w, "layout.tmpl", dashboardLayoutView{Now: clock()}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	})
+	registerDashboardRoutes(mux, deps)
 	if deps.RouteRegistrar != nil {
 		deps.RouteRegistrar(mux, deps)
 	}

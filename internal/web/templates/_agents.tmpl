@@ -1,0 +1,27 @@
+{{define "_agents"}}
+{{- if .Rows}}
+<div class="panel">
+  <div class="row text-xs font-mono text-slate-500 uppercase tracking-widest" style="grid-template-columns: 7rem 1fr 6rem 4rem 5rem;">
+    <span>status</span>
+    <span>what it's doing</span>
+    <span>lane</span>
+    <span class="text-right">elapsed</span>
+    <span class="text-right">spend</span>
+  </div>
+  {{- range .Rows}}
+  <div class="row click-row" style="grid-template-columns: 7rem 1fr 6rem 4rem 5rem;"
+       hx-get="/ui/drawer/agent/{{.ID}}" hx-target="#drawer-mount" hx-swap="innerHTML">
+    <span><span class="pill pill-{{statusClass .State}}">{{statusLabel .State}}</span></span>
+    <span class="title truncate" title="{{.Title}}">{{.Title}}</span>
+    <span class="ident">{{.Lane}}</span>
+    <span class="ident text-right">{{.Elapsed}}</span>
+    <span class="ident text-right">{{formatUSDMicros .SpendMicros}}</span>
+  </div>
+  {{- end}}
+</div>
+{{- else}}
+<div class="panel p-6 text-sm text-slate-500">
+  No agents in flight. Scheduler will spawn the next planned item on the next tick.
+</div>
+{{- end}}
+{{end}}

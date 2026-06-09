@@ -1,0 +1,25 @@
+{{define "_work_items"}}
+<div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+{{- range .Buckets}}
+<div class="panel">
+  <div class="flex items-baseline justify-between border-b border-slate-300 px-3 py-2">
+    <span class="num text-xs font-mono uppercase tracking-widest text-slate-700">{{.Label}}</span>
+    <span class="font-mono text-lg font-medium">{{.Count}}</span>
+  </div>
+  {{- if .Top}}
+  <ul class="divide-y divide-slate-200">
+  {{- range .Top}}
+  <li class="px-3 py-2 cursor-pointer hover:bg-slate-100"
+      hx-get="/ui/drawer/work-item/{{.ID}}" hx-target="#drawer-mount" hx-swap="innerHTML">
+    <div class="text-sm text-slate-900 truncate" title="{{.Title}}">{{.Title}}</div>
+    <div class="ident text-xs mt-0.5">{{.Lane}} · {{relTime .UpdatedAt}}</div>
+  </li>
+  {{- end}}
+  </ul>
+  {{- else}}
+  <div class="px-3 py-4 text-xs text-slate-400">—</div>
+  {{- end}}
+</div>
+{{- end}}
+</div>
+{{end}}

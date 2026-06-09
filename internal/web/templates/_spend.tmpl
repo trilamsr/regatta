@@ -1,0 +1,22 @@
+{{define "_spend"}}
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+<div class="metric">
+  <div class="lbl">Last 24h</div>
+  <div class="val">{{formatUSDMicros .Last24hMicros}}</div>
+  <div class="mt-2">{{sparkSVG .Spark}}</div>
+</div>
+<div class="metric">
+  <div class="lbl">Today</div>
+  <div class="val">{{formatUSDMicros .TodayMicros}}</div>
+  <div class="ident text-xs mt-2">resets 00:00 UTC</div>
+</div>
+<div class="metric">
+  <div class="lbl">Lifetime</div>
+  <div class="val">{{formatUSDMicros .LifetimeMicros}}</div>
+  <div class="ident text-xs mt-2">all-time substrate sum</div>
+</div>
+</div>
+{{- if .Err}}
+<p class="mt-3 text-xs font-mono text-amber-700">spend reader: {{.Err}}</p>
+{{- end}}
+{{end}}

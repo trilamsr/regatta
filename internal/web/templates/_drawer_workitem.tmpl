@@ -1,0 +1,27 @@
+{{define "_drawer_workitem"}}
+<div class="drawer-bg" hx-on:click="document.getElementById('drawer-mount').innerHTML=''"></div>
+<aside class="drawer">
+  <div class="flex items-baseline justify-between">
+    <h3>{{.Title}}</h3>
+    <button class="ident text-slate-500 hover:text-slate-900"
+            hx-on:click="document.getElementById('drawer-mount').innerHTML=''">close ×</button>
+  </div>
+  <div class="ident text-xs mt-1">{{.ID}} · {{.Kind}} · lane {{.Lane}}</div>
+
+  <dl class="mt-4">
+    <dt>status</dt><dd>{{.Status}}</dd>
+    <dt>source</dt><dd>{{.Source}}</dd>
+    <dt>updated</dt><dd>{{formatTime .UpdatedAt}}</dd>
+    {{- if .DependsOnFeatures}}
+    <dt>depends on</dt>
+    <dd>{{range .DependsOnFeatures}}<span class="ident block">{{.}}</span>{{end}}</dd>
+    {{- end}}
+    {{- if .ParentProgramID}}<dt>parent</dt><dd>{{.ParentProgramID}}</dd>{{- end}}
+  </dl>
+
+  {{- if .Acceptance}}
+  <dt class="ident text-xs uppercase tracking-widest text-slate-500 mt-5">acceptance</dt>
+  <pre class="mt-2 whitespace-pre-wrap text-xs font-mono bg-slate-50 border border-slate-300 p-3">{{.Acceptance}}</pre>
+  {{- end}}
+</aside>
+{{end}}

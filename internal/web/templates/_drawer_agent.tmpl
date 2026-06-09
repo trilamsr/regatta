@@ -1,0 +1,20 @@
+{{define "_drawer_agent"}}
+<div class="drawer-bg" hx-on:click="document.getElementById('drawer-mount').innerHTML=''"></div>
+<aside class="drawer">
+  <div class="flex items-baseline justify-between">
+    <h3>{{.Title}}</h3>
+    <button class="ident text-slate-500 hover:text-slate-900"
+            hx-on:click="document.getElementById('drawer-mount').innerHTML=''">close ×</button>
+  </div>
+  <div class="ident text-xs mt-1">{{.WorkItemID}} · lane {{.Lane}}</div>
+
+  <dl class="mt-4">
+    <dt>status</dt><dd>{{.State}}</dd>
+    <dt>process</dt><dd>pid {{.PID}} · session {{.SessionID}}</dd>
+    <dt>started</dt><dd>{{formatTime .CreatedAt}}</dd>
+    <dt>updated</dt><dd>{{formatTime .UpdatedAt}}</dd>
+    {{- if .PRSHA}}<dt>pr sha</dt><dd>{{.PRSHA}}</dd>{{- end}}
+    {{- if .RejectionCount}}<dt>rejections</dt><dd>{{.RejectionCount}}</dd>{{- end}}
+  </dl>
+</aside>
+{{end}}

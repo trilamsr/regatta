@@ -40,3 +40,35 @@ const usdMicroPerDollar = 1_000_000
 
 // csrfTokenByteWidth is the crypto/rand byte width hex-encoded into CSRFCookieName values (16 -> 32 hex chars).
 const csrfTokenByteWidth = 16
+
+// dashboardLast24hWindow is the spend panel rolling window — 24h matches the existing per-pr-cost.yaml Prom recording rule cadence so the UI number stays comparable to the Grafana panel.
+const dashboardLast24hWindow = 24
+
+// dashboardWorkItemSampleCount caps the per-bucket identifiers shown in the work-items panel; the bucket header always shows the full count.
+const dashboardWorkItemSampleCount = 5
+
+// dashboardEventsTailLimit caps the recent-events tail. Each row is one JSON blob bounded by the substrate writer.
+const dashboardEventsTailLimit = 30
+
+// dashboardPanelTimeoutSeconds bounds DB reads per polling tick so a stuck sqlite query cannot wedge an htmx-poll connection.
+const dashboardPanelTimeoutSeconds = 2
+
+// dashboardSparkBuckets is the 24h spend histogram bucket count — 12 = 2h per bar, the cadence that smooths jitter while still showing the burn-rate trend.
+const dashboardSparkBuckets = 12
+
+// dashboardSparkWidth / dashboardSparkHeight / dashboardSparkBarMaxH are the inline-svg geometry the spend sparkline renders into.
+const (
+	dashboardSparkWidth    = 120
+	dashboardSparkHeight   = 24
+	dashboardSparkBarMaxH  = 20
+	dashboardSparkBaseline = 22
+)
+
+// strconvBase10 / strconvBitSize64 name the int parsing args drawer route handlers pass to ParseInt — the substrate's agent / event ids are 64-bit signed integers in base 10.
+const (
+	strconvBase10    = 10
+	strconvBitSize64 = 64
+)
+
+// hoursPerDay names the time arithmetic the humanRelativeShort helper does so a future locale-aware version (week / month thresholds) can extend without re-touching call sites.
+const hoursPerDay = 24

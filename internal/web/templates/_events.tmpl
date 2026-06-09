@@ -1,0 +1,15 @@
+{{define "_events"}}
+<div class="panel">
+{{- if .Rows}}
+{{- range .Rows}}
+<div class="event-line cursor-pointer hover:bg-slate-50"
+     hx-get="/ui/drawer/event/{{.ID}}" hx-target="#drawer-mount" hx-swap="innerHTML">
+  <span class="ts">{{relTime .CreatedAt}}</span>
+  <span class="verb">{{eventVerb .}}</span>
+</div>
+{{- end}}
+{{- else}}
+<div class="p-6 text-sm text-slate-500">No events recorded yet.</div>
+{{- end}}
+</div>
+{{end}}
