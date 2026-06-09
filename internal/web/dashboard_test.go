@@ -232,10 +232,7 @@ func TestWorkItemDrawer_404OnUnknownID(t *testing.T) {
 	}
 }
 
-// TestWorkItemDrawer_RendersFlowStepActive asserts the 4-step status-flow pill row
-// marks the bucket matching the owning agent's AgentState as active. AgentRunning
-// must land on the third cell ("running"); the first two cells must NOT carry the
-// active class so the row reads as forward-progress, not parallel state.
+// TestWorkItemDrawer_RendersFlowStepActive asserts AgentRunning marks the 'running' pill active and 'pending' inactive.
 func TestWorkItemDrawer_RendersFlowStepActive(t *testing.T) {
 	tmpls, err := LoadTemplates(AssetsFS())
 	if err != nil {
@@ -303,10 +300,7 @@ func TestWorkItemDrawer_RendersFlowStepActive(t *testing.T) {
 	}
 }
 
-// TestWorkItemDrawer_RendersBodyPreview asserts a long acceptance-json source field
-// truncates to bodyPreviewMaxRunes (200) characters in the drawer preview, with the
-// ellipsis appended so the operator sees that the source is truncated rather than
-// silently cut.
+// TestWorkItemDrawer_RendersBodyPreview asserts a 500-char source truncates to 200 runes with an ellipsis marker.
 func TestWorkItemDrawer_RendersBodyPreview(t *testing.T) {
 	tmpls, err := LoadTemplates(AssetsFS())
 	if err != nil {
@@ -344,10 +338,7 @@ func TestWorkItemDrawer_RendersBodyPreview(t *testing.T) {
 	}
 }
 
-// TestWorkItemDrawer_RendersGHIssueLink asserts the drawer includes a github.com URL
-// when web.Config.GitHubRepo is wired AND the work-item id parses into an issue
-// number. The "BUG-" prefix MUST be stripped so the resulting URL targets the bare
-// issue number — github.com routes /issues/BUG-1058 as a 404.
+// TestWorkItemDrawer_RendersGHIssueLink asserts the drawer surfaces github.com/owner/repo/issues/<num> with BUG- stripped.
 func TestWorkItemDrawer_RendersGHIssueLink(t *testing.T) {
 	tmpls, err := LoadTemplates(AssetsFS())
 	if err != nil {
