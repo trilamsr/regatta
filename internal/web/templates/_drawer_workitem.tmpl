@@ -9,7 +9,7 @@
   <div class="ident text-xs mt-1">{{.ID}} · {{.Kind}} · lane {{.Lane}}</div>
 
   <dl class="mt-4">
-    <dt>status</dt><dd>{{.Status}}</dd>
+    <dt>status</dt><dd>{{.StatusLabel}}</dd>
     <dt>source</dt><dd>{{.Source}}</dd>
     <dt>updated</dt><dd>{{formatTime .UpdatedAt}}</dd>
     {{- if .DependsOnFeatures}}
@@ -22,6 +22,18 @@
   {{- if .Acceptance}}
   <dt class="ident text-xs uppercase tracking-widest text-slate-500 mt-5">acceptance</dt>
   <pre class="mt-2 whitespace-pre-wrap text-xs font-mono bg-slate-50 border border-slate-300 p-3">{{.Acceptance}}</pre>
+  {{- end}}
+
+  {{- if .RecentEvents}}
+  <dt class="ident text-xs uppercase tracking-widest text-slate-500 mt-5">recent events</dt>
+  <ul class="mt-2 divide-y divide-slate-200 border border-slate-300">
+  {{- range .RecentEvents}}
+    <li class="px-2 py-1 text-xs font-mono">
+      <span class="text-slate-500">{{relTime .CreatedAt}}</span>
+      <span class="ml-2 text-slate-900">{{.Kind}}</span>
+    </li>
+  {{- end}}
+  </ul>
   {{- end}}
 </aside>
 {{end}}
