@@ -68,6 +68,9 @@ func TestClassifyExitReason_PerVariant(t *testing.T) {
 		{"overloaded", "overloaded_error retry-after 30", ExitReasonProviderInternal},
 		{"tool-denied-full", "tool execution failed: permission denied", ExitReasonToolDenied},
 		{"tool-denied-short", "permission denied", ExitReasonToolDenied},
+		{"mcp-invalid-prose", "Error: Invalid MCP configuration:\nMCP config is not a valid JSON", ExitReasonMCPConfigInvalid},
+		{"mcp-invalid-short", "MCP config is not a valid JSON", ExitReasonMCPConfigInvalid},
+		{"mcp-invalid-header", "Invalid MCP configuration", ExitReasonMCPConfigInvalid},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -108,6 +111,14 @@ func TestClassifyExitReason_EmptyRing(t *testing.T) {
 	}
 }
 
+
+// TestClassifyExitReason_MCPConfigInvalid pins #1116: claude CLI bails at boot when --mcp-config points at non-JSON; classifier MUST surface mcp_config_invalid so dashboard distinguishes "no claude binary" from "claude rejected our config".
+func TestClassifyExitReason_MCPConfigInvalid(t *testing.T) {
+	got := ClassifyExitReason([]byte("Error: Invalid MCP configuration:\nMCP config is not a valid JSON\n"), 1)
+	if got != ExitReasonMCPConfigInvalid {
+		t.Fatalf("mcp-invalid signature → %q, want %q", got, ExitReasonMCPConfigInvalid)
+	}
+}
 
 // TestClassifyExitReason_HaystackCapEvictsHeader: when the ring is larger than classifyHaystackCap, only the trailing window is scanned — pins the bounded-work contract (per reviewer a7e408d8466d8c67b).
 func TestClassifyExitReason_HaystackCapEvictsHeader(t *testing.T) {

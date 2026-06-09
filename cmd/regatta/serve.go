@@ -185,6 +185,9 @@ func runServe(args []string) int {
 		logger.Printf("spawner: %v", err)
 		return 2
 	}
+	if set.Cleanup != nil {
+		defer set.Cleanup()
+	}
 	warnIfStubWithGitHubIssues(f.SpawnerName, f.RepoRoot, slogger)
 
 	briefsDir := filepath.Join(f.RepoRoot, ".regatta", "programs")
