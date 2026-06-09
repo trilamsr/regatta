@@ -257,7 +257,7 @@ func TestLoadSpendView_ZeroSpendNoExitEvents(t *testing.T) {
 	}
 }
 
-// TestRecentEventsForWorkItem_LogsScanError pins #1135: when row.Scan fails (here, corrupted events.created_at column → cannot scan TEXT into *int64), recentEventsForWorkItem MUST emit a WARN log carrying the work_item_id attr instead of silently returning nil. A silent nil collapses data corruption, schema drift, and DB connection drops into an indistinguishable "empty drawer" UI state and leaves the operator with no signal that the query path is broken.
+// TestRecentEventsForWorkItem_LogsScanError verifies WARN log emission on row.Scan errors (#1135).
 func TestRecentEventsForWorkItem_LogsScanError(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "scanerr.db")
 	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }

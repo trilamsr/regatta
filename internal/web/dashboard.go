@@ -515,8 +515,9 @@ func recentEventsForWorkItem(ctx context.Context, db *state.DB, workItemID strin
 		var e state.Event
 		var created int64
 		if err := rows.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
+			// slog.Default() goes to stderr when SetDefault is not called; deps.Logger threading is a separate refactor.
 			slog.WarnContext(ctx, "dashboard.recent_events_scan_error",
-				"work_item_id", workItemID,
+				string(obs.KeyWorkItemID), workItemID,
 				"err", err)
 			continue
 		}
