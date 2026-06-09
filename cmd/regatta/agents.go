@@ -16,7 +16,7 @@ import (
 const (
 	subcmdAgents      = "agents"
 	agentsSubList     = "list"
-	agentsFormatTable = "table"
+	formatTable = "table"
 )
 
 // runAgents dispatches the agents sub-subcommand tree. Read-only over state.db; closes #1078.
@@ -67,7 +67,7 @@ func runAgentsList(args []string) int {
 	dbPath := fs.String("db", "regatta.db", "Path to sqlite state DB (relative to cwd unless absolute; ENV: REGATTA_DB)")
 	stateFlag := fs.String("state", "", "Filter by agent state (eg running,pr_open). Comma-separated for multiple.")
 	laneFlag := fs.String("lane", "", "Filter by lane")
-	format := fs.String("format", agentsFormatTable, "Output format: table | json")
+	format := fs.String("format", formatTable, "Output format: table | json")
 	_ = fs.Parse(args)
 
 	resolved := *dbPath
@@ -118,7 +118,7 @@ func runAgentsList(args []string) int {
 	switch *format {
 	case logFormatJSON:
 		return emitAgentsJSON(os.Stdout, rows)
-	case agentsFormatTable:
+	case formatTable:
 		return emitAgentsTable(os.Stdout, rows)
 	default:
 		fmt.Fprintf(os.Stderr, "regatta agents list: unknown format %q (want table|json)\n", *format)
