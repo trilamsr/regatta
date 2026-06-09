@@ -48,3 +48,8 @@ tools/sloth/bin/
 .env
 .env.*
 !.env.example
+
+# Operator-local docker overrides — populated per-operator at runtime, not tracked.
+regatta.yaml.operator-runtime
+regatta.yaml.operator-runtime.bak
+docker-compose.override.yml

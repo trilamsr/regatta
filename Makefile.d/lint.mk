@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test next-migration
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -84,6 +84,12 @@ check-spec-sections:  ## Fail when a NEW or MODIFIED spec under docs/engineer/sp
 
 check-spec-sections-test:  ## Fixture-driven test for check-spec-sections.sh (complete / missing-acceptance strict+diff / pre-existing-warn / skeleton-prefetch opt-out / shipped opt-out).
 	bash scripts/check-spec-sections_test.sh
+
+check-mock-vs-real:  ## WARN-only ratio gate on NEW *_test.go files; >70% mock tokens vs real-infra (t.TempDir/httptest/state.Open) emits warning (closes #1088). Operator-manual; not in `check`.
+	bash scripts/check-mock-vs-real.sh
+
+check-mock-vs-real-test:  ## Fixture-driven test for check-mock-vs-real.sh (clean / high-mock / allowlisted / no-test-files).
+	bash scripts/check-mock-vs-real_test.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh
