@@ -823,6 +823,39 @@ BODY_EOF
   rm -f "$body"
 }
 
+run_case_operator_opened_does_not_bypass_allowlist() {
+  # Closes the reviewer-a0dc08561c8f24bbf coverage gap: the
+  # operator-opened marker MUST NOT bypass the allowlist. A
+  # self-tagged Reviewer-agent-id (e.g. the operator's GH login or
+  # a freeform string like "self-tagged-defer") should fail even
+  # with a valid marker, because the marker is positioned AFTER the
+  # allowlist check in verdict.sh.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'BODY_EOF'
+## Summary
+
+Operator wrote impl, BUT used their own GH login as Reviewer-agent-id.
+
+internal/orchestrator/scheduler/scheduler.go
+
+<!-- operator-opened: force-push-denied-on-agent-1 -->
+
+Reviewer-agent-id: trilamsr
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FIX] thing
+```
+BODY_EOF
+  if "$GATE" --body-file "$body" --load-bearing --pr-author trilamsr 2>&1 | grep -qE "allowlist|self-tagged"; then
+    pass "operator-opened still rejects non-allowlist Reviewer-agent-id"
+  else
+    fail "operator-opened MUST NOT bypass allowlist check"
+  fi
+  rm -f "$body"
+}
+
 run_case_operator_opened_still_requires_reviewer_id() {
   # Even with a valid operator-opened marker, the load-bearing PR MUST
   # carry a Reviewer-agent-id token — the missing-token check fires
@@ -882,6 +915,7 @@ run_case_automerge_on_non_load_bearing_passes
 run_case_operator_opened_marker_bypasses_self_tag
 run_case_operator_opened_marker_too_short_rejected
 run_case_operator_opened_still_requires_reviewer_id
+run_case_operator_opened_does_not_bypass_allowlist
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"
