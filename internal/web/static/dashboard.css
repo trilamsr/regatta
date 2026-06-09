@@ -344,11 +344,13 @@ body { font-feature-settings: "ss01", "cv11"; }
 }
 @media (max-width: 767px) {
   .drawer {
-    width: 100vw;
-    left: 0;
+    width: 100%;
     right: 0;
     border-left: 0;
   }
+}
+@media print {
+  .dash-main { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   .drawer { transition: none; }
