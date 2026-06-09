@@ -20,8 +20,8 @@
   {{- end}}
 </div>
 {{- else}}
-<div class="panel p-6 text-sm text-slate-500">
-  No agents in flight. Scheduler will spawn the next planned item on the next tick.
+<div class="panel p-6">
+  <div class="empty-state">No agents currently in flight. Scheduler ticks every 5s.</div>
 </div>
 {{- end}}
 {{end}}
