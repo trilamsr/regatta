@@ -298,3 +298,131 @@ func TestRecentEventsForWorkItem_LogsScanError(t *testing.T) {
 		t.Fatalf("expected work_item_id=BUG-1135 in log attrs, got: %q", logs)
 	}
 }
+
+// TestLoadPipelineView_CountsAllSixStages asserts per-stage counts on a seeded DB with 1 row per stage (#dashboard-pipeline).
+func TestLoadPipelineView_CountsAllSixStages(t *testing.T) {
+	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
+	dbPath := filepath.Join(t.TempDir(), "pipeline.db")
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+
+	queued := state.WorkItem{ID: "Q-1", Kind: state.KindFeature, Title: "queued item", Lane: "server", Status: state.WorkStatusPlanned}
+	if err := db.UpsertWorkItem(ctx, queued, state.SourceAdapter, clock()); err != nil {
+		t.Fatalf("UpsertWorkItem queued: %v", err)
+	}
+
+	seedAgent(t, ctx, db, "READY-1", state.AgentPending)
+	seedAgent(t, ctx, db, "SPAWN-1", state.AgentSpawning)
+	seedAgent(t, ctx, db, "RUN-1", state.AgentRunning)
+	seedAgent(t, ctx, db, "PR-1", state.AgentPROpen)
+	seedAgent(t, ctx, db, "DONE-1", state.AgentDone)
+
+	view := loadPipelineView(ctx, Dependencies{DB: db, Clock: clock})
+	pv, ok := view.(dashboardPipelineView)
+	if !ok {
+		t.Fatalf("loadPipelineView returned %T, want dashboardPipelineView", view)
+	}
+	if len(pv.Stages) != 6 {
+		t.Fatalf("Stages=%d, want 6", len(pv.Stages))
+	}
+	want := map[string]int{
+		pipelineStageQueued:   1,
+		pipelineStageReady:    1,
+		pipelineStageSpawning: 1,
+		pipelineStageRunning:  1,
+		pipelineStagePROpen:   1,
+		pipelineStageDone:     1,
+	}
+	for _, s := range pv.Stages {
+		if got := want[s.Slug]; got != s.Count {
+			t.Fatalf("Stage %q: Count=%d, want %d", s.Slug, s.Count, got)
+		}
+	}
+}
+
+// TestPipelineDrawer_RendersStageItems pins drawer rows for the running stage.
+func TestPipelineDrawer_RendersStageItems(t *testing.T) {
+	tmpls, err := LoadTemplates(AssetsFS())
+	if err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
+	dbPath := filepath.Join(t.TempDir(), "drawer.db")
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+	seedAgent(t, ctx, db, "RUN-DRAW", state.AgentRunning)
+
+	h := NewHandler(Dependencies{Templates: tmpls, DB: db, Clock: clock})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/drawer/pipeline/running", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("drawer status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"RUN-DRAW", "server", "running"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("drawer body missing %q: %s", want, body)
+		}
+	}
+}
+
+// TestPipelineDrawer_404OnUnknownStage pins graceful 404 for unknown stage slug.
+func TestPipelineDrawer_404OnUnknownStage(t *testing.T) {
+	tmpls, err := LoadTemplates(AssetsFS())
+	if err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
+	dbPath := filepath.Join(t.TempDir(), "drawer404.db")
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	h := NewHandler(Dependencies{Templates: tmpls, DB: db, Clock: clock})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/drawer/pipeline/teleport", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown stage status=%d, want 404", rec.Code)
+	}
+}
+
+// seedAgent inserts a pending agent for workItemID then transitions through the FSM until it reaches target.
+func seedAgent(t *testing.T, ctx context.Context, db *state.DB, workItemID string, target state.AgentState) {
+	t.Helper()
+	a, err := db.UpsertPending(ctx, workItemID, "server")
+	if err != nil {
+		t.Fatalf("UpsertPending %s: %v", workItemID, err)
+	}
+	path := agentPathTo(target)
+	for _, step := range path {
+		if _, err := db.TransitionAgent(ctx, a.ID, step, state.AgentMutation{}); err != nil {
+			t.Fatalf("TransitionAgent %s -> %s: %v", workItemID, step, err)
+		}
+	}
+}
+
+// agentPathTo returns the FSM step sequence from pending to target per transitions.AgentEdges.
+func agentPathTo(target state.AgentState) []state.AgentState {
+	switch target {
+	case state.AgentPending:
+		return nil
+	case state.AgentSpawning:
+		return []state.AgentState{state.AgentSpawning}
+	case state.AgentRunning:
+		return []state.AgentState{state.AgentSpawning, state.AgentRunning}
+	case state.AgentPROpen:
+		return []state.AgentState{state.AgentSpawning, state.AgentRunning, state.AgentPROpen}
+	case state.AgentDone:
+		return []state.AgentState{state.AgentSpawning, state.AgentRunning, state.AgentPROpen, state.AgentGatesRunning, state.AgentAwaitingMerge, state.AgentDone}
+	}
+	return nil
+}
