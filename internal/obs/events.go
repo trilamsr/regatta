@@ -120,6 +120,11 @@ const (
 	KeyExitCode            AttrKey = "exit_code"
 	KeyLastTextFingerprint AttrKey = "last_text_fingerprint"
 
+	// KeyExitReason classifies an agent.exited stop bucket beyond bare
+	// exit_code (#1063). Values come from spawner.ExitReason —
+	// "completed" / "provider_credit_exhausted" / "tool_denied" / etc.
+	KeyExitReason AttrKey = "exit_reason"
+
 	KeyWorkItemsEvaluated AttrKey = "work_items_evaluated"
 
 	KeyApprovalID    AttrKey = "approval_id"
