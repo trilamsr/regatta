@@ -9,6 +9,69 @@ opens PRs gated by a configurable six-layer review stack hardened
 against every publicly-documented AI-agent incident class as of
 mid-2026.
 
+## Docker quickstart
+
+Docker is the primary runtime. The native binary path below is
+supported for operator dev loops only.
+
+Prerequisites: Docker Engine 25+ (or Docker Desktop 4.34+) with
+`docker compose` v2.
+
+```sh
+cp .env.example .env
+# Edit .env: set ANTHROPIC_API_KEY, GH_TOKEN, and (if --ui=true)
+# REGATTA_HMAC_KEY=$(openssl rand -hex 32).
+docker compose up -d
+open http://localhost:8080
+docker compose logs -f regatta
+```
+
+The compose stack at [`docker-compose.yml`](docker-compose.yml) brings
+up `regatta` (the orchestrator daemon), `prometheus` (OTLP receiver
+for metrics), `grafana` (preprovisioned dashboards on `:3000`,
+default `admin` / `admin`), and `alertmanager` (`:9093`). The daemon
+listens on `:8080` for the operator UI. State persists in the
+`regatta-data` named volume; an init-container chowns it to uid
+`65532` so the distroless image (running as nonroot) can write the
+sqlite store on first boot.
+
+See [`docs/operator/docker-compose.md`](docs/operator/docker-compose.md)
+for the full stack runbook and
+[`docs/operator/container.md`](docs/operator/container.md) for the
+single-container shape (no obs stack).
+
+## Native binary
+
+The native binary path is for operator dev loops — iterating on
+`cmd/regatta` against a checkout. Not the recommended production
+shape; the orchestrator runs inside a container per
+[`docs/operator/container.md`](docs/operator/container.md).
+
+```sh
+brew install trilamsr/regatta/regatta
+# or: go install github.com/trilamsr/regatta/cmd/regatta@latest
+regatta init
+regatta serve --repo . --db .regatta/state.db --spawner=claude
+```
+
+See [`docs/operator/quickstart.md`](docs/operator/quickstart.md) for
+the full `init` → `verify-repo-config` → `serve` walkthrough.
+
+## Updating
+
+To pull a new build into the running stack:
+
+```sh
+docker compose build regatta && docker compose up -d regatta
+```
+
+Only the `regatta` service is rebuilt; `prometheus`, `grafana`, and
+`alertmanager` keep their state. The daemon does not yet self-restart
+when the binary changes on disk — operator-merged fixes stay dormant
+in a running container until the rebuild step above. Tracked at
+[#1079](https://github.com/trilamsr/regatta/issues/1079) as the
+hands-off-update unblocker.
+
 ## Start here
 
 - **Operators**: [`docs/operator/`](docs/operator/) (begin at
