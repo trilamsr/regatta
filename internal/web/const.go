@@ -78,3 +78,6 @@ const (
 
 // hoursPerDay names the time arithmetic the humanRelativeShort helper does so a future locale-aware version (week / month thresholds) can extend without re-touching call sites.
 const hoursPerDay = 24
+
+// dockerSoakWindowSeconds is the rolling tally window the soak panel reports — 60s matches operator-feedback ask "is the live daemon healthy right now".
+const dockerSoakWindowSeconds = 60

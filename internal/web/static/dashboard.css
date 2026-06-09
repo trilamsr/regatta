@@ -139,6 +139,9 @@ body { font-feature-settings: "ss01", "cv11"; }
 .pill-blocked { color: var(--alarm); }
 .pill-planned { color: var(--ink-2); }
 .pill-done { color: var(--accent-2); }
+.pill-soak-green { color: var(--accent-2); }
+.pill-soak-amber { color: var(--warn); }
+.pill-soak-red { color: var(--alarm); }
 
 /* Panel — surface tone, hard rule, no shadow. */
 .panel {
