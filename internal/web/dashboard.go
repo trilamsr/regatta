@@ -264,7 +264,7 @@ func annotateSpendEmptyReason(ctx context.Context, db *state.DB, view *dashboard
 	for rows.Next() {
 		var payload string
 		if err := rows.Scan(&payload); err != nil {
-			return
+			continue
 		}
 		var p struct {
 			ExitReason string `json:"exit_reason"`
@@ -463,7 +463,7 @@ func eventVerb(e state.Event) template.HTML {
 	}
 	switch e.Kind {
 	case "agent.exited":
-		return template.HTML("agent" + id + " <span class=\"acc\">exited</span>" + exitReasonBadge(e.PayloadJSON))
+		return template.HTML("agent"+id+" <span class=\"acc\">exited</span>") + exitReasonBadge(e.PayloadJSON)
 	case "spawn.started":
 		return template.HTML("agent" + id + " <span class=\"acc\">spawned</span>")
 	case "spawn.completed":
@@ -483,8 +483,8 @@ func eventVerb(e state.Event) template.HTML {
 	}
 }
 
-// exitReasonBadge parses agent.exited payload + returns a colored badge span keyed by exit_reason; clean completes get no badge so the operator's eye lands on actionable exits only.
-func exitReasonBadge(payload string) string {
+// exitReasonBadge parses agent.exited payload + returns a colored badge as template.HTML keyed by exit_reason. The reason value is run through template.HTMLEscapeString and the color tokens are a static switch (no caller-controlled bytes splice into the output). Returns "" on payload parse failure, empty exit_reason, or a clean "completed" so the operator's eye lands on actionable exits only.
+func exitReasonBadge(payload string) template.HTML {
 	if payload == "" {
 		return ""
 	}
@@ -507,7 +507,8 @@ func exitReasonBadge(payload string) string {
 	default:
 		color = "gray"
 	}
-	return ` <span class="badge badge-` + color + `">` + template.HTMLEscapeString(p.ExitReason) + `</span>`
+	//nolint:gosec // color is a static switch token; p.ExitReason is HTMLEscapeString'd; no caller-controlled bytes splice into the output
+	return template.HTML(` <span class="badge badge-` + color + `">` + template.HTMLEscapeString(p.ExitReason) + `</span>`)
 }
 
 // relTime returns the same compact elapsed marker humanRelativeShort uses, but as a template func so the event log lines and work-item cards share one source of truth. Today + Now closures live at template-load time so test harnesses can pin the clock.

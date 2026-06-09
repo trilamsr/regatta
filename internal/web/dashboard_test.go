@@ -122,3 +122,43 @@ func TestLoadSpendView_AllZeroSetsEmptyReason(t *testing.T) {
 		t.Fatalf("CreditExhaustedCount=%d, want 1", sv.CreditExhaustedCount)
 	}
 }
+
+// TestExitReasonBadge_MalformedPayload pins graceful degradation on bad JSON.
+func TestExitReasonBadge_MalformedPayload(t *testing.T) {
+	got := exitReasonBadge("{not json")
+	if got != "" {
+		t.Fatalf("malformed JSON → %q, want empty", got)
+	}
+	got = exitReasonBadge("")
+	if got != "" {
+		t.Fatalf("empty payload → %q, want empty", got)
+	}
+	got = exitReasonBadge(`{"unrelated":"field"}`)
+	if got != "" {
+		t.Fatalf("missing exit_reason → %q, want empty", got)
+	}
+}
+
+// TestLoadSpendView_ZeroSpendNoExitEvents asserts the empty-state annotation does NOT fire when the daemon has zero events at all — avoids false-positive "agents exited before reporting" copy on a fresh boot.
+func TestLoadSpendView_ZeroSpendNoExitEvents(t *testing.T) {
+	tmp := t.TempDir()
+	dbPath := filepath.Join(tmp, "spend-empty.db")
+	clock := func() time.Time { return time.Date(2026, 6, 9, 8, 0, 0, 0, time.UTC) }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	view := loadSpendView(context.Background(), Dependencies{DB: db, Clock: clock})
+	sv, ok := view.(dashboardSpendView)
+	if !ok {
+		t.Fatalf("loadSpendView returned %T, want dashboardSpendView", view)
+	}
+	if sv.EmptyReason != "" {
+		t.Fatalf("EmptyReason set on clean zero-event boot: %q", sv.EmptyReason)
+	}
+	if sv.CreditExhaustedCount != 0 {
+		t.Fatalf("CreditExhaustedCount=%d on zero-event boot, want 0", sv.CreditExhaustedCount)
+	}
+}
