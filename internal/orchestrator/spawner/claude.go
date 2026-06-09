@@ -337,8 +337,7 @@ func defaultPromptBuilder(req Request) string {
 // lives on validate.Prompts.AdaptiveEnrichment; the env knob is the runtime
 // kill-switch the spawner reads without a config-loader dep cycle).
 func enrichmentDisabled() bool {
-	v := strings.ToLower(strings.TrimSpace(os.Getenv("REGATTA_PROMPT_ENRICHMENT")))
-	return v == "0" || v == "false" || v == "off" || v == "no"
+	return isFalsyEnv(os.Getenv("REGATTA_PROMPT_ENRICHMENT"))
 }
 
 // bodyContainsSentinel reports whether an untrusted body would let a hostile brief close the fence early; collision is rare and rejection is cheaper than escape logic.
