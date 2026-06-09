@@ -56,6 +56,7 @@ jobs:
             [ -z "$changed_path" ] && continue
             case "$changed_path" in
               internal/ghclient/*|internal/gates/*|internal/orchestrator/*|internal/supervisor/*|internal/ghidempotency/*|internal/secrets/*|internal/sandbox/*) load_bearing=1; break ;;
+              internal/web/*|internal/obs/*) load_bearing=1; break ;;
               cmd/*|contracts/schemas/*) load_bearing=1; break ;;
             esac
           done < "$paths_file"

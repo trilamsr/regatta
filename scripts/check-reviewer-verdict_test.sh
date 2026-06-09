@@ -367,6 +367,9 @@ run_case_load_bearing_path_classifier() {
   # docs/engineer/dispatch-templates/*, the script MUST treat the PR as
   # load-bearing AND require the Reviewer-recommendation token even when the
   # release-notes category is [DOCS]/[CHORE]/[CI]/[NONE]/[CHANGE].
+  # Extended 2026-06-09 (#1133): internal/web/ (operator dashboard UX) and
+  # internal/obs/ (event vocabulary) are load-bearing — dashboard XSS,
+  # broken polling, and event-name drift silently break monitoring.
   local paths
   for path in \
     "CLAUDE.md" \
@@ -374,7 +377,11 @@ run_case_load_bearing_path_classifier() {
     "Makefile.d/check.mk" \
     ".github/workflows/pr-lint.yml" \
     "docs/engineer/dispatch-templates/implementer.md" \
-    "scripts/check-scorecard.sh"; do
+    "scripts/check-scorecard.sh" \
+    "internal/web/dashboard.go" \
+    "internal/web/static/dashboard.css" \
+    "internal/web/templates/_agents.tmpl" \
+    "internal/obs/events.go"; do
     local body paths_file
     body=$(mktemp)
     paths_file=$(mktemp)
