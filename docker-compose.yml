@@ -71,7 +71,7 @@ services:
       # daemon refuses to bind the UI listener when --ui=true and the
       # key is empty, via cmd/regatta/wire_web.go::preflightUIBoot.
       REGATTA_HMAC_KEY: ${REGATTA_HMAC_KEY:-}
-    command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=${REGATTA_UI:-true}"]
+    command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=${REGATTA_UI:-true}", "--spawner=claude"]
     volumes:
       - ${REPO_PATH:-.}:/repo
       - regatta-data:/data
