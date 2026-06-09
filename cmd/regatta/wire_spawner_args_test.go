@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 
@@ -64,20 +65,23 @@ func TestBuildSpawner_ClaudeWiresArgs(t *testing.T) {
 	}
 }
 
-// TestDefaultClaudeArgs_MCPConfigDefaultsToDevNull pins the #1086 zero-MCP child default — every spawn passes --mcp-config=/dev/null when REGATTA_SPAWNER_MCP_CONFIG is unset.
-func TestDefaultClaudeArgs_MCPConfigDefaultsToDevNull(t *testing.T) {
+// TestDefaultClaudeArgs_MCPConfigDefaultsToPlatformNull pins the #1086 zero-MCP child default — every spawn passes --mcp-config=os.DevNull (Unix /dev/null, Windows NUL) when REGATTA_SPAWNER_MCP_CONFIG is unset. Uses os.DevNull so the test passes on Windows CI per reviewer ab98fe077a696dae6.
+func TestDefaultClaudeArgs_MCPConfigDefaultsToPlatformNull(t *testing.T) {
 	t.Setenv(envSpawnerMCPConfig, "")
 	args := defaultClaudeArgs()
-	if !slices.Contains(args, "--mcp-config=/dev/null") {
-		t.Fatalf("want --mcp-config=/dev/null in args, got %v", args)
+	want := "--mcp-config=" + os.DevNull
+	if !slices.Contains(args, want) {
+		t.Fatalf("want %s in args, got %v", want, args)
 	}
 }
 
-// TestDefaultClaudeArgs_MCPConfigEnvOverride confirms operator can override the default via env (#1086 escape hatch).
+// TestDefaultClaudeArgs_MCPConfigEnvOverride confirms operator can override the default via env (#1086 escape hatch). Uses t.TempDir() so the path is portable across CI hosts.
 func TestDefaultClaudeArgs_MCPConfigEnvOverride(t *testing.T) {
-	t.Setenv(envSpawnerMCPConfig, "/tmp/custom.json")
+	override := filepath.Join(t.TempDir(), "custom.json")
+	t.Setenv(envSpawnerMCPConfig, override)
 	args := defaultClaudeArgs()
-	if !slices.Contains(args, "--mcp-config=/tmp/custom.json") {
-		t.Fatalf("want --mcp-config=/tmp/custom.json in args, got %v", args)
+	want := "--mcp-config=" + override
+	if !slices.Contains(args, want) {
+		t.Fatalf("want %s in args, got %v", want, args)
 	}
 }
