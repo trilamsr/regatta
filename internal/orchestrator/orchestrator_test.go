@@ -378,12 +378,19 @@ func TestOrchestrator_Tick_EmitsStartedAndCompleted(t *testing.T) {
 		t.Fatalf("schedule: %v", err)
 	}
 
-	if _, ok := h.FindEvent(obs.EventTickStarted); !ok {
+	started, ok := h.FindEvent(obs.EventTickStarted)
+	if !ok {
 		t.Fatalf("expected event %q in captured records; got %d records", obs.EventTickStarted, len(h.Records()))
+	}
+	if started.Level != slog.LevelInfo {
+		t.Fatalf("non-zero tick.started level=%s, want INFO (#1066 — must stay loud when dispatch happens)", started.Level)
 	}
 	completed, ok := h.FindEvent(obs.EventTickCompleted)
 	if !ok {
 		t.Fatalf("expected event %q in captured records; got %d records", obs.EventTickCompleted, len(h.Records()))
+	}
+	if completed.Level != slog.LevelInfo {
+		t.Fatalf("non-zero tick.completed level=%s, want INFO (#1066)", completed.Level)
 	}
 	if _, ok := recordHasAttr(completed, string(obs.KeyWorkItemsEvaluated)); !ok {
 		t.Fatalf("tick.completed missing attr %q", obs.KeyWorkItemsEvaluated)
