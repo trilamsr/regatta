@@ -183,8 +183,25 @@ while IFS= read -r pf; do
     if [ -n "$symbols" ]; then
       while IFS= read -r tf; do
         [ -z "$tf" ] && continue
+        # Strip Go string literals (handling escaped quotes), raw-string
+        # backticks, and line comments before symbol search so a test file
+        # that mentions the prod symbol ONLY inside `"..."`, `` `...` ``, or
+        # after `//` cannot game the gate (#1057). Block `/* ... */` comments
+        # are NOT stripped; reopen #1057 if a real bypass surfaces (escalate
+        # to a go/scanner helper at that point).
+        tf_stripped=$(git show "$head:$tf" 2>/dev/null | awk '
+          {
+            # 1. Strip line comments first so any // in code drops symbol mentions.
+            sub(/\/\/.*/, "")
+            # 2. Strip double-quoted Go strings, honoring \" escape sequences.
+            gsub(/"([^"\\]|\\.)*"/, "")
+            # 3. Strip raw-string backticks (no escape semantics inside).
+            gsub(/`[^`]*`/, "")
+            print
+          }
+        ')
         for sym in $symbols; do
-          if git show "$head:$tf" 2>/dev/null | grep -qw "$sym"; then
+          if printf '%s\n' "$tf_stripped" | grep -qw "$sym"; then
             found=1
             break 2
           fi

@@ -239,11 +239,14 @@ EOF
   cat > internal/foo/foo_test.go <<EOF
 package foo
 
-import "testing"
+import (
+  "testing"
+
+  main "example.com/x/cmd/regatta"
+)
 
 func TestWireIntegration(t *testing.T) {
-  // exercises Wire through the wired-up code path
-  _ = "Wire"
+  if main.Wire() != 1 { t.Fatal("nope") }
 }
 EOF
 }
@@ -262,10 +265,85 @@ EOF
   cat > internal/foo/foo_test.go <<EOF
 package foo
 
-import "testing"
+import (
+  "testing"
+
+  main "example.com/x/cmd/regatta"
+)
 
 func TestMagic(t *testing.T) {
-  _ = "Magic"
+  if main.Magic != 42 { t.Fatal("nope") }
+}
+EOF
+}
+
+# c1 negative (#1057): test mentions the prod symbol ONLY inside a Go
+# string literal (\`_ = "Wire"\`). The pre-#1057 \`grep -qw\` matched any
+# whole-word occurrence including string-literal contents; the test
+# files cannot game the gate with a quoted identifier. Post-fix: the
+# string-literal stripper sees no symbol usage and the gate fails.
+case_cross_pkg_symbol_in_string_literal_only_fails() {
+  mkdir -p cmd/regatta internal/foo
+  cat > cmd/regatta/wire.go <<EOF
+package main
+
+func Wire() int { return 1 }
+EOF
+  cat > internal/foo/foo_test.go <<EOF
+package foo
+
+import "testing"
+
+func TestNothing(t *testing.T) {
+  _ = "Wire"
+}
+EOF
+}
+
+# c1 negative (#1057): test mentions the prod symbol ONLY inside a Go
+# line comment. Same forcing-function bypass as the string-literal
+# case; comment-stripping must reject this.
+case_cross_pkg_symbol_in_comment_only_fails() {
+  mkdir -p cmd/regatta internal/foo
+  cat > cmd/regatta/wire.go <<EOF
+package main
+
+func Wire() int { return 1 }
+EOF
+  cat > internal/foo/foo_test.go <<EOF
+package foo
+
+import "testing"
+
+func TestNothing(t *testing.T) {
+  // Wire is not actually called
+  _ = 1
+}
+EOF
+}
+
+# c1 positive (#1057): test imports + calls the prod symbol on a real
+# code line (no quotes, no comment). The tightening must keep this
+# path green — production-code-grade tightenings must not regress the
+# happy path.
+case_cross_pkg_symbol_in_real_call_passes() {
+  mkdir -p cmd/regatta internal/foo
+  cat > cmd/regatta/wire.go <<EOF
+package main
+
+func Wire() int { return 1 }
+EOF
+  cat > internal/foo/foo_test.go <<EOF
+package foo
+
+import (
+  "testing"
+
+  main "example.com/x/cmd/regatta"
+)
+
+func TestWire(t *testing.T) {
+  if main.Wire() != 1 { t.Fatal("nope") }
 }
 EOF
 }
@@ -394,8 +472,43 @@ run_case testdata_go_skipped                    0 "no production"      case_test
 run_case cross_pkg_symbol_match_passes          0 "every production"   case_cross_pkg_symbol_match_passes
 run_case cross_pkg_symbol_in_const_block_passes 0 "every production"   case_cross_pkg_symbol_in_const_block_passes
 run_case cross_pkg_symbol_mismatch_fails        1 "without a matching" case_cross_pkg_symbol_mismatch_fails
+run_case cross_pkg_string_literal_bypass_rejected 1 "without a matching" case_cross_pkg_symbol_in_string_literal_only_fails
+run_case cross_pkg_comment_bypass_rejected      1 "without a matching" case_cross_pkg_symbol_in_comment_only_fails
+run_case cross_pkg_real_symbol_usage_passes     0 "every production"   case_cross_pkg_symbol_in_real_call_passes
 run_stale_base_case
 
 echo
+
 echo "summary: $pass passed, $failed failed"
 exit $failed
+
+# c1 negative (#1057 reviewer af5d41c1a7a01a792): test mentions the prod
+# symbol ONLY inside a Go string literal with escaped quotes. Pre-fix the
+# strip pattern stopped at the first internal escape, leaving the rest
+# of the literal — including the symbol — exposed.
+case_cross_pkg_symbol_in_escaped_string_only_fails() {
+  mkdir -p cmd/regatta internal/foo
+  printf 'package main\n\nfunc Wire() int { return 1 }\n' > cmd/regatta/wire.go
+  printf 'package foo\n\nimport "testing"\n\nfunc TestNothing(t *testing.T) {\n  _ = "foo\\"Wire\\"bar"\n}\n' > internal/foo/foo_test.go
+}
+
+# c1 negative (#1057 reviewer af5d41c1a7a01a792): test mentions the prod
+# symbol ONLY inside a Go raw-string backtick literal.
+case_cross_pkg_symbol_in_raw_string_only_fails() {
+  mkdir -p cmd/regatta internal/foo
+  printf 'package main\n\nfunc Wire() int { return 1 }\n' > cmd/regatta/wire.go
+  printf 'package foo\n\nimport "testing"\n\nfunc TestNothing(t *testing.T) {\n  _ = `Wire`\n}\n' > internal/foo/foo_test.go
+}
+
+# c1 positive (#1057 reviewer af5d41c1a7a01a792): test that USES the
+# symbol in a real call AND happens to mention it in a comment. The
+# tightening must keep this case green.
+case_cross_pkg_symbol_in_call_plus_comment_passes() {
+  mkdir -p cmd/regatta internal/foo
+  printf 'package main\n\nfunc Wire() int { return 1 }\n' > cmd/regatta/wire.go
+  printf 'package foo\n\nimport (\n  "testing"\n\n  main "github.com/example/main"\n)\n\n// TestWire calls Wire from prod (#1057 reopen audit).\nfunc TestWire(t *testing.T) {\n  if main.Wire() != 1 {\n    t.Fatal("want 1")\n  }\n}\n' > internal/foo/foo_test.go
+}
+run_case cross_pkg_escaped_string_bypass_rejected 1 "without a matching" case_cross_pkg_symbol_in_escaped_string_only_fails
+run_case cross_pkg_raw_string_bypass_rejected     1 "without a matching" case_cross_pkg_symbol_in_raw_string_only_fails
+run_case cross_pkg_call_plus_comment_passes       0 "every production"   case_cross_pkg_symbol_in_call_plus_comment_passes
+
