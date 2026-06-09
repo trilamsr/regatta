@@ -169,3 +169,28 @@ func TestBuildSpecAdapter_MissingYAMLStaysSilent(t *testing.T) {
 		t.Fatalf("zero-config deployment emitted spurious config_load_failed warn:\n%s", out)
 	}
 }
+
+// TestBuildSpecAdapter_DefaultLaneYAMLAccepted pins #1117: regatta.yaml `spec_adapter.default_lane` is accepted by buildSpecAdapter and surfaces as a non-nil adapter — the wire path from validate.Load through SpecAdapter.DefaultLane into the github_issues config is exercised end-to-end. The empty-lane skip behaviour is covered by the parse-layer test `TestParseIssueBody_DefaultLaneAppliedWhenNoLabel`; this test gates the wire seam.
+func TestBuildSpecAdapter_DefaultLaneYAMLAccepted(t *testing.T) {
+	yaml := `version: 1
+repo:
+  host: github
+  owner: trilamsr
+  name: regatta
+spec_adapter:
+  type: github_issues
+  selector: "label:autonomous"
+  default_lane: server
+` + wireSpecAdapterValidGateBlock
+	tmp := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmp, "regatta.yaml"), []byte(yaml), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	ad, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, slog.New(slog.NewTextHandler(bytes.NewBuffer(nil), nil)))
+	if err != nil {
+		t.Fatalf("buildSpecAdapter with default_lane: %v", err)
+	}
+	if ad == nil {
+		t.Fatal("ad nil; want non-nil adapter when default_lane is set")
+	}
+}

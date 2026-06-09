@@ -69,7 +69,8 @@ import "list"
 	if type == "github_issues" || type == "gitlab_issues" {
 		selector:            string                  // e.g. "label:autonomous"
 		acceptance_section?: *"## Acceptance criteria" | string
-		default_lane?:       string                  // backfills WorkItem.Lane when body has no `lane:` metadata (#1117)
+		// default_lane backfills WorkItem.Lane when body has no `lane:` metadata (#1117). Shared schema between github_issues + gitlab_issues; gitlab_issues adapter is Phase-X (no implementation today), so this is a schema-side forward-fit with no wired consumer yet.
+		default_lane?: string
 	}
 	if type == "markdown_catalog" {
 		// Directory containing .regatta/items/*.md, relative to repo
