@@ -40,10 +40,12 @@ image from the in-tree `Dockerfile`, and starts all four services.
 Initial start takes ~30 s on a warm Docker daemon (Prometheus health
 check gate-keeps `regatta` and `grafana`).
 
-The compose runs `regatta serve --ui=true`. Set `REGATTA_HMAC_KEY` in `.env`
-at the project root before `docker compose up` — compose will refuse to start
-otherwise (the env-var interpolation uses the `:?` fail-fast form). The
-operator UI lands on `http://localhost:8080`; RBAC seam lives under
+The compose runs `regatta serve --ui=${REGATTA_UI:-true}`. The UI is on
+by default; flip it off for a headless dispatch loop with
+`REGATTA_UI=false` in `.env`. When `--ui=true` the daemon refuses to
+boot without `REGATTA_HMAC_KEY` (`cmd/regatta/wire_web.go::preflightUIBoot`);
+when `--ui=false` the key is optional. The operator UI lands on
+`http://localhost:8080`; RBAC seam lives under
 [`rbac-onboarding.md`](rbac-onboarding.md).
 
 ## Verify
