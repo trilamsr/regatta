@@ -15,6 +15,11 @@ const (
 	spawnerNameClaude = "claude"
 )
 
+// defaultClaudeArgs are the headless flags the orchestrator stamps onto every claude CLI spawn so the binary emits machine-readable JSONL on stdout (consumed by spawner.ParseStream → OTel + cost-gov). Closes #1085: pre-fix dogfood logged 0 lines per agent because the CLI ran in TUI mode under a non-TTY pipe.
+func defaultClaudeArgs() []string {
+	return []string{"--print", "--output-format=stream-json", "--verbose"}
+}
+
 // spawnerSet bundles the three handles a serve invocation needs to
 // wire the Spawner + Reaper. Only the claude backend populates
 // Killer + Worktrees; the stub leaves them nil so runServe knows to
@@ -41,7 +46,11 @@ func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger
 		if err != nil {
 			return spawnerSet{}, fmt.Errorf("worktree manager: %w", err)
 		}
-		cfg := spawner.ClaudeSpawnerConfig{Command: claudeBin, BaseRef: baseRef}
+		cfg := spawner.ClaudeSpawnerConfig{
+			Command: claudeBin,
+			BaseRef: baseRef,
+			Args:    defaultClaudeArgs(),
+		}
 		if db != nil && len(costKey) > 0 {
 			cfg.OnResultEventFor = spend.SpawnerCallback(db.SQL(),
 				spend.WriteOptions{Key: costKey, KeyID: costKeyID},
