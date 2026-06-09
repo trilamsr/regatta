@@ -65,17 +65,26 @@ Add a typed field to `state.WorkItem`:
 FileScope []string
 ```
 
-Add a resolver-shaped seam to `scheduler.Config` (matches `CostGateResolver` / `L4GateResolver` precedent):
+Add per-source resolver seams to `scheduler.Config` (matches `OutputsSchemaResolver` per-source precedent — see §5):
 
 ```go
-// FileScopeExtractor returns the predicted file paths/globs a work item
-// will touch. nil disables the collision check entirely (pre-#1065
-// behavior — lane-cap-only). Non-nil + empty-slice return = unbounded
-// scope (treated as "always collides on this lane").
-FileScopeExtractor func(state.WorkItem) []string
+// FileScopeExtractorByAdapter returns the predicted file paths/globs a
+// work item will touch when WorkItem.Source == "adapter". nil disables
+// the collision check for adapter-sourced items (pre-#1065 behavior —
+// lane-cap-only). Non-nil + empty-slice return = unbounded scope
+// (treated as "always collides on this lane").
+FileScopeExtractorByAdapter func(state.WorkItem) []string
+
+// FileScopeExtractorByBrief returns the predicted file paths/globs a
+// work item will touch when WorkItem.Source == "brief" (or any non-
+// adapter source). nil disables the collision check for brief-sourced
+// items.
+FileScopeExtractorByBrief func(state.WorkItem) []string
 ```
 
-Default `github_issues` extractor (lives at `internal/orchestrator/adapter/githubissues/file_scope.go`):
+`reserveFromSpawnable` dispatches by `wi.Source`. Both seams nil ⇒ feature globally disabled (byte-equal pre-#1065).
+
+Default `github_issues` adapter-side extractor (lives at `internal/orchestrator/adapter/githubissues/file_scope.go`):
 
 1. If issue body contains `## File scope` H2, parse the following fenced block as one path/glob per line.
 2. Else: regex `` `(cmd|internal|scripts|docs|contracts|Makefile\.d|\.github)/[^`]+` `` over the acceptance-criteria section.
@@ -89,53 +98,78 @@ At most ONE in-flight agent per overlapping file-scope pattern per lane. Wired i
 reserveFromSpawnable(ctx, tc, spawnable, occupancy):
   for each candidate wi in spawnable:
     if occupancy[wi.Lane] >= LaneCaps[wi.Lane]: skip            # existing
-    if cfg.FileScopeExtractor != nil:
-      cand := cfg.FileScopeExtractor(wi)
+    ext := extractorFor(cfg, wi.Source)                          # per-source dispatch
+    if ext != nil:
+      cand := ext(wi)
+      if len(cand) == 0:
+        log "scheduler.file_scope_unbounded" INFO with
+          work_item_id=wi.ID, lane=wi.Lane, source=wi.Source     # §3 required
       for each active agent a on wi.Lane:
-        active := cfg.FileScopeExtractor(a.WorkItem)
-        if overlaps(cand, active):
+        aExt := extractorFor(cfg, a.WorkItem.Source)
+        active := aExt(a.WorkItem)
+        if overlaps(cand, active, cfg.SharedAnchors):
           log "scheduler.file_collision_deferred" with
             work_item_id=wi.ID, colliding_agent_id=a.ID,
             colliding_files=intersection
           metric scheduler_file_collision_deferred_total++
           continue OUTER                                         # defer to next tick
     reserve wi
+
+extractorFor(cfg, source):
+  if source == "adapter": return cfg.FileScopeExtractorByAdapter
+  return cfg.FileScopeExtractorByBrief
 ```
 
 `overlaps([]string, []string) bool`:
 
 - Empty/nil on either side → `true` (unbounded scope collides with everything; see §2.5).
-- Else: for each pair `(p, q)` perform `filepath.Match(p, q) || filepath.Match(q, p) || prefixOverlap(p, q)`. `prefixOverlap` handles the common case of a glob `internal/orchestrator/**` overlapping a literal `internal/orchestrator/spawner/claude.go` after normalizing trailing `/**`.
+- Else: for each pair `(p, q)` use `github.com/gobwas/glob` (pinned at `v0.2.3`; verified `git -C $REPO grep -E 'gobwas/glob' go.mod` returns `github.com/gobwas/glob v0.2.3 // indirect` — promote to direct in the implementer PR). Compile each pattern via `glob.Compile(p, '/')` and call `g.Match(q)` both directions, plus `prefixOverlap(p, q)`. `prefixOverlap` handles the common case of a glob `internal/orchestrator/**` overlapping a literal `internal/orchestrator/spawner/claude.go` after normalizing trailing `/**`. `filepath.Match` is rejected for this seam because its `*` does not cross `/` and `**` is unsupported, breaking the dominant declared-scope shape (`internal/**/spawner.go`).
 
 Complexity per tick: `O(C · A · F²)` where C = candidates, A = active agents, F = max file-scope size. Empirically C+A ≤ 8 and F ≤ 10 — negligible vs an SQLite gate-pass (§5 adversarial: covered).
 
 ### §2.4 New observability
 
 - slog event `scheduler.file_collision_deferred` with attrs `work_item_id`, `colliding_agent_id`, `lane`, `colliding_files`.
+- slog event `scheduler.file_scope_unbounded` (INFO) with attrs `work_item_id`, `lane`, `source` — emitted exactly once per `(work_item_id, tick)` when the extractor returns nil/empty. Required per §3 c-criterion.
 - metric `regatta_scheduler_file_collision_deferred_total{lane}` — counter, lane label.
 - Existing `scheduler.dispatched` event gains attr `file_scope_count` (always emitted; `0` when extractor nil).
 
 ### §2.5 Degenerate / failure modes
 
-1. **Unbounded scope (nil/empty FileScope)** — treated as "may touch anything"; deferred against any active agent on the same lane. Operator override: leave `FileScopeExtractor` nil to disable the check globally.
-2. **Operator override** — add `scheduler.disable_file_scope_check: true` to `regatta.yaml`. When true, `New(...)` sets `FileScopeExtractor = nil` regardless of resolver wiring. Logged at orchestrator construction as `scheduler.file_scope_check_disabled` WARN.
+1. **Unbounded scope (nil/empty FileScope)** — treated as "may touch anything"; deferred against any active agent on the same lane. The required `scheduler.file_scope_unbounded` INFO event (§3) makes this visible. Operator override: leave BOTH `FileScopeExtractorByAdapter` and `FileScopeExtractorByBrief` nil to disable the check globally.
+2. **Operator override** — add `scheduler.disable_file_scope_check: true` to `regatta.yaml`. When true, `New(...)` sets BOTH extractor fields to `nil` regardless of resolver wiring. Logged at orchestrator construction as `scheduler.file_scope_check_disabled` WARN.
 3. **Shared anchor that no work item declares** — two work items declare disjoint scopes (`internal/web/` and `cmd/regatta/`) but both touch `CLAUDE.md` or `Makefile.d/ci.mk`. The collision check does not catch this — declaration honesty is a pre-condition. Mitigation: §2.6 (anchor-list cross-product).
 4. **FileScopeExtractor panic** — recovered by the dispatch step; treated as nil for that candidate (logged WARN); does not halt the tick.
 
-### §2.6 Shared-anchor cross-product (optional)
+### §2.6 Shared-anchor cross-product
 
-For known-god-file anchors that every PR touches in practice, add `scheduler.shared_anchors: [CLAUDE.md, Makefile.d/ci.mk, ...]` to `regatta.yaml`. The collision check treats any candidate as overlapping every active agent IFF the candidate's lane is the same AND at least one shared anchor is in either declared scope. Defer to the implementer PR — list lives in config, not code; default empty per `feedback_default_simpler`.
+For known-god-file anchors that every PR touches in practice, `scheduler.shared_anchors` lives in `regatta.yaml`. **Default (non-empty) ships in `contracts/schemas/regatta.cue`:**
+
+```
+scheduler.shared_anchors: [
+  "CLAUDE.md",
+  "Makefile",
+  "Makefile.d/*",
+  "docs/engineer/specs/README.md",
+]
+```
+
+An empty default re-introduces cascade risk (the 2026-06-08 storm hit `internal/orchestrator/spawner/claude.go` plus repeated CLAUDE.md touches); operators may override by setting an empty list explicitly, but the shipped default is non-empty.
+
+**Decision rule (resolved here — pick A, conservative):** the collision check treats a candidate as overlapping every active agent on the same lane IFF the candidate's lane is the same AND **at least one side** (candidate scope OR active-agent scope) names a shared anchor pattern. The mirror form ("both sides declare the same shared anchor → defer") is rejected: one declaration is sufficient, matching the "godfile blocks everything" intent and preserving the conservative posture per `feedback_default_simpler`. Rationale: a single PR touching `CLAUDE.md` is enough to serialize the lane, since any sibling PR that lands first will force a rebase on the CLAUDE.md change.
+
+Match semantics: each shared-anchor entry is fed to the same `gobwas/glob` compiler as §2.3; literal entries (`CLAUDE.md`, `Makefile`) match by direct string equality after pattern compilation; glob entries (`Makefile.d/*`) match via `g.Match(path)`.
 
 ### §2.7 Reference prior pattern
 
-Mirrors `scheduler.Config.HotspotResolver` (lock-name resolver, existing) and `scheduler.Config.CostGateResolver` (per-wi gate resolver, existing). Same shape: nil → identity / disabled; non-nil → wired into `reserveFromSpawnable`. No new architectural concept introduced.
+Mirrors `scheduler.Config.HotspotResolver` (lock-name resolver, existing), `scheduler.Config.CostGateResolver` (per-wi gate resolver, existing), and `OutputsSchemaResolver` (per-source resolver — direct precedent for dual extractor seams). Same shape: nil → identity / disabled; non-nil → wired into `reserveFromSpawnable`. No new architectural concept introduced.
 
 ## §3 Acceptance
 
 1. `state.WorkItem` gains `FileScope []string` field with JSON tag `file_scope`; migration N+1 adds `file_scope_json TEXT NULL` to `work_items`; `state.upsertWorkItem` marshals on write and unmarshals on read. Migration number pinned by implementer brief (§6).
-2. `scheduler.Config` gains `FileScopeExtractor func(state.WorkItem) []string` (nil-default, opt-in).
+2. `scheduler.Config` gains BOTH `FileScopeExtractorByAdapter func(state.WorkItem) []string` and `FileScopeExtractorByBrief func(state.WorkItem) []string` (nil-default, opt-in), plus `SharedAnchors []string` populated from `regatta.yaml`.
 3. `scheduler_reserve.go::reserveFromSpawnable` defers a candidate when its extracted scope overlaps the scope of any active agent on the same lane; deferral is silent in metrics if extractor nil; counted otherwise.
-4. `regatta.yaml` schema gains `scheduler.disable_file_scope_check: bool` (default `false`) — when `true`, `New(...)` nil's the extractor wiring.
+4. `regatta.yaml` schema gains `scheduler.disable_file_scope_check: bool` (default `false`) — when `true`, `New(...)` nil's both extractor fields. `scheduler.shared_anchors: [string]` ships with non-empty default `["CLAUDE.md", "Makefile", "Makefile.d/*", "docs/engineer/specs/README.md"]` (§2.6).
 5. Default `github_issues` adapter extractor lives at `internal/orchestrator/adapter/githubissues/file_scope.go`; parses `## File scope` block first, falls back to acceptance-criteria backtick regex.
 6. New regression test in `internal/orchestrator/scheduler/scheduler_test.go`:
    - 3 candidates same lane same single-file scope → 1 spawn first tick, 1 spawn second tick (after first completes), 1 spawn third tick.
@@ -145,9 +179,14 @@ Mirrors `scheduler.Config.HotspotResolver` (lock-name resolver, existing) and `s
    - Extractor panic on one candidate → that candidate skipped, others proceed.
 7. New event `scheduler.file_collision_deferred` emitted with `work_item_id`, `colliding_agent_id`, `lane`, `colliding_files`.
 8. New metric `regatta_scheduler_file_collision_deferred_total{lane}` exposed via OTel meter.
-9. TDD order per `feedback_tdd_discipline`: failing test commits land FIRST; PR body captures RED output; impl + green follow.
-10. `make ci-check` exits 0 at PR HEAD.
-11. Independent reviewer subagent dispatched per `feedback_no_self_tagged_approve`; verdict pasted at §5 + `Reviewer-agent-id:` in PR footer.
+9. **REQUIRED** empty-scope mitigation event `scheduler.file_scope_unbounded` (INFO level) emitted once per `work_item_id` per tick window when the extractor returns nil or empty, with attrs `work_item_id`, `lane`, `source` (`WorkItem.Source` — `adapter` / `brief`). A test in `internal/orchestrator/scheduler/scheduler_file_scope_test.go` asserts the event fires exactly once per `(work_item_id, tick)` for an unbounded-scope candidate; missing emission fails CI.
+10. **Per-source extractor routing** — `scheduler.Config` ships TWO extractor seams, not one:
+    - `FileScopeExtractorByAdapter func(state.WorkItem) []string` — invoked when `WorkItem.Source == "adapter"`.
+    - `FileScopeExtractorByBrief func(state.WorkItem) []string` — invoked when `WorkItem.Source == "brief"` (and any other non-`adapter` source).
+    Mirrors `OutputsSchemaResolver` (per-source resolver) precedent called out in §5. `reserveFromSpawnable` dispatches by `wi.Source`; both code paths MUST have regression-test coverage in `scheduler_file_scope_test.go` (one adapter-sourced + one brief-sourced collision fixture). A single-resolver design is explicitly rejected; serve.go wires both, and `cmd/regatta/serve.go` test (or a new integration test) covers the wiring.
+11. TDD order per `feedback_tdd_discipline`: failing test commits land FIRST; PR body captures RED output; impl + green follow.
+12. `make ci-check` exits 0 at PR HEAD.
+13. Independent reviewer subagent dispatched per `feedback_no_self_tagged_approve`; verdict pasted at §5 + `Reviewer-agent-id:` in PR footer.
 
 ## §4 Out of scope
 
@@ -163,11 +202,11 @@ Mirrors `scheduler.Config.HotspotResolver` (lock-name resolver, existing) and `s
 Reviewer dispatch PENDING — to be paste-filled by independent `cavecrew-reviewer` subagent in a fresh slot before the PR moves out of draft, per `feedback_no_self_tagged_approve` + `feedback_adversarial_review_every_step`. The author-drafted candidate edge cases below are reviewer fodder, NOT a substitute for the independent pass:
 
 - **Declaration drift** (declared scope ≠ actual diff): operator declares `internal/web/` but agent edits `cmd/regatta/serve.go`. The collision check is blind. Mitigation: `verify` job in CI can compare PR diff against declared scope and emit a `pr-lint.file_scope_drift` warning; not in this spec. Tracker required when drift first observed.
-- **Cascade re-introduction via shared anchor** (CLAUDE.md, Makefile, generated `docs/engineer/specs/README.md`): §2.6 partly addresses via `scheduler.shared_anchors`; reviewer should hunt whether the default empty list leaves a real residual cascade risk.
-- **Performance** (`O(C·A·F²)` glob match per tick): plausible problem at high C+A; reviewer must confirm worst-case bound under self-host load (C+A ≤ 8 observed). Reject premature caching unless reviewer benchmarks show >5ms tick overhead.
-- **Empty-scope-collides-with-everything is surprising**: operator forgets to declare scope → work item silently never co-schedules with anything → throughput drop without an explanatory log. Mitigation: emit `scheduler.file_scope_unbounded` INFO event the first time the extractor returns empty for a given `work_item_id` per tick window.
-- **`filepath.Match` does not handle `**`**: `internal/**/spawner.go` against `internal/orchestrator/spawner/claude.go` would not match with `filepath.Match` alone. Must use a glob library (`github.com/gobwas/glob` already in `go.mod` — verify) OR document the limitation + restrict declared globs to single-level.
-- **Adapter swap**: when `Source != "adapter"` (brief-sourced work items), the default `github_issues` extractor never sees the body. Reviewer should confirm the resolver swap pattern matches existing `OutputsSchemaResolver` (per-source resolver), not assume one global.
+- **Cascade re-introduction via shared anchor** (CLAUDE.md, Makefile, generated `docs/engineer/specs/README.md`): §2.6 ships a non-empty `scheduler.shared_anchors` default (`CLAUDE.md`, `Makefile`, `Makefile.d/*`, `docs/engineer/specs/README.md`) — reviewer should hunt residual cascade risk beyond that list (e.g. `cmd/regatta/serve.go` as a composition root) and decide whether to extend before ship.
+- **Performance** (`O(C·A·F²)` glob match per tick): plausible problem at high C+A; reviewer must confirm worst-case bound under self-host load (C+A ≤ 8 observed). Reject premature caching unless reviewer benchmarks show >5ms tick overhead. Compile globs once per tick (cache `glob.Glob` per pattern string).
+- **Empty-scope-collides-with-everything is surprising**: handled by required §3 c-criterion (`scheduler.file_scope_unbounded` INFO event); listed here only as the originating concern.
+- **Glob library mandated**: §2.3 mandates `github.com/gobwas/glob v0.2.3` (already in `go.mod` as indirect — promote to direct in the implementer PR). `filepath.Match` is rejected (`**` unsupported, `*` does not cross `/`); reviewer must verify the import promotion and confirm no fallback to `filepath.Match` slipped in.
+- **Per-source extractor routing**: handled by required §3 c-criterion (dual seams `FileScopeExtractorByAdapter` + `FileScopeExtractorByBrief`) — reviewer must confirm both code paths have regression-test coverage, not just the adapter side.
 
 ## §6 Implementer brief
 
@@ -178,16 +217,17 @@ Scope: Add scheduler.Config.FileScopeExtractor seam + state.WorkItem.FileScope f
 
 Files:
   internal/orchestrator/state/work_items.go             (add FileScope field)
-  internal/orchestrator/state/migrations/NNN_file_scope.sql  (pin N before authoring)
-  internal/orchestrator/scheduler/scheduler.go          (Config field)
-  internal/orchestrator/scheduler/scheduler_reserve.go  (collision check in reserve loop)
-  internal/orchestrator/scheduler/scheduler_file_scope.go  (new — overlap helper)
-  internal/orchestrator/scheduler/scheduler_file_scope_test.go (new — collision regression)
+  internal/orchestrator/state/migrations/0022_file_scope.sql  (re-audit at impl-PR-open time)
+  internal/orchestrator/scheduler/scheduler.go          (Config: dual per-source extractor fields + SharedAnchors)
+  internal/orchestrator/scheduler/scheduler_reserve.go  (collision check + per-source dispatch + unbounded INFO event)
+  internal/orchestrator/scheduler/scheduler_file_scope.go  (new — gobwas/glob overlap helper, shared-anchor check)
+  internal/orchestrator/scheduler/scheduler_file_scope_test.go (new — collision regression: adapter-sourced + brief-sourced + unbounded INFO + shared-anchor)
   internal/orchestrator/scheduler/scheduler_test.go     (extend dispatch test fixtures)
-  internal/orchestrator/adapter/githubissues/file_scope.go      (new — default extractor)
+  internal/orchestrator/adapter/githubissues/file_scope.go      (new — default adapter extractor)
   internal/orchestrator/adapter/githubissues/file_scope_test.go (new)
-  cmd/regatta/serve.go                                  (wire extractor; honor disable_file_scope_check)
-  contracts/schemas/regatta.cue                         (scheduler.disable_file_scope_check / shared_anchors)
+  cmd/regatta/serve.go                                  (wire BOTH extractors; honor disable_file_scope_check; load shared_anchors)
+  contracts/schemas/regatta.cue                         (scheduler.disable_file_scope_check / shared_anchors default list)
+  go.mod / go.sum                                       (promote github.com/gobwas/glob to direct)
   docs/engineer/pointers.md                             (add this spec under scheduler section)
 
 TDD order:
@@ -197,12 +237,19 @@ TDD order:
   2) Land migration + WorkItem field + Config field + adapter extractor.
   3) Land reserveFromSpawnable wiring + serve.go opt-in. Green.
 
-migration N: BEFORE authoring, query `git ls-tree origin/main internal/orchestrator/state/migrations/`
-  + `ls internal/orchestrator/state/migrations/` to pin the next free integer per
-  `feedback_migration_number_lock`. DO NOT pick a number; let the dispatch prompt pin it.
+migration N (pinned at spec-author time via `git ls-tree origin/main internal/orchestrator/state/migrations/ | tail -3`):
+  HEAD (origin/main, 2026-06-09):
+    0019_work_items_run_id.sql
+    0020_approval_events_run_id.sql
+    0021_substrate_kind_tool_call.sql
+  Next free = 0022. Implementer MUST re-audit at impl-PR-open time per
+  `feedback_migration_number_lock` (sibling specs may consume 0022 first); the dispatch prompt
+  re-pins the number at that point. Spec-time pin is a hint, not a contract.
 
-Glob library: verify `github.com/gobwas/glob` is in go.mod before relying on `**`. If absent,
-  document the spec limitation (single-level globs only) + file follow-up to upgrade later.
+Glob library: `github.com/gobwas/glob v0.2.3` is verified in `go.mod` as indirect (run
+  `git -C $REPO grep -E 'gobwas/glob' go.mod` to re-verify). Implementer PR MUST promote it to
+  direct via `go get github.com/gobwas/glob@v0.2.3` + commit the `go.mod` / `go.sum` updates.
+  `filepath.Match` is forbidden for this seam — see §2.3 mandate.
 
 make ci-check exit: 0
 Reviewer dispatch: YES — load-bearing scheduler change. cavecrew-reviewer subagent in fresh slot.
