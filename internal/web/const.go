@@ -82,5 +82,22 @@ const hoursPerDay = 24
 // dockerSoakWindowSeconds is the rolling tally window the soak panel reports — 60s matches operator-feedback ask "is the live daemon healthy right now".
 const dockerSoakWindowSeconds = 60
 
+// bodyPreviewMaxRunes caps the work-item drawer body preview so operators see issue
+// context without scrolling. 200 runes matches the dashboard kanban-card preview budget.
+const bodyPreviewMaxRunes = 200
+
+// workItemFlowStepCount fixes the 4-bucket pill row (pending → spawning → running → done/crashed) that collapses the 11-value AgentState enum into a single linear flow.
+const workItemFlowStepCount = 4
+
+// workItemFlowIdxPending / Spawning / Running / Done index the 4-step pill row built by buildStatusFlow. Named so the switch arms read as a forward-progress sequence, not opaque slice indices.
+const (
+	workItemFlowIdxPending  = 0
+	workItemFlowIdxSpawning = 1
+	workItemFlowIdxRunning  = 2
+	workItemFlowIdxDone     = 3
+)
+
+const workItemFlowLabelCrashed = "crashed"
+
 // pipelineDrawerLimit caps pipeline drawer rows so a many-thousand-agent backlog cannot wedge an htmx swap.
 const pipelineDrawerLimit = 50

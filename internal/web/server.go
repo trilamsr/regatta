@@ -41,6 +41,10 @@ type Dependencies struct {
 type Config struct {
 	DecisionWindow time.Duration
 	PublicHost     string
+	// GitHubRepo is the "owner/name" slug used to build issue URLs in the
+	// work-item drawer. Empty when no github_issues adapter is configured,
+	// in which case the drawer suppresses the link.
+	GitHubRepo string
 }
 
 // NewHandler is the sole entry point for UI routes; owns sub-mux

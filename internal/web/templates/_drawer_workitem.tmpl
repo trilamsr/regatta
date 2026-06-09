@@ -6,7 +6,20 @@
     <button class="ident text-slate-500 hover:text-slate-900"
             hx-on:click="document.getElementById('drawer-mount').innerHTML=''">close ×</button>
   </div>
-  <div class="ident text-xs mt-1">{{.ID}} · {{.Kind}} · lane {{.Lane}}</div>
+  <div class="ident text-xs mt-1">
+    {{.ID}} · {{.Kind}} · lane {{.Lane}}
+    {{- if .IssueURL}}
+    · <a class="text-blue-700 hover:underline" href="{{.IssueURL}}" target="_blank" rel="noopener noreferrer">view on github</a>
+    {{- end}}
+  </div>
+
+  {{- if .StatusFlow}}
+  <ol class="status-flow mt-3 flex gap-1 text-xs">
+  {{- range .StatusFlow}}
+    <li class="flow-step px-2 py-1 border border-slate-300 rounded {{if .Active}}active bg-slate-900 text-white border-slate-900{{else}}text-slate-500{{end}}">{{.Label}}</li>
+  {{- end}}
+  </ol>
+  {{- end}}
 
   <dl class="mt-4">
     <dt>status</dt><dd>{{.StatusLabel}}</dd>
@@ -18,6 +31,11 @@
     {{- end}}
     {{- if .ParentProgramID}}<dt>parent</dt><dd>{{.ParentProgramID}}</dd>{{- end}}
   </dl>
+
+  {{- if .BodyPreview}}
+  <dt class="ident text-xs uppercase tracking-widest text-slate-500 mt-5">body preview</dt>
+  <p class="mt-2 whitespace-pre-wrap text-xs text-slate-700">{{.BodyPreview}}</p>
+  {{- end}}
 
   {{- if .Acceptance}}
   <dt class="ident text-xs uppercase tracking-widest text-slate-500 mt-5">acceptance</dt>

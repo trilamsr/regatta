@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -121,13 +122,37 @@ type dashboardWorkItemDetail struct {
 	Acceptance   string
 	StatusLabel  string
 	RecentEvents []state.Event
+	// IssueURL is empty unless web.Config.GitHubRepo is wired. When set, the drawer
+	// renders a direct link to the upstream issue so the operator can verify context
+	// without a separate search step.
+	IssueURL string
+	// StatusFlow is the 4-step pill row (pending → spawning → running → done/crashed)
+	// derived from the owning agent's state. Empty when no agent exists for the item.
+	StatusFlow []workItemFlowStep
+	// BodyPreview is the first bodyPreviewMaxRunes runes of the upstream issue body.
+	// Sourced from AcceptanceJSON until #1092 lands a dedicated body column.
+	BodyPreview string
 }
 
-// statusLabelRunning / statusLabelPROpen / statusLabelBlocked are the operator-facing display tokens shared between work-item status, agent state, and flow-panel buckets so a future palette swap edits one source.
+// workItemFlowStep renders one cell of the 4-step status pill row. Active marks the
+// cell that matches the owning agent's current AgentState.
+type workItemFlowStep struct {
+	Label  string
+	Active bool
+}
+
+// workItemFlowLabels are the canonical drawer pill labels. The final cell flips to
+// "crashed" when the agent terminated in AgentCrashed.
+var workItemFlowLabels = [workItemFlowStepCount]string{statusLabelPending, statusLabelSpawning, statusLabelRunning, statusLabelDone}
+
+// statusLabelRunning / statusLabelPROpen / statusLabelBlocked / statusLabelDone are the operator-facing display tokens shared between work-item status, agent state, and flow-panel buckets so a future palette swap edits one source.
 const (
 	statusLabelRunning = "running"
 	statusLabelPROpen  = "PR open"
 	statusLabelBlocked = "blocked"
+	statusLabelDone    = "done"
+	statusLabelPending  = "pending"
+	statusLabelSpawning = "spawning"
 )
 
 const (
@@ -268,7 +293,7 @@ func loadFlowView(ctx context.Context, deps Dependencies) any {
 		state.WorkStatusMerged,
 		state.WorkStatusBlocked,
 	}
-	labels := []string{"backlog", "spawning", "in PR", "merged", statusLabelBlocked}
+	labels := []string{"backlog", statusLabelSpawning, "in PR", "merged", statusLabelBlocked}
 	summary, _ := deps.DB.SummarizeWorkItemStatuses(ctx, statuses, 0)
 	out := make([]dashboardFlowNode, 0, len(statuses))
 	halt := 0
@@ -639,15 +664,95 @@ func serveWorkItemDrawer(w http.ResponseWriter, r *http.Request, deps Dependenci
 		http.NotFound(w, r)
 		return
 	}
+	var agentState state.AgentState
+	if a, err := deps.DB.GetAgentByWorkItemID(ctx, wi.ID); err == nil && a != nil {
+		agentState = a.State
+	}
 	view := dashboardWorkItemDetail{
 		WorkItem:     wi,
 		Acceptance:   prettyJSON(wi.AcceptanceJSON),
 		StatusLabel:  workItemStatusLabel(wi.Status),
 		RecentEvents: recentEventsForWorkItem(ctx, deps.DB, wi.ID, workItemDrawerEventTail),
+		IssueURL:     buildIssueURL(deps.Config.GitHubRepo, wi.ID),
+		StatusFlow:   buildStatusFlow(agentState),
+		BodyPreview:  buildBodyPreview(wi.AcceptanceJSON, bodyPreviewMaxRunes),
 	}
 	if err := deps.Templates.Render(w, "_drawer_workitem", view); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// buildIssueURL produces a github.com issue URL from a "owner/name" slug + a work-item
+// id like "BUG-1058" or "1058". Returns "" when repo is empty OR the trailing token has
+// no digits — both cases avoid linking to a 404. The prefix-stripping pass tolerates
+// the "BUG-", "FEAT-", "CHORE-" conventions emitted by the github_issues adapter.
+var repoSlugRE = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
+
+func buildIssueURL(repo, id string) string {
+	if repo == "" || id == "" {
+		return ""
+	}
+	// Reviewer aa2355db4abd1de00 (#1149): reject malformed owner/name slugs (path-traversal, empty halves, embedded `/`).
+	if !repoSlugRE.MatchString(repo) {
+		return ""
+	}
+	num := id
+	if i := strings.LastIndex(id, "-"); i >= 0 && i < len(id)-1 {
+		num = id[i+1:]
+	}
+	if _, err := strconv.Atoi(num); err != nil {
+		return ""
+	}
+	return fmt.Sprintf("https://github.com/%s/issues/%s", repo, num)
+}
+
+// buildStatusFlow maps an AgentState onto the 4-step pill row. The 11-value AgentState
+// enum collapses into 4 operator-visible buckets so the drawer reads as a single linear
+// flow rather than a debugger view. Crashed flips the final cell label to "crashed".
+// Empty state (no agent yet) returns the row with no active cell.
+func buildStatusFlow(s state.AgentState) []workItemFlowStep {
+	out := make([]workItemFlowStep, workItemFlowStepCount)
+	for i, label := range workItemFlowLabels {
+		out[i] = workItemFlowStep{Label: label}
+	}
+	switch s {
+	case state.AgentPending:
+		out[workItemFlowIdxPending].Active = true
+	case state.AgentSpawning:
+		out[workItemFlowIdxSpawning].Active = true
+	case state.AgentRunning, state.AgentPROpen, state.AgentGatesRunning, state.AgentAwaitingMerge, state.AgentGatesFailed:
+		out[workItemFlowIdxRunning].Active = true
+	case state.AgentDone, state.AgentWithdrawn:
+		out[workItemFlowIdxDone].Active = true
+	case state.AgentCrashed, state.AgentEscalated:
+		out[workItemFlowIdxDone].Label = workItemFlowLabelCrashed
+		out[workItemFlowIdxDone].Active = true
+	}
+	return out
+}
+
+// buildBodyPreview truncates s to the first n runes — rune-safe so a multi-byte
+// trailing character does not produce invalid utf-8. When s is a JSON document
+// with a "body" field (the AcceptanceJSON stopgap until #1092 ships a dedicated
+// Body column), extract that field instead of showing raw JSON to the operator.
+// Returns "" for empty inputs to suppress an otherwise-empty drawer section.
+func buildBodyPreview(s string, n int) string {
+	if s == "" || n <= 0 {
+		return ""
+	}
+	// Reviewer aa2355db4abd1de00 (#1149): unwrap JSON body field if present so
+	// the operator does not see raw `{"body":"text"}` quoted blobs in the drawer.
+	var doc struct {
+		Body string `json:"body"`
+	}
+	if err := json.Unmarshal([]byte(s), &doc); err == nil && doc.Body != "" {
+		s = doc.Body
+	}
+	runes := []rune(s)
+	if len(runes) <= n {
+		return strings.TrimSpace(s)
+	}
+	return strings.TrimSpace(string(runes[:n])) + "…"
 }
 
 // workItemDisplayTitle falls back to the work-item ID when the upstream adapter has not yet populated a title — otherwise the kanban card renders as an empty row.
@@ -773,7 +878,7 @@ func statusClass(s state.AgentState) string {
 	case state.AgentGatesRunning, state.AgentAwaitingMerge:
 		return "gates"
 	case state.AgentDone:
-		return "done"
+		return statusLabelDone
 	case state.AgentCrashed, state.AgentGatesFailed:
 		return "blocked"
 	default:
@@ -789,7 +894,7 @@ func statusLabel(s state.AgentState) string {
 	case state.AgentSpawning:
 		return "spawn"
 	case state.AgentPending:
-		return "pending"
+		return statusLabelPending
 	case state.AgentPROpen:
 		return statusLabelPROpen
 	case state.AgentGatesRunning:
@@ -797,7 +902,7 @@ func statusLabel(s state.AgentState) string {
 	case state.AgentAwaitingMerge:
 		return "waiting"
 	case state.AgentDone:
-		return "done"
+		return statusLabelDone
 	case state.AgentCrashed:
 		return "crashed"
 	case state.AgentGatesFailed:
