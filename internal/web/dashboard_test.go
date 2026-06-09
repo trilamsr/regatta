@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -511,5 +512,29 @@ func TestLoadDockerSoakView_EmptyExitReasonNotMaskedAsHealthy(t *testing.T) {
 	}
 	if sv.Health == "green" {
 		t.Fatalf("empty-exit_reason masked as healthy: Health=%q HealthLabel=%q", sv.Health, sv.HealthLabel)
+	}
+}
+
+// TestEventVerb_EmptyAgentIDOmitsChip pins graceful degradation when AgentID.Valid is false — the chip is omitted, not rendered as "agent#0".
+func TestEventVerb_EmptyAgentIDOmitsChip(t *testing.T) {
+	e := state.Event{Kind: "spawn.completed", PayloadJSON: `{"work_item_id":"BUG-1058"}`}
+	got := string(eventVerb(e))
+	if strings.Contains(got, "agent #0") || strings.Contains(got, "agent #") {
+		t.Fatalf("invalid AgentID rendered as agent#0: %q", got)
+	}
+	if !strings.Contains(got, "BUG-1058") {
+		t.Fatalf("work_item_id chip dropped when AgentID is invalid: %q", got)
+	}
+}
+
+// TestEventVerb_MalformedPayloadOmitsWorkItemChip pins graceful degradation when PayloadJSON is non-JSON — the chip is omitted, no panic.
+func TestEventVerb_MalformedPayloadOmitsWorkItemChip(t *testing.T) {
+	e := state.Event{Kind: "spawn.completed", AgentID: sql.NullInt64{Int64: 42, Valid: true}, PayloadJSON: `{not json`}
+	got := string(eventVerb(e))
+	if strings.Contains(got, "BUG-") {
+		t.Fatalf("malformed payload rendered work_item_id: %q", got)
+	}
+	if !strings.Contains(got, "#42") {
+		t.Fatalf("agent #42 dropped when payload malformed: %q", got)
 	}
 }

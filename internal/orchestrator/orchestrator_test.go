@@ -305,8 +305,8 @@ func TestOrchestratorRecordsEvents(t *testing.T) {
 	for _, e := range events {
 		kinds[e.Kind]++
 	}
-	if kinds["spawned"] != 1 {
-		t.Errorf("expected 1 spawned event, got %d (all: %v)", kinds["spawned"], kinds)
+	if kinds[string(obs.EventSpawnCompleted)] != 1 {
+		t.Errorf("expected 1 spawn.completed event, got %d (all: %v)", kinds[string(obs.EventSpawnCompleted)], kinds)
 	}
 	if kinds["recovered_crashed"] != 1 {
 		t.Errorf("expected 1 recovered_crashed event, got %d (all: %v)", kinds["recovered_crashed"], kinds)

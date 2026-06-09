@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/cost/spend"
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -630,7 +631,7 @@ func eventVerb(e state.Event) template.HTML {
 		return template.HTML("agent"+id+" <span class=\"acc\">exited</span>") + wi + exitReasonBadge(e.PayloadJSON)
 	case "spawned", "spawn.started":
 		return template.HTML("agent"+id+" <span class=\"acc\">spawned</span>") + wi
-	case "spawn.completed":
+	case string(obs.EventSpawnCompleted):
 		return template.HTML("agent"+id+" <span class=\"acc-2\">ready</span>") + wi
 	case "spawn_failed", "spawn.failed":
 		return template.HTML("agent"+id+" <span class=\"acc\">spawn failed</span>") + wi + exitReasonBadge(e.PayloadJSON)

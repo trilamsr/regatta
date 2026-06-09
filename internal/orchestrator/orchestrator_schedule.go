@@ -106,7 +106,7 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 			_, _ = o.db.TransitionAgent(ctx, a.ID, state.AgentCrashed, state.AgentMutation{})
 			_, _ = o.db.ReleaseAgentLocks(ctx, a.ID)
 			_, _ = o.db.TransitionAgent(ctx, a.ID, state.AgentPending, state.AgentMutation{})
-			_ = o.db.RecordEvent(ctx, a.ID, "spawn_failed", fmt.Sprintf(`{"error":%q}`, err.Error()))
+			_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnFailed), fmt.Sprintf(`{"error":%q}`, err.Error()))
 			o.log.Warn(string(obs.EventSpawnFailed),
 				string(obs.KeyAgentID), a.ID,
 				string(obs.KeyWorkItemID), a.WorkItemID,
@@ -122,7 +122,7 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 		}); err != nil {
 			return fmt.Errorf("orchestrator: mark agent %d running: %w", a.ID, err)
 		}
-		_ = o.db.RecordEvent(ctx, a.ID, "spawned",
+		_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnCompleted),
 			fmt.Sprintf(`{"pid":%d,"session_id":%q}`, pid, sess))
 		o.log.Info(string(obs.EventSpawnCompleted),
 			string(obs.KeyAgentID), a.ID,

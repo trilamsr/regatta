@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
@@ -66,7 +67,7 @@ func TestScheduleOnceRollsBackOnSpawnerFailure(t *testing.T) {
 	events, _ := db.ListEvents(ctx, 50)
 	sawFailure := false
 	for _, e := range events {
-		if e.Kind == "spawn_failed" {
+		if e.Kind == string(obs.EventSpawnFailed) {
 			sawFailure = true
 		}
 	}
