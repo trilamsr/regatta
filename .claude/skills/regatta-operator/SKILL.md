@@ -408,6 +408,26 @@ docker compose --env-file "$ENV_FILE" logs --since=30s "$DOCKER_SERVICE" \
 
 If any step fails: bottleneck-resolution loop fires.
 
+## Operator-delegated merge
+
+Default per CLAUDE.md `feedback_no_implementer_automerge`: skill does NOT enable automerge, does NOT merge PRs. The operator owns the merge button. This holds when the human is sitting at the keyboard.
+
+BUT: in autonomous operation (operator said "loop" / "autonomous" / "keep going" / "merge when green") the human has explicitly delegated merge authority for THIS session. In that mode, after BOTH conditions are met for a PR the skill itself opened:
+
+1. Independent adversarial reviewer returned `Reviewer-recommendation: APPROVE` (real subagent ID in PR body, NOT self-tagged — per `feedback_no_self_tagged_approve`).
+2. `gh pr view <N> --json state,mergeStateStatus,statusCheckRollup` shows `state=OPEN`, `mergeStateStatus=CLEAN`, every required check `conclusion=SUCCESS` (latest occurrence wins on duplicate names per `feedback_pr_lint_body_snapshot_lag`).
+
+Skill executes `gh pr merge <N> --squash --delete-branch`, logs the merge in `$BASELINE_FILE` with merging-skill-session ID so the green-clock counter advances, then runs the post-merge rebuild-and-observe cycle.
+
+Hard refusals (operator delegation does NOT extend to):
+- `--admin` flag (overrides branch protection).
+- Force-merge through DIRTY / BLOCKED / failing-required-check state.
+- Merging a PR the skill did NOT open (out-of-scope; risks merging operator's in-flight work).
+- Merging into `$TARGET_REPO`'s `main` when `$TARGET_REPO` != `$ORCH_SOURCE_REPO` (target-side merges always require operator).
+- Force-push on a merge conflict — always REBASE, never overwrite.
+
+Bottleneck-resolution loop fix PRs follow the same gate. Skill-opened PRs only; never operator-authored PRs.
+
 ## Hand-off
 
 When ending a session (operator interrupt or natural stop): produce ONE summary block with:
