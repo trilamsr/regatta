@@ -131,11 +131,16 @@ func loadAgentsView(ctx context.Context, deps Dependencies) any {
 	if err != nil || len(rows) == 0 {
 		return dashboardAgentsView{}
 	}
+	ids := make([]string, 0, len(rows))
+	for _, a := range rows {
+		ids = append(ids, a.WorkItemID)
+	}
+	titles, _ := deps.DB.GetWorkItemsByIDs(ctx, ids)
 	out := make([]dashboardAgentRow, 0, len(rows))
 	for _, a := range rows {
 		title := a.WorkItemID
-		if wi, err := deps.DB.GetWorkItem(ctx, a.WorkItemID); err == nil && wi.Title != "" {
-			title = wi.Title
+		if t, ok := titles[a.WorkItemID]; ok && t != "" {
+			title = t
 		}
 		out = append(out, dashboardAgentRow{
 			ID:         a.ID,
@@ -162,21 +167,20 @@ func loadWorkItemsView(ctx context.Context, deps Dependencies) any {
 		state.WorkStatusMerged,
 	}
 	labels := []string{"Planned", "Running", "PR open", "Merged"}
+	summary, err := deps.DB.SummarizeWorkItemStatuses(ctx, statuses, dashboardWorkItemSampleCount)
+	if err != nil {
+		summary = map[state.WorkItemStatus]state.WorkItemStatusSummary{}
+	}
 	buckets := make([]dashboardBucket, len(statuses))
 	for i, s := range statuses {
-		rows, err := deps.DB.ListWorkItemsByStatus(ctx, s, dashboardWorkItemSampleCount)
-		if err != nil {
-			buckets[i] = dashboardBucket{Label: labels[i]}
-			continue
-		}
-		count, _ := deps.DB.CountWorkItemsByStatus(ctx, s)
-		top := make([]dashboardWorkItemRow, 0, len(rows))
-		for _, w := range rows {
+		sum := summary[s]
+		top := make([]dashboardWorkItemRow, 0, len(sum.Samples))
+		for _, w := range sum.Samples {
 			top = append(top, dashboardWorkItemRow{
 				ID: w.ID, Title: w.Title, Lane: w.Lane, UpdatedAt: w.UpdatedAt,
 			})
 		}
-		buckets[i] = dashboardBucket{Label: labels[i], Count: count, Top: top}
+		buckets[i] = dashboardBucket{Label: labels[i], Count: sum.Count, Top: top}
 	}
 	return dashboardWorkItemsView{Buckets: buckets}
 }
@@ -190,10 +194,11 @@ func loadFlowView(ctx context.Context, deps Dependencies) any {
 		state.WorkStatusBlocked,
 	}
 	labels := []string{"backlog", "spawning", "in PR", "merged", "blocked"}
+	summary, _ := deps.DB.SummarizeWorkItemStatuses(ctx, statuses, 0)
 	out := make([]dashboardFlowNode, 0, len(statuses))
 	halt := 0
 	for i, s := range statuses {
-		n, _ := deps.DB.CountWorkItemsByStatus(ctx, s)
+		n := summary[s].Count
 		out = append(out, dashboardFlowNode{Label: labels[i], Count: n})
 		if s == state.WorkStatusRunning {
 			halt = n
@@ -240,6 +245,7 @@ func loadSpendView(ctx context.Context, deps Dependencies) any {
 	return view
 }
 
+// buildSparkSeries fires one RecordedUSDForWindow per histogram bucket because spend.Reader does not (yet) expose a batched window query. 12 buckets × 30s poll = 24 queries/min — each is a small SUM that hits the same composite index, well under sqlite's local-disk cap. A batched API + memo cache lands when spend.Reader gains a window-iterator surface; tracking issue is left to the spend pkg owner since the dashboard is read-side only.
 func buildSparkSeries(ctx context.Context, reader *spend.Reader, now time.Time) []int64 {
 	out := make([]int64, dashboardSparkBuckets)
 	step := dashboardLast24hWindow * time.Hour / dashboardSparkBuckets
@@ -407,7 +413,7 @@ func statusLabel(s state.AgentState) string {
 	}
 }
 
-// eventVerb turns the substrate's state-machine event tokens into one short operator-readable sentence so the recent-activity panel reads as narrative not log noise. Unknown kinds fall through to the bare kind name so a future event_kind addition does not blank the row.
+// eventVerb turns the substrate's state-machine event tokens into one short operator-readable sentence so the recent-activity panel reads as narrative not log noise. Unknown kinds fall through to template.HTMLEscapeString(e.Kind) so a future event_kind addition stays XSS-safe; the hardcoded branches concatenate only numeric ids (%d-formatted) and static spans, never user-controlled text — keep that invariant by routing any new string field through HTMLEscapeString before splicing it into the returned HTML.
 func eventVerb(e state.Event) template.HTML {
 	id := ""
 	if e.AgentID.Valid {
