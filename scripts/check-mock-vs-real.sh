@@ -10,9 +10,17 @@
 # Token heuristics (case-sensitive grep on raw bytes):
 #   mock_count = matches of /mock | Mock[A-Z] | gomock | testify/mock
 #   real_count = matches of t.TempDir | httptest.NewServer | state.Open(
+#                         | state.DSN | os.CreateTemp | exec.Command
 #
 # Ratio formula: mock / (mock + real); > 0.70 over NEW test files → WARN.
 # Files with zero matched tokens are skipped (no signal).
+#
+# Why 70%: empirically derived from 2026-06-08 session post-hoc audit.
+# Subagent test files that crossed 70% mock tokens were the same files
+# adversarial-review later flagged as "tests stub away the real interaction"
+# (#1088 wedge). Tighten if false-positives stay below 1/10 PRs over a
+# 30-day window; loosen if legitimate mock-heavy fixtures (table-driven
+# pure-logic tests) repeatedly trip the gate.
 #
 # Inputs:
 #   --base <ref>        base ref (default origin/main); diff cone is base...HEAD
@@ -92,7 +100,7 @@ while IFS= read -r f; do
   [ ! -f "$f" ] && continue
   files_scanned=$((files_scanned + 1))
   m=$(grep -cE '/mock|Mock[A-Z]|gomock|testify/mock' "$f" 2>/dev/null || true)
-  r=$(grep -cE 't\.TempDir|httptest\.NewServer|state\.Open\(' "$f" 2>/dev/null || true)
+  r=$(grep -cE 't\.TempDir|httptest\.NewServer|state\.Open\(|state\.DSN|os\.CreateTemp|exec\.Command' "$f" 2>/dev/null || true)
   mock_total=$((mock_total + m))
   real_total=$((real_total + r))
 done <<<"$changed"
