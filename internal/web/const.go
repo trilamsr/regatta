@@ -81,3 +81,6 @@ const hoursPerDay = 24
 
 // dockerSoakWindowSeconds is the rolling tally window the soak panel reports — 60s matches operator-feedback ask "is the live daemon healthy right now".
 const dockerSoakWindowSeconds = 60
+
+// pipelineDrawerLimit caps pipeline drawer rows so a many-thousand-agent backlog cannot wedge an htmx swap.
+const pipelineDrawerLimit = 50

@@ -183,6 +183,56 @@ body { font-feature-settings: "ss01", "cv11"; }
   line-height: 1;
 }
 
+/* Pipeline — 6-stage horizontal dispatch flow. */
+.pipeline-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.pipeline-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--rule);
+  background: var(--paper-2);
+  min-width: 6.5rem;
+  flex: 1 1 6.5rem;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  text-align: center;
+}
+.pipeline-step:hover { background: var(--paper); border-color: var(--ink-2); }
+.pipeline-step .owner {
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.pipeline-step .count {
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.1;
+}
+.pipeline-step .lbl {
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.pipeline-arrow {
+  display: flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 1.5rem;
+  color: var(--dim);
+  line-height: 1;
+}
+
 /* Drawer — slide-from-right detail pane. */
 .drawer-bg {
   position: fixed; inset: 0;
