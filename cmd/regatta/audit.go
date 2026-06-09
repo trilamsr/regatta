@@ -297,7 +297,7 @@ func emitAuditVerify(w io.Writer, format string, summary auditVerifySummary, row
 			Rows    []auditVerifyRow   `json:"rows"`
 		}{summary, rows}
 		return enc.Encode(out)
-	case "table":
+	case formatTable:
 		_, _ = fmt.Fprintf(w, "run=%s total=%d chain_ok=%d chain_broken=%d schema_skew=%d reproducible=%d verify_only=%d running_schema=%d\n",
 			summary.RunID, summary.Total, summary.ChainOK, summary.ChainBroken,
 			summary.SchemaSkew, summary.Reproducible, summary.VerifyOnly, summary.RunningSchemaVersion)

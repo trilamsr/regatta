@@ -37,7 +37,7 @@ func runApprovalListWith(deps approvalListDeps, args []string) int {
 	fs := flag.NewFlagSet("approval list", flag.ContinueOnError)
 	fs.SetOutput(deps.Stderr)
 	mineFlag := fs.String("mine", "", "Filter to approvals whose snapshot includes the given reviewer id")
-	formatFlag := fs.String("format", "table", "Output format: table | json")
+	formatFlag := fs.String("format", formatTable, "Output format: table | json")
 	_ = fs.String("db", "regatta.db", "Path to sqlite state DB")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta approval list [--mine <reviewer-id>] [--format=table|json]")
@@ -45,7 +45,7 @@ func runApprovalListWith(deps approvalListDeps, args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *formatFlag != "table" && *formatFlag != logFormatJSON {
+	if *formatFlag != formatTable && *formatFlag != logFormatJSON {
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta approval list: --format must be table|json, got %q\n", *formatFlag)
 		return 2
 	}
