@@ -3,6 +3,8 @@ package main
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
@@ -10,6 +12,7 @@ import (
 
 // TestDefaultClaudeArgs asserts the headless flag set is non-empty so #1085's silent-stdout regression cannot return.
 func TestDefaultClaudeArgs(t *testing.T) {
+	t.Setenv(envSpawnerMCPConfig, "")
 	args := defaultClaudeArgs()
 	if len(args) == 0 {
 		t.Fatalf("defaultClaudeArgs() returned empty; agents will spawn in TUI mode and emit no stdout (#1085)")
@@ -59,5 +62,26 @@ func TestBuildSpawner_ClaudeWiresArgs(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("ClaudeSpawnerConfig.Args=%v, missing %q", args, wantOne)
+	}
+}
+
+// TestDefaultClaudeArgs_MCPConfigDefaultsToPlatformNull pins the #1086 zero-MCP child default — every spawn passes --mcp-config=os.DevNull (Unix /dev/null, Windows NUL) when REGATTA_SPAWNER_MCP_CONFIG is unset. Uses os.DevNull so the test passes on Windows CI per reviewer ab98fe077a696dae6.
+func TestDefaultClaudeArgs_MCPConfigDefaultsToPlatformNull(t *testing.T) {
+	t.Setenv(envSpawnerMCPConfig, "")
+	args := defaultClaudeArgs()
+	want := "--mcp-config=" + os.DevNull
+	if !slices.Contains(args, want) {
+		t.Fatalf("want %s in args, got %v", want, args)
+	}
+}
+
+// TestDefaultClaudeArgs_MCPConfigEnvOverride confirms operator can override the default via env (#1086 escape hatch). Uses t.TempDir() so the path is portable across CI hosts.
+func TestDefaultClaudeArgs_MCPConfigEnvOverride(t *testing.T) {
+	override := filepath.Join(t.TempDir(), "custom.json")
+	t.Setenv(envSpawnerMCPConfig, override)
+	args := defaultClaudeArgs()
+	want := "--mcp-config=" + override
+	if !slices.Contains(args, want) {
+		t.Fatalf("want %s in args, got %v", want, args)
 	}
 }
