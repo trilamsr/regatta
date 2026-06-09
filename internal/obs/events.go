@@ -20,6 +20,7 @@ type AttrKey string
 const (
 	EventTickStarted   EventName = "tick.started"
 	EventTickCompleted EventName = "tick.completed"
+	EventTickSlow      EventName = "tick.slow"
 
 	EventEdgeFired                   EventName = "edge.fired"
 	EventEdgeSkipped                 EventName = "edge.skipped"
@@ -151,6 +152,7 @@ func AllEventNames() []EventName {
 	return []EventName{
 		EventTickStarted,
 		EventTickCompleted,
+		EventTickSlow,
 		EventEdgeFired,
 		EventEdgeSkipped,
 		EventEdgeDefaultFallback,
