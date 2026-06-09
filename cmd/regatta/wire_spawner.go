@@ -15,9 +15,12 @@ const (
 	spawnerNameClaude = "claude"
 )
 
+// claudeFlagStreamJSON pins the stream-json output flag (shared by impl + tests).
+const claudeFlagStreamJSON = "--output-format=stream-json"
+
 // defaultClaudeArgs are the headless flags the orchestrator stamps onto every claude CLI spawn so the binary emits machine-readable JSONL on stdout (consumed by spawner.ParseStream → OTel + cost-gov). Closes #1085: pre-fix dogfood logged 0 lines per agent because the CLI ran in TUI mode under a non-TTY pipe.
 func defaultClaudeArgs() []string {
-	return []string{"--print", "--output-format=stream-json", "--verbose"}
+	return []string{"--print", claudeFlagStreamJSON, "--verbose"}
 }
 
 // spawnerSet bundles the three handles a serve invocation needs to

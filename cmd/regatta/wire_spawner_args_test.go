@@ -15,9 +15,9 @@ func TestDefaultClaudeArgs(t *testing.T) {
 		t.Fatalf("defaultClaudeArgs() returned empty; agents will spawn in TUI mode and emit no stdout (#1085)")
 	}
 	wants := map[string]bool{
-		"--print":                     false,
-		"--output-format=stream-json": false,
-		"--verbose":                   false,
+		"--print":            false,
+		claudeFlagStreamJSON: false,
+		"--verbose":          false,
 	}
 	for _, a := range args {
 		if _, ok := wants[a]; ok {
@@ -49,7 +49,7 @@ func TestBuildSpawner_ClaudeWiresArgs(t *testing.T) {
 	if len(args) == 0 {
 		t.Fatalf("ClaudeSpawnerConfig.Args is empty after buildSpawner; #1085 wire regression — agents will spawn in TUI mode")
 	}
-	wantOne := "--output-format=stream-json"
+	wantOne := claudeFlagStreamJSON
 	found := false
 	for _, a := range args {
 		if a == wantOne {
