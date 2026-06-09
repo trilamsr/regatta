@@ -8,13 +8,14 @@ const classifyHaystackCap = 4096
 // ExitReason classifies the agent.exited stop bucket so operators and the future provider-halt gate can act on root cause instead of bare exit_code (#1063, prereq for #1096).
 type ExitReason string
 
+// Stop-bucket values stamped onto agent.exited; operators dispatch on these.
 const (
-	ExitReasonUnknown                = ExitReason("unknown")
-	ExitReasonCompleted              = ExitReason("completed")
+	ExitReasonUnknown                 = ExitReason("unknown")
+	ExitReasonCompleted               = ExitReason("completed")
 	ExitReasonProviderCreditExhausted = ExitReason("provider_credit_exhausted")
-	ExitReasonProviderRateLimited    = ExitReason("provider_rate_limited")
-	ExitReasonProviderInternal       = ExitReason("provider_internal_error")
-	ExitReasonToolDenied             = ExitReason("tool_denied")
+	ExitReasonProviderRateLimited     = ExitReason("provider_rate_limited")
+	ExitReasonProviderInternal        = ExitReason("provider_internal_error")
+	ExitReasonToolDenied              = ExitReason("tool_denied")
 )
 
 // classifySignatures pairs an ExitReason with byte signatures the
