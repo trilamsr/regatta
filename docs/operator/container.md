@@ -117,7 +117,8 @@ sudo chown -R 65532:65532 ./path-to-repo
 
 | Var | Required | Source |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | yes | Claude planner + L4 adapter both call `os.Getenv("ANTHROPIC_API_KEY")`. |
+| `ANTHROPIC_API_KEY` | yes | Daemon-side Claude planner + L4 review adapter resolve this via `secrets.Default`. By default it also flows through to the spawned `claude` CLI children. Set `REGATTA_SPAWNER_STRIP_API_KEY=1` to strip it from children so they fall back to the operator's claude-code subscription credentials — works on Linux hosts mounting `~/.claude/.credentials.json` into the container, but NOT on macOS where subscription auth lives in the system keychain. See #1099. |
+| `REGATTA_SPAWNER_STRIP_API_KEY` | no | When `1`/`true`, the spawner removes `ANTHROPIC_API_KEY` + `ANTHROPIC_AUTH_TOKEN` from the spawned claude CLI child env so it falls back to subscription auth. Leave unset to keep the pre-#1099 pass-through behaviour. |
 | `GH_TOKEN` | yes | inherited by the `gh` CLI when the spawner opens PRs. `repo` + `workflow` scopes. |
 | `REGATTA_BRIEF_HMAC_KEYS` | no | brief-envelope HMAC keyring. Format `kid:secret[,kid:secret...]`. Single-tenant local dev can omit. |
 

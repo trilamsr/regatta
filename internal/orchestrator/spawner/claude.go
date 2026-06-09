@@ -438,6 +438,7 @@ func execStarter(ctx context.Context, name string, args []string, stdin io.Reade
 	cmd.Stdin = stdin
 	cmd.Stdout = io.MultiWriter(os.Stdout, stdout)
 	cmd.Stderr = os.Stderr
+	cmd.Env = scrubChildEnv(os.Environ())
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
