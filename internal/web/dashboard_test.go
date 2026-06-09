@@ -675,3 +675,49 @@ func TestEventVerb_MalformedPayloadOmitsWorkItemChip(t *testing.T) {
 		t.Fatalf("agent #42 dropped when payload malformed: %q", got)
 	}
 }
+
+// TestBuildStatusFlow_CrashedFlipsLabel asserts AgentCrashed flips the final step label from "done" to "crashed" so the operator sees a clear failure signal (#1149 reviewer feedback).
+func TestBuildStatusFlow_CrashedFlipsLabel(t *testing.T) {
+	got := buildStatusFlow(state.AgentCrashed)
+	last := got[workItemFlowIdxDone]
+	if last.Label != workItemFlowLabelCrashed {
+		t.Fatalf("crashed label not applied: %+v", last)
+	}
+	if !last.Active {
+		t.Fatalf("crashed step not active: %+v", last)
+	}
+}
+
+// TestBuildStatusFlow_EscalatedAlsoFlipsLabel pins the same flip for AgentEscalated (sibling terminal state) so a reviewer-blocked PR doesn't render as "done" (#1149).
+func TestBuildStatusFlow_EscalatedAlsoFlipsLabel(t *testing.T) {
+	got := buildStatusFlow(state.AgentEscalated)
+	if got[workItemFlowIdxDone].Label != workItemFlowLabelCrashed {
+		t.Fatalf("escalated label not flipped: %q", got[workItemFlowIdxDone].Label)
+	}
+}
+
+// TestBuildIssueURL_RejectsMalformedRepoSlug pins the regex guard so a path-traversal or embedded `/` in the repo string cannot produce broken or hostile URLs (#1149 reviewer feedback).
+func TestBuildIssueURL_RejectsMalformedRepoSlug(t *testing.T) {
+	cases := []string{"foo", "foo/bar/baz", "/bar", "foo/", "../escape/bar", "foo\\bar"}
+	for _, repo := range cases {
+		if got := buildIssueURL(repo, "BUG-1058"); got != "" {
+			t.Errorf("buildIssueURL(%q,...) = %q; want empty", repo, got)
+		}
+	}
+	if got := buildIssueURL("trilamsr/regatta", "BUG-1058"); got != "https://github.com/trilamsr/regatta/issues/1058" {
+		t.Errorf("happy path regression: %q", got)
+	}
+}
+
+// TestBuildBodyPreview_UnwrapsJSONBodyField pins the AcceptanceJSON stopgap — operator sees the body text, not raw `{"body":"..."}` (#1149 reviewer feedback; remove when #1092 ships dedicated column).
+func TestBuildBodyPreview_UnwrapsJSONBodyField(t *testing.T) {
+	got := buildBodyPreview(`{"body":"hello world","other":"junk"}`, 50)
+	if got != "hello world" {
+		t.Fatalf("JSON body unwrap failed: %q", got)
+	}
+	// non-JSON should pass through unchanged.
+	got = buildBodyPreview("plain text fallback", 50)
+	if got != "plain text fallback" {
+		t.Fatalf("non-JSON regressed: %q", got)
+	}
+}

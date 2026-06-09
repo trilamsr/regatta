@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -685,8 +686,14 @@ func serveWorkItemDrawer(w http.ResponseWriter, r *http.Request, deps Dependenci
 // id like "BUG-1058" or "1058". Returns "" when repo is empty OR the trailing token has
 // no digits — both cases avoid linking to a 404. The prefix-stripping pass tolerates
 // the "BUG-", "FEAT-", "CHORE-" conventions emitted by the github_issues adapter.
+var repoSlugRE = regexp.MustCompile(`^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`)
+
 func buildIssueURL(repo, id string) string {
 	if repo == "" || id == "" {
+		return ""
+	}
+	// Reviewer aa2355db4abd1de00 (#1149): reject malformed owner/name slugs (path-traversal, empty halves, embedded `/`).
+	if !repoSlugRE.MatchString(repo) {
 		return ""
 	}
 	num := id
@@ -718,19 +725,28 @@ func buildStatusFlow(s state.AgentState) []workItemFlowStep {
 	case state.AgentDone, state.AgentWithdrawn:
 		out[workItemFlowIdxDone].Active = true
 	case state.AgentCrashed, state.AgentEscalated:
-		out[workItemFlowIdxDone].Label = "crashed"
+		out[workItemFlowIdxDone].Label = workItemFlowLabelCrashed
 		out[workItemFlowIdxDone].Active = true
 	}
 	return out
 }
 
 // buildBodyPreview truncates s to the first n runes — rune-safe so a multi-byte
-// trailing character does not produce invalid utf-8. Whitespace at the cut point is
-// trimmed so the preview ends cleanly. Returns "" for empty inputs to suppress an
-// otherwise-empty drawer section.
+// trailing character does not produce invalid utf-8. When s is a JSON document
+// with a "body" field (the AcceptanceJSON stopgap until #1092 ships a dedicated
+// Body column), extract that field instead of showing raw JSON to the operator.
+// Returns "" for empty inputs to suppress an otherwise-empty drawer section.
 func buildBodyPreview(s string, n int) string {
 	if s == "" || n <= 0 {
 		return ""
+	}
+	// Reviewer aa2355db4abd1de00 (#1149): unwrap JSON body field if present so
+	// the operator does not see raw `{"body":"text"}` quoted blobs in the drawer.
+	var doc struct {
+		Body string `json:"body"`
+	}
+	if err := json.Unmarshal([]byte(s), &doc); err == nil && doc.Body != "" {
+		s = doc.Body
 	}
 	runes := []rune(s)
 	if len(runes) <= n {

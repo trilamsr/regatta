@@ -96,3 +96,8 @@ const (
 	workItemFlowIdxRunning  = 2
 	workItemFlowIdxDone     = 3
 )
+
+const workItemFlowLabelCrashed = "crashed"
+
+// pipelineDrawerLimit caps pipeline drawer rows so a many-thousand-agent backlog cannot wedge an htmx swap.
+const pipelineDrawerLimit = 50
