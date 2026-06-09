@@ -101,9 +101,17 @@ func TestGitHubIssues_Selector_FiltersOnParsedLabel(t *testing.T) {
 	}
 }
 
-// TestGitHubIssues_Selector_Malformed fails closed at constructor with a stable error token.
+// TestGitHubIssues_Selector_Malformed fails closed at constructor with a stable error token. Reviewer pass-1 added: whitespace-only value + duplicate clause + state-only.
 func TestGitHubIssues_Selector_Malformed(t *testing.T) {
-	for _, sel := range []string{"label:", "labelroadmap", "label:roadmap unknown:foo", "state:open"} {
+	for _, sel := range []string{
+		"label:",
+		"labelroadmap",
+		"label:roadmap unknown:foo",
+		"state:open",
+		"label:   ",
+		"label:foo label:bar",
+		"state:open state:closed",
+	} {
 		cfg := GitHubIssuesConfig{
 			Client:   &fakeGH{},
 			Repo:     Repo{Owner: "o", Name: "r"},
@@ -112,6 +120,28 @@ func TestGitHubIssues_Selector_Malformed(t *testing.T) {
 		if _, err := NewGitHubIssues(cfg); err == nil {
 			t.Fatalf("selector=%q expected error, got nil", sel)
 		}
+	}
+}
+
+// TestGitHubIssues_Selector_GetHonorsCustomLabel covers the Get() cache-miss-after-TTL path under a non-default selector.
+func TestGitHubIssues_Selector_GetHonorsCustomLabel(t *testing.T) {
+	gh := &fakeGH{listIssues: []ghclient.Issue{
+		{Number: 7, Title: "ITEM-7: hello", Body: "## Acceptance criteria\n- [planned] c1: x\n", Labels: []string{"roadmap"}},
+	}}
+	cfg := GitHubIssuesConfig{
+		Client:   gh,
+		Repo:     Repo{Owner: "o", Name: "r"},
+		Selector: "label:roadmap",
+	}
+	a, err := NewGitHubIssues(cfg)
+	if err != nil {
+		t.Fatalf("NewGitHubIssues: %v", err)
+	}
+	if _, err := a.Get(context.Background(), "ITEM-7"); err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if gh.lastListLabel != "roadmap" {
+		t.Fatalf("Get's cache-miss path label=%q want roadmap", gh.lastListLabel)
 	}
 }
 
