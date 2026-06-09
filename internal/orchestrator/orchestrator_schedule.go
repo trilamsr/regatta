@@ -49,10 +49,18 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 	level := tickLogLevel(evaluated)
 	o.log.Log(ctx, level, string(obs.EventTickStarted))
 	defer func() {
+		durationMs := o.cfg.Clock().Sub(startedAt).Milliseconds()
 		o.log.Log(ctx, level, string(obs.EventTickCompleted),
-			string(obs.KeyDurationMs), o.cfg.Clock().Sub(startedAt).Milliseconds(),
+			string(obs.KeyDurationMs), durationMs,
 			string(obs.KeyWorkItemsEvaluated), int64(evaluated),
 		)
+		// Slow-tick WARN: a single tick >=1s (10x normal 100ms) is worth surfacing — sqlite lock contention or scheduler bug. Additive to the #1066 demote contract.
+		if durationMs >= 1000 {
+			o.log.Warn("tick.slow",
+				string(obs.KeyDurationMs), durationMs,
+				string(obs.KeyWorkItemsEvaluated), int64(evaluated),
+			)
+		}
 	}()
 
 	for _, id := range ids {

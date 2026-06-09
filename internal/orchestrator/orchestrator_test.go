@@ -449,6 +449,43 @@ func TestOrchestrator_Tick_EmptyQueueLogsAtDebug(t *testing.T) {
 	}
 }
 
+// TestOrchestrator_Tick_SlowTickEmitsWarn pins the additive tick.slow WARN: a single tick >=1s surfaces via WARN beside the existing tick.completed event (#1066 demote contract preserved).
+func TestOrchestrator_Tick_SlowTickEmitsWarn(t *testing.T) {
+	ctx := context.Background()
+	o, _, _, _ := newHarness(t, 0)
+	h := obstest.New()
+	o.log = slog.New(h)
+	// Clock seam: first call returns t0 (startedAt), second call (in
+	// the defer) returns t0+1500ms so durationMs computes to 1500.
+	base := time.Unix(1_700_000_000, 0).UTC()
+	var calls int
+	o.cfg.Clock = func() time.Time {
+		calls++
+		if calls == 1 {
+			return base
+		}
+		return base.Add(1500 * time.Millisecond)
+	}
+
+	if err := o.ScheduleOnce(ctx); err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+	slow, ok := h.FindEvent(obs.EventName("tick.slow"))
+	if !ok {
+		t.Fatalf("tick.slow missing on >=1s tick; records=%d", len(h.Records()))
+	}
+	if slow.Level != slog.LevelWarn {
+		t.Fatalf("tick.slow level=%s, want WARN", slow.Level)
+	}
+	v, ok := recordHasAttr(slow, string(obs.KeyDurationMs))
+	if !ok {
+		t.Fatalf("tick.slow missing %q attr", obs.KeyDurationMs)
+	}
+	if v.Int64() != 1500 {
+		t.Fatalf("tick.slow duration_ms=%d, want 1500", v.Int64())
+	}
+}
+
 // TestOrchestrator_NilLogger_UsesDefault pins spec §4.1.
 func TestOrchestrator_NilLogger_UsesDefault(t *testing.T) {
 	o, _, _, _ := newHarness(t, 0)
