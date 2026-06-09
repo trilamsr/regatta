@@ -28,6 +28,8 @@ type fakeGH struct {
 	editErr     error
 	commentLog  []commentCall
 	commentErr  error
+	lastListLabel string
+	lastListState string
 }
 
 type editCall struct {
@@ -54,10 +56,12 @@ func (f *fakeGH) CommentOnIssue(_ context.Context, n int, body string) error {
 	f.commentLog = append(f.commentLog, commentCall{Number: n, Body: body})
 	return nil
 }
-func (f *fakeGH) ListIssuesByLabelPaginated(_ context.Context, _ string, _ ghclient.ListIssuesOpts) ([]ghclient.Issue, error) {
+func (f *fakeGH) ListIssuesByLabelPaginated(_ context.Context, label string, opts ghclient.ListIssuesOpts) ([]ghclient.Issue, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.listCalls++
+	f.lastListLabel = label
+	f.lastListState = opts.State
 	if f.listErr != nil {
 		return nil, f.listErr
 	}
