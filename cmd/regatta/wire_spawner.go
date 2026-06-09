@@ -15,30 +15,52 @@ const (
 	spawnerNameStub   = "stub"
 	spawnerNameClaude = "claude"
 
-	// envSpawnerMCPConfig overrides the default platform-null MCP config passed to spawned claude children. Empty = use os.DevNull (Unix /dev/null, Windows NUL).
+	// envSpawnerMCPConfig overrides the default empty-MCP tempfile passed to spawned claude children. Empty = spawner mints a tempfile containing `{"mcpServers":{}}` (claude CLI rejects /dev/null at boot — #1116).
 	envSpawnerMCPConfig = "REGATTA_SPAWNER_MCP_CONFIG"
+
+	// mcpEmptyConfigJSON is the minimal claude-CLI-accepted MCP config: a JSON document with an empty mcpServers map. Pinned literal so a future edit cannot silently drop the parseability that #1116 traces to.
+	mcpEmptyConfigJSON = `{"mcpServers":{}}`
 )
 
 // claudeFlagStreamJSON pins the stream-json output flag (shared by impl + tests).
 const claudeFlagStreamJSON = "--output-format=stream-json"
 
-// defaultClaudeArgs are the headless flags the orchestrator stamps onto every claude CLI spawn. #1085 closes the TUI-mode silence (--print + stream-json + verbose); #1086 closes the MCP-inheritance blast (--mcp-config defaults to os.DevNull = /dev/null on Unix, NUL on Windows; override via REGATTA_SPAWNER_MCP_CONFIG).
-func defaultClaudeArgs() []string {
+// defaultClaudeArgs are the headless flags the orchestrator stamps onto every claude CLI spawn. #1085 closes the TUI-mode silence (--print + stream-json + verbose); #1116 closes the boot-time MCP rejection — when REGATTA_SPAWNER_MCP_CONFIG is unset, the spawner mints a tempfile containing `{"mcpServers":{}}` and returns a cleanup func that removes it on serve shutdown. When the env var is set, the operator owns the path; cleanup is a no-op.
+func defaultClaudeArgs() ([]string, func(), error) {
 	mcp := os.Getenv(envSpawnerMCPConfig)
+	cleanup := func() {}
 	if mcp == "" {
-		mcp = os.DevNull
+		f, err := os.CreateTemp("", "regatta-mcp-*.json")
+		if err != nil {
+			return nil, cleanup, fmt.Errorf("mcp config tempfile: %w", err)
+		}
+		if _, err := f.WriteString(mcpEmptyConfigJSON); err != nil {
+			_ = f.Close()
+			_ = os.Remove(f.Name())
+			return nil, cleanup, fmt.Errorf("write mcp config tempfile: %w", err)
+		}
+		if err := f.Close(); err != nil {
+			_ = os.Remove(f.Name())
+			return nil, cleanup, fmt.Errorf("close mcp config tempfile: %w", err)
+		}
+		mcp = f.Name()
+		owned := mcp
+		cleanup = func() { _ = os.Remove(owned) } //nolint:gosec // owned is os.CreateTemp() name, not user input.
 	}
-	return []string{"--print", claudeFlagStreamJSON, "--verbose", "--mcp-config=" + mcp}
+	return []string{"--print", claudeFlagStreamJSON, "--verbose", "--mcp-config=" + mcp}, cleanup, nil
 }
 
 // spawnerSet bundles the three handles a serve invocation needs to
 // wire the Spawner + Reaper. Only the claude backend populates
 // Killer + Worktrees; the stub leaves them nil so runServe knows to
-// skip the Reaper.
+// skip the Reaper. Cleanup releases any spawner-owned resources
+// (currently the #1116 MCP-config tempfile) and is always safe to
+// call — nil-safe and no-op when there is nothing to release.
 type spawnerSet struct {
 	Spawner   spawner.Spawner
 	Killer    reaper.ChildKiller
 	Worktrees *spawner.WorktreeManager
+	Cleanup   func()
 }
 
 // buildSpawner returns the spawnerSet selected by the -spawner flag.
@@ -51,16 +73,20 @@ type spawnerSet struct {
 func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger, db *state.DB, costKey []byte, costKeyID string) (spawnerSet, error) {
 	switch name {
 	case "", spawnerNameStub:
-		return spawnerSet{Spawner: spawner.New(spawner.Config{Logger: logger})}, nil
+		return spawnerSet{Spawner: spawner.New(spawner.Config{Logger: logger}), Cleanup: func() {}}, nil
 	case spawnerNameClaude:
 		wm, err := spawner.NewWorktreeManager(spawner.WorktreeManagerConfig{RepoRoot: repoRoot})
 		if err != nil {
 			return spawnerSet{}, fmt.Errorf("worktree manager: %w", err)
 		}
+		args, cleanup, err := defaultClaudeArgs()
+		if err != nil {
+			return spawnerSet{}, fmt.Errorf("claude args: %w", err)
+		}
 		cfg := spawner.ClaudeSpawnerConfig{
 			Command: claudeBin,
 			BaseRef: baseRef,
-			Args:    defaultClaudeArgs(),
+			Args:    args,
 		}
 		if db != nil && len(costKey) > 0 {
 			cfg.OnResultEventFor = spend.SpawnerCallback(db.SQL(),
@@ -69,9 +95,10 @@ func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger
 		}
 		cs, err := spawner.NewClaudeSpawner(wm, cfg)
 		if err != nil {
+			cleanup()
 			return spawnerSet{}, fmt.Errorf("claude spawner: %w", err)
 		}
-		return spawnerSet{Spawner: cs, Killer: cs, Worktrees: wm}, nil
+		return spawnerSet{Spawner: cs, Killer: cs, Worktrees: wm, Cleanup: cleanup}, nil
 	default:
 		return spawnerSet{}, fmt.Errorf("unknown spawner %q (want stub|claude)", name)
 	}

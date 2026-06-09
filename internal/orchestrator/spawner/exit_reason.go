@@ -15,6 +15,7 @@ const (
 	ExitReasonProviderRateLimited     = ExitReason("provider_rate_limited")
 	ExitReasonProviderInternal        = ExitReason("provider_internal_error")
 	ExitReasonToolDenied              = ExitReason("tool_denied")
+	ExitReasonMCPConfigInvalid        = ExitReason("mcp_config_invalid")
 )
 
 var classifySignatures = []struct {
@@ -38,6 +39,10 @@ var classifySignatures = []struct {
 	{ExitReasonToolDenied, [][]byte{
 		bytes.ToLower([]byte("tool execution failed: permission denied")),
 		bytes.ToLower([]byte("permission denied")),
+	}},
+	{ExitReasonMCPConfigInvalid, [][]byte{
+		bytes.ToLower([]byte("Invalid MCP configuration")),
+		bytes.ToLower([]byte("MCP config is not a valid JSON")),
 	}},
 }
 
