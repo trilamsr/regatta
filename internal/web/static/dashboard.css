@@ -129,6 +129,9 @@ body { font-feature-settings: "ss01", "cv11"; }
   color: var(--accent);
   animation: pill-pulse 1.5s ease-in-out infinite alternate;
 }
+@media (prefers-reduced-motion: reduce) {
+  .pill-running { animation: none; }
+}
 @keyframes pill-pulse {
   from { opacity: 1; }
   to   { opacity: 0.55; }
