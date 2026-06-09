@@ -1,8 +1,3 @@
-// events subcommand tree: read-only view over the substrate events
-// table. Mirrors the table+JSON pattern from approval list so an
-// operator inspecting agent.exited / merge.completed / cost.cap traffic
-// uses the same shape they already know. Closes #1078 c2 (deferred in
-// #1108).
 package main
 
 import (
@@ -24,7 +19,6 @@ const (
 	eventsDefaultLim = 200
 )
 
-// eventsTailDeps lifts io + clock + DSN so tests substitute deterministic fakes — mirrors approvalListDeps.
 type eventsTailDeps struct {
 	Stdout io.Writer
 	Stderr io.Writer
@@ -32,9 +26,6 @@ type eventsTailDeps struct {
 	DSN    string
 }
 
-// runEvents dispatches `events {tail}`. One verb today; follows the
-// approval / self-improve tree shape so adding `events purge` later is
-// adding one case.
 func runEvents(args []string) int {
 	if len(args) == 0 {
 		_, _ = fmt.Fprintln(os.Stderr, "regatta events: expected sub-subcommand (tail)")
@@ -64,7 +55,7 @@ func runEventsTailWith(deps eventsTailDeps, args []string) int {
 	agentFlag := fs.Int64("agent", 0, "Filter to events whose agent_id matches (0 = no filter)")
 	kindFlag := fs.String("kind", "", "Filter to events of this kind (empty = no filter)")
 	sinceFlag := fs.Duration("since", 24*time.Hour, "Only emit events whose created_at is within this window")
-	formatFlag := fs.String("format", "table", "Output format: table | json")
+	formatFlag := fs.String("format", formatTable, "Output format: table | json")
 	followFlag := fs.Bool("f", false, "Follow: poll for new events every 1s until SIGINT")
 	_ = fs.String("db", "regatta.db", "Path to sqlite state DB")
 	fs.Usage = func() {
@@ -73,7 +64,7 @@ func runEventsTailWith(deps eventsTailDeps, args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if *formatFlag != "table" && *formatFlag != logFormatJSON {
+	if *formatFlag != formatTable && *formatFlag != logFormatJSON {
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta events tail: --format must be table|json, got %q\n", *formatFlag)
 		return 2
 	}
@@ -111,11 +102,6 @@ func runEventsTailWith(deps eventsTailDeps, args []string) int {
 	return 0
 }
 
-// emitEventsPage fetches one page of events past sinceID, applies
-// agent/cutoff filters in memory (ListEventsByKindSince / ListEvents
-// don't expose those columns), and emits them in the chosen format.
-// Returns the highest ID observed so follow-mode can advance its
-// cursor.
 func emitEventsPage(stdout, stderr io.Writer, db *state.DB, ctx context.Context, kind string, agentID int64, cutoff time.Time, sinceID int64, format string, header bool) (int64, error) {
 	var rows []state.Event
 	var err error
@@ -162,9 +148,6 @@ func emitEventsPage(stdout, stderr io.Writer, db *state.DB, ctx context.Context,
 	return maxID, nil
 }
 
-// eventsRow is the JSON shape for `events tail --format=json`. Field
-// order matches table columns so operators reading either format land
-// on the same mental model.
 type eventsRow struct {
 	ID            int64  `json:"id"`
 	AgentID       *int64 `json:"agent_id"`

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func runEventsTailCLI(t *testing.T, dsn string, clock func() time.Time, args ...
 	return code, stdout.String(), stderr.String()
 }
 
-// TestEventsTail_TableEmpty asserts an empty events table prints the no-rows sentinel and exits 0.
+// TestEventsTail_TableEmpty asserts empty-table output (#1078).
 func TestEventsTail_TableEmpty(t *testing.T) {
 	_, dsn, t0 := newEventsHarness(t)
 	clock := func() time.Time { return t0 }
@@ -47,7 +48,7 @@ func TestEventsTail_TableEmpty(t *testing.T) {
 	}
 }
 
-// TestEventsTail_JSONFormat asserts --format=json emits a parseable rows array preserving ID + kind + payload.
+// TestEventsTail_JSONFormat asserts --format=json round-trips (#1078).
 func TestEventsTail_JSONFormat(t *testing.T) {
 	db, dsn, t0 := newEventsHarness(t)
 	clock := func() time.Time { return t0 }
@@ -84,7 +85,7 @@ func TestEventsTail_JSONFormat(t *testing.T) {
 	}
 }
 
-// TestEventsTail_UnknownFormat asserts an unknown --format value is rejected with exit 2.
+// TestEventsTail_UnknownFormat asserts bad --format exits 2 (#1078).
 func TestEventsTail_UnknownFormat(t *testing.T) {
 	_, dsn, t0 := newEventsHarness(t)
 	clock := func() time.Time { return t0 }
@@ -97,7 +98,7 @@ func TestEventsTail_UnknownFormat(t *testing.T) {
 	}
 }
 
-// TestEventsTail_NoSubcommand asserts `regatta events` with no verb exits 2 with a hint.
+// TestEventsTail_NoSubcommand asserts no-verb exit 2 (#1078).
 func TestEventsTail_NoSubcommand(t *testing.T) {
 	code := runEvents(nil)
 	if code != 2 {
@@ -105,7 +106,7 @@ func TestEventsTail_NoSubcommand(t *testing.T) {
 	}
 }
 
-// TestEventsTail_KindFilter asserts --kind routes through ListEventsByKindSince and excludes other kinds.
+// TestEventsTail_KindFilter asserts --kind filters by event kind (#1078).
 func TestEventsTail_KindFilter(t *testing.T) {
 	db, dsn, t0 := newEventsHarness(t)
 	clock := func() time.Time { return t0 }
@@ -135,4 +136,67 @@ func TestEventsTail_KindFilter(t *testing.T) {
 	if rows[0]["kind"] != "agent.exited" {
 		t.Fatalf("rows[0].kind=%v want agent.exited", rows[0]["kind"])
 	}
+}
+
+// TestEventsTail_AgentFilter asserts --agent N excludes other agents (#1078).
+func TestEventsTail_AgentFilter(t *testing.T) {
+	db, dsn, t0 := newEventsHarness(t)
+	clock := func() time.Time { return t0 }
+	ctx := context.Background()
+	a1, err := db.UpsertPending(ctx, "BUG-EVTS-A1", "server")
+	if err != nil {
+		t.Fatalf("UpsertPending a1: %v", err)
+	}
+	a2, err := db.UpsertPending(ctx, "BUG-EVTS-A2", "server")
+	if err != nil {
+		t.Fatalf("UpsertPending a2: %v", err)
+	}
+	if err := db.RecordEvent(ctx, a1.ID, "agent.exited", `{"who":1}`); err != nil {
+		t.Fatalf("RecordEvent a1: %v", err)
+	}
+	if err := db.RecordEvent(ctx, a2.ID, "agent.exited", `{"who":2}`); err != nil {
+		t.Fatalf("RecordEvent a2: %v", err)
+	}
+
+	code, stdout, stderr := runEventsTailCLI(t, dsn, clock, "--agent", fmtAgentID(a2.ID), "--format", "json")
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, stderr)
+	}
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &rows); err != nil {
+		t.Fatalf("Unmarshal: %v stdout=%q", err, stdout)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows=%d want 1: %v", len(rows), rows)
+	}
+	if got := rows[0]["agent_id"]; got == nil {
+		t.Fatalf("rows[0].agent_id=nil want %d", a2.ID)
+	}
+}
+
+// TestEventsTail_SinceCutoff asserts --since excludes events older than the window (#1078).
+func TestEventsTail_SinceCutoff(t *testing.T) {
+	db, dsn, t0 := newEventsHarness(t)
+	ctx := context.Background()
+	if err := db.RecordEvent(ctx, 0, "merge.completed", `{"old":true}`); err != nil {
+		t.Fatalf("RecordEvent: %v", err)
+	}
+	// Advance the clock past the --since window so the seeded row falls outside it.
+	future := t0.Add(48 * time.Hour)
+	clock := func() time.Time { return future }
+	code, stdout, stderr := runEventsTailCLI(t, dsn, clock, "--since", "1h", "--format", "json")
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, stderr)
+	}
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &rows); err != nil {
+		t.Fatalf("Unmarshal: %v stdout=%q", err, stdout)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("rows=%d want 0 (cutoff should exclude old row): %v", len(rows), rows)
+	}
+}
+
+func fmtAgentID(id int64) string {
+	return strconv.FormatInt(id, 10)
 }
