@@ -88,6 +88,11 @@ func baseFuncs() template.FuncMap {
 		"humanizeDuration": humanizeDuration,
 		"safeURL":          safeURL,
 		"csrfToken":        csrfTokenStub,
+		"statusClass":      statusClass,
+		"statusLabel":      statusLabel,
+		"eventVerb":        eventVerb,
+		"relTime":          relTimeFn(nil),
+		"sparkSVG":         sparkSVG,
 	}
 }
 

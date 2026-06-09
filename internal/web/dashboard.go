@@ -1,0 +1,483 @@
+package web
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"html/template"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/trilamsr/regatta/internal/cost/spend"
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
+)
+
+type dashboardSpendView struct {
+	Last24hMicros  int64
+	TodayMicros    int64
+	LifetimeMicros int64
+	Spark          []int64
+	Err            string
+}
+
+type dashboardAgentRow struct {
+	ID          int64
+	Title       string
+	WorkItemID  string
+	Lane        string
+	State       state.AgentState
+	PID         int
+	SessionID   string
+	PRSHA       string
+	Elapsed     string
+	SpendMicros int64
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+type dashboardAgentsView struct {
+	Rows []dashboardAgentRow
+}
+
+type dashboardWorkItemRow struct {
+	ID        string
+	Title     string
+	Lane      string
+	UpdatedAt time.Time
+}
+
+type dashboardBucket struct {
+	Label string
+	Count int
+	Top   []dashboardWorkItemRow
+}
+
+type dashboardWorkItemsView struct {
+	Buckets []dashboardBucket
+}
+
+type dashboardEventsView struct {
+	Rows []state.Event
+}
+
+type dashboardFlowNode struct {
+	Label string
+	Count int
+}
+
+type dashboardFlowView struct {
+	Nodes []dashboardFlowNode
+	Halt  int
+}
+
+type dashboardLayoutView struct {
+	Now time.Time
+}
+
+type dashboardWorkItemDetail struct {
+	state.WorkItem
+	Acceptance string
+}
+
+func registerDashboardRoutes(mux *http.ServeMux, deps Dependencies) {
+	mux.HandleFunc("/ui/panels/agents", func(w http.ResponseWriter, r *http.Request) {
+		serveDashboardPanel(w, r, deps, "_agents", loadAgentsView)
+	})
+	mux.HandleFunc("/ui/panels/work-items", func(w http.ResponseWriter, r *http.Request) {
+		serveDashboardPanel(w, r, deps, "_work_items", loadWorkItemsView)
+	})
+	mux.HandleFunc("/ui/panels/events", func(w http.ResponseWriter, r *http.Request) {
+		serveDashboardPanel(w, r, deps, "_events", loadEventsView)
+	})
+	mux.HandleFunc("/ui/panels/spend", func(w http.ResponseWriter, r *http.Request) {
+		serveDashboardPanel(w, r, deps, "_spend", loadSpendView)
+	})
+	mux.HandleFunc("/ui/panels/flow", func(w http.ResponseWriter, r *http.Request) {
+		serveDashboardPanel(w, r, deps, "_flow", loadFlowView)
+	})
+	mux.HandleFunc("/ui/drawer/agent/", func(w http.ResponseWriter, r *http.Request) {
+		serveAgentDrawer(w, r, deps)
+	})
+	mux.HandleFunc("/ui/drawer/work-item/", func(w http.ResponseWriter, r *http.Request) {
+		serveWorkItemDrawer(w, r, deps)
+	})
+	mux.HandleFunc("/ui/drawer/event/", func(w http.ResponseWriter, r *http.Request) {
+		serveEventDrawer(w, r, deps)
+	})
+}
+
+func serveDashboardPanel(w http.ResponseWriter, r *http.Request, deps Dependencies, name string, loader func(context.Context, Dependencies) any) {
+	w.Header().Set("Cache-Control", noStoreCacheControl)
+	if deps.Templates == nil || deps.DB == nil {
+		http.Error(w, "dashboard dependencies missing", http.StatusInternalServerError)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), dashboardPanelTimeoutSeconds*time.Second)
+	defer cancel()
+	data := loader(ctx, deps)
+	if err := deps.Templates.Render(w, name, data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func loadAgentsView(ctx context.Context, deps Dependencies) any {
+	rows, err := deps.DB.ListAgentsByState(ctx,
+		state.AgentPending, state.AgentSpawning, state.AgentRunning,
+		state.AgentPROpen, state.AgentGatesRunning, state.AgentAwaitingMerge,
+	)
+	if err != nil || len(rows) == 0 {
+		return dashboardAgentsView{}
+	}
+	ids := make([]string, 0, len(rows))
+	for _, a := range rows {
+		ids = append(ids, a.WorkItemID)
+	}
+	titles, _ := deps.DB.GetWorkItemsByIDs(ctx, ids)
+	out := make([]dashboardAgentRow, 0, len(rows))
+	for _, a := range rows {
+		title := a.WorkItemID
+		if t, ok := titles[a.WorkItemID]; ok && t != "" {
+			title = t
+		}
+		out = append(out, dashboardAgentRow{
+			ID:         a.ID,
+			Title:      title,
+			WorkItemID: a.WorkItemID,
+			Lane:       a.Lane,
+			State:      a.State,
+			PID:        a.PID,
+			SessionID:  a.SessionID,
+			PRSHA:      a.PRSHA,
+			Elapsed:    humanRelativeShort(deps.Clock(), a.CreatedAt),
+			CreatedAt:  a.CreatedAt,
+			UpdatedAt:  a.UpdatedAt,
+		})
+	}
+	return dashboardAgentsView{Rows: out}
+}
+
+func loadWorkItemsView(ctx context.Context, deps Dependencies) any {
+	statuses := []state.WorkItemStatus{
+		state.WorkStatusPlanned,
+		state.WorkStatusRunning,
+		state.WorkStatusPROpen,
+		state.WorkStatusMerged,
+	}
+	labels := []string{"Planned", "Running", "PR open", "Merged"}
+	summary, err := deps.DB.SummarizeWorkItemStatuses(ctx, statuses, dashboardWorkItemSampleCount)
+	if err != nil {
+		summary = map[state.WorkItemStatus]state.WorkItemStatusSummary{}
+	}
+	buckets := make([]dashboardBucket, len(statuses))
+	for i, s := range statuses {
+		sum := summary[s]
+		top := make([]dashboardWorkItemRow, 0, len(sum.Samples))
+		for _, w := range sum.Samples {
+			top = append(top, dashboardWorkItemRow{
+				ID: w.ID, Title: w.Title, Lane: w.Lane, UpdatedAt: w.UpdatedAt,
+			})
+		}
+		buckets[i] = dashboardBucket{Label: labels[i], Count: sum.Count, Top: top}
+	}
+	return dashboardWorkItemsView{Buckets: buckets}
+}
+
+func loadFlowView(ctx context.Context, deps Dependencies) any {
+	statuses := []state.WorkItemStatus{
+		state.WorkStatusPlanned,
+		state.WorkStatusRunning,
+		state.WorkStatusPROpen,
+		state.WorkStatusMerged,
+		state.WorkStatusBlocked,
+	}
+	labels := []string{"backlog", "spawning", "in PR", "merged", "blocked"}
+	summary, _ := deps.DB.SummarizeWorkItemStatuses(ctx, statuses, 0)
+	out := make([]dashboardFlowNode, 0, len(statuses))
+	halt := 0
+	for i, s := range statuses {
+		n := summary[s].Count
+		out = append(out, dashboardFlowNode{Label: labels[i], Count: n})
+		if s == state.WorkStatusRunning {
+			halt = n
+		}
+	}
+	return dashboardFlowView{Nodes: out, Halt: halt}
+}
+
+func loadEventsView(ctx context.Context, deps Dependencies) any {
+	rows, err := deps.DB.ListEvents(ctx, dashboardEventsTailLimit)
+	if err != nil {
+		return dashboardEventsView{}
+	}
+	return dashboardEventsView{Rows: rows}
+}
+
+func loadSpendView(ctx context.Context, deps Dependencies) any {
+	view := dashboardSpendView{}
+	if deps.DB == nil {
+		return view
+	}
+	reader := spend.NewReader(deps.DB.SQL(), deps.Clock)
+	now := deps.Clock()
+	last24, err := reader.RecordedUSDForWindow(ctx, "default", now.Add(-dashboardLast24hWindow*time.Hour), now)
+	if err != nil {
+		view.Err = err.Error()
+		return view
+	}
+	view.Last24hMicros = int64(last24)
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	today, err := reader.RecordedUSDForWindow(ctx, "default", todayStart, now)
+	if err != nil {
+		view.Err = err.Error()
+		return view
+	}
+	view.TodayMicros = int64(today)
+	lifetime, err := reader.RecordedUSDForWindow(ctx, "default", time.Unix(0, 0), now)
+	if err != nil {
+		view.Err = err.Error()
+		return view
+	}
+	view.LifetimeMicros = int64(lifetime)
+	view.Spark = buildSparkSeries(ctx, reader, now)
+	return view
+}
+
+// buildSparkSeries fires one RecordedUSDForWindow per histogram bucket because spend.Reader does not (yet) expose a batched window query. 12 buckets × 30s poll = 24 queries/min — each is a small SUM that hits the same composite index, well under sqlite's local-disk cap. A batched API + memo cache lands when spend.Reader gains a window-iterator surface; tracking issue is left to the spend pkg owner since the dashboard is read-side only.
+func buildSparkSeries(ctx context.Context, reader *spend.Reader, now time.Time) []int64 {
+	out := make([]int64, dashboardSparkBuckets)
+	step := dashboardLast24hWindow * time.Hour / dashboardSparkBuckets
+	for i := 0; i < dashboardSparkBuckets; i++ {
+		end := now.Add(time.Duration(-i) * step)
+		start := end.Add(-step)
+		v, err := reader.RecordedUSDForWindow(ctx, "default", start, end)
+		if err == nil {
+			out[dashboardSparkBuckets-1-i] = int64(v)
+		}
+	}
+	return out
+}
+
+func serveAgentDrawer(w http.ResponseWriter, r *http.Request, deps Dependencies) {
+	w.Header().Set("Cache-Control", noStoreCacheControl)
+	if deps.Templates == nil || deps.DB == nil {
+		http.NotFound(w, r)
+		return
+	}
+	idStr := strings.TrimPrefix(r.URL.Path, "/ui/drawer/agent/")
+	id, err := strconv.ParseInt(idStr, strconvBase10, strconvBitSize64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), dashboardPanelTimeoutSeconds*time.Second)
+	defer cancel()
+	aPtr, err := deps.DB.GetAgent(ctx, id)
+	if err != nil || aPtr == nil {
+		http.NotFound(w, r)
+		return
+	}
+	a := *aPtr
+	title := a.WorkItemID
+	if wi, err := deps.DB.GetWorkItem(ctx, a.WorkItemID); err == nil && wi.Title != "" {
+		title = wi.Title
+	}
+	view := dashboardAgentRow{
+		ID: a.ID, Title: title, WorkItemID: a.WorkItemID, Lane: a.Lane,
+		State: a.State, PID: a.PID, SessionID: a.SessionID, PRSHA: a.PRSHA,
+		CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
+	}
+	if err := deps.Templates.Render(w, "_drawer_agent", view); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func serveWorkItemDrawer(w http.ResponseWriter, r *http.Request, deps Dependencies) {
+	w.Header().Set("Cache-Control", noStoreCacheControl)
+	if deps.Templates == nil || deps.DB == nil {
+		http.NotFound(w, r)
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/ui/drawer/work-item/")
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), dashboardPanelTimeoutSeconds*time.Second)
+	defer cancel()
+	wi, err := deps.DB.GetWorkItem(ctx, id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	view := dashboardWorkItemDetail{WorkItem: wi, Acceptance: prettyJSON(wi.AcceptanceJSON)}
+	if err := deps.Templates.Render(w, "_drawer_workitem", view); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func serveEventDrawer(w http.ResponseWriter, r *http.Request, deps Dependencies) {
+	w.Header().Set("Cache-Control", noStoreCacheControl)
+	if deps.Templates == nil || deps.DB == nil {
+		http.NotFound(w, r)
+		return
+	}
+	idStr := strings.TrimPrefix(r.URL.Path, "/ui/drawer/event/")
+	id, err := strconv.ParseInt(idStr, strconvBase10, strconvBitSize64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), dashboardPanelTimeoutSeconds*time.Second)
+	defer cancel()
+	ev, err := deps.DB.GetEvent(ctx, id)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	ev.PayloadJSON = prettyJSON(ev.PayloadJSON)
+	if err := deps.Templates.Render(w, "_drawer_event", ev); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func prettyJSON(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, []byte(raw), "", "  "); err != nil {
+		return raw
+	}
+	return buf.String()
+}
+
+// humanRelativeShort returns a compact "5m" / "2h" / "1d" elapsed marker so the dense agents row stays under 4 chars per cell. Times within 60s read "<1m" so the operator does not see fractional minutes lying about precision.
+func humanRelativeShort(now, then time.Time) string {
+	d := now.Sub(then)
+	if d < time.Minute {
+		return "<1m"
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d/time.Minute))
+	}
+	if d < hoursPerDay*time.Hour {
+		return fmt.Sprintf("%dh", int(d/time.Hour))
+	}
+	return fmt.Sprintf("%dd", int(d/(hoursPerDay*time.Hour)))
+}
+
+// statusClass maps the agent state enum onto the .pill-* css classes the section uses for signal coloring. Centralised so a future state addition (e.g. agent_halt_provider_credit) lights up the css side without re-touching every template.
+func statusClass(s state.AgentState) string {
+	switch s {
+	case state.AgentRunning, state.AgentSpawning, state.AgentPending:
+		return "running"
+	case state.AgentPROpen:
+		return "pr-open"
+	case state.AgentGatesRunning, state.AgentAwaitingMerge:
+		return "gates"
+	case state.AgentDone:
+		return "done"
+	case state.AgentCrashed, state.AgentGatesFailed:
+		return "blocked"
+	default:
+		return "planned"
+	}
+}
+
+// statusLabel keeps the row scannable. Long substrate enum tokens (eg gates_running) read as small-caps single-word verbs (eg GATES) so the operator's eye lands on signal not detail.
+func statusLabel(s state.AgentState) string {
+	switch s {
+	case state.AgentRunning:
+		return "running"
+	case state.AgentSpawning:
+		return "spawn"
+	case state.AgentPending:
+		return "pending"
+	case state.AgentPROpen:
+		return "PR open"
+	case state.AgentGatesRunning:
+		return "gates"
+	case state.AgentAwaitingMerge:
+		return "waiting"
+	case state.AgentDone:
+		return "done"
+	case state.AgentCrashed:
+		return "crashed"
+	case state.AgentGatesFailed:
+		return "failed"
+	default:
+		return string(s)
+	}
+}
+
+// eventVerb turns the substrate's state-machine event tokens into one short operator-readable sentence so the recent-activity panel reads as narrative not log noise. Unknown kinds fall through to template.HTMLEscapeString(e.Kind) so a future event_kind addition stays XSS-safe; the hardcoded branches concatenate only numeric ids (%d-formatted) and static spans, never user-controlled text — keep that invariant by routing any new string field through HTMLEscapeString before splicing it into the returned HTML.
+//
+//nolint:gosec // see godoc above — every branch returns either static HTML, %d-formatted numeric ids, or HTMLEscapeString(kind)
+func eventVerb(e state.Event) template.HTML {
+	id := ""
+	if e.AgentID.Valid {
+		id = fmt.Sprintf(" <span class=\"strong\">#%d</span>", e.AgentID.Int64)
+	}
+	switch e.Kind {
+	case "agent.exited":
+		return template.HTML("agent" + id + " <span class=\"acc\">exited</span>")
+	case "spawn.started":
+		return template.HTML("agent" + id + " <span class=\"acc\">spawned</span>")
+	case "spawn.completed":
+		return template.HTML("agent" + id + " <span class=\"acc-2\">ready</span>")
+	case "spawn.failed":
+		return template.HTML("agent" + id + " <span class=\"acc\">spawn failed</span>")
+	case "tick.started":
+		return template.HTML("scheduler ticked")
+	case "tick.completed":
+		return template.HTML("scheduler tick completed")
+	case "agent_pr_opened":
+		return template.HTML("agent" + id + " <span class=\"acc-2\">opened PR</span>")
+	case "agent_pr_merged":
+		return template.HTML("agent" + id + " <span class=\"acc-2\">PR merged</span>")
+	default:
+		return template.HTML(template.HTMLEscapeString(e.Kind))
+	}
+}
+
+// relTime returns the same compact elapsed marker humanRelativeShort uses, but as a template func so the event log lines and work-item cards share one source of truth. Today + Now closures live at template-load time so test harnesses can pin the clock.
+func relTimeFn(clock func() time.Time) func(time.Time) string {
+	if clock == nil {
+		clock = time.Now
+	}
+	return func(t time.Time) string {
+		return humanRelativeShort(clock(), t)
+	}
+}
+
+// sparkSVG renders a 24h spend histogram as a tiny inline SVG so the spend panel carries a trend signal without a charting dep. Empty / zero series collapses to a flat baseline so the metric reads "—" visually instead of confusing the operator with a flat-line-at-zero overlay.
+//
+//nolint:gosec // returned HTML wraps fmt.Sprintf'd static SVG with %d/%.1f-formatted numeric coords — no caller-controlled string interpolation
+func sparkSVG(series []int64) template.HTML {
+	if len(series) == 0 {
+		return template.HTML(fmt.Sprintf(`<svg class="spark" width="%d" height="%d"></svg>`, dashboardSparkWidth, dashboardSparkHeight))
+	}
+	var maxv int64
+	for _, v := range series {
+		if v > maxv {
+			maxv = v
+		}
+	}
+	if maxv == 0 {
+		return template.HTML(fmt.Sprintf(`<svg class="spark" width="%d" height="%d"><line x1="0" y1="%d" x2="%d" y2="%d" stroke="#c8c3b6"/></svg>`, dashboardSparkWidth, dashboardSparkHeight, dashboardSparkBarMaxH, dashboardSparkWidth, dashboardSparkBarMaxH))
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, `<svg class="spark" width="%d" height="%d" viewBox="0 0 %d %d" preserveAspectRatio="none">`, dashboardSparkWidth, dashboardSparkHeight, dashboardSparkWidth, dashboardSparkHeight)
+	step := float64(dashboardSparkWidth) / float64(len(series))
+	for i, v := range series {
+		h := float64(v) / float64(maxv) * float64(dashboardSparkBarMaxH)
+		x := float64(i) * step
+		y := float64(dashboardSparkBaseline) - h
+		_, _ = fmt.Fprintf(&b, `<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="#c2410c"/>`, x, y, step-1, h)
+	}
+	b.WriteString(`</svg>`)
+	return template.HTML(b.String())
+}
