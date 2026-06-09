@@ -298,3 +298,60 @@ body { font-feature-settings: "ss01", "cv11"; }
   color: #94a3b8;
   text-align: center;
 }
+
+/* Responsive dashboard grid.
+   Operator runs the dashboard on a 13" MacBook (~1440px viewport after
+   chrome) and sometimes a 4K monitor. The fixed max-w-6xl + vertical
+   stack wasted screen on 4K and let panels overflow at narrow widths.
+   Breakpoints — single-column < 768px, 2-column 768–1280px, 3-column
+   ≥ 1280px. Width cap widens at the same breakpoints so 4K does not
+   leave a single column sitting in the centre of the screen. */
+.dash-main {
+  width: 100%;
+  max-width: 72rem; /* matches the old max-w-6xl on phones / portrait. */
+}
+@media (min-width: 768px) {
+  .dash-main { max-width: 80rem; }
+}
+@media (min-width: 1280px) {
+  .dash-main { max-width: 96rem; }
+}
+
+.dash-main > section {
+  margin-bottom: 3.5rem; /* preserves the prior space-y-14 rhythm on mobile. */
+}
+.dash-main > section:last-child { margin-bottom: 0; }
+
+@media (min-width: 768px) {
+  .dash-main {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2.5rem;
+  }
+  .dash-main > section { margin-bottom: 0; }
+}
+@media (min-width: 1280px) {
+  .dash-main {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Drawer is full-width on mobile so the detail pane is readable on a
+   phone; fixed-width on desktop preserves the slide-from-right pattern.
+   Transition honors prefers-reduced-motion (#1137 precedent). */
+.drawer {
+  transition: transform 180ms ease-out;
+}
+@media (max-width: 767px) {
+  .drawer {
+    width: 100%;
+    right: 0;
+    border-left: 0;
+  }
+}
+@media print {
+  .dash-main { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .drawer { transition: none; }
+}
