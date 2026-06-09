@@ -30,6 +30,7 @@ type Dependencies struct {
 	Keyring        approvaltoken.Keyring
 	Templates      *Templates
 	Clock          func() time.Time
+	BootedAt       time.Time
 	Config         Config
 	RouteRegistrar func(mux *http.ServeMux, deps Dependencies)
 }

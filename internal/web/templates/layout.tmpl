@@ -82,7 +82,20 @@
   <section>
     <div class="section-head">
       <div class="flex items-baseline gap-3">
-        <span class="num">05 / SPEND</span>
+        <span class="num">05 / DOCKER SOAK</span>
+        <span class="title">daemon health</span>
+      </div>
+      <span class="meta">last 60s</span>
+    </div>
+    <div id="docker-soak-panel" hx-get="/ui/panels/docker-soak" hx-trigger="load, every 2s" hx-swap="innerHTML">
+      <div class="panel p-6 text-sm text-slate-500">loading…</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <div class="flex items-baseline gap-3">
+        <span class="num">06 / SPEND</span>
         <span class="title">token cost</span>
       </div>
       <span class="meta">substrate · usd</span>

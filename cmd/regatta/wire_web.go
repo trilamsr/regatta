@@ -107,6 +107,7 @@ func newWebHandler(cfg listenerConfig) (http.Handler, error) {
 		Keyring:        cfg.Keyring,
 		Templates:      tmpls,
 		Clock:          cfg.Clock,
+		BootedAt:       cfg.Clock(),
 		Config:         web.Config{PublicHost: cfg.PublicHost},
 		RouteRegistrar: nil,
 	}), nil
