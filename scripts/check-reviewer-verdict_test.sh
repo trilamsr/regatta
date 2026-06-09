@@ -761,6 +761,130 @@ EOF
   rm -f "$body"
 }
 
+run_case_operator_opened_marker_bypasses_self_tag() {
+  # Closes #1089: operator-opened PRs (operator wrote impl after agent
+  # tool-denial / death) carry `<!-- operator-opened: <reason> -->` so
+  # the author-mismatch check above doesn't fail by definition. Still
+  # requires Reviewer-agent-id from the allowlist.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'BODY_EOF'
+## Summary
+
+Operator wrote the impl after agent #1 hit a force-push denial.
+
+internal/orchestrator/scheduler/scheduler.go
+internal/orchestrator/state/agents.go
+
+<!-- operator-opened: force-push-denied-on-agent-1 -->
+
+Reviewer-agent-id: a7e408d8466d8c67b
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FIX] thing
+```
+BODY_EOF
+  if "$GATE" --body-file "$body" --load-bearing --pr-author trilamsr >/dev/null 2>&1; then
+    pass "operator-opened marker bypasses self-tag check"
+  else
+    fail "operator-opened marker should bypass self-tag check"
+  fi
+  rm -f "$body"
+}
+
+run_case_operator_opened_marker_too_short_rejected() {
+  # The operator-opened reason MUST be ≥4 chars so a future audit can
+  # tell why the marker fired. <4 char or empty reason falls through to
+  # the self-tag mismatch check.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'BODY_EOF'
+## Summary
+
+Operator impl.
+
+internal/orchestrator/scheduler/scheduler.go
+
+<!-- operator-opened: x -->
+
+Reviewer-agent-id: trilamsr
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FIX] thing
+```
+BODY_EOF
+  if "$GATE" --body-file "$body" --load-bearing --pr-author trilamsr 2>&1 | grep -qE "self-tagged|operator-opened"; then
+    pass "operator-opened with <4 char reason rejected"
+  else
+    fail "operator-opened with <4 char reason should be rejected"
+  fi
+  rm -f "$body"
+}
+
+run_case_operator_opened_does_not_bypass_allowlist() {
+  # Closes the reviewer-a0dc08561c8f24bbf coverage gap: the
+  # operator-opened marker MUST NOT bypass the allowlist. A
+  # self-tagged Reviewer-agent-id (e.g. the operator's GH login or
+  # a freeform string like "self-tagged-defer") should fail even
+  # with a valid marker, because the marker is positioned AFTER the
+  # allowlist check in verdict.sh.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'BODY_EOF'
+## Summary
+
+Operator wrote impl, BUT used their own GH login as Reviewer-agent-id.
+
+internal/orchestrator/scheduler/scheduler.go
+
+<!-- operator-opened: force-push-denied-on-agent-1 -->
+
+Reviewer-agent-id: trilamsr
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FIX] thing
+```
+BODY_EOF
+  if "$GATE" --body-file "$body" --load-bearing --pr-author trilamsr 2>&1 | grep -qE "allowlist|self-tagged"; then
+    pass "operator-opened still rejects non-allowlist Reviewer-agent-id"
+  else
+    fail "operator-opened MUST NOT bypass allowlist check"
+  fi
+  rm -f "$body"
+}
+
+run_case_operator_opened_still_requires_reviewer_id() {
+  # Even with a valid operator-opened marker, the load-bearing PR MUST
+  # carry a Reviewer-agent-id token — the missing-token check fires
+  # before the marker check.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'BODY_EOF'
+## Summary
+
+Operator wrote impl.
+
+internal/orchestrator/scheduler/scheduler.go
+
+<!-- operator-opened: agent-3-died-mid-cycle -->
+
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FIX] thing
+```
+BODY_EOF
+  if "$GATE" --body-file "$body" --load-bearing --pr-author trilamsr 2>&1 | grep -qE "Reviewer-agent-id"; then
+    pass "operator-opened still requires Reviewer-agent-id"
+  else
+    fail "operator-opened MUST still require Reviewer-agent-id"
+  fi
+  rm -f "$body"
+}
+
 run_case_load_bearing_missing_token
 run_case_load_bearing_approve_passes
 run_case_load_bearing_approve_without_agent_id_fails
@@ -788,6 +912,10 @@ run_case_no_author_flag_still_enforces_allowlist
 run_case_automerge_with_agent_id_on_load_bearing_fails
 run_case_automerge_without_agent_id_uses_normal_path
 run_case_automerge_on_non_load_bearing_passes
+run_case_operator_opened_marker_bypasses_self_tag
+run_case_operator_opened_marker_too_short_rejected
+run_case_operator_opened_still_requires_reviewer_id
+run_case_operator_opened_does_not_bypass_allowlist
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"
