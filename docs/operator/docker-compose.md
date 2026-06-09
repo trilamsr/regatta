@@ -42,11 +42,16 @@ check gate-keeps `regatta` and `grafana`).
 
 The compose runs `regatta serve --ui=${REGATTA_UI:-true}`. The UI is on
 by default; flip it off for a headless dispatch loop with
-`REGATTA_UI=false` in `.env`. When `--ui=true` the daemon refuses to
-boot without `REGATTA_HMAC_KEY` (`cmd/regatta/wire_web.go::preflightUIBoot`);
-when `--ui=false` the key is optional. The operator UI lands on
+`REGATTA_UI=false` in `.env`. The daemon refuses to boot if `--ui=true`
+and `REGATTA_HMAC_KEY` is unset (`cmd/regatta/wire_web.go::preflightUIBoot`);
+`--ui=false` makes the key optional. The operator UI lands on
 `http://localhost:8080`; RBAC seam lives under
 [`rbac-onboarding.md`](rbac-onboarding.md).
+
+Note: compose evaluates `${REGATTA_UI:-true}` against shell env first
+then `.env`. If `REGATTA_UI` is exported in the host shell from a
+prior session it will shadow the `.env` value silently — `unset
+REGATTA_UI` before `docker compose up` if the default is what you want.
 
 ## Verify
 

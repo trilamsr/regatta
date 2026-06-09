@@ -5,13 +5,21 @@ import (
 	"testing"
 )
 
-// TestPreflightUIBoot_HeadlessIgnoresMissingHMAC: --ui=false (headless dispatch) boots without REGATTA_HMAC_KEY; the docker-compose default REGATTA_UI=false path must not regress (#1097 c1).
+// TestPreflightUIBoot_HeadlessIgnoresMissingHMAC: --ui=false (headless dispatch) returns nil regardless of REGATTA_HMAC_KEY state; covers the docker-compose REGATTA_UI=false path (#1097 c1).
 func TestPreflightUIBoot_HeadlessIgnoresMissingHMAC(t *testing.T) {
+	if err := preflightUIBoot(false); err != nil {
+		t.Fatalf("preflightUIBoot(false) must boot regardless of HMAC, got err=%v", err)
+	}
+}
+
+// TestPreflightUIBoot_TreatsEmptyAndUnsetAlike: REGATTA_HMAC_KEY="" (compose-interpolation result when host env is unset) reaches the os.Getenv != "" check the same way an unset var does; this pins the contract so a future LookupEnv refactor cannot silently regress (#1097 c5).
+func TestPreflightUIBoot_TreatsEmptyAndUnsetAlike(t *testing.T) {
 	t.Setenv("REGATTA_HMAC_KEY", "")
 	t.Setenv("REGATTA_HMAC_KEY_ENV", "")
 
-	if err := preflightUIBoot(false); err != nil {
-		t.Fatalf("preflightUIBoot(false) with missing HMAC must boot, got err=%v", err)
+	err := preflightUIBoot(true)
+	if err == nil {
+		t.Fatalf("preflightUIBoot(true) with REGATTA_HMAC_KEY=\"\" must refuse to boot")
 	}
 }
 
