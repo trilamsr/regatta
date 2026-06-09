@@ -33,8 +33,8 @@ var classifySignatures = []struct {
 		bytes.ToLower([]byte("rate limit exceeded")),
 	}},
 	{ExitReasonAuthPreconditionFailed, [][]byte{
-		bytes.ToLower([]byte("Not logged in")),       // claude CLI prose form (#1166)
-		bytes.ToLower([]byte("authentication_failed")), // wrapper error type
+		bytes.ToLower([]byte("Not logged in · Please run /login")), // claude CLI prose form (full unique phrase to avoid false-positive on agent narration mentioning login; #1166)
+		bytes.ToLower([]byte("authentication_failed")),             // wrapper error type
 	}},
 	{ExitReasonProviderInternal, [][]byte{
 		bytes.ToLower([]byte("Internal server error")),

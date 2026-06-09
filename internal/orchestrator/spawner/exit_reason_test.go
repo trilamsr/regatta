@@ -111,6 +111,23 @@ func TestClassifyExitReason_AuthPreconditionFailed_AuthenticationFailed(t *testi
 	}
 }
 
+// TestClassifyExitReason_AuthPrecondition_NoFalsePositive pins #1166: the "Not logged in" signature must not bucket unrelated child output mentioning login (e.g. an agent that writes about a login UI in its narration). Required exit_code=0 + the phrase NOT in classifySignatures shape → must classify as Completed, not AuthPreconditionFailed.
+func TestClassifyExitReason_AuthPrecondition_NoFalsePositive(t *testing.T) {
+	cases := []string{
+		"The login form should accept a returning user",          // agent narration about UI work
+		"After login, the user is redirected to /dashboard",      // spec text from issue body
+		"BUG-1166: Not logged in handler should backoff",         // issue-title quote — bare "Not logged in" alone must not fire
+		"Please run /login soon",                                 // unrelated mention of /login token
+	}
+	for _, text := range cases {
+		t.Run(text, func(t *testing.T) {
+			if got := ClassifyExitReason([]byte(text), 0); got != ExitReasonCompleted {
+				t.Fatalf("exit_code=0 + non-auth narrative %q must not classify as auth-precondition; got %q", text, got)
+			}
+		})
+	}
+}
+
 // TestClassifyExitReason_No429FalsePositive: bare "429" used to be a signature; it appeared in unrelated bytes (timestamps, issue numbers) and false-positive-matched provider_rate_limited. Removed; test pins the regression so a future re-add forces a second look.
 func TestClassifyExitReason_No429FalsePositive(t *testing.T) {
 	got := ClassifyExitReason([]byte("BUG-1429: agent completed normally"), 0)
