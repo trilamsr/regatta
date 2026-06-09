@@ -84,6 +84,8 @@ The `work_items` table already carries `parent_program_id TEXT` per `git show or
 
 That column was sized for the program → feature relationship (`KindProgram`) and already has the `idx_work_items_parent` index. We reuse it: each phase becomes a row in `work_items` with `id = <parent_id>/<phase>` and `parent_program_id = <parent_id>`. The parent row itself carries `Kind = KindProgram` (existing enum, `git show origin/main:contracts/schemas/spec_adapter.go | sed -n '55,60p'`) and an empty `AcceptanceCriteria` after fan-out.
 
+**Impedance mismatch — `schemas.WorkItem` has no `ParentProgramID` field**: `git show origin/main:contracts/schemas/spec_adapter.go | grep -n ParentProgramID` returns empty. The schema contract is INTENTIONALLY parent-link-free; parent linkage lives only in the persistence layer (`internal/orchestrator/state/work_items.go::WorkItem` has the `ParentProgramID` column; the schema contract does not). The adapter is the bridge: `adaptersync.Syncer.Sync` projects each fan-out row through `state.UpsertWorkItem` directly, passing `ParentProgramID` as a sibling argument, NOT via the schema. The schema's job is "what the issue body said"; the state package's job is "how the orchestrator stitches it". The implementer MUST NOT add `ParentProgramID` to `schemas.WorkItem` — that would couple the contract surface to internal persistence and break the schema-vs-state separation that #1083 c4 explicitly preserves.
+
 No new migration. No new column. No new edge table. Per `feedback_default_simpler` and `feedback_deletion_default`, this is the smallest viable shape; the persistence struct in `git show origin/main:internal/orchestrator/state/work_items.go | sed -n '56,70p'` needs zero new fields.
 
 ### §2.3 Adapter projection
@@ -107,6 +109,8 @@ Adapter `ListReady` / `Get` fan out the projection: the parent `schemas.WorkItem
 - `Source = <parent.Source>` (unchanged — same issue, same SHA)
 
 `adaptersync.Syncer.Sync` then calls `state.UpsertWorkItem` once per child row plus once per parent. The parent row's `parent_program_id` is empty (it is the parent); the child rows carry `parent_program_id = <parent_id>`.
+
+**PR-title generation seam**: `internal/orchestrator/spawner/claude.go::defaultPromptBuilder` (lines 266-267 on `origin/main`) emits `req.WorkItemID` in the prompt prose but does NOT itself build the PR title; the claude child agent writes the title at `gh pr create` time per its own dispatch template. The implementer MUST extend the dispatch template (`docs/engineer/dispatch-templates/implementer.md`) with a §X "Phase-suffixed PR titles" rule: when `req.WorkItemID` contains `/`, the agent suffixes the PR title with ` — Phase <name>` (e.g. `[FEAT] BUG-832 — Phase research:`). The seam is the dispatch template, NOT the spawner code; the spawner stays role-agnostic. Reviewer flagged this as missing — added here.
 
 ### §2.4 Scheduler projection
 
@@ -133,11 +137,15 @@ PR titles get a phase suffix from the dispatch path:
 
 The phase names are not enum-pinned in the schema — `Phase.Name` is free-text bytes from the heading. The four-phase template is a convention the operator (or a roadmap-discovery brief) writes into the issue body; the schema is agnostic. This preserves `feedback_default_simpler`: no closed enum, no hypothetical-drift abstraction. If 80% of multi-phase issues converge on the four-phase template, codify later.
 
+**Phase-name character set is validated, not free-anything**: `parseIssueBody` enforces `Phase.Name` matches the regex `^[a-z0-9][a-z0-9_-]*$` (same shape as the existing `id_prefix` convention, e.g. `RESEARCH-DELTA-001`). Specifically: a phase name MUST start with a letter or digit, MAY contain lowercase letters, digits, underscore, or hyphen, MUST NOT contain `/` (the parent/child separator), MUST NOT contain whitespace, MUST NOT contain `:` (collides with markdown reference-link syntax), and MUST NOT be empty. Headings that violate produce a parser error (the work item fails to project, the operator sees `parse.invalid_phase_name` WARN with the offending heading echoed). The constraint protects the PR-title-suffix path (no shell-escaping needed), the `<parent>/<phase>` id grammar (no embedded slashes), and the substrate event payload (no JSON-key ambiguity).
+
 ### §2.6 Backwards compatibility + byte-equal pin
 
 - Single-phase issues (no `## Phase` heading) round-trip unchanged: `Phases` empty, top-level `AcceptanceCriteria` populated, scheduler dispatches one row per work item.
 - Pre-existing multi-phase issues (like #832 today) only get fanned out after the operator edits the body to add `## Phase <name>` headings. Until then they project as single-phase (one acceptance set, one dispatch).
-- Per the byte-equal-refactor-pin convention: the single-phase path is the byte-equal pre/post claim. The implementing PR MUST ship a regression-fixture test (table-driven `parseIssueBody` cases) covering ≥3 real single-phase issues from the existing test corpus (`internal/orchestrator/adapter/githubissues/parse_test.go`) and asserting the projection bytes are identical pre/post.
+- Per the byte-equal-refactor-pin convention: the single-phase path is the byte-equal pre/post claim. The implementing PR MUST ship a regression-fixture test (table-driven `parseIssueBody` cases) covering specifically these 3 real single-phase issues that are pinned in `internal/orchestrator/adapter/githubissues/parse_test.go` as of `origin/main` `f68d35e`: (a) the `TestParseIssueBody_AcceptanceCriteria_OneCheckbox` fixture, (b) the `TestParseIssueBody_AcceptanceCriteria_MultilineCheckboxes` fixture, and (c) the `TestParseIssueBody_NoAcceptanceCriteriaHeading` fixture. The test asserts `bytes.Equal(serialize(parse(body, preChange)), serialize(parse(body, postChange)))` for each. The PR body MUST include the full `go test -run ...` output showing pre/post outputs identical.
+
+**Note on JSON marshaling**: `Phases []Phase \`json:"phases,omitempty"\`` is `omitempty`, but `AcceptanceCriteria []Criterion` on `schemas.WorkItem` is currently `json:"acceptance_criteria"` (no omitempty per `contracts/schemas/spec_adapter.go` line 44). An empty `[]Criterion` marshals as `"acceptance_criteria": []` regardless. The byte-equal claim holds at the *parser-projection* level (the `Phases` field stays nil → omitted), but at the *full JSON document* level there is no change either, because the pre-change marshaling ALSO emitted `"acceptance_criteria": []` for issues with no checkboxes. The implementer's regression-fixture test must compare full marshaled JSON, not just the parsed-struct fields, to catch any silent ordering drift.
 
 ### §2.7 Why not new schema
 
