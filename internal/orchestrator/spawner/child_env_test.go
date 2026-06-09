@@ -99,7 +99,7 @@ func TestScrubChildEnv_DefaultPassesThrough(t *testing.T) {
 // TestScrubChildEnv_EmptyAndMalformed: bare key (no =) survives; nil/empty no-ops (#1099 c6).
 func TestScrubChildEnv_EmptyAndMalformed(t *testing.T) {
 	t.Setenv(envStripAPIKey, "1")
-	if out := scrubChildEnv(nil); out != nil && len(out) != 0 {
+	if out := scrubChildEnv(nil); len(out) != 0 {
 		t.Fatalf("nil parent should pass through, got %v", out)
 	}
 	in := []string{"BAREKEY", "=VALUEONLY", "PATH=/bin"}

@@ -10,6 +10,11 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
+const (
+	spawnerNameStub   = "stub"
+	spawnerNameClaude = "claude"
+)
+
 // spawnerSet bundles the three handles a serve invocation needs to
 // wire the Spawner + Reaper. Only the claude backend populates
 // Killer + Worktrees; the stub leaves them nil so runServe knows to
@@ -29,9 +34,9 @@ type spawnerSet struct {
 // logger will thread through ClaudeSpawnerConfig the same way.
 func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger, db *state.DB, costKey []byte, costKeyID string) (spawnerSet, error) {
 	switch name {
-	case "", "stub":
+	case "", spawnerNameStub:
 		return spawnerSet{Spawner: spawner.New(spawner.Config{Logger: logger})}, nil
-	case "claude":
+	case spawnerNameClaude:
 		wm, err := spawner.NewWorktreeManager(spawner.WorktreeManagerConfig{RepoRoot: repoRoot})
 		if err != nil {
 			return spawnerSet{}, fmt.Errorf("worktree manager: %w", err)

@@ -11,7 +11,7 @@ import (
 
 // warnIfStubWithGitHubIssues fires one operator-visible WARN when the orchestrator boots with the stub spawner but the configured spec adapter is github_issues. The docker quickstart hit this silently: stub agents emit spawn.completed with pid=-1 and PR watcher is disabled, so logs look healthy while nothing real dispatches (#1090).
 func warnIfStubWithGitHubIssues(spawnerName, repoRoot string, logger *slog.Logger) {
-	if spawnerName != "stub" {
+	if spawnerName != spawnerNameStub {
 		return
 	}
 	cfgPath := filepath.Join(repoRoot, "regatta.yaml")
