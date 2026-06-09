@@ -3,11 +3,14 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 )
+
+const gitdirPointerReadCap = 64 << 10
 
 var gitdirPointerRx = regexp.MustCompile(`(?m)^gitdir:\s+(.+)$`)
 
@@ -24,7 +27,12 @@ func checkGitdirReachable(repoRoot string) error {
 	if st.IsDir() {
 		return nil
 	}
-	data, err := os.ReadFile(gitPath)
+	f, err := os.Open(gitPath)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", gitPath, err)
+	}
+	defer func() { _ = f.Close() }()
+	data, err := io.ReadAll(io.LimitReader(f, gitdirPointerReadCap))
 	if err != nil {
 		return fmt.Errorf("read %s: %w", gitPath, err)
 	}

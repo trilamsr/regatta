@@ -163,6 +163,10 @@ func runServe(args []string) int {
 		logger.Printf("%v", err)
 		return 2
 	}
+	if err := checkGitdirReachable(f.RepoRoot); err != nil {
+		logger.Printf("repo preflight: %v", err)
+		return 2
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -180,11 +184,6 @@ func runServe(args []string) int {
 		return 2
 	}
 	applyDefaultLaneCap(&f, slogger)
-
-	if err := checkGitdirReachable(f.RepoRoot); err != nil {
-		logger.Printf("repo preflight: %v", err)
-		return 2
-	}
 
 	costKeyring, costKeyID := loadBriefKeyringWithActive()
 	costKey := costKeyring[costKeyID]

@@ -65,3 +65,21 @@ func TestCheckGitdirReachable_NonGitdirFilePasses(t *testing.T) {
 		t.Fatalf("non-gitdir .git file should pass: %v", err)
 	}
 }
+
+// TestCheckGitdirReachable_OversizeGitFilePasses: a .git pointer file larger than the read cap is truncated before regex match — the function does not exhaust memory on a maliciously large file (#1095 c6).
+func TestCheckGitdirReachable_OversizeGitFilePasses(t *testing.T) {
+	root := t.TempDir()
+	// Write 2× the read cap; no `gitdir:` token in the first 64 KiB so the
+	// regex misses and we pass through to "let git decide" — the point is
+	// just that ReadAll didn't try to load the whole file.
+	junk := make([]byte, gitdirPointerReadCap*2)
+	for i := range junk {
+		junk[i] = 'x'
+	}
+	if err := os.WriteFile(filepath.Join(root, ".git"), junk, 0o600); err != nil {
+		t.Fatalf("write oversize .git: %v", err)
+	}
+	if err := checkGitdirReachable(root); err != nil {
+		t.Fatalf("oversize .git should not error: %v", err)
+	}
+}
