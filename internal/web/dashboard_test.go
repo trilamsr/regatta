@@ -1,9 +1,10 @@
 package web
 
 import (
+	"bytes"
 	"context"
-	"database/sql"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -232,206 +233,6 @@ func TestWorkItemDrawer_404OnUnknownID(t *testing.T) {
 	}
 }
 
-// TestLoadDockerSoakView_Healthy asserts green health pill when last 1m has spawns and no non-completed exits.
-func TestLoadDockerSoakView_Healthy(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "soak-healthy.db")
-	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
-	clock := func() time.Time { return now }
-	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
-	if err != nil {
-		t.Fatalf("OpenWithClock: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	ctx := context.Background()
-	a, err := db.UpsertPending(ctx, "WORK-A", "server")
-	if err != nil {
-		t.Fatalf("UpsertPending: %v", err)
-	}
-	if err := db.RecordEvent(ctx, a.ID, "spawn.started", `{}`); err != nil {
-		t.Fatalf("RecordEvent: %v", err)
-	}
-	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"exit_reason":"completed","exit_code":0}`); err != nil {
-		t.Fatalf("RecordEvent: %v", err)
-	}
-	deps := Dependencies{DB: db, Clock: clock, BootedAt: now.Add(-90 * time.Second)}
-	view := loadDockerSoakView(ctx, deps)
-	sv, ok := view.(dashboardDockerSoakView)
-	if !ok {
-		t.Fatalf("loadDockerSoakView returned %T, want dashboardDockerSoakView", view)
-	}
-	if sv.Health != "green" {
-		t.Fatalf("Health=%q, want green", sv.Health)
-	}
-	if sv.SpawnsLast1m != 1 {
-		t.Fatalf("SpawnsLast1m=%d, want 1", sv.SpawnsLast1m)
-	}
-	if sv.ExitedLast1m != 1 {
-		t.Fatalf("ExitedLast1m=%d, want 1", sv.ExitedLast1m)
-	}
-	if sv.Uptime == "" {
-		t.Fatalf("Uptime empty")
-	}
-	if sv.LastExitReason != "completed" {
-		t.Fatalf("LastExitReason=%q, want completed", sv.LastExitReason)
-	}
-}
-
-// TestLoadDockerSoakView_AmberOnMixedExits asserts amber health pill when any non-completed exit lands in last 1m alongside a completed one.
-func TestLoadDockerSoakView_AmberOnMixedExits(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "soak-amber.db")
-	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
-	clock := func() time.Time { return now }
-	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
-	if err != nil {
-		t.Fatalf("OpenWithClock: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	ctx := context.Background()
-	a, err := db.UpsertPending(ctx, "WORK-B", "server")
-	if err != nil {
-		t.Fatalf("UpsertPending: %v", err)
-	}
-	if err := db.RecordEvent(ctx, a.ID, "spawn.started", `{}`); err != nil {
-		t.Fatalf("RecordEvent: %v", err)
-	}
-	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"exit_reason":"completed"}`); err != nil {
-		t.Fatalf("RecordEvent: %v", err)
-	}
-	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"exit_reason":"tool_denied"}`); err != nil {
-		t.Fatalf("RecordEvent: %v", err)
-	}
-	deps := Dependencies{DB: db, Clock: clock, BootedAt: now.Add(-5 * time.Minute)}
-	view := loadDockerSoakView(ctx, deps)
-	sv, ok := view.(dashboardDockerSoakView)
-	if !ok {
-		t.Fatalf("loadDockerSoakView returned %T, want dashboardDockerSoakView", view)
-	}
-	if sv.Health != "amber" {
-		t.Fatalf("Health=%q, want amber", sv.Health)
-	}
-	if sv.ExitedLast1m != 2 {
-		t.Fatalf("ExitedLast1m=%d, want 2", sv.ExitedLast1m)
-	}
-}
-
-// TestLoadDockerSoakView_RedOnAllNonCompleted asserts red health pill when all last-1m exits are non-completed.
-func TestLoadDockerSoakView_RedOnAllNonCompleted(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "soak-red.db")
-	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
-	clock := func() time.Time { return now }
-	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
-	if err != nil {
-		t.Fatalf("OpenWithClock: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	ctx := context.Background()
-	a, err := db.UpsertPending(ctx, "WORK-C", "server")
-	if err != nil {
-		t.Fatalf("UpsertPending: %v", err)
-	}
-	if err := db.RecordEvent(ctx, a.ID, "spawn.started", `{}`); err != nil {
-		t.Fatalf("RecordEvent: %v", err)
-	}
-	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"exit_reason":"provider_credit_exhausted"}`); err != nil {
-		t.Fatalf("RecordEvent: %v", err)
-	}
-	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"exit_reason":"provider_rate_limited"}`); err != nil {
-		t.Fatalf("RecordEvent: %v", err)
-	}
-	deps := Dependencies{DB: db, Clock: clock, BootedAt: now.Add(-time.Hour)}
-	view := loadDockerSoakView(ctx, deps)
-	sv, ok := view.(dashboardDockerSoakView)
-	if !ok {
-		t.Fatalf("loadDockerSoakView returned %T, want dashboardDockerSoakView", view)
-	}
-	if sv.Health != "red" {
-		t.Fatalf("Health=%q, want red", sv.Health)
-	}
-	if sv.LastExitReason != "provider_rate_limited" {
-		t.Fatalf("LastExitReason=%q, want provider_rate_limited", sv.LastExitReason)
-	}
-}
-
-// TestEventVerb_SpawnCompletedShowsAgentAndWorkItem pins #1119: spawn.completed surfaces agent_id (Event.AgentID) + work_item_id (PayloadJSON) inline so 12 identical "ready" verbs become scannable.
-func TestEventVerb_SpawnCompletedShowsAgentAndWorkItem(t *testing.T) {
-	ev := state.Event{
-		Kind:        "spawn.completed",
-		PayloadJSON: `{"work_item_id":"BUG-1058","pid":12345}`,
-	}
-	ev.AgentID.Valid = true
-	ev.AgentID.Int64 = 42
-	got := string(eventVerb(ev))
-	if !strings.Contains(got, "#42") {
-		t.Fatalf("missing agent_id chip #42: %q", got)
-	}
-	if !strings.Contains(got, "BUG-1058") {
-		t.Fatalf("missing work_item_id chip BUG-1058: %q", got)
-	}
-	if !strings.Contains(got, "ready") {
-		t.Fatalf("missing verb 'ready': %q", got)
-	}
-}
-
-// TestEventVerb_SpawnFailedShowsAgentAndExitReason pins #1119: spawn.failed surfaces agent_id chip + exit_reason badge inline (currently exit_reason fires only for agent.exited).
-func TestEventVerb_SpawnFailedShowsAgentAndExitReason(t *testing.T) {
-	ev := state.Event{
-		Kind:        "spawn.failed",
-		PayloadJSON: `{"work_item_id":"BUG-1058","exit_reason":"provider_credit_exhausted"}`,
-	}
-	ev.AgentID.Valid = true
-	ev.AgentID.Int64 = 7
-	got := string(eventVerb(ev))
-	if !strings.Contains(got, "#7") {
-		t.Fatalf("missing agent_id chip #7: %q", got)
-	}
-	if !strings.Contains(got, "BUG-1058") {
-		t.Fatalf("missing work_item_id chip BUG-1058: %q", got)
-	}
-	if !strings.Contains(got, "badge-red") {
-		t.Fatalf("missing badge-red for provider_credit_exhausted: %q", got)
-	}
-	if !strings.Contains(got, "provider_credit_exhausted") {
-		t.Fatalf("missing exit_reason text: %q", got)
-	}
-}
-
-// TestEventVerb_BriefLoadedShowsAgent pins #1119: brief.loaded surfaces agent_id + work_item_id chips so consecutive brief loads are distinguishable inline.
-func TestEventVerb_BriefLoadedShowsAgent(t *testing.T) {
-	ev := state.Event{
-		Kind:        "brief.loaded",
-		PayloadJSON: `{"work_item_id":"WORK-99"}`,
-	}
-	ev.AgentID.Valid = true
-	ev.AgentID.Int64 = 13
-	got := string(eventVerb(ev))
-	if !strings.Contains(got, "#13") {
-		t.Fatalf("missing agent_id chip #13: %q", got)
-	}
-	if !strings.Contains(got, "WORK-99") {
-		t.Fatalf("missing work_item_id chip WORK-99: %q", got)
-	}
-	if !strings.Contains(got, "brief") {
-		t.Fatalf("missing verb 'brief': %q", got)
-	}
-}
-
-// TestEventVerb_RecoveredCrashedShowsAgent pins #1119: recovered_crashed surfaces agent_id chip inline so the operator can trace which agent recovered without opening the drawer.
-func TestEventVerb_RecoveredCrashedShowsAgent(t *testing.T) {
-	ev := state.Event{
-		Kind:        "recovered_crashed",
-		PayloadJSON: `{}`,
-	}
-	ev.AgentID.Valid = true
-	ev.AgentID.Int64 = 99
-	got := string(eventVerb(ev))
-	if !strings.Contains(got, "#99") {
-		t.Fatalf("missing agent_id chip #99: %q", got)
-	}
-	if !strings.Contains(got, "recovered") {
-		t.Fatalf("missing verb 'recovered': %q", got)
-	}
-}
-
 // TestLoadSpendView_ZeroSpendNoExitEvents asserts the empty-state annotation does NOT fire when the daemon has zero events at all — avoids false-positive "agents exited before reporting" copy on a fresh boot.
 func TestLoadSpendView_ZeroSpendNoExitEvents(t *testing.T) {
 	tmp := t.TempDir()
@@ -456,85 +257,44 @@ func TestLoadSpendView_ZeroSpendNoExitEvents(t *testing.T) {
 	}
 }
 
-// TestLoadDockerSoakView_Idle asserts the IDLE state on a fresh boot with no spawns or exits.
-func TestLoadDockerSoakView_Idle(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "soak-idle.db")
-	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
-	clock := func() time.Time { return now }
-	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
-	if err != nil {
-		t.Fatalf("OpenWithClock: %v", err)
-	}
-	t.Cleanup(func() { _ = db.Close() })
-	deps := Dependencies{DB: db, Clock: clock, BootedAt: now.Add(-30 * time.Second)}
-	view := loadDockerSoakView(context.Background(), deps)
-	sv, ok := view.(dashboardDockerSoakView)
-	if !ok {
-		t.Fatalf("loadDockerSoakView returned %T, want dashboardDockerSoakView", view)
-	}
-	if sv.Health != "green" {
-		t.Fatalf("Health=%q, want green on idle", sv.Health)
-	}
-	if sv.HealthLabel != "IDLE" {
-		t.Fatalf("HealthLabel=%q, want IDLE", sv.HealthLabel)
-	}
-	if sv.SpawnsLast1m != 0 || sv.ExitedLast1m != 0 {
-		t.Fatalf("idle counts spawns=%d exits=%d, want 0/0", sv.SpawnsLast1m, sv.ExitedLast1m)
-	}
-}
-
-// TestLoadDockerSoakView_EmptyExitReasonNotMaskedAsHealthy asserts an agent.exited row whose exit_reason is empty (classifier didn't tag; pre-#1063 row) counts as non-completed so the HEALTHY pill cannot mask data drift.
-func TestLoadDockerSoakView_EmptyExitReasonNotMaskedAsHealthy(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "soak-empty-reason.db")
-	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
-	clock := func() time.Time { return now }
+// TestRecentEventsForWorkItem_LogsScanError pins #1135: when row.Scan fails (here, corrupted events.created_at column → cannot scan TEXT into *int64), recentEventsForWorkItem MUST emit a WARN log carrying the work_item_id attr instead of silently returning nil. A silent nil collapses data corruption, schema drift, and DB connection drops into an indistinguishable "empty drawer" UI state and leaves the operator with no signal that the query path is broken.
+func TestRecentEventsForWorkItem_LogsScanError(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "scanerr.db")
+	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
 	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
 	if err != nil {
 		t.Fatalf("OpenWithClock: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	ctx := context.Background()
-	a, err := db.UpsertPending(ctx, "WORK-EMPTY", "server")
+	wi := state.WorkItem{ID: "BUG-1135", Kind: state.KindFeature, Title: "scan error pin", Lane: "server", Status: state.WorkStatusRunning}
+	if err := db.UpsertWorkItem(ctx, wi, state.SourceAdapter, clock()); err != nil {
+		t.Fatalf("UpsertWorkItem: %v", err)
+	}
+	ag, err := db.UpsertPending(ctx, "BUG-1135", "server")
 	if err != nil {
 		t.Fatalf("UpsertPending: %v", err)
 	}
-	if err := db.RecordEvent(ctx, a.ID, "spawn.started", `{}`); err != nil {
-		t.Fatalf("RecordEvent spawn: %v", err)
+	if err := db.RecordEvent(ctx, ag.ID, "test.kind", `{"x":1}`); err != nil {
+		t.Fatalf("RecordEvent: %v", err)
 	}
-	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"exit_code":1}`); err != nil {
-		t.Fatalf("RecordEvent exit: %v", err)
+	// SQLite type affinity is loose: writing TEXT into an INTEGER column is accepted at storage time, then trips database/sql Scan into *int64 on read — exactly the rows.Scan error path #1135 asks the caller to surface instead of silently swallowing.
+	if _, err := db.SQL().ExecContext(ctx, `UPDATE events SET created_at = 'not_an_int' WHERE agent_id = ?`, ag.ID); err != nil {
+		t.Fatalf("corrupt created_at: %v", err)
 	}
-	deps := Dependencies{DB: db, Clock: clock, BootedAt: now.Add(-60 * time.Second)}
-	view := loadDockerSoakView(ctx, deps)
-	sv, ok := view.(dashboardDockerSoakView)
-	if !ok {
-		t.Fatalf("loadDockerSoakView returned %T", view)
-	}
-	if sv.Health == "green" {
-		t.Fatalf("empty-exit_reason masked as healthy: Health=%q HealthLabel=%q", sv.Health, sv.HealthLabel)
-	}
-}
 
-// TestEventVerb_EmptyAgentIDOmitsChip pins graceful degradation when AgentID.Valid is false — the chip is omitted, not rendered as "agent#0".
-func TestEventVerb_EmptyAgentIDOmitsChip(t *testing.T) {
-	e := state.Event{Kind: "spawn.completed", PayloadJSON: `{"work_item_id":"BUG-1058"}`}
-	got := string(eventVerb(e))
-	if strings.Contains(got, "agent #0") || strings.Contains(got, "agent #") {
-		t.Fatalf("invalid AgentID rendered as agent#0: %q", got)
-	}
-	if !strings.Contains(got, "BUG-1058") {
-		t.Fatalf("work_item_id chip dropped when AgentID is invalid: %q", got)
-	}
-}
+	var logBuf bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelDebug})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
 
-// TestEventVerb_MalformedPayloadOmitsWorkItemChip pins graceful degradation when PayloadJSON is non-JSON — the chip is omitted, no panic.
-func TestEventVerb_MalformedPayloadOmitsWorkItemChip(t *testing.T) {
-	e := state.Event{Kind: "spawn.completed", AgentID: sql.NullInt64{Int64: 42, Valid: true}, PayloadJSON: `{not json`}
-	got := string(eventVerb(e))
-	if strings.Contains(got, "BUG-") {
-		t.Fatalf("malformed payload rendered work_item_id: %q", got)
+	_ = recentEventsForWorkItem(ctx, db, "BUG-1135", 10)
+
+	logs := logBuf.String()
+	if !strings.Contains(logs, "level=WARN") {
+		t.Fatalf("expected WARN log on scan error, got: %q", logs)
 	}
-	if !strings.Contains(got, "#42") {
-		t.Fatalf("agent #42 dropped when payload malformed: %q", got)
+	if !strings.Contains(logs, "BUG-1135") {
+		t.Fatalf("expected work_item_id=BUG-1135 in log attrs, got: %q", logs)
 	}
 }

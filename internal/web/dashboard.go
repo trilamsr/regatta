@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -493,7 +494,7 @@ func workItemStatusLabel(s state.WorkItemStatus) string {
 	return string(s)
 }
 
-// recentEventsForWorkItem joins events to the work-item via the agent owning the row so the drawer can show recent activity without a new schema column. Returns nil on any query error so the drawer still renders.
+// recentEventsForWorkItem joins events to the work-item via the agent owning the row so the drawer can show recent activity without a new schema column. Query-level errors return nil so the drawer still renders; per-row scan errors log WARN with the work_item_id attr and skip the row so one corrupt row never collapses the whole list into a silent empty drawer (#1135).
 func recentEventsForWorkItem(ctx context.Context, db *state.DB, workItemID string, limit int) []state.Event {
 	if db == nil || workItemID == "" || limit <= 0 {
 		return nil
@@ -514,7 +515,10 @@ func recentEventsForWorkItem(ctx context.Context, db *state.DB, workItemID strin
 		var e state.Event
 		var created int64
 		if err := rows.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
-			return nil
+			slog.WarnContext(ctx, "dashboard.recent_events_scan_error",
+				"work_item_id", workItemID,
+				"err", err)
+			continue
 		}
 		e.CreatedAt = time.Unix(created, 0).UTC()
 		out = append(out, e)
