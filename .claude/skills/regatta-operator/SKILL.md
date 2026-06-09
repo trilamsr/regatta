@@ -408,6 +408,33 @@ docker compose --env-file "$ENV_FILE" logs --since=30s "$DOCKER_SERVICE" \
 
 If any step fails: bottleneck-resolution loop fires.
 
+## Operator-delegated merge
+
+Default per CLAUDE.md `feedback_no_implementer_automerge`: skill does NOT enable automerge, does NOT merge PRs. The operator owns the merge button. This holds when the human is sitting at the keyboard.
+
+BUT: in autonomous operation (operator said "loop" / "autonomous" / "keep going" / "merge when green") the human has explicitly delegated merge authority for THIS session. In that mode, after ALL conditions are met for a PR the skill itself opened:
+
+1. Independent adversarial reviewer returned `Reviewer-recommendation: APPROVE` (real subagent ID in PR body, NOT self-tagged — per `feedback_no_self_tagged_approve`). Reviewer prompt uses the three-lens prompt at `docs/engineer/dispatch-templates/reviewer.md` (defects + simplification + refactor), not defect-only.
+2. `gh pr view <N> --json state,mergeStateStatus,statusCheckRollup` shows `state=OPEN`, `mergeStateStatus=CLEAN` (not BLOCKED / DIRTY / UNSTABLE / UNKNOWN / HAS_HOOKS). Pick latest-by-`completedAt` per name; entries with `completedAt=null` are PENDING → wait, do not merge. Required: every name has ≥1 entry AND latest is `SUCCESS`.
+3. **Skill-opened PR detection.** Skill writes `Skill-session-id: <session>` into the PR body footer when opening AND prepends `feat/skill-` / `fix/skill-` / `chore/skill-` to the branch name. Merge gate requires BOTH (token match AND branch prefix); either alone fails. Operator-authored PRs lack both.
+
+Skill executes `gh pr merge <N> --squash --delete-branch`, logs the merge in `$BASELINE_FILE` with merging-skill-session ID so the green-clock counter advances, then runs the post-merge rebuild-and-observe cycle. The local branch (if present) is pruned via `git branch -D <branch>` after the remote delete; if any local worktree is still on the branch, switch it to `main` first OR skip the local-prune step + emit `[OPS]` finding "skill-branch leak: <name>".
+
+Hard refusals (operator delegation does NOT extend to):
+- `--admin` flag (overrides branch protection).
+- `--auto` flag (enables automerge per `feedback_no_implementer_automerge`; skill executes the actual merge, never schedules it).
+- `--merge` (non-squash commit) or `--rebase` (rewrites linear history) — skill is squash-only.
+- Force-merge through DIRTY / BLOCKED / UNSTABLE / HAS_HOOKS / UNKNOWN state.
+- Merging a PR the skill did NOT open (failed token+prefix detection above).
+- Force-push on a merge conflict — always REBASE locally, never overwrite remote.
+- Merging into `$TARGET_REPO`'s `main` when `$TARGET_REPO` != `$ORCH_SOURCE_REPO`. Target-side merges always require operator (no reliable in-skill mechanism to scope canary-fix vs broader change; safer-default until labels-as-marker land).
+
+Bottleneck-resolution loop fix PRs follow the same gate. Skill-opened PRs only; never operator-authored PRs.
+
+## Reviewer prompt shape
+
+Every reviewer subagent the skill dispatches uses the three-lens prompt at `docs/engineer/dispatch-templates/reviewer.md` (defects + simplification + refactor). Defect-only reviews are forbidden as default — they missed 134 LOC of redundancy on this skill's own development. Template is authoritative; this skill defers.
+
 ## Hand-off
 
 When ending a session (operator interrupt or natural stop): produce ONE summary block with:

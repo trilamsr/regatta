@@ -85,6 +85,29 @@ OUTPUT FORMAT
 NO SIGNATURES
 - Per `feedback_no_signatures`.
 
+## Three-lens prompt (mandatory)
+
+Defect-only reviews are forbidden as default — they reliably miss prose redundancy + structural drift that ship into long-lived files (per the 134 LOC of bloat caught only by a separate simplification audit on `.claude/skills/regatta-operator/SKILL.md` round 7+1). Every reviewer dispatch includes all three lenses unless explicitly opted out for a code-only diff.
+
+```
+Adversarial review of <diff>. Three lenses (in this order):
+(1) DEFECTS — bugs, races, edge cases, security. Standard hunt.
+(2) SIMPLIFICATION — same rule in ≥2 places, prose ↔ code dup,
+    defensive narration ("note that" / "important" / "to be clear"),
+    forward/back refs that signal wrong structure. Suggest canonical
+    home + delete.
+(3) REFACTOR — table↔list flips, example pruning, section merges,
+    enumeration collapses. Per cut, name LOC saved.
+
+Output: <file>:<line>: <severity>: <finding>. <fix>. <LOC-if-applicable>.
+End with verdict APPROVE | REVISE | BLOCK + total estimated LOC savings.
+
+Defects MUST be addressed pre-merge; simplification + refactor SHOULD be
+addressed pre-merge but acceptable as a follow-up PR if scope is large.
+```
+
+Skip lens (3) only when the diff is exclusively code-change (no markdown / docstring / spec / prompt template content). Even on code-only diffs, lens (1) + (2) remain mandatory.
+
 ## Per-dispatch payload
 - Target: `<TARGET>`
 - Spec: `<SPEC-PATH>`
@@ -105,3 +128,4 @@ NO SIGNATURES
 1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `CLAUDE.md` §CI gates "PR body hygiene" when posting review summary.
 2. **Comment-noise trip-traps** per #333 (regex tightened in #371): flag legitimate "Reviewer-Capital" prose in author diffs only if the regex still over-matches.
 3. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Confirm every PR body has a triple-fence ` ```release-notes ` block.
+
