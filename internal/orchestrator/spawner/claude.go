@@ -419,6 +419,7 @@ func (s *ClaudeSpawner) emitAgentExited(req Request, cmd *exec.Cmd, waitErr erro
 		string(obs.KeyWorkItemID), req.WorkItemID,
 		string(obs.KeyLane), req.Lane,
 		string(obs.KeyExitCode), exitCode,
+		string(obs.KeyExitReason), string(ClassifyExitReason(last, exitCode)),
 		string(obs.KeyDurationMs), s.cfg.Clock().Sub(start).Milliseconds(),
 		string(obs.KeyLastTextFingerprint), fp,
 	}
