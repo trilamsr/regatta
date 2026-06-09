@@ -38,12 +38,18 @@ journalctl -u regatta -n 1 --no-pager 2>/dev/null || \
 
 # Discover poll interval + parallel cap
 git grep -nE 'PollInterval|TickInterval|ParallelCap|MaxConcurrent' internal/ cmd/
+
+# Build method (docker vs go binary)
+ps -o command= -p <PID> | head -1                              # cmdline tells you
+docker ps --filter "ancestor=regatta" --format '{{.Names}}'    # if container
+ls Dockerfile docker-compose*.y*ml 2>/dev/null                 # if compose
+which regatta && go version -m "$(which regatta)" | head -5    # if go-installed binary
 ```
 
-State the four discovered values in the first narration line:
-`pre-flight: pid=<N> port=<P> db=<path> poll=<interval> cap=<N>`
+State the discovered values in the first narration line:
+`pre-flight: pid=<N> port=<P> db=<path> poll=<interval> cap=<N> build=<docker|go-install|systemd> kill=<signal+cmd>`
 
-If ANY value is unknown, state "unknown" — do NOT guess. Unknown poll-interval means you cannot distinguish lag from stuck (next section).
+If ANY of pid/port/db is unknown, refuse to proceed per containment rule 8. Unknown `poll` means you cannot distinguish lag from stuck. Unknown `build` means you cannot operate the tight loop below.
 
 ## Polling cadence (read this BEFORE diagnosing "stuck")
 
@@ -56,6 +62,66 @@ Regatta polls GitHub. It does NOT receive webhooks. This means:
 When you cannot find a `PollInterval` config or the value is unknown, treat all "is it stuck?" diagnoses as low-confidence and say so in narration.
 
 Tracking issues for polling-vs-webhook design improvements live under the `[CORE]` surface (see "Things this skill notes but does not fix" below).
+
+## Tight feedback loop (edit → rebuild → restart → canary → observe)
+
+The most common operator move during a session is: change a regatta source file (orchestrator logic / prompt template / gate script) and watch the next agent pick it up. The skill MUST keep this loop fast and safe. Default recipe:
+
+1. **Checkpoint state DB** before edit. Read-only snapshot — if the change breaks startup, you can compare events against the baseline.
+   ```bash
+   cp "$DB" "$DB.ckpt-$(date +%s)"
+   sqlite3 "$DB" 'pragma integrity_check' | head -3
+   ```
+2. **Edit in a worktree.** Never edit the source tree of the running binary's checkout — file changes can flush partial state on the next syscall and the running process holds the prior binary anyway.
+3. **Build verification.** Compile errors surface immediately; startup errors only surface after restart. Always run the compile check FIRST so you don't conflate them.
+   - `go-install` build: `go build ./cmd/regatta` (does NOT install) → on success `go install ./cmd/regatta`.
+   - `docker` build: `docker build -t regatta:dev .` then capture image SHA — comparing this SHA to the running container's image SHA tells you if the rebuild actually changed anything.
+   - `docker-compose` build: `docker compose build regatta` then `docker compose images regatta`.
+4. **Graceful restart by default.** Hard kill mid-write corrupts the state DB silently.
+
+   | Strategy | Command | When |
+   |---|---|---|
+   | Graceful (default) | `kill -TERM <PID>` then wait for exit; or `systemctl --user restart regatta`; or `docker compose restart regatta` | Always try first |
+   | Hard kill (last resort) | `kill -KILL <PID>` | Only if graceful does not exit within ~30s. Capture stack trace via `kill -QUIT <PID>` BEFORE the KILL so the hang is debuggable. |
+
+   After restart, re-run `sqlite3 "$DB" 'pragma integrity_check'`. Lock-orphan signature: `sqlite3` returns `database is locked` despite no other process — `lsof "$DB"` finds it.
+5. **Confirm the binary actually changed.** Restart picking up the old binary is the most common silent failure of this loop.
+   - `go-install`: `go version -m "$(which regatta)" | head -5` — compare `mod` line or `build` timestamps pre/post.
+   - `docker`: `docker inspect --format '{{.Image}}' <container>` — must match the SHA you built in step 3.
+6. **Wipe stale agent worktrees** before launching a canary. Old orchestrator logic may have left worktrees with stale prompt assumptions.
+   ```bash
+   git worktree list | awk '/agent-/ {print $1}' | xargs -I{} git worktree remove --force {} 2>/dev/null
+   rm -rf .claude/worktrees/agent-* 2>/dev/null
+   git worktree prune
+   ```
+7. **Replay a canary.** Re-trigger the same synthetic input you used before the edit. Two options:
+   - Re-open the same sandbox-repo issue that triggered the prior run: `gh issue reopen <N> -R "$TARGET_REPO"` then add a comment "canary-replay-<unix-ts>".
+   - File a fresh canary issue from a templated body that pins `canary: <reason> ts=<unix>` so subsequent diffs are mechanically correlatable.
+8. **Observe.** Tail logs through the restart — file-descriptor breaks on restart, so use `journalctl -fu regatta` or `docker compose logs -f regatta` (both reconnect across restarts) rather than `tail -F` on a file the process may rotate.
+
+### Sandbox target-repo reset (between iterations)
+
+DANGEROUS if `$TARGET_REPO` drifted. Re-read the value FIRST, refuse if it does not match the pre-flight value.
+
+```bash
+# Confirm target hasn't drifted
+test "$TARGET_REPO" = "$PREFLIGHT_TARGET" || { echo "TARGET drifted; abort"; exit 1; }
+
+# Close all OPEN PRs that came from regatta-spawned branches (regatta/agent-* head ref)
+gh pr list -R "$TARGET_REPO" --state open --json number,headRefName -L 50 \
+  | jq -r '.[] | select(.headRefName | startswith("regatta/agent-")) | .number' \
+  | xargs -I{} gh pr close {} -R "$TARGET_REPO" -d   # -d deletes the branch on close
+
+# Delete any leftover regatta/agent-* refs (paranoia after -d)
+gh api "repos/$TARGET_REPO/git/refs/heads/regatta" --jq '.[].ref' 2>/dev/null \
+  | xargs -I{} gh api -X DELETE "repos/$TARGET_REPO/git/{}"
+
+# Local agent worktrees (separate from target repo)
+git worktree list | awk '/agent-/ {print $1}' | xargs -I{} git worktree remove --force {} 2>/dev/null
+git worktree prune
+```
+
+NEVER use any deletion command without the `TARGET_REPO != PREFLIGHT_TARGET` guard. NEVER delete branches that don't match the `regatta/agent-*` prefix — operator-authored work on the sandbox repo is NOT in scope.
 
 ## Containment rules (READ FIRST)
 
@@ -108,6 +174,8 @@ Cheap-first. Stop the moment a channel goes silent when it should be chatty — 
 | Regatta logs | `journalctl -u regatta -f` if systemd; else `tail -F` discovered file; else attach to PID's fd/2 | State transitions, reaper events, prwatch warnings |
 | State DB | `sqlite3 "$DB" 'select kind,count(*) from events group by kind'` | Event-vocabulary drift, idempotency failures |
 | Heartbeat health | `gh pr view <N> --json mergeStateStatus,statusCheckRollup` | Pre-merge gate health per PR |
+| Binary staleness | `go version -m "$(which regatta)"` or `docker inspect --format '{{.Image}}' <container>` | Confirm a rebuild actually took effect |
+| State DB health | `sqlite3 "$DB" 'pragma integrity_check'` + `sqlite3 "$DB" "select max(ts) from events"` | Lock orphans, recent event freshness |
 
 Open PR sweep FIRST (cheapest, public, no infra). Escalate inward only when ambiguous.
 
