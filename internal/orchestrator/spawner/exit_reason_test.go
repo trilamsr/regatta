@@ -93,6 +93,22 @@ func TestClassifyExitReason_CaseInsensitive(t *testing.T) {
 	}
 }
 
+// TestClassifyExitReason_AuthPreconditionFailed_NotLoggedIn pins #1166: claude CLI emits "Not logged in · Please run /login" when the spawned child cannot reach subscription creds AND no ANTHROPIC_API_KEY was passed through. The scheduler must treat this as a precondition violation, NOT a transient retry (which loops forever; observed 104 spawns in 80s on first live activation of the regatta-operator skill).
+func TestClassifyExitReason_AuthPreconditionFailed_NotLoggedIn(t *testing.T) {
+	got := ClassifyExitReason([]byte("Not logged in · Please run /login"), 1)
+	if got != ExitReasonAuthPreconditionFailed {
+		t.Fatalf("not-logged-in signature → %q, want %q", got, ExitReasonAuthPreconditionFailed)
+	}
+}
+
+// TestClassifyExitReason_AuthPreconditionFailed_AuthenticationFailed pins #1166: the wrapper "authentication_failed" error type emitted as a side-channel must also classify as auth-precondition (not provider-internal).
+func TestClassifyExitReason_AuthPreconditionFailed_AuthenticationFailed(t *testing.T) {
+	got := ClassifyExitReason([]byte(`{"error":"authentication_failed"}`), 1)
+	if got != ExitReasonAuthPreconditionFailed {
+		t.Fatalf("authentication_failed signature → %q, want %q", got, ExitReasonAuthPreconditionFailed)
+	}
+}
+
 // TestClassifyExitReason_No429FalsePositive: bare "429" used to be a signature; it appeared in unrelated bytes (timestamps, issue numbers) and false-positive-matched provider_rate_limited. Removed; test pins the regression so a future re-add forces a second look.
 func TestClassifyExitReason_No429FalsePositive(t *testing.T) {
 	got := ClassifyExitReason([]byte("BUG-1429: agent completed normally"), 0)
