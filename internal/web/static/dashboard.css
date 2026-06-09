@@ -254,6 +254,18 @@ body { font-feature-settings: "ss01", "cv11"; }
 .badge-yellow { color: var(--accent); }
 .badge-gray { color: var(--dim); }
 
+/* Inline work_item_id chip — separates the id from the verb so the operator can scan agent / work-item linkage at a glance (#1119). */
+.event-line .verb .chip-wi {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--accent-2);
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  padding: 0.02rem 0.32rem;
+  margin-left: 0.25rem;
+  vertical-align: baseline;
+}
+
 /* Big number cards (spend). */
 .metric {
   border: 1px solid var(--rule);
