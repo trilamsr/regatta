@@ -53,6 +53,40 @@ then `.env`. If `REGATTA_UI` is exported in the host shell from a
 prior session it will shadow the `.env` value silently — `unset
 REGATTA_UI` before `docker compose up` if the default is what you want.
 
+### Spawner billing mode (subscription vs pay-as-you-go)
+
+The compose default `REGATTA_SPAWNER_STRIP_API_KEY=1` strips the parent
+`ANTHROPIC_API_KEY` from spawned `claude` CLI children so they
+authenticate via the operator's subscription credentials at `~/.claude`.
+Pay-as-you-go operators set `REGATTA_SPAWNER_STRIP_API_KEY=0` in `.env`
+to pass the parent token through.
+
+The subscription path requires the operator to expose `~/.claude` to
+the container via a `docker-compose.override.yml` (gitignored). Example:
+
+```yaml
+# docker-compose.override.yml (operator-supplied, not in tree)
+services:
+  regatta:
+    volumes:
+      - ${HOST_CLAUDE_DIR:-${HOME}/.claude}:/home/nonroot/.claude:ro
+```
+
+Override is auto-merged by `docker compose` at boot. The mount is not
+baked into the main compose file because (a) the host directory mode is
+typically `0700` owned by the operator uid (501 macOS / 1000 Linux)
+while the distroless container runs uid 65532, so Linux native hosts
+hit `EACCES` without an explicit `--user` override or `chmod`, and (b)
+`~/.claude` is the operator's full Claude Code session dir (memory,
+plans, file-history), not just credentials — exposing the whole tree
+by default is broader than necessary. The per-operator override lets
+each host pick the right subset and mount mode.
+
+Without an override AND without `REGATTA_SPAWNER_STRIP_API_KEY=0`,
+spawned children emit `Not logged in · Please run /login` and exit
+with `exit_reason=auth_precondition_failed`. Either fix the override
+or flip the flag; both are explicit operator choices.
+
 ## Verify
 
 ```sh
