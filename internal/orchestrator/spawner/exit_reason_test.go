@@ -71,6 +71,8 @@ func TestClassifyExitReason_PerVariant(t *testing.T) {
 		{"mcp-invalid-prose", "Error: Invalid MCP configuration:\nMCP config is not a valid JSON", ExitReasonMCPConfigInvalid},
 		{"mcp-invalid-short", "MCP config is not a valid JSON", ExitReasonMCPConfigInvalid},
 		{"mcp-invalid-header", "Invalid MCP configuration", ExitReasonMCPConfigInvalid},
+		{"auth-not-logged-in", "Not logged in · Please run /login", ExitReasonAuthPreconditionFailed},
+		{"auth-authentication-failed", `{"error":"authentication_failed"}`, ExitReasonAuthPreconditionFailed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
