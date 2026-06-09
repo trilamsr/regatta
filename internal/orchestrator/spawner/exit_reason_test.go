@@ -71,6 +71,8 @@ func TestClassifyExitReason_PerVariant(t *testing.T) {
 		{"mcp-invalid-prose", "Error: Invalid MCP configuration:\nMCP config is not a valid JSON", ExitReasonMCPConfigInvalid},
 		{"mcp-invalid-short", "MCP config is not a valid JSON", ExitReasonMCPConfigInvalid},
 		{"mcp-invalid-header", "Invalid MCP configuration", ExitReasonMCPConfigInvalid},
+		{"auth-not-logged-in", "Not logged in · Please run /login", ExitReasonAuthPreconditionFailed},
+		{"auth-authentication-failed", `{"error":"authentication_failed"}`, ExitReasonAuthPreconditionFailed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -90,6 +92,39 @@ func TestClassifyExitReason_CaseInsensitive(t *testing.T) {
 	got = ClassifyExitReason([]byte("CREDIT BALANCE IS TOO LOW"), 1)
 	if got != ExitReasonProviderCreditExhausted {
 		t.Fatalf("uppercase variant must classify; got %q", got)
+	}
+}
+
+// TestClassifyExitReason_AuthPreconditionFailed_NotLoggedIn pins #1166: claude CLI emits "Not logged in · Please run /login" when the spawned child cannot reach subscription creds AND no ANTHROPIC_API_KEY was passed through. The scheduler must treat this as a precondition violation, NOT a transient retry (which loops forever; observed 104 spawns in 80s on first live activation of the regatta-operator skill).
+func TestClassifyExitReason_AuthPreconditionFailed_NotLoggedIn(t *testing.T) {
+	got := ClassifyExitReason([]byte("Not logged in · Please run /login"), 1)
+	if got != ExitReasonAuthPreconditionFailed {
+		t.Fatalf("not-logged-in signature → %q, want %q", got, ExitReasonAuthPreconditionFailed)
+	}
+}
+
+// TestClassifyExitReason_AuthPreconditionFailed_AuthenticationFailed pins #1166: the wrapper "authentication_failed" error type emitted as a side-channel must also classify as auth-precondition (not provider-internal).
+func TestClassifyExitReason_AuthPreconditionFailed_AuthenticationFailed(t *testing.T) {
+	got := ClassifyExitReason([]byte(`{"error":"authentication_failed"}`), 1)
+	if got != ExitReasonAuthPreconditionFailed {
+		t.Fatalf("authentication_failed signature → %q, want %q", got, ExitReasonAuthPreconditionFailed)
+	}
+}
+
+// TestClassifyExitReason_AuthPrecondition_NoFalsePositive pins #1166: the "Not logged in" signature must not bucket unrelated child output mentioning login (e.g. an agent that writes about a login UI in its narration). Required exit_code=0 + the phrase NOT in classifySignatures shape → must classify as Completed, not AuthPreconditionFailed.
+func TestClassifyExitReason_AuthPrecondition_NoFalsePositive(t *testing.T) {
+	cases := []string{
+		"The login form should accept a returning user",          // agent narration about UI work
+		"After login, the user is redirected to /dashboard",      // spec text from issue body
+		"BUG-1166: Not logged in handler should backoff",         // issue-title quote — bare "Not logged in" alone must not fire
+		"Please run /login soon",                                 // unrelated mention of /login token
+	}
+	for _, text := range cases {
+		t.Run(text, func(t *testing.T) {
+			if got := ClassifyExitReason([]byte(text), 0); got != ExitReasonCompleted {
+				t.Fatalf("exit_code=0 + non-auth narrative %q must not classify as auth-precondition; got %q", text, got)
+			}
+		})
 	}
 }
 

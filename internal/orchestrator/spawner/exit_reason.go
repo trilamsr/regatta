@@ -16,6 +16,7 @@ const (
 	ExitReasonProviderInternal        = ExitReason("provider_internal_error")
 	ExitReasonToolDenied              = ExitReason("tool_denied")
 	ExitReasonMCPConfigInvalid        = ExitReason("mcp_config_invalid")
+	ExitReasonAuthPreconditionFailed  = ExitReason("auth_precondition_failed") // #1166
 )
 
 var classifySignatures = []struct {
@@ -30,6 +31,10 @@ var classifySignatures = []struct {
 	{ExitReasonProviderRateLimited, [][]byte{
 		bytes.ToLower([]byte("rate_limit_error")),
 		bytes.ToLower([]byte("rate limit exceeded")),
+	}},
+	{ExitReasonAuthPreconditionFailed, [][]byte{
+		bytes.ToLower([]byte("Not logged in · Please run /login")), // claude CLI prose form (full unique phrase to avoid false-positive on agent narration mentioning login; #1166)
+		bytes.ToLower([]byte("authentication_failed")),             // wrapper error type
 	}},
 	{ExitReasonProviderInternal, [][]byte{
 		bytes.ToLower([]byte("Internal server error")),
