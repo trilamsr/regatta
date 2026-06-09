@@ -81,8 +81,17 @@ type dashboardLayoutView struct {
 
 type dashboardWorkItemDetail struct {
 	state.WorkItem
-	Acceptance string
+	Acceptance   string
+	StatusLabel  string
+	RecentEvents []state.Event
 }
+
+// statusLabelRunning / statusLabelPROpen / statusLabelBlocked are the operator-facing display tokens shared between work-item status, agent state, and flow-panel buckets so a future palette swap edits one source.
+const (
+	statusLabelRunning = "running"
+	statusLabelPROpen  = "PR open"
+	statusLabelBlocked = "blocked"
+)
 
 func registerDashboardRoutes(mux *http.ServeMux, deps Dependencies) {
 	mux.HandleFunc("/ui/panels/agents", func(w http.ResponseWriter, r *http.Request) {
@@ -168,7 +177,7 @@ func loadWorkItemsView(ctx context.Context, deps Dependencies) any {
 		state.WorkStatusPROpen,
 		state.WorkStatusMerged,
 	}
-	labels := []string{"Planned", "Running", "PR open", "Merged"}
+	labels := []string{"Planned", "Running", statusLabelPROpen, "Merged"}
 	summary, err := deps.DB.SummarizeWorkItemStatuses(ctx, statuses, dashboardWorkItemSampleCount)
 	if err != nil {
 		summary = map[state.WorkItemStatus]state.WorkItemStatusSummary{}
@@ -179,7 +188,7 @@ func loadWorkItemsView(ctx context.Context, deps Dependencies) any {
 		top := make([]dashboardWorkItemRow, 0, len(sum.Samples))
 		for _, w := range sum.Samples {
 			top = append(top, dashboardWorkItemRow{
-				ID: w.ID, Title: w.Title, Lane: w.Lane, UpdatedAt: w.UpdatedAt,
+				ID: w.ID, Title: truncate(workItemTitleMaxBytes, workItemDisplayTitle(w)), Lane: w.Lane, UpdatedAt: w.UpdatedAt,
 			})
 		}
 		buckets[i] = dashboardBucket{Label: labels[i], Count: sum.Count, Top: top}
@@ -195,7 +204,7 @@ func loadFlowView(ctx context.Context, deps Dependencies) any {
 		state.WorkStatusMerged,
 		state.WorkStatusBlocked,
 	}
-	labels := []string{"backlog", "spawning", "in PR", "merged", "blocked"}
+	labels := []string{"backlog", "spawning", "in PR", "merged", statusLabelBlocked}
 	summary, _ := deps.DB.SummarizeWorkItemStatuses(ctx, statuses, 0)
 	out := make([]dashboardFlowNode, 0, len(statuses))
 	halt := 0
@@ -352,10 +361,73 @@ func serveWorkItemDrawer(w http.ResponseWriter, r *http.Request, deps Dependenci
 		http.NotFound(w, r)
 		return
 	}
-	view := dashboardWorkItemDetail{WorkItem: wi, Acceptance: prettyJSON(wi.AcceptanceJSON)}
+	view := dashboardWorkItemDetail{
+		WorkItem:     wi,
+		Acceptance:   prettyJSON(wi.AcceptanceJSON),
+		StatusLabel:  workItemStatusLabel(wi.Status),
+		RecentEvents: recentEventsForWorkItem(ctx, deps.DB, wi.ID, workItemDrawerEventTail),
+	}
 	if err := deps.Templates.Render(w, "_drawer_workitem", view); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// workItemDisplayTitle falls back to the work-item ID when the upstream adapter has not yet populated a title — otherwise the kanban card renders as an empty row.
+func workItemDisplayTitle(w state.WorkItem) string {
+	if w.Title != "" {
+		return w.Title
+	}
+	return w.ID
+}
+
+// workItemStatusLabel maps the work_items.status enum onto a short verb so the drawer reads as narrative not raw token.
+func workItemStatusLabel(s state.WorkItemStatus) string {
+	switch s {
+	case state.WorkStatusPlanned:
+		return "planned"
+	case state.WorkStatusRunning:
+		return statusLabelRunning
+	case state.WorkStatusPROpen:
+		return statusLabelPROpen
+	case state.WorkStatusMerged:
+		return "merged"
+	case state.WorkStatusBlocked:
+		return statusLabelBlocked
+	case state.WorkStatusRejected:
+		return "rejected"
+	case state.WorkStatusArchived:
+		return "archived"
+	}
+	return string(s)
+}
+
+// recentEventsForWorkItem joins events to the work-item via the agent owning the row so the drawer can show recent activity without a new schema column. Returns nil on any query error so the drawer still renders.
+func recentEventsForWorkItem(ctx context.Context, db *state.DB, workItemID string, limit int) []state.Event {
+	if db == nil || workItemID == "" || limit <= 0 {
+		return nil
+	}
+	rows, err := db.SQL().QueryContext(ctx,
+		`SELECT e.id, e.agent_id, e.kind, e.payload_json, e.created_at
+		 FROM events e
+		 JOIN agents a ON a.id = e.agent_id
+		 WHERE a.work_item_id = ?
+		 ORDER BY e.id DESC
+		 LIMIT ?`, workItemID, limit)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = rows.Close() }()
+	var out []state.Event
+	for rows.Next() {
+		var e state.Event
+		var created int64
+		if err := rows.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
+			return nil
+		}
+		e.CreatedAt = time.Unix(created, 0).UTC()
+		out = append(out, e)
+	}
+	return out
 }
 
 func serveEventDrawer(w http.ResponseWriter, r *http.Request, deps Dependencies) {
@@ -431,13 +503,13 @@ func statusClass(s state.AgentState) string {
 func statusLabel(s state.AgentState) string {
 	switch s {
 	case state.AgentRunning:
-		return "running"
+		return statusLabelRunning
 	case state.AgentSpawning:
 		return "spawn"
 	case state.AgentPending:
 		return "pending"
 	case state.AgentPROpen:
-		return "PR open"
+		return statusLabelPROpen
 	case state.AgentGatesRunning:
 		return "gates"
 	case state.AgentAwaitingMerge:

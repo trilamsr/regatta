@@ -139,6 +139,98 @@ func TestExitReasonBadge_MalformedPayload(t *testing.T) {
 	}
 }
 
+// TestLoadWorkItemsView_TitleTruncated asserts long titles render with the ellipsis suffix so kanban cards stay single-line.
+func TestLoadWorkItemsView_TitleTruncated(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "wi.db")
+	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+	longTitle := strings.Repeat("orchestrator drift on long-window soak ", 3)
+	wi := state.WorkItem{ID: "BUG-9001", Kind: state.KindFeature, Title: longTitle, Lane: "server", Status: state.WorkStatusPlanned}
+	if err := db.UpsertWorkItem(ctx, wi, state.SourceAdapter, clock()); err != nil {
+		t.Fatalf("UpsertWorkItem: %v", err)
+	}
+	view := loadWorkItemsView(ctx, Dependencies{DB: db, Clock: clock})
+	v, ok := view.(dashboardWorkItemsView)
+	if !ok {
+		t.Fatalf("loadWorkItemsView returned %T, want dashboardWorkItemsView", view)
+	}
+	var got dashboardWorkItemRow
+	for _, b := range v.Buckets {
+		for _, r := range b.Top {
+			if r.ID == "BUG-9001" {
+				got = r
+			}
+		}
+	}
+	if got.ID == "" {
+		t.Fatalf("BUG-9001 not surfaced in any bucket")
+	}
+	if !strings.HasSuffix(got.Title, "…") {
+		t.Fatalf("Title not truncated with ellipsis: %q", got.Title)
+	}
+	if len(got.Title) > workItemTitleMaxBytes+len("…") {
+		t.Fatalf("Title=%d bytes exceeds %d+ellipsis cap", len(got.Title), workItemTitleMaxBytes)
+	}
+}
+
+// TestWorkItemDrawer_RendersTitleAndStatus asserts the drawer returns full title + status + ID for a known work item.
+func TestWorkItemDrawer_RendersTitleAndStatus(t *testing.T) {
+	tmpls, err := LoadTemplates(AssetsFS())
+	if err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	dbPath := filepath.Join(t.TempDir(), "wi.db")
+	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+	wi := state.WorkItem{ID: "BUG-1058", Kind: state.KindFeature, Title: "fix scheduler tick drift", Lane: "server", Status: state.WorkStatusRunning}
+	if err := db.UpsertWorkItem(ctx, wi, state.SourceAdapter, clock()); err != nil {
+		t.Fatalf("UpsertWorkItem: %v", err)
+	}
+	h := NewHandler(Dependencies{Templates: tmpls, DB: db, Clock: clock})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/drawer/work-item/BUG-1058", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("drawer status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{"fix scheduler tick drift", "BUG-1058", "running"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("drawer body missing %q: %s", want, body)
+		}
+	}
+}
+
+// TestWorkItemDrawer_404OnUnknownID asserts the drawer returns 404 when the ID is not in the DB.
+func TestWorkItemDrawer_404OnUnknownID(t *testing.T) {
+	tmpls, err := LoadTemplates(AssetsFS())
+	if err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	dbPath := filepath.Join(t.TempDir(), "wi.db")
+	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	h := NewHandler(Dependencies{Templates: tmpls, DB: db, Clock: clock})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/drawer/work-item/DOES-NOT-EXIST", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown id status=%d, want 404", rec.Code)
+	}
+}
+
 // TestLoadSpendView_ZeroSpendNoExitEvents asserts the empty-state annotation does NOT fire when the daemon has zero events at all — avoids false-positive "agents exited before reporting" copy on a fresh boot.
 func TestLoadSpendView_ZeroSpendNoExitEvents(t *testing.T) {
 	tmp := t.TempDir()

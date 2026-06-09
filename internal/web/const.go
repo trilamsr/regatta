@@ -47,6 +47,12 @@ const dashboardLast24hWindow = 24
 // dashboardWorkItemSampleCount caps the per-bucket identifiers shown in the work-items panel; the bucket header always shows the full count.
 const dashboardWorkItemSampleCount = 5
 
+// workItemTitleMaxBytes caps inline kanban-card titles so each card stays single-line; the drawer surfaces the full text on click.
+const workItemTitleMaxBytes = 50
+
+// workItemDrawerEventTail caps the per-work-item event tail in the drawer so a chatty agent does not balloon the response.
+const workItemDrawerEventTail = 5
+
 // dashboardEventsTailLimit caps the recent-events tail. Each row is one JSON blob bounded by the substrate writer.
 const dashboardEventsTailLimit = 30
 
