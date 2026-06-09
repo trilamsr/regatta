@@ -10,6 +10,9 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
+// slowTickThresholdMs is the duration above which ScheduleOnce emits obs.EventTickSlow at WARN. Default TickInterval is 5s (cmd/regatta/serve.go); 1s = 20% of a normal tick budget — generous enough to never fire on a hot path but tight enough to catch sqlite-lock contention or scheduler bugs.
+const slowTickThresholdMs = 1000
+
 // tickLogLevel picks DEBUG for zero-work ticks (operator log surface stays signal-rich) and INFO for non-zero ticks (dispatch activity loud). Closes #1066: 98% of dogfood-session log output was tick heartbeat.
 func tickLogLevel(evaluated int) slog.Level {
 	if evaluated == 0 {
@@ -54,9 +57,8 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 			string(obs.KeyDurationMs), durationMs,
 			string(obs.KeyWorkItemsEvaluated), int64(evaluated),
 		)
-		// Slow-tick WARN: a single tick >=1s (10x normal 100ms) is worth surfacing — sqlite lock contention or scheduler bug. Additive to the #1066 demote contract.
-		if durationMs >= 1000 {
-			o.log.Warn("tick.slow",
+		if durationMs >= slowTickThresholdMs {
+			o.log.Warn(string(obs.EventTickSlow),
 				string(obs.KeyDurationMs), durationMs,
 				string(obs.KeyWorkItemsEvaluated), int64(evaluated),
 			)
