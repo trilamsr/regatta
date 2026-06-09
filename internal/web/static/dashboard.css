@@ -227,6 +227,23 @@ body { font-feature-settings: "ss01", "cv11"; }
 .event-line .verb .acc { color: var(--accent); }
 .event-line .verb .acc-2 { color: var(--accent-2); }
 
+/* Inline exit_reason badges for agent.exited — color-keyed so operator scans actionable exits. */
+.badge {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  padding: 0.05rem 0.4rem;
+  margin-left: 0.35rem;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  vertical-align: baseline;
+}
+.badge-red { color: var(--alarm); }
+.badge-orange { color: var(--warn); }
+.badge-yellow { color: var(--accent); }
+.badge-gray { color: var(--dim); }
+
 /* Big number cards (spend). */
 .metric {
   border: 1px solid var(--rule);

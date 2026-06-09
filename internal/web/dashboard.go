@@ -16,11 +16,13 @@ import (
 )
 
 type dashboardSpendView struct {
-	Last24hMicros  int64
-	TodayMicros    int64
-	LifetimeMicros int64
-	Spark          []int64
-	Err            string
+	Last24hMicros        int64
+	TodayMicros          int64
+	LifetimeMicros       int64
+	Spark                []int64
+	Err                  string
+	EmptyReason          string
+	CreditExhaustedCount int
 }
 
 type dashboardAgentRow struct {
@@ -242,7 +244,45 @@ func loadSpendView(ctx context.Context, deps Dependencies) any {
 	}
 	view.LifetimeMicros = int64(lifetime)
 	view.Spark = buildSparkSeries(ctx, reader, now)
+	if view.Last24hMicros == 0 && view.TodayMicros == 0 && view.LifetimeMicros == 0 {
+		annotateSpendEmptyReason(ctx, deps.DB, &view, now)
+	}
 	return view
+}
+
+// annotateSpendEmptyReason scans events from the last 24h for agent.exited rows whose payload exit_reason != "completed" so the all-zero spend panel reads as "agents exited before reporting usage" instead of "spend tracker broken". The exit_reason=provider_credit_exhausted count is surfaced separately because it is the dominant cause when the operator's API key is missing or rate-limited.
+func annotateSpendEmptyReason(ctx context.Context, db *state.DB, view *dashboardSpendView, now time.Time) {
+	since := now.Add(-dashboardLast24hWindow * time.Hour).Unix()
+	rows, err := db.SQL().QueryContext(ctx,
+		`SELECT payload_json FROM events WHERE kind = ? AND created_at >= ?`,
+		"agent.exited", since)
+	if err != nil {
+		return
+	}
+	defer func() { _ = rows.Close() }()
+	var exitedNonCompleted, credit int
+	for rows.Next() {
+		var payload string
+		if err := rows.Scan(&payload); err != nil {
+			return
+		}
+		var p struct {
+			ExitReason string `json:"exit_reason"`
+		}
+		if err := json.Unmarshal([]byte(payload), &p); err != nil {
+			continue
+		}
+		if p.ExitReason != "" && p.ExitReason != "completed" {
+			exitedNonCompleted++
+		}
+		if p.ExitReason == "provider_credit_exhausted" {
+			credit++
+		}
+	}
+	if exitedNonCompleted > 0 {
+		view.EmptyReason = "agents exited before reporting usage (likely provider auth)"
+		view.CreditExhaustedCount = credit
+	}
 }
 
 // buildSparkSeries fires one RecordedUSDForWindow per histogram bucket because spend.Reader does not (yet) expose a batched window query. 12 buckets × 30s poll = 24 queries/min — each is a small SUM that hits the same composite index, well under sqlite's local-disk cap. A batched API + memo cache lands when spend.Reader gains a window-iterator surface; tracking issue is left to the spend pkg owner since the dashboard is read-side only.
@@ -423,7 +463,7 @@ func eventVerb(e state.Event) template.HTML {
 	}
 	switch e.Kind {
 	case "agent.exited":
-		return template.HTML("agent" + id + " <span class=\"acc\">exited</span>")
+		return template.HTML("agent" + id + " <span class=\"acc\">exited</span>" + exitReasonBadge(e.PayloadJSON))
 	case "spawn.started":
 		return template.HTML("agent" + id + " <span class=\"acc\">spawned</span>")
 	case "spawn.completed":
@@ -441,6 +481,33 @@ func eventVerb(e state.Event) template.HTML {
 	default:
 		return template.HTML(template.HTMLEscapeString(e.Kind))
 	}
+}
+
+// exitReasonBadge parses agent.exited payload + returns a colored badge span keyed by exit_reason; clean completes get no badge so the operator's eye lands on actionable exits only.
+func exitReasonBadge(payload string) string {
+	if payload == "" {
+		return ""
+	}
+	var p struct {
+		ExitReason string `json:"exit_reason"`
+	}
+	if err := json.Unmarshal([]byte(payload), &p); err != nil || p.ExitReason == "" {
+		return ""
+	}
+	var color string
+	switch p.ExitReason {
+	case "completed":
+		return ""
+	case "provider_credit_exhausted":
+		color = "red"
+	case "provider_rate_limited", "provider_internal_error":
+		color = "orange"
+	case "tool_denied":
+		color = "yellow"
+	default:
+		color = "gray"
+	}
+	return ` <span class="badge badge-` + color + `">` + template.HTMLEscapeString(p.ExitReason) + `</span>`
 }
 
 // relTime returns the same compact elapsed marker humanRelativeShort uses, but as a template func so the event log lines and work-item cards share one source of truth. Today + Now closures live at template-load time so test harnesses can pin the clock.

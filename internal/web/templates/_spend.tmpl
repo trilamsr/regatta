@@ -16,6 +16,9 @@
   <div class="ident text-xs mt-2">all-time substrate sum</div>
 </div>
 </div>
+{{- if and (eq .Last24hMicros 0) (eq .TodayMicros 0) (eq .LifetimeMicros 0) .EmptyReason}}
+<div class="empty-state mt-3 text-xs">{{.EmptyReason}} ({{.CreditExhaustedCount}} credit-exhausted exits in 24h)</div>
+{{- end}}
 {{- if .Err}}
 <p class="mt-3 text-xs font-mono text-amber-700">spend reader: {{.Err}}</p>
 {{- end}}
