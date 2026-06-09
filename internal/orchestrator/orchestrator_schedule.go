@@ -3,11 +3,20 @@ package orchestrator
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
+
+// tickLogLevel picks DEBUG for zero-work ticks (operator log surface stays signal-rich) and INFO for non-zero ticks (dispatch activity loud). Closes #1066: 98% of dogfood-session log output was tick heartbeat.
+func tickLogLevel(evaluated int) slog.Level {
+	if evaluated == 0 {
+		return slog.LevelDebug
+	}
+	return slog.LevelInfo
+}
 
 // ScheduleOnce ticks the scheduler and spawns every newly-reserved
 // agent through the spawner. Each successful Spawn moves the agent
@@ -27,15 +36,20 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 	ctx, span := o.tracer.Start(ctx, "tick")
 	defer span.End()
 
-	// Spec §3.3: tick.started + tick.completed are unconditional on
-	// every tick exit; no early return may skip the completion event.
+	// Spec §3.3: tick.started + tick.completed always fire — no early
+	// return may skip the completion event. Severity is dynamic per
+	// #1066: zero-work ticks log at DEBUG so the operator log surface
+	// is not 98% scheduler heartbeat; non-zero ticks promote to INFO
+	// so dispatch activity stays loud. The decision is captured after
+	// scheduler.Tick returns so both started + completed events agree.
 	startedAt := o.cfg.Clock()
-	o.log.Info(string(obs.EventTickStarted))
 
 	ids, tickErr := o.sched.Tick(ctx)
 	evaluated := len(ids)
+	level := tickLogLevel(evaluated)
+	o.log.Log(ctx, level, string(obs.EventTickStarted))
 	defer func() {
-		o.log.Info(string(obs.EventTickCompleted),
+		o.log.Log(ctx, level, string(obs.EventTickCompleted),
 			string(obs.KeyDurationMs), o.cfg.Clock().Sub(startedAt).Milliseconds(),
 			string(obs.KeyWorkItemsEvaluated), int64(evaluated),
 		)

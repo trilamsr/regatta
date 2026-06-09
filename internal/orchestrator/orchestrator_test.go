@@ -416,6 +416,32 @@ func TestOrchestrator_Tick_EmitsOnEmptyQueue(t *testing.T) {
 	}
 }
 
+// TestOrchestrator_Tick_EmptyQueueLogsAtDebug pins #1066: zero-work ticks demote tick.started/completed to DEBUG so the operator log surface is not 98% scheduler heartbeat.
+func TestOrchestrator_Tick_EmptyQueueLogsAtDebug(t *testing.T) {
+	ctx := context.Background()
+	o, _, _, _ := newHarness(t, 0)
+	h := obstest.New()
+	o.log = slog.New(h)
+
+	if err := o.ScheduleOnce(ctx); err != nil {
+		t.Fatalf("schedule: %v", err)
+	}
+	started, ok := h.FindEvent(obs.EventTickStarted)
+	if !ok {
+		t.Fatalf("tick.started missing")
+	}
+	if started.Level != slog.LevelDebug {
+		t.Fatalf("zero-work tick.started level=%s, want DEBUG (#1066)", started.Level)
+	}
+	completed, ok := h.FindEvent(obs.EventTickCompleted)
+	if !ok {
+		t.Fatalf("tick.completed missing")
+	}
+	if completed.Level != slog.LevelDebug {
+		t.Fatalf("zero-work tick.completed level=%s, want DEBUG (#1066)", completed.Level)
+	}
+}
+
 // TestOrchestrator_NilLogger_UsesDefault pins spec §4.1.
 func TestOrchestrator_NilLogger_UsesDefault(t *testing.T) {
 	o, _, _, _ := newHarness(t, 0)
