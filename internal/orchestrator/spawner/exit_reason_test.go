@@ -108,6 +108,7 @@ func TestClassifyExitReason_EmptyRing(t *testing.T) {
 	}
 }
 
+
 // TestClassifyExitReason_HaystackCapEvictsHeader: when the ring is larger than classifyHaystackCap, only the trailing window is scanned — pins the bounded-work contract (per reviewer a7e408d8466d8c67b).
 func TestClassifyExitReason_HaystackCapEvictsHeader(t *testing.T) {
 	prefix := make([]byte, classifyHaystackCap+1)
