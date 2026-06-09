@@ -85,28 +85,7 @@ OUTPUT FORMAT
 NO SIGNATURES
 - Per `feedback_no_signatures`.
 
-## Per-dispatch payload
-- Target: `<TARGET>`
-- Spec: `<SPEC-PATH>`
-- PR type: `<PR-TYPE>`
-- Risk floor: `<RISK-TIER-FLOOR>`
-
-## Definition of done
-- [ ] auto-skip evaluated explicitly (skip or proceed, document choice)
-- [ ] all 9 lenses applied (or skip documented per lens)
-- [ ] verdict line present
-- [ ] Risk-tier+ findings have a disposition (inline-fix OR aggregate-tracking-issue row)
-- [ ] AT MOST ONE aggregate tracking issue filed for this PR review (with `kind:reviewer-finding` + matching `severity:*` label); LOW findings posted as PR comments only
-- [ ] `## Comment sweep` section emitted (offenders or `clean`)
-- [ ] memory rules cited
-
-## RECURRING-FAILURE TRAPS
-
-1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `CLAUDE.md` §CI gates "PR body hygiene" when posting review summary.
-2. **Comment-noise trip-traps** per #333 (regex tightened in #371): flag legitimate "Reviewer-Capital" prose in author diffs only if the regex still over-matches.
-3. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Confirm every PR body has a triple-fence ` ```release-notes ` block.
-
-## Three-lens prompt (mandatory default)
+## Three-lens prompt (mandatory)
 
 Defect-only reviews are forbidden as default — they reliably miss prose redundancy + structural drift that ship into long-lived files (per the 134 LOC of bloat caught only by a separate simplification audit on `.claude/skills/regatta-operator/SKILL.md` round 7+1). Every reviewer dispatch includes all three lenses unless explicitly opted out for a code-only diff.
 
@@ -128,3 +107,25 @@ addressed pre-merge but acceptable as a follow-up PR if scope is large.
 ```
 
 Skip lens (3) only when the diff is exclusively code-change (no markdown / docstring / spec / prompt template content). Even on code-only diffs, lens (1) + (2) remain mandatory.
+
+## Per-dispatch payload
+- Target: `<TARGET>`
+- Spec: `<SPEC-PATH>`
+- PR type: `<PR-TYPE>`
+- Risk floor: `<RISK-TIER-FLOOR>`
+
+## Definition of done
+- [ ] auto-skip evaluated explicitly (skip or proceed, document choice)
+- [ ] all 9 lenses applied (or skip documented per lens)
+- [ ] verdict line present
+- [ ] Risk-tier+ findings have a disposition (inline-fix OR aggregate-tracking-issue row)
+- [ ] AT MOST ONE aggregate tracking issue filed for this PR review (with `kind:reviewer-finding` + matching `severity:*` label); LOW findings posted as PR comments only
+- [ ] `## Comment sweep` section emitted (offenders or `clean`)
+- [ ] memory rules cited
+
+## RECURRING-FAILURE TRAPS
+
+1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `CLAUDE.md` §CI gates "PR body hygiene" when posting review summary.
+2. **Comment-noise trip-traps** per #333 (regex tightened in #371): flag legitimate "Reviewer-Capital" prose in author diffs only if the regex still over-matches.
+3. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Confirm every PR body has a triple-fence ` ```release-notes ` block.
+
