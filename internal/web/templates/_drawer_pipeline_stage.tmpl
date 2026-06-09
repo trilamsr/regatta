@@ -1,0 +1,31 @@
+{{define "_drawer_pipeline_stage"}}
+<div class="drawer-bg" hx-on:click="document.getElementById('drawer-mount').innerHTML=''"></div>
+<aside class="drawer">
+  <div class="flex items-baseline justify-between">
+    <h3>{{.Owner}} · {{.Label}}</h3>
+    <button class="ident text-slate-500 hover:text-slate-900"
+            hx-on:click="document.getElementById('drawer-mount').innerHTML=''">close ×</button>
+  </div>
+  <div class="ident text-xs mt-1">stage: {{.Slug}} · {{len .Items}} item(s)</div>
+  {{- if .Items}}
+  <div class="mt-4">
+    <div class="row text-xs font-mono text-slate-500 uppercase tracking-widest" style="grid-template-columns: 1fr 5rem 4rem 4rem;">
+      <span>work item</span>
+      <span>lane</span>
+      <span class="text-right">agent</span>
+      <span class="text-right">age</span>
+    </div>
+    {{- range .Items}}
+    <div class="row" style="grid-template-columns: 1fr 5rem 4rem 4rem;">
+      <span class="ident truncate" title="{{.WorkItemID}}">{{.WorkItemID}}</span>
+      <span class="ident">{{.Lane}}</span>
+      <span class="ident text-right">{{if .AgentID}}#{{.AgentID}}{{else}}—{{end}}</span>
+      <span class="ident text-right">{{.Age}}</span>
+    </div>
+    {{- end}}
+  </div>
+  {{- else}}
+  <div class="empty-state mt-4">no items at this stage</div>
+  {{- end}}
+</aside>
+{{end}}

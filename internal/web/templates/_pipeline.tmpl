@@ -1,0 +1,15 @@
+{{define "_pipeline"}}
+<div class="panel p-6">
+  <div class="pipeline-row">
+    {{- range $i, $s := .Stages}}
+    {{- if gt $i 0}}<span class="pipeline-arrow" aria-hidden="true">›</span>{{- end}}
+    <button class="pipeline-step" type="button"
+            hx-get="/ui/drawer/pipeline/{{.Slug}}" hx-target="#drawer-mount" hx-swap="innerHTML">
+      <span class="owner">{{.Owner}}</span>
+      <span class="count">{{.Count}}</span>
+      <span class="lbl">{{.Label}}</span>
+    </button>
+    {{- end}}
+  </div>
+</div>
+{{end}}
