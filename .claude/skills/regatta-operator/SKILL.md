@@ -412,21 +412,48 @@ If any step fails: bottleneck-resolution loop fires.
 
 Default per CLAUDE.md `feedback_no_implementer_automerge`: skill does NOT enable automerge, does NOT merge PRs. The operator owns the merge button. This holds when the human is sitting at the keyboard.
 
-BUT: in autonomous operation (operator said "loop" / "autonomous" / "keep going" / "merge when green") the human has explicitly delegated merge authority for THIS session. In that mode, after BOTH conditions are met for a PR the skill itself opened:
+BUT: in autonomous operation (operator said "loop" / "autonomous" / "keep going" / "merge when green") the human has explicitly delegated merge authority for THIS session. In that mode, after ALL conditions are met for a PR the skill itself opened:
 
-1. Independent adversarial reviewer returned `Reviewer-recommendation: APPROVE` (real subagent ID in PR body, NOT self-tagged — per `feedback_no_self_tagged_approve`).
-2. `gh pr view <N> --json state,mergeStateStatus,statusCheckRollup` shows `state=OPEN`, `mergeStateStatus=CLEAN`, every required check `conclusion=SUCCESS` (latest occurrence wins on duplicate names per `feedback_pr_lint_body_snapshot_lag`).
+1. Independent adversarial reviewer returned `Reviewer-recommendation: APPROVE` (real subagent ID in PR body, NOT self-tagged — per `feedback_no_self_tagged_approve`). Reviewer prompt must include simplification / refactor / dead-code lens (see "Reviewer prompt shape" below), not defect-only.
+2. `gh pr view <N> --json state,mergeStateStatus,statusCheckRollup` shows `state=OPEN`, `mergeStateStatus=CLEAN` (not BLOCKED / DIRTY / UNSTABLE / UNKNOWN / HAS_HOOKS). For every `name`, if multiple rollup entries exist (re-run history), the entry with the MOST RECENT `completedAt` must be `conclusion=SUCCESS`. (GitHub's `statusCheckRollup` returns all runs, not just latest; skill picks latest per-name. This is independent of `feedback_pr_lint_body_snapshot_lag`, which is about pr-lint payload snapshot in the workflow event, not rollup semantics.)
+3. **Skill-opened PR detection.** Skill writes a `Skill-session-id: <session>` token into the PR body footer when opening. Merge gate requires either (a) that token matching the current session, OR (b) the branch name carrying the `$SKILL_BRANCH_PREFIX` (default `feat/skill-` / `fix/skill-` / `chore/skill-`) which the skill prepends. Operator-authored PRs do not carry either marker → skill cannot merge them.
 
-Skill executes `gh pr merge <N> --squash --delete-branch`, logs the merge in `$BASELINE_FILE` with merging-skill-session ID so the green-clock counter advances, then runs the post-merge rebuild-and-observe cycle.
+Skill executes `gh pr merge <N> --squash --delete-branch`, logs the merge in `$BASELINE_FILE` with merging-skill-session ID so the green-clock counter advances, then runs the post-merge rebuild-and-observe cycle. The local branch (if present) is pruned via `git branch -D <branch>` after the remote delete; if any local worktree is still on the branch, switch it to `main` first OR skip the local-prune step + emit `[OPS]` finding "skill-branch leak: <name>".
 
 Hard refusals (operator delegation does NOT extend to):
 - `--admin` flag (overrides branch protection).
-- Force-merge through DIRTY / BLOCKED / failing-required-check state.
-- Merging a PR the skill did NOT open (out-of-scope; risks merging operator's in-flight work).
-- Merging into `$TARGET_REPO`'s `main` when `$TARGET_REPO` != `$ORCH_SOURCE_REPO` (target-side merges always require operator).
-- Force-push on a merge conflict — always REBASE, never overwrite.
+- `--merge` (non-squash commit) or `--rebase` (rewrites linear history) — skill is squash-only; non-squash merges are deliberate operator choices.
+- Force-merge through DIRTY / BLOCKED / UNSTABLE / HAS_HOOKS / UNKNOWN state.
+- Merging a PR the skill did NOT open (failed both detection forms above).
+- Force-push on a merge conflict — always REBASE locally, never overwrite remote.
+- Skill-opened PR landing in `$TARGET_REPO` when target-repo workflow allows squash-merge AND the PR is a CANARY-OUTCOME or TARGET-CODE-BUG fix: still mergeable by skill. The earlier blanket rule on `$TARGET_REPO != $ORCH_SOURCE_REPO` was wrong; per-PR scope check applies, not blanket.
 
 Bottleneck-resolution loop fix PRs follow the same gate. Skill-opened PRs only; never operator-authored PRs.
+
+## Reviewer prompt shape (mandatory lenses)
+
+Every reviewer subagent the skill dispatches MUST cover three lenses, not defect-only. Defect-only reviews missed 134 LOC of redundancy on this skill's own development (caught only by a separate simplification audit, round 7+1).
+
+1. **Defects.** Bugs, races, correctness, security, edge cases. Standard.
+2. **Simplification.** Same rule stated in ≥2 sections? Prose restating what code shows (or vice versa)? Defensive narration ("note that", "important", "to be clear")? Forward/back refs that signal wrong structure? Cut.
+3. **Refactor.** Tables that should be lists (or vice versa) for brevity? Examples that earn their lines? Sections that should merge? Per-method enumeration that could collapse to one generic line?
+
+Reviewer prompt template:
+```
+Adversarial review of <diff>. Three lenses (in this order):
+(1) DEFECTS — bugs, races, edge cases, security. Standard hunt.
+(2) SIMPLIFICATION — same rule in ≥2 places, prose ↔ code dup, defensive
+    narration, forward/back refs. Suggest the canonical home + delete.
+(3) REFACTOR — table↔list flips, example pruning, section merges,
+    enumeration collapses. Per cut name LOC saved.
+
+Output format: <file>:<line>: <severity>: <finding>. <fix>.
+End with verdict APPROVE | REVISE | BLOCK + total estimated LOC savings.
+Defects MUST be addressed pre-merge; simplification/refactor SHOULD be
+addressed pre-merge but acceptable as follow-up PR if scope is large.
+```
+
+Skip lens (3) only when the diff is exclusively code-change (no markdown / docstring / spec / prompt template content). Defect-only is forbidden as a default; simplification + refactor are non-optional for prose-heavy diffs.
 
 ## Hand-off
 
