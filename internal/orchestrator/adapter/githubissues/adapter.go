@@ -69,8 +69,13 @@ func NewGitHubIssues(cfg GitHubIssuesConfig) (schemas.SpecAdapter, error) {
 	if cfg.Clock == nil {
 		cfg.Clock = time.Now
 	}
+	sel, err := parseSelector(cfg.Selector)
+	if err != nil {
+		return nil, err
+	}
 	return &adapter{
 		cfg:             cfg,
+		selector:        sel,
 		idToNumber:      map[string]int{},
 		idToUpdatedAt:   map[string]time.Time{},
 		collisionLogged: map[string]struct{}{},
@@ -80,6 +85,7 @@ func NewGitHubIssues(cfg GitHubIssuesConfig) (schemas.SpecAdapter, error) {
 // adapter caches List()'s ID→number map for cfg.MinPoll (spec §7.7), records UpdatedAt per ID so Get can detect mid-flight edits (§7.9 / #850), and dedups §7.8 collision comments by owner/repo:ID:day.
 type adapter struct {
 	cfg             GitHubIssuesConfig
+	selector        parsedSelector
 	mu              sync.Mutex
 	idToNumber      map[string]int
 	idToUpdatedAt   map[string]time.Time
@@ -92,7 +98,7 @@ func (a *adapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
 	ctx, span := a.cfg.Tracer.Start(ctx, "adapter.github_issues.list")
 	defer span.End()
 
-	issues, err := a.cfg.Client.ListIssuesByLabelPaginated(ctx, AutonomousLabel, ghclient.ListIssuesOpts{State: "open", Limit: 1000})
+	issues, err := a.cfg.Client.ListIssuesByLabelPaginated(ctx, a.selector.label, ghclient.ListIssuesOpts{State: a.selector.state, Limit: 1000})
 	if err != nil {
 		return nil, fmt.Errorf("github_issues list: %w", err)
 	}
@@ -109,7 +115,7 @@ func (a *adapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		if !hasAutonomousLabel(iss.Labels) {
+		if !hasLabel(iss.Labels, a.selector.label) {
 			continue
 		}
 		id, _, ok := extractIDFromTitle(iss.Title)
@@ -190,13 +196,13 @@ func (a *adapter) Get(ctx context.Context, id schemas.WorkItemID) (schemas.WorkI
 	if hit && !expired {
 		return a.fetchByNumber(ctx, id, num, hasSnapshot, snapshotUpdatedAt)
 	}
-	issues, err := a.cfg.Client.ListIssuesByLabelPaginated(ctx, AutonomousLabel, ghclient.ListIssuesOpts{State: "open"})
+	issues, err := a.cfg.Client.ListIssuesByLabelPaginated(ctx, a.selector.label, ghclient.ListIssuesOpts{State: a.selector.state})
 	if err != nil {
 		return schemas.WorkItem{}, fmt.Errorf("github_issues get: %w", err)
 	}
 	var matches []ghclient.Issue
 	for _, iss := range issues {
-		if !hasAutonomousLabel(iss.Labels) {
+		if !hasLabel(iss.Labels, a.selector.label) {
 			continue
 		}
 		got, _, ok := extractIDFromTitle(iss.Title)
@@ -302,9 +308,10 @@ func (a *adapter) handleCollision(ctx context.Context, id string, group []ghclie
 	}
 }
 
-func hasAutonomousLabel(labels []string) bool {
+// hasLabel returns true when `labels` contains `want` case-insensitively. Closes #1067 by replacing the AutonomousLabel-hardcoded predicate so the adapter honors cfg.Selector.
+func hasLabel(labels []string, want string) bool {
 	for _, l := range labels {
-		if strings.EqualFold(l, AutonomousLabel) {
+		if strings.EqualFold(l, want) {
 			return true
 		}
 	}
