@@ -593,6 +593,33 @@ func TestLoadWorkItemsView_EmptyHintWhenNoItems(t *testing.T) {
 	}
 }
 
+// TestLoadWorkItemsView_HintHidesBucketsWhenEmpty asserts the work-items template renders ONLY the EmptyHint when set — bucket grid stays hidden so the panel does not show contradictory "empty" + four zero-count cards (#1146 reviewer REVISE).
+func TestLoadWorkItemsView_HintHidesBucketsWhenEmpty(t *testing.T) {
+	tmpls, err := LoadTemplates(AssetsFS())
+	if err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	labels := []string{"Planned", "Running", statusLabelPROpen, "merged-bucket-sentinel"}
+	buckets := make([]dashboardBucket, len(labels))
+	for i, l := range labels {
+		buckets[i] = dashboardBucket{Label: l, Count: 0}
+	}
+	view := dashboardWorkItemsView{EmptyHint: emptyHintWorkItems, Buckets: buckets}
+	rec := httptest.NewRecorder()
+	if err := tmpls.Render(rec, "_work_items", view); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, emptyHintWorkItems) {
+		t.Fatalf("body missing EmptyHint copy: %s", body)
+	}
+	for _, label := range labels {
+		if strings.Contains(body, label) {
+			t.Fatalf("bucket label %q present alongside EmptyHint; want either/or rendering: %s", label, body)
+		}
+	}
+}
+
 // TestLoadEventsView_EmptyHintWhenNoEvents asserts the events view carries an EmptyHint when no events landed in the tail window so the operator does not stare at a blank panel.
 func TestLoadEventsView_EmptyHintWhenNoEvents(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "events-empty.db")

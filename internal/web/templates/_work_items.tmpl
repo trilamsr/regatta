@@ -1,9 +1,9 @@
 {{define "_work_items"}}
 {{- if .EmptyHint}}
-<div class="panel p-6 mb-3">
+<div class="panel p-6">
   <div class="empty-state">{{.EmptyHint}}</div>
 </div>
-{{- end}}
+{{- else}}
 <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
 {{- range .Buckets}}
 <div class="panel">
@@ -30,4 +30,5 @@
 </div>
 {{- end}}
 </div>
+{{- end}}
 {{end}}
