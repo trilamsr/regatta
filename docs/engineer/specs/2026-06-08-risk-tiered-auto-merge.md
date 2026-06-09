@@ -309,5 +309,4 @@ Per CLAUDE.md `feedback_decision_priority` (UX → ease → performance → best
 lane: server
 -->
 
-Reviewer-agent-id: TBD-on-implementer-PR
-Reviewer-recommendation: TBD-on-implementer-PR
+<!-- TODO(#1080) — reviewer-agent-id + recommendation tokens land on the implementer PR that closes #1080, not on this spec PR. -->
