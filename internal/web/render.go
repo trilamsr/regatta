@@ -40,7 +40,14 @@ func LoadTemplates(fsys fs.FS) (*Templates, error) {
 	return t, nil
 }
 
-// Render writes the named template to w. Buffers the rendered output before flushing so a mid-template execution error does not leave half-written headers + a double-WriteHeader stderr noise (observed on the operator dashboard drawer routes). Centralising the html/template invocation here means handlers cannot bypass auto-escape by writing raw bytes — auto-escape is the spec §8 XSS gate.
+// Render writes the named template to w. Buffers the rendered output
+// first so a mid-template execution error does not leave half-written
+// headers + the double-WriteHeader stderr noise observed on the
+// dashboard drawer routes.
+//
+// Centralising the html/template invocation here means handlers cannot
+// bypass auto-escape by writing raw bytes — auto-escape is the spec
+// §8 XSS gate.
 func (t *Templates) Render(w http.ResponseWriter, name string, data any) error {
 	t.mu.RLock()
 	parsed := t.parsed

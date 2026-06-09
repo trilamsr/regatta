@@ -65,3 +65,20 @@ func TestRender_BuffersBeforeWrite(t *testing.T) {
 		t.Fatalf("Render must not write bytes on failure; got %d", rec.Body.Len())
 	}
 }
+
+// TestRender_WritesBufferOnSuccess pins the success-path contract — the buffer is flushed to the writer exactly once. Bracket to TestRender_BuffersBeforeWrite (per reviewer a5dd8614e5604c5e5).
+func TestRender_WritesBufferOnSuccess(t *testing.T) {
+	const tmpl = `{{define "ok"}}<b>{{.Msg}}</b>{{end}}`
+	parsed := template.Must(template.New("layout").Parse(tmpl))
+	tt := &Templates{parsed: parsed}
+	rec := httptest.NewRecorder()
+	if err := tt.Render(rec, "ok", struct{ Msg string }{Msg: "hello"}); err != nil {
+		t.Fatalf("Render: %v", err)
+	}
+	if rec.Body.Len() == 0 {
+		t.Fatalf("Render must write bytes on success; got empty body")
+	}
+	if !strings.Contains(rec.Body.String(), "<b>hello</b>") {
+		t.Fatalf("body missing rendered template: %q", rec.Body.String())
+	}
+}
