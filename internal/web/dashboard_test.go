@@ -231,6 +231,126 @@ func TestWorkItemDrawer_404OnUnknownID(t *testing.T) {
 	}
 }
 
+// TestLoadDockerSoakView_Healthy asserts green health pill when last 1m has spawns and no non-completed exits.
+func TestLoadDockerSoakView_Healthy(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "soak-healthy.db")
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+	a, err := db.UpsertPending(ctx, "WORK-A", "server")
+	if err != nil {
+		t.Fatalf("UpsertPending: %v", err)
+	}
+	if err := db.RecordEvent(ctx, a.ID, "spawn.started", `{}`); err != nil {
+		t.Fatalf("RecordEvent: %v", err)
+	}
+	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"exit_reason":"completed","exit_code":0}`); err != nil {
+		t.Fatalf("RecordEvent: %v", err)
+	}
+	deps := Dependencies{DB: db, Clock: clock, BootedAt: now.Add(-90 * time.Second)}
+	view := loadDockerSoakView(ctx, deps)
+	sv, ok := view.(dashboardDockerSoakView)
+	if !ok {
+		t.Fatalf("loadDockerSoakView returned %T, want dashboardDockerSoakView", view)
+	}
+	if sv.Health != "green" {
+		t.Fatalf("Health=%q, want green", sv.Health)
+	}
+	if sv.SpawnsLast1m != 1 {
+		t.Fatalf("SpawnsLast1m=%d, want 1", sv.SpawnsLast1m)
+	}
+	if sv.ExitedLast1m != 1 {
+		t.Fatalf("ExitedLast1m=%d, want 1", sv.ExitedLast1m)
+	}
+	if sv.Uptime == "" {
+		t.Fatalf("Uptime empty")
+	}
+	if sv.LastExitReason != "completed" {
+		t.Fatalf("LastExitReason=%q, want completed", sv.LastExitReason)
+	}
+}
+
+// TestLoadDockerSoakView_AmberOnMixedExits asserts amber health pill when any non-completed exit lands in last 1m alongside a completed one.
+func TestLoadDockerSoakView_AmberOnMixedExits(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "soak-amber.db")
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+	a, err := db.UpsertPending(ctx, "WORK-B", "server")
+	if err != nil {
+		t.Fatalf("UpsertPending: %v", err)
+	}
+	if err := db.RecordEvent(ctx, a.ID, "spawn.started", `{}`); err != nil {
+		t.Fatalf("RecordEvent: %v", err)
+	}
+	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"exit_reason":"completed"}`); err != nil {
+		t.Fatalf("RecordEvent: %v", err)
+	}
+	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"exit_reason":"tool_denied"}`); err != nil {
+		t.Fatalf("RecordEvent: %v", err)
+	}
+	deps := Dependencies{DB: db, Clock: clock, BootedAt: now.Add(-5 * time.Minute)}
+	view := loadDockerSoakView(ctx, deps)
+	sv, ok := view.(dashboardDockerSoakView)
+	if !ok {
+		t.Fatalf("loadDockerSoakView returned %T, want dashboardDockerSoakView", view)
+	}
+	if sv.Health != "amber" {
+		t.Fatalf("Health=%q, want amber", sv.Health)
+	}
+	if sv.ExitedLast1m != 2 {
+		t.Fatalf("ExitedLast1m=%d, want 2", sv.ExitedLast1m)
+	}
+}
+
+// TestLoadDockerSoakView_RedOnAllNonCompleted asserts red health pill when all last-1m exits are non-completed.
+func TestLoadDockerSoakView_RedOnAllNonCompleted(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "soak-red.db")
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return now }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+	a, err := db.UpsertPending(ctx, "WORK-C", "server")
+	if err != nil {
+		t.Fatalf("UpsertPending: %v", err)
+	}
+	if err := db.RecordEvent(ctx, a.ID, "spawn.started", `{}`); err != nil {
+		t.Fatalf("RecordEvent: %v", err)
+	}
+	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"exit_reason":"provider_credit_exhausted"}`); err != nil {
+		t.Fatalf("RecordEvent: %v", err)
+	}
+	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"exit_reason":"provider_rate_limited"}`); err != nil {
+		t.Fatalf("RecordEvent: %v", err)
+	}
+	deps := Dependencies{DB: db, Clock: clock, BootedAt: now.Add(-time.Hour)}
+	view := loadDockerSoakView(ctx, deps)
+	sv, ok := view.(dashboardDockerSoakView)
+	if !ok {
+		t.Fatalf("loadDockerSoakView returned %T, want dashboardDockerSoakView", view)
+	}
+	if sv.Health != "red" {
+		t.Fatalf("Health=%q, want red", sv.Health)
+	}
+	if sv.LastExitReason != "provider_rate_limited" {
+		t.Fatalf("LastExitReason=%q, want provider_rate_limited", sv.LastExitReason)
+	}
+}
+
 // TestLoadSpendView_ZeroSpendNoExitEvents asserts the empty-state annotation does NOT fire when the daemon has zero events at all — avoids false-positive "agents exited before reporting" copy on a fresh boot.
 func TestLoadSpendView_ZeroSpendNoExitEvents(t *testing.T) {
 	tmp := t.TempDir()
