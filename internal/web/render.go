@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // ErrFuncExists fires when RegisterFunc receives a name already in the
@@ -125,11 +126,13 @@ func formatUSDMicros(micros int64) string {
 	return fmt.Sprintf("$%.2f", usd)
 }
 
-// truncate caps a string to n bytes; non-rune-aware on purpose — UI snippets
-// are ASCII-dominant and the trailing `…` keeps the cut visible.
+// truncate caps s to n bytes on a UTF-8 rune boundary to avoid U+FFFD on partial multi-byte sequences; appended `…` (3 bytes) means result is ≤ n+3 bytes (#1134).
 func truncate(n int, s string) string {
 	if len(s) <= n {
 		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
 	}
 	return s[:n] + "…"
 }

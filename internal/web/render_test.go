@@ -66,6 +66,32 @@ func TestRender_BuffersBeforeWrite(t *testing.T) {
 	}
 }
 
+// TestTruncate_PreservesUTF8RuneBoundary pins #1134: byte-level cut splits multi-byte runes and emits U+FFFD on render.
+func TestTruncate_PreservesUTF8RuneBoundary(t *testing.T) {
+	in := strings.Repeat("x", 48) + "🚀more"
+	got := truncate(50, in)
+	if strings.ContainsRune(got, '�') {
+		t.Fatalf("truncate emitted U+FFFD replacement rune in %q", got)
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("truncate output missing trailing ellipsis: %q", got)
+	}
+	// n=50 lands mid-🚀 (bytes 48-51); RuneStart backoff cuts at 48, then "…" (3 bytes) appends → 51 bytes total.
+	if want := 48 + len("…"); len(got) != want {
+		t.Fatalf("truncate len=%d want=%d for %q", len(got), want, got)
+	}
+	// Partial 🚀 must not survive as a prefix of the head — only safe head bytes plus ellipsis.
+	if strings.ContainsRune(got, '🚀') {
+		t.Fatalf("truncate preserved 🚀 past byte budget in %q", got)
+	}
+	head := strings.TrimSuffix(got, "…")
+	for i, r := range head {
+		if r == '�' {
+			t.Fatalf("partial rune at byte %d in %q", i, head)
+		}
+	}
+}
+
 // TestRender_WritesBufferOnSuccess pins the success-path contract — the buffer is flushed to the writer exactly once. Bracket to TestRender_BuffersBeforeWrite (per reviewer a5dd8614e5604c5e5).
 func TestRender_WritesBufferOnSuccess(t *testing.T) {
 	const tmpl = `{{define "ok"}}<b>{{.Msg}}</b>{{end}}`
