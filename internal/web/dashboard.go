@@ -93,6 +93,13 @@ const (
 	statusLabelBlocked = "blocked"
 )
 
+const (
+	healthGreen         = "green"
+	healthAmber         = "amber"
+	healthRed           = "red"
+	exitReasonCompleted = "completed"
+)
+
 type dashboardDockerSoakView struct {
 	Uptime         string
 	SpawnsLast1m   int
@@ -242,7 +249,7 @@ func loadEventsView(ctx context.Context, deps Dependencies) any {
 
 // loadDockerSoakView reports daemon uptime + last-1m spawn/exit tallies + latest exit_reason + a health pill so the operator does not have to tail docker logs to know whether the live daemon is healthy.
 func loadDockerSoakView(ctx context.Context, deps Dependencies) any {
-	view := dashboardDockerSoakView{Health: "green", HealthLabel: "IDLE"}
+	view := dashboardDockerSoakView{Health: healthGreen, HealthLabel: "IDLE"}
 	now := deps.Clock()
 	booted := deps.BootedAt
 	if booted.IsZero() {
@@ -261,11 +268,11 @@ func loadDockerSoakView(ctx context.Context, deps Dependencies) any {
 	view.LastExitBadge = exitReasonBadge(lastPayload)
 	switch {
 	case exited > 0 && nonCompleted == 0:
-		view.Health, view.HealthLabel = "green", "HEALTHY"
+		view.Health, view.HealthLabel = healthGreen, "HEALTHY"
 	case exited > 0 && completed == 0:
-		view.Health, view.HealthLabel = "red", "DEGRADED"
+		view.Health, view.HealthLabel = healthRed, "DEGRADED"
 	case nonCompleted > 0:
-		view.Health, view.HealthLabel = "amber", "DEGRADING"
+		view.Health, view.HealthLabel = healthAmber, "DEGRADING"
 	}
 	return view
 }
@@ -300,7 +307,7 @@ func tallyDockerSoakWindow(ctx context.Context, db *state.DB, since int64) (spaw
 			lastPayload = payload
 		}
 		switch {
-		case p.ExitReason == "completed":
+		case p.ExitReason == exitReasonCompleted:
 			completed++
 		case p.ExitReason != "":
 			nonCompleted++
