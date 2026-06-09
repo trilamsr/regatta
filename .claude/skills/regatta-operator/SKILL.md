@@ -68,15 +68,13 @@ Tracking issues for polling-vs-webhook design improvements live under the `[CORE
 
 The most common operator move during a session is: change a regatta source file (orchestrator logic / prompt template / gate script) and watch the next agent pick it up. The skill MUST keep this loop fast and safe. Default recipe:
 
-1. **Checkpoint state DB** before edit. SQLite with WAL is multi-file (`-wal`, `-shm`); a bare `cp` of `$DB` while a writer is connected yields a corrupt snapshot. Force a checkpoint first, then copy all sidecars.
+1. **Checkpoint state DB** before edit. SQLite with WAL is multi-file (`-wal`, `-shm`); a bare `cp` of `$DB` while a writer is connected yields a corrupt snapshot. A bare `PRAGMA wal_checkpoint` + `cp` sequence also races — if the writer resumes between checkpoint and copy, the main DB and WAL drift. The safe primitive is `.backup`, which acquires the necessary locks internally:
    ```bash
-   sqlite3 "$DB" 'PRAGMA wal_checkpoint(TRUNCATE);'   # flush WAL into main DB
    TS=$(date +%s)
-   cp "$DB" "$DB.ckpt-$TS"
-   [ -f "$DB-wal" ] && cp "$DB-wal" "$DB-wal.ckpt-$TS"
-   [ -f "$DB-shm" ] && cp "$DB-shm" "$DB-shm.ckpt-$TS"
+   sqlite3 "$DB" ".backup '$DB.ckpt-$TS'"            # atomic, lock-aware, single-file output
    sqlite3 "$DB.ckpt-$TS" 'pragma integrity_check' | head -3
    ```
+   `.backup` produces ONE file with no sidecars needed for restore. If `.backup` is unavailable (very old sqlite3 CLI), fall back to: stop the orchestrator first (`kill -TERM <PID>` + wait for exit), THEN `cp` all three of `$DB`, `$DB-wal`, `$DB-shm` together. Never `cp` while a writer is live.
 2. **Edit in a worktree.** Operator-side edits MUST land in a separate working tree so the running binary's checkout stays untouched. Two reasons: (a) on rebuild the operator's worktree is the build input, and a clean baseline is recoverable via `git switch -`; (b) the running process holds its text segment in RAM, so source edits do not affect it until the next launch — editing in the binary's own checkout offers zero runtime benefit and adds risk of an unstaged change leaking into the next rebuild.
 3. **Build verification.** Compile errors surface immediately; startup errors only surface after restart. Always run the compile check FIRST so you don't conflate them.
    - `go-install` build: `go build ./cmd/regatta` (does NOT install) → on success `go install ./cmd/regatta`.
@@ -91,10 +89,12 @@ The most common operator move during a session is: change a regatta source file 
 
    After restart, re-run `sqlite3 "$DB" 'pragma integrity_check'`. Lock-orphan signature: `sqlite3` returns `database is locked` despite no other process — `lsof "$DB"` finds it.
 5. **Confirm the binary actually changed.** Restart picking up the old binary is the most common silent failure of this loop. `which regatta` may resolve to a shim or shell alias — verify it matches the running PID's executable.
-   - Resolve the running binary path: `readlink -f /proc/<PID>/exe` (Linux) or `lsof -p <PID> -Fn | awk -F'n' '/txt/{print $2; exit}'` (macOS). Use THIS path, not `$(which regatta)`.
+   - Resolve the running binary path. Linux: `readlink -f /proc/<PID>/exe`. macOS: `lsof -p <PID> -Fn` emits a TWO-line record per fd — `ftxt` then `n<path>` on the next line; parse with `awk '/^ftxt/{getline n; sub(/^n/,"",n); print n; exit}'`. Use THIS resolved path, not `$(which regatta)` — `which` may resolve to a shim or a stale `$PATH` entry.
    - `go-install`: `go version -m "<resolved-path>" | head -5` — compare `mod` / `vcs.revision` / `vcs.time` lines pre/post. Requires the binary to embed module info (default with module mode + `go install`).
    - `docker`: `docker inspect --format '{{.Image}}' <container>` — must match the SHA you built in step 3.
 6. **Stop the orchestrator BEFORE wiping agent worktrees.** Wiping while regatta is mid-poll races the spawner: it may have just `mkdir`'d a new agent dir between your `git worktree list` and the `remove`, leaving an orphan. Sequence: graceful stop (step 4) → wipe → restart. Never wipe a live tree.
+
+   The pre-check below confirms NO regatta process is running with the pre-flight PID. It does NOT prevent a different regatta instance from being launched by a parallel operator session between the check and the wipe — if that scenario is in scope, additionally verify the pre-flight `port` is unbound (`lsof -nP -iTCP:$PORT -sTCP:LISTEN | grep -q . && echo "port still bound" && exit 1`). The PID-identity check is sufficient for the single-operator self-host case (the rest of this skill's containment model).
    ```bash
    # Pre-check: orchestrator must be stopped — refuse if its PID still exists
    if kill -0 <PID> 2>/dev/null; then echo "regatta still running; stop before wipe"; exit 1; fi
