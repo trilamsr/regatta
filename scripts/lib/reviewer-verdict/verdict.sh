@@ -61,6 +61,21 @@ rv_decide_verdict() {
         echo "    <!-- reviewer-skip-justified: <reason ≥4 chars> -->" >&2
         exit 1
       fi
+      # Operator-opened bypass: when the PR body carries the canonical
+      # marker `<!-- operator-opened: <reason ≥4 chars> -->`, the author
+      # IS the operator by definition; the author-mismatch check below
+      # would always fail. Still requires a Reviewer-agent-id from the
+      # allowlist above so the independent-reviewer pass is preserved.
+      # Closes #1089: previously the operator had to use the broader
+      # reviewer-skip-justified escape, which also bypassed the allowlist.
+      OPERATOR_OPENED_REASON=$(grep -oE '<!--[[:space:]]*operator-opened:[[:space:]]*[^>]*-->' "$BODY_FILE" \
+        | head -1 \
+        | sed -E 's/^<!--[[:space:]]*operator-opened:[[:space:]]*//; s/[[:space:]]*-->$//' \
+        | sed -E 's/[[:space:]]+$//')
+      OPERATOR_OPENED_LEN=${#OPERATOR_OPENED_REASON}
+      if [ "$OPERATOR_OPENED_LEN" -ge 4 ]; then
+        exit 0
+      fi
       # Self-tag mismatch check: when caller passes --pr-author, the bare
       # `Reviewer-agent-id:` value MUST differ from the author login.
       if [ -n "$PR_AUTHOR" ] && [ "$REVIEWER_AGENT_ID" = "$PR_AUTHOR" ]; then
@@ -71,6 +86,8 @@ rv_decide_verdict() {
         echo "    Reviewer-recommendation: APPROVE" >&2
         echo "  Operator escape (rare, trivial doc/typo/dep-bump only):" >&2
         echo "    <!-- reviewer-skip-justified: <reason ≥4 chars> -->" >&2
+        echo "  Operator-opened PR (operator wrote impl, not agent — still requires independent reviewer):" >&2
+        echo "    <!-- operator-opened: <reason ≥4 chars> -->" >&2
         exit 1
       fi
       exit 0
