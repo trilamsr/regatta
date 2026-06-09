@@ -11,7 +11,7 @@ NOT this skill's job: write regatta code, merge PRs, or substitute for the orche
 
 ### Autonomy mandate
 
-- **Default state = silent.** Skill emits one heartbeat per N hours (`heartbeat_interval`, default 4h). Between heartbeats: snapshot + diff + auto-act, no narration.
+- **Default state = silent.** In autonomous mode (operator said "autonomous" / "loop" / "keep watching"), skill emits one heartbeat per N hours (`heartbeat_interval`, default 4h) summarizing all iterations between heartbeats; per-phase narration is suppressed. In one-shot mode (operator said "snapshot" / "check" / "report"), skill narrates one line per phase per the run loop and hands back. The per-phase narration rule in the run loop applies to one-shot mode; the heartbeat rule applies to autonomous mode. Explicit operator request wins; default when ambiguous = one-shot.
 - **Auto-act, don't ask.** Every finding routes to one of: (a) auto-filed `[autonomous]`-labelled issue (regatta consumes), (b) auto-comment on existing tracker issue (recurrence), (c) auto-updated baseline file (intended drift). `AskUserQuestion` is reserved for genuinely irreversible decisions only.
 - **Self-improve detector first.** Before filing a finding, search for an open issue regatta's self-improve detector already filed for the same root cause. If exists, auto-comment + bump counter. NEVER file duplicate.
 - **Autonomy regression = HIGH severity.** Any signal that the loop is going DOWN (build-green rate dropping, review-catch rate dropping, recurrence counter climbing, the orchestrator falling back to operator-prompts) is a HIGH `[OPS]` or `[AGENT]` finding, auto-filed.
@@ -52,16 +52,23 @@ target:
     - docs/engineer/briefs/
     - docs/rfcs/
   defer_labels: [phase-x, phase-x-forward-fit, wontfix, deferred]   # exclude from finding sweeps
+findings_repo:                                        # WHICH repo gets the issue file
+  orchestrator_findings: orchestrator-source-repo     # [CORE]/[ORCH]/[OPS]/[AGENT] always file against the orchestrator's own GH repo
+  target_findings: target-repo                        # findings about the TARGET (canary failed = bug in target code) file against target
 roles:                                                # subtypes for [AGENT] findings
   - impl                                              # implementer
   - rev                                               # reviewer
   - des                                               # designer
   - tri                                               # triage
 canaries:                                             # known-input fixtures for regression detection
-  impl: .claude/skills/regatta-operator/canaries/impl/
-  rev:  .claude/skills/regatta-operator/canaries/rev/
-  des:  .claude/skills/regatta-operator/canaries/des/
-  tri:  .claude/skills/regatta-operator/canaries/tri/
+  CANARY_DIR_impl: .claude/skills/regatta-operator/canaries/impl/
+  CANARY_DIR_rev:  .claude/skills/regatta-operator/canaries/rev/
+  CANARY_DIR_des:  .claude/skills/regatta-operator/canaries/des/
+  CANARY_DIR_tri:  .claude/skills/regatta-operator/canaries/tri/
+  # Bootstrap: directories are empty by default. Skill auto-creates them at first
+  # run and emits a `[OPS]` finding "canary suite empty for role=<r>" with a
+  # template the orchestrator can fill via its self-improve detector. Empty dir
+  # = canary section SKIPPED for that role, NOT an error. Forward-fit phase.
 baseline_file: .claude/skills/regatta-operator/baselines/<owner>-<name>.json
 ```
 
@@ -100,7 +107,7 @@ ls Dockerfile docker-compose*.y*ml 2>/dev/null
 which "$ORCH_BINARY" && go version -m "$(which "$ORCH_BINARY")" | head -5
 
 # Discover active roadmap phase from $ROADMAP_PATHS (filter findings against this)
-for p in $ROADMAP_PATHS; do grep -nE '^P[0-9]|^PHASE|\[IN-FLIGHT\]|\[BLOCKED\]' "$p" 2>/dev/null; done | head -20
+for p in $ROADMAP_PATHS; do grep -nE '^(P[0-9]+|PHASE)[[:space:]].*(\[IN-FLIGHT\]|\[BLOCKED\])' "$p" 2>/dev/null; done | head -20
 
 # Load baseline file for regression detection (default missing = cold start, write one at session end)
 test -f "$BASELINE_FILE" && jq '.' "$BASELINE_FILE" || echo 'cold-start: no baseline'
@@ -127,21 +134,23 @@ Tracking issues for polling-vs-webhook design improvements live under `[CORE]`.
 
 The goal is autonomy. The orchestrator is healthy when its OUTPUT is good — green builds, real reviews, mergeable designs. Watching state transitions without watching output is watching the wrong thing.
 
-Every channel below produces a metric. Each session's metrics are written to `$BASELINE_FILE` at hand-off. Next session compares vs baseline; regression > 10% on any metric → HIGH `[AGENT][<role>]` auto-filed finding.
+Every channel below produces a metric. Each session's metrics are written to `$BASELINE_FILE` at hand-off. Next session compares vs baseline.
+
+**Regression thresholds.** Each metric carries its own absolute or relative bound (see table). A finding fires on ANY single metric crossing its bound — not all simultaneously. To avoid alarm storms when multiple metrics regress in the same session (often a single root cause), bundle co-firing regressions into ONE `[AGENT][<role>]` umbrella issue per role per session. Recurrence rule still applies: comment on existing umbrella, never new.
 
 | Metric | Source | Auto-action on regression |
 |---|---|---|
-| `build_green_rate_impl` | `$CI_QUERY_CMD` → count `statusCheckRollup=SUCCESS` / total per implementer agent | file `[AGENT][impl]` regression issue |
-| `tdd_order_rate_impl` | per merged PR: `git log --reverse <head>...<base>` first commit subject matches `^(test\|red)\|FAIL` | file `[AGENT][impl]` |
-| `comment_density_impl` | `bash scripts/check-comment-density.sh` over merged PRs (regatta-only; generic equivalent: `cloc` + comment lines / total) | file `[AGENT][impl]` |
-| `mock_vs_real_ratio_impl` | `bash scripts/check-mock-vs-real.sh` (regatta) OR grep `mock\|stub\|fake` in `*_test.go` per merged PR | file `[AGENT][impl]` if > 70% |
-| `scope_creep_impl` | merged-PR LoC + file-count rolling avg | file `[AGENT][impl]` if 1.5× baseline |
-| `review_catch_rate_rev` | sample N merged PRs/session, dispatch independent reviewer-replay, diff findings | file `[AGENT][rev]` if catch < baseline |
-| `review_false_positive_rate_rev` | reviewer findings that got dismissed inline | file `[AGENT][rev]` if rising |
-| `review_approve_no_finding_rev` | APPROVE recommendations with zero findings | file `[AGENT][rev]` if > baseline |
-| `spec_to_impl_conversion_des` | designer specs that landed mergeable impl within K dispatches | file `[AGENT][des]` if dropping |
-| `spec_churn_des` | specs re-edited > 2 times before impl dispatch | file `[AGENT][des]` |
-| `triage_misclass_tri` | findings ended up needing different surface than triaged | file `[AGENT][tri]` |
+| `build_green_rate_impl` | `$CI_QUERY_CMD` → count `statusCheckRollup=SUCCESS` / total per implementer agent | file `[AGENT][impl]` if rate drops ≥ 0.10 vs baseline (= 10% relative regression) |
+| `tdd_order_rate_impl` | per merged PR, first commit subject of `git log --reverse --format=%s <base>..<head>` matches POSIX-ERE `^(test\|red\|RED\|FAIL\|\[TEST\])` (parentheses group the alternation; only first commit subject is tested) | file `[AGENT][impl]` if rate drops ≥ 0.10 vs baseline |
+| `comment_density_impl` | regatta: `bash scripts/check-comment-density.sh`. Generic: `cloc --csv --quiet <PR-diff>` → comment / total | file `[AGENT][impl]` if density ≥ 0.05 on new files (= 5%) |
+| `mock_vs_real_ratio_impl` | regatta: `bash scripts/check-mock-vs-real.sh`. Generic: `grep -cE 'mock\|stub\|fake' *_test.go` / total test lines per merged PR | file `[AGENT][impl]` if ratio ≥ 0.70 |
+| `scope_creep_impl` | merged-PR LoC + file-count rolling avg | file `[AGENT][impl]` if either dimension ≥ 1.50× baseline (= 50% regression) |
+| `review_catch_rate_rev` | sample N merged PRs/session, dispatch independent reviewer-replay, diff findings | file `[AGENT][rev]` if catch rate drops ≥ 0.10 vs baseline |
+| `review_false_positive_rate_rev` | reviewer findings that got dismissed inline | file `[AGENT][rev]` if rate rises ≥ 0.10 vs baseline |
+| `review_approve_no_finding_rev` | APPROVE recommendations with zero findings | file `[AGENT][rev]` if rate ≥ 0.30 absolute (any session) |
+| `spec_to_impl_conversion_des` | designer specs that landed mergeable impl within K=3 dispatches | file `[AGENT][des]` if conversion drops ≥ 0.10 vs baseline |
+| `spec_churn_des` | specs re-edited > 2 times before impl dispatch | file `[AGENT][des]` if rate rises ≥ 0.10 vs baseline |
+| `triage_misclass_tri` | findings ended up needing different surface than triaged | file `[AGENT][tri]` if rate rises ≥ 0.10 vs baseline |
 | `green_clock_days` | consecutive days ≥10 PRs merged unattended (no operator `--admin`, no manual merge) | heartbeat report only |
 | `recurrence_counter_<root>` | open issue with same `<root>` keyword | comment on existing issue, never new |
 
@@ -154,14 +163,16 @@ Read `$BASELINE_FILE` at pre-flight; write at hand-off:
 
 ## Per-role canary suite
 
-Per-role known-input fixtures live under `$CANARY_DIR_<role>`. Canaries are RE-PLAYED on a schedule, not human-invoked. Default cadence = once per heartbeat (4h). Each canary is one of:
+Per-role known-input fixtures live under `$CANARY_DIR_impl` / `$CANARY_DIR_rev` / `$CANARY_DIR_des` / `$CANARY_DIR_tri`. Canaries are RE-PLAYED on a schedule, not human-invoked. Default cadence = once per heartbeat (4h). Each canary fixture is a directory with:
+- `input.md` — issue body or PR diff to feed in.
+- `expected.json` — structured expected output (PR shape / finding lines / spec key sections / surface label).
+- `meta.yaml` — `last_run`, `last_result`, `seeded_bug_line` (for `rev/`), `expected_K_dispatches` (for `des/`).
 
-- `impl/`: a known-broken test fixture or known-needed-feature issue. Expected output: a PR that fixes/adds, green CI, single commit.
-- `rev/`: a PR with a known bug seeded in. Expected output: a reviewer finding at the seeded line.
-- `des/`: a feature request with known-correct spec sketch. Expected output: a spec close in shape to the sketch.
-- `tri/`: a multi-surface issue. Expected output: correct surface assignment.
+**Empty `$CANARY_DIR_<role>`** = canary section SKIPPED for that role. Skill emits ONE `[OPS]` finding "canary suite empty for role=<r>" with a fixture template at first run, then suppresses for subsequent sessions. Empty ≠ error.
 
-Auto-action on canary divergence: HIGH `[AGENT][<role>]` finding auto-filed with diff of expected vs actual.
+**Replay path.** Each canary is replayed by injecting `input.md` into the orchestrator's normal intake — the SAME path the orchestrator already consumes (e.g. file a target-repo issue with `$SPAWN_LABEL`, or POST to the orchestrator's internal queue endpoint if exposed). Do NOT bypass intake by directly invoking the spawner — the goal is to test the live loop, not the sandbox-only code path. Tag the input body with `canary:<role>:<fixture>:<ts>` so the output is mechanically correlatable.
+
+**Divergence vs replay.** Replay = inject input + wait for orchestrator output. Divergence = `expected.json` does not match the captured output. ALL divergences auto-file ONE `[AGENT][<role>]` finding per canary per session against `$ORCH_SOURCE_REPO`; do not file per-divergence + per-replay separately.
 
 Skipping canaries because "the orchestrator is busy" is a containment fail. Canaries replay regardless; the orchestrator is supposed to be busy.
 
@@ -172,13 +183,20 @@ Findings against deferred / phase-x / wontfix work waste tracker space. Before f
 ```bash
 # Issue's labels (target repo)
 gh issue view <N> -R "$TARGET_REPO" --json labels --jq '.labels[].name' \
-  | grep -E "$(echo $DEFER_LABELS | tr ' ' '|')" && echo "skip: deferred"
+  | grep -E "$(printf '%s' "$DEFER_LABELS" | tr ' ' '|')" && echo "skip: deferred"
 
 # Active roadmap phase (per $ROADMAP_PATHS)
-grep -E '^P[0-9]+ —.*\[IN-FLIGHT\]' $ROADMAP_PATHS 2>/dev/null | head -3
+grep -E '^P[0-9]+[[:space:]].*\[IN-FLIGHT\]' $ROADMAP_PATHS 2>/dev/null | head -3
 ```
 
 Findings against the active phase: file. Findings against deferred phases: capture in `$BASELINE_FILE` only; do not file. Findings against unknown phase: warn + file with `phase=unknown` tag.
+
+When MULTIPLE phases are marked `[IN-FLIGHT]` simultaneously (e.g. P0 + P3), treat the LOWEST-numbered phase as primary; the others are "in-flight-parallel". Findings against any in-flight phase are filed. The primary is what the heartbeat reports as `phase=P<lowest>`.
+
+**Where the finding is filed.** Two repos in play: `$ORCH_SOURCE_REPO` (where the orchestrator's own code lives — for regatta self-host this == `$TARGET_REPO`) and `$TARGET_REPO` (the workload). Routing per the YAML `findings_repo` block:
+- `[CORE] / [ORCH] / [OPS] / [AGENT]` findings → `$ORCH_SOURCE_REPO` (these are orchestrator-improvement issues).
+- Findings about TARGET code (canary tripped a real bug in target) → `$TARGET_REPO`.
+- Recurrence search runs in BOTH repos before filing.
 
 ## Tight feedback loop (edit → rebuild → restart → canary → observe)
 
@@ -341,7 +359,7 @@ End every iteration with: `result: operator loop <N> — <findings> new, <issues
 
 Same root cause hits ≥ 2 agents / iterations → exactly ONE tracker issue, bump occurrence counter via PR-comment on that issue. NEVER file a second issue for the same root cause. Conflicts with naive "Nth occurrence" loops; this rule wins.
 
-Implementation: before filing, run `gh issue list -R <regatta-repo> --search "<root-cause-keyword>" --state all -L 5 --json number,title,state`. If an open issue matches → comment on it with "occurrence N: <PR or agent ref>". If a closed issue matches → reopen with "regression detected: <PR ref>".
+Implementation: before filing, search BOTH `$ORCH_SOURCE_REPO` and `$TARGET_REPO` (the orchestrator's self-improve detector may have filed against either): `for R in "$ORCH_SOURCE_REPO" "$TARGET_REPO"; do gh issue list -R "$R" --search "<root-cause-keyword>" --state all -L 5 --json number,title,state; done`. If an open issue matches → comment with "occurrence N: <PR or agent ref>". If a closed issue matches → reopen with "regression detected: <PR ref>". If none match → file in the repo per the routing rule above.
 
 This rule beats the generic "repeat trap" trigger. `feedback_trap_projection` says recurring trap is a structural defect — N tracker issues is itself the trap.
 
