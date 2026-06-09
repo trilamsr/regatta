@@ -86,13 +86,25 @@ func TestScrubChildEnv_DoesNotMutateParent(t *testing.T) {
 	}
 }
 
-// TestScrubChildEnv_DefaultPassesThrough: without REGATTA_SPAWNER_STRIP_API_KEY, parent env passes through unchanged so macOS Docker keychain-less operators keep working (#1099 c5).
-func TestScrubChildEnv_DefaultPassesThrough(t *testing.T) {
+// TestScrubChildEnv_DefaultStripsAPIKey: with the env unset (default), ANTHROPIC_API_KEY is scrubbed so children route through ~/.claude subscription auth — the 2026-06-09 operator-ask default flip (#1099 follow-up).
+func TestScrubChildEnv_DefaultStripsAPIKey(t *testing.T) {
 	t.Setenv(envStripAPIKey, "")
 	in := []string{"ANTHROPIC_API_KEY=sk-ant-xxx", "PATH=/bin"}
 	out := scrubChildEnv(in)
-	if len(out) != 2 || out[0] != in[0] || out[1] != in[1] {
-		t.Fatalf("default mode should pass-through; got=%v", out)
+	if len(out) != 1 || out[0] != "PATH=/bin" {
+		t.Fatalf("default should strip ANTHROPIC_API_KEY; got=%v", out)
+	}
+}
+
+// TestScrubChildEnv_OptOutPassesThrough: explicit REGATTA_SPAWNER_STRIP_API_KEY=0 (false|no|off) restores the pre-default-flip behavior so macOS-host operators without ~/.claude mount can opt out.
+func TestScrubChildEnv_OptOutPassesThrough(t *testing.T) {
+	for _, v := range []string{"0", "false", "no", "off"} {
+		t.Setenv(envStripAPIKey, v)
+		in := []string{"ANTHROPIC_API_KEY=sk-ant-xxx", "PATH=/bin"}
+		out := scrubChildEnv(in)
+		if len(out) != 2 || out[0] != in[0] || out[1] != in[1] {
+			t.Fatalf("opt-out %q should pass through; got=%v", v, out)
+		}
 	}
 }
 
@@ -128,9 +140,28 @@ func TestExecStarter_AppliesScrubbedEnvWhenStripEnabled(t *testing.T) {
 	}
 }
 
-// TestExecStarter_DefaultPassesAPIKeyThrough: with strip flag unset, execStarter preserves the parent env so macOS Docker operators (no file-backed subscription) keep working (#1099 c8 — integration).
-func TestExecStarter_DefaultPassesAPIKeyThrough(t *testing.T) {
+// TestExecStarter_DefaultScrubsAPIKey: with strip flag unset (default), execStarter scrubs ANTHROPIC_API_KEY from the spawned child's env so it falls back to ~/.claude subscription auth — the 2026-06-09 operator-ask default flip (#1099 follow-up).
+func TestExecStarter_DefaultScrubsAPIKey(t *testing.T) {
 	t.Setenv(envStripAPIKey, "")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-leaked")
+	resetStripLogOnceForTest()
+
+	cmd, err := execStarter(context.Background(), trueBinForTest(t), nil, nil, io.Discard, t.TempDir())
+	if err != nil {
+		t.Fatalf("execStarter: %v", err)
+	}
+	t.Cleanup(func() { _ = cmd.Wait() })
+
+	for _, kv := range cmd.Env {
+		if strings.HasPrefix(kv, "ANTHROPIC_API_KEY=") {
+			t.Fatalf("execStarter default mode leaked ANTHROPIC_API_KEY into child cmd.Env: %v", cmd.Env)
+		}
+	}
+}
+
+// TestExecStarter_OptOutPassesAPIKeyThrough: explicit REGATTA_SPAWNER_STRIP_API_KEY=0 (false|no|off) restores the pre-default-flip behavior so macOS-host operators without ~/.claude mount can opt out.
+func TestExecStarter_OptOutPassesAPIKeyThrough(t *testing.T) {
+	t.Setenv(envStripAPIKey, "0")
 	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-passthrough")
 	resetStripLogOnceForTest()
 
@@ -148,7 +179,7 @@ func TestExecStarter_DefaultPassesAPIKeyThrough(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("execStarter default mode dropped ANTHROPIC_API_KEY; got Env=%v", cmd.Env)
+		t.Fatalf("execStarter opt-out mode dropped ANTHROPIC_API_KEY; got Env=%v", cmd.Env)
 	}
 }
 
