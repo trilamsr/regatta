@@ -71,7 +71,7 @@ services:
       # daemon refuses to bind the UI listener when --ui=true and the
       # key is empty, via cmd/regatta/wire_web.go::preflightUIBoot.
       REGATTA_HMAC_KEY: ${REGATTA_HMAC_KEY:-}
-      # Spawner credential strategy. Default 1 = STRIP parent ANTHROPIC_API_KEY so spawned children authenticate via subscription credentials. Pay-as-you-go operators set this to 0 explicitly. Subscription path requires mounting ~/.claude into the container via docker-compose.override.yml; see docs/operator/docker-compose.md.
+      # Spawner billing mode: 1 strips parent ANTHROPIC_API_KEY → subscription via ~/.claude (operator-mounted via docker-compose.override.yml); 0 passes the token → pay-as-you-go. See docs/operator/docker-compose.md §Spawner billing mode.
       REGATTA_SPAWNER_STRIP_API_KEY: ${REGATTA_SPAWNER_STRIP_API_KEY:-1}
     command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=${REGATTA_UI:-true}", "--spawner=claude"]
     volumes:
