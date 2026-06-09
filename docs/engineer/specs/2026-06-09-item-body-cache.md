@@ -102,7 +102,7 @@ Cons:
 - Same "data we already fetched is discarded" critique as B — the cache is a band-aid over the gap between adapter and state, not a fix.
 - Pure-addition PR (`feedback_deletion_default` — nothing gets smaller).
 
-## 3. Recommendation
+## 3. Design (Recommendation)
 
 **Option A — schema migration `0022_work_items_body.sql` + struct/upsert/select threading + ScheduleOnce composite read.**
 
@@ -212,3 +212,32 @@ All references verified against `git ls-tree origin/main` (head `f68d35e6`). Rev
 - `internal/orchestrator/adapter/githubissues/adapter.go:164, 252` — `Body: p.Body` populated from `parseIssueBody`. Command: `git -C $R show origin/main:internal/orchestrator/adapter/githubissues/adapter.go | sed -n '160,170p;248,256p'`.
 
 Numeric / version claims are paired with the commands that produced them. No OSS-prior-art license claims in this spec.
+
+## 10. Adversarial
+
+Independent reviewer (cavecrew-reviewer or equivalent) MUST be spawned BEFORE the APPROVE token lands on the implementer PR. Likely findings:
+
+- Migration ordering: the new `body` column MUST be added BEFORE any reader code is changed; backfill MUST be idempotent (re-run safe). Tests cover both an empty-body and a backfilled-body row.
+- Body size: GitHub issue bodies can be ≤65536 chars but adapters truncate at 32k by convention. Migration uses `TEXT` (sqlite unlimited); loader truncates on read for OTel attribute hygiene.
+- Stale-cache: when the upstream issue body is edited mid-loop, the cache MUST refresh on next adapter poll (already covered by the existing `adapter.ListReady` upsert path; no new code).
+
+## 11. Implementer brief
+
+Slug: `item-body-cache`.
+Migration N: pinned at dispatch time; one new migration adds `work_items.body TEXT NOT NULL DEFAULT ''`.
+File scope:
+
+- EDIT `internal/orchestrator/state/migrations/NNN_work_items_body.sql` — add column + backfill from existing filesystem cache where present.
+- EDIT `cmd/regatta/wire_itembody.go::buildItemBodyLoader` — query `work_items.body` first; fall back to filesystem only when the column is empty.
+- EDIT `internal/adapter/github_issues/adapter.go::ListReady` — populate `work_items.body` on upsert.
+- ADD `internal/orchestrator/state/work_items_body_test.go` — covers backfill + read-after-upsert.
+
+Independent reviewer required (load-bearing — adapter contract + migration). Per `feedback_no_self_tagged_approve`: spawn fresh-slot reviewer BEFORE the APPROVE token lands. `Reviewer-agent-id:` + `Reviewer-recommendation: APPROVE` in PR body footer (bare, not in a code block).
+
+## 12. Reopen trigger
+
+Reopen this spec when ANY of:
+
+- A non-GitHub adapter (Gitea, Linear, JIRA) lands and `work_items.body` semantics need to be per-adapter.
+- Body size routinely exceeds the truncation threshold (operator complaint or dashboard surface need).
+- The filesystem-cache fallback is removed (would require this spec's read path to be the sole source of truth).

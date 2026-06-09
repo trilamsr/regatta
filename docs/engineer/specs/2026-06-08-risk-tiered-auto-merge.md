@@ -53,7 +53,7 @@ Self-host-phase constraint (`docs/engineer/briefs/2026-06-01-self-host-first.md`
 
 Goal: ~80% of typical-repo PRs (deps + doc + comment sweeps) merge hands-off; the ~20% that are load-bearing stay on the existing `human_merge` path; an adversarial reviewer subagent still runs on every PR regardless of tier.
 
-## §2 Non-goals
+## §2 Non-goals (Out of scope)
 
 - **NOT replacing `human_merge`.** Load-bearing PRs stay on the operator-click path. This gate is additive, lives at a strictly lower risk tier, and is rejected-by-default.
 - **NOT enabling auto-merge for any path on the existing load-bearing list.** The reviewer-verdict path classifier (`scripts/lib/reviewer-verdict/path-classifier.sh`) is the authoritative source. If that classifier flags load-bearing, this gate fails closed.
@@ -61,7 +61,7 @@ Goal: ~80% of typical-repo PRs (deps + doc + comment sweeps) merge hands-off; th
 - **NOT a multi-tier permission system across operators.** Self-host phase = one operator. Risk tiers are PR-shape buckets, not user-role buckets. `RBAC` is Phase X (`docs/engineer/briefs/2026-06-01-self-host-first.md` §4).
 - **NOT changing the existing `gh pr merge --auto` story.** GitHub's native auto-merge already fires when CI passes after operator click; this gate REPLACES the operator click for low-risk PRs only.
 
-## §3 Risk tier matrix
+## §3 Design (Risk tier matrix)
 
 Four tiers. Lowest tier eligible for auto-merge; highest tier always requires operator click. A PR lands in the LOWEST tier that ALL its predicates satisfy; failing any predicate at tier N promotes to tier N+1.
 
@@ -179,7 +179,7 @@ Both signals MUST be set; either alone fails closed. The CLI flag is per-process
 
 **Audit trail**: every auto-merge decision emits `merge.low_risk_decision` slog event with fields `pr=N tier=T0|T1|T2|T3 eligible=bool reason="..." classifier_paths_reason="..." loc_delta=N soak_remaining_sec=N reviewer_agent_id="..."`. Operator can `grep merge.low_risk_decision` to audit gate behavior. Decision also written to `substrate_events` (immutable audit).
 
-## §9 Test plan
+## §9 Test plan (Acceptance)
 
 ### §9.1 TDD discipline (per `feedback_tdd_discipline`)
 
@@ -269,7 +269,7 @@ Reviewer findings filed inline OR as tracking issues before merge (per `feedback
 
 8. **Per-tier YAML schema surface**: do we expose `hold_window_t0` / `hold_window_t1` / `loc_cap_t0` / `loc_cap_t1` in v1, or just `hold_window` / `loc_cap` collapsed? **Tentative**: collapsed in v1 (matches §10.5 collapse decision); add per-tier overrides only after the first real case for differing them appears (per `feedback_default_simpler`).
 
-## §11 Implementation task breakdown
+## §11 Implementer brief (Implementation task breakdown)
 
 To be filed as separate issues (NOT in scope for this spec PR — spec ships acceptance only):
 
