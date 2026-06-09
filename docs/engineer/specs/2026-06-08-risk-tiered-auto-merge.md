@@ -58,7 +58,7 @@ Goal: ~80% of typical-repo PRs (deps + doc + comment sweeps) merge hands-off; th
 - **NOT replacing `human_merge`.** Load-bearing PRs stay on the operator-click path. This gate is additive, lives at a strictly lower risk tier, and is rejected-by-default.
 - **NOT enabling auto-merge for any path on the existing load-bearing list.** The reviewer-verdict path classifier (`scripts/lib/reviewer-verdict/path-classifier.sh`) is the authoritative source. If that classifier flags load-bearing, this gate fails closed.
 - **NOT skipping adversarial review.** Every tier including the lowest still requires `Reviewer-recommendation: APPROVE` from an independent-reviewer allowlist agent-id. The eligibility check is ADDITIVE to the existing reviewer-verdict gate, not a bypass.
-- **NOT a multi-tier permission system across operators.** Self-host phase = one operator. Risk tiers are PR-shape buckets, not user-role buckets. RBAC is Phase X (`docs/engineer/briefs/2026-06-01-self-host-first.md` §4).
+- **NOT a multi-tier permission system across operators.** Self-host phase = one operator. Risk tiers are PR-shape buckets, not user-role buckets. `RBAC` is Phase X (`docs/engineer/briefs/2026-06-01-self-host-first.md` §4).
 - **NOT changing the existing `gh pr merge --auto` story.** GitHub's native auto-merge already fires when CI passes after operator click; this gate REPLACES the operator click for low-risk PRs only.
 
 ## §3 Risk tier matrix
@@ -296,7 +296,7 @@ Per CLAUDE.md `feedback_decision_priority` (UX → ease → performance → best
 
 ## §13 References
 
-- `docs/engineer/briefs/2026-06-01-self-host-first.md` — phase constraints (§1: deterministic CI, human-merge via branch protection; §4: Phase X defers RBAC).
+- `docs/engineer/briefs/2026-06-01-self-host-first.md` — phase constraints (§1: deterministic CI, human-merge via branch protection; §4: Phase X defers `RBAC`).
 - `scripts/check-reviewer-verdict.sh` — existing reviewer-verdict gate (sibling to this gate; ALWAYS runs first).
 - `scripts/lib/reviewer-verdict/path-classifier.sh` — authoritative load-bearing-path classifier (reused as negative test).
 - `regatta.yaml::gates::human_merge` — existing approval gate (NOT replaced; T2/T3 PRs continue to use it).
