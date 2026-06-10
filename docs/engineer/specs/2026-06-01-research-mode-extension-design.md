@@ -585,7 +585,7 @@ When the gating items land, re-validate this spec against the then-current state
 - `docs/engineer/briefs/2026-06-01-regatta-research-vision.md` — strategic vision
 - `docs/engineer/briefs/2026-06-01-arch-simplification-pass.md` — collapse-before-extend prerequisite
 - `docs/engineer/briefs/2026-06-01-self-host-first.md` — Phase S1 → S2 → S3 → Phase X roadmap that places research-mode in Phase X
-- `docs/engineer/specs/2026-06-01-unified-substrate-design.md` — substrate event log; this spec adds `KindReproVerdict` to its enum
+- `docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md` — substrate event log; this spec adds `KindReproVerdict` to its enum
 - `docs/engineer/specs/2026-06-01-adapter-contracts-design.md` — Sigstore signer + OPA Authorizer adapter contracts (subject to deletion per simplification pass; signer Sigstore impl + multi-tenant OPA stay Phase X)
 - `docs/engineer/specs/2026-06-01-w7-operator-web-ui-design.md` — Phase X host for the research-DAG view + claim-ledger panel (CLI is sufficient until then)
 - `contracts/schemas/spec_adapter.go` — `WorkItemKind` enum gains `KindResearch`

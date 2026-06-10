@@ -135,10 +135,10 @@ The following primitives reduce SOC 2 readiness effort substantially when the tr
 | Append-only signed event log (`internal/orchestrator/state/substrate/`) + HMAC chain (`cmd/regatta/audit.go`) | SHIPPED | CC7.2 anomaly detection, CC7.3 incident logging, A1.3 backup integrity, CC4.1 monitoring evidence. |
 | Approval gates (`internal/canon/approvaltoken/`, `internal/gates/approval/`) | SHIPPED | CC6.1 logical access, CC8.1 change authorization. |
 | Secret routing (`internal/secrets/` chain + keychain/pass + canonical key names) | SHIPPED | CC6.1 credential protection, CC6.7 secrets-at-rest. |
-| Branch protection + `L4-as-review-identity` (`docs/engineer/specs/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md`) | SHIPPED | CC8.1 change-management approval; PR-review separation-of-duties evidence. |
-| Cost caps + budget reconcile (`docs/engineer/specs/2026-06-01-cost-governor-design.md`) | SHIPPED | CC4.1 monitoring of operational metrics; CC7 anomaly trigger (spend spike). |
-| Cryptographic erasure design (`docs/engineer/specs/2026-06-02-crypto-shredding-design.md`) | SPECCED, Phase-X gated | C1.2 disposal of confidential information; later reusable for P4 retention. |
-| Outbox primitive (`docs/engineer/specs/2026-06-02-external-effect-outbox-primitive.md`) | SPECCED | CC2.3 communication of incidents to external parties; future SIEM export. |
+| Branch protection + `L4-as-review-identity` (`docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md`) | SHIPPED | CC8.1 change-management approval; PR-review separation-of-duties evidence. |
+| Cost caps + budget reconcile (`docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md`) | SHIPPED | CC4.1 monitoring of operational metrics; CC7 anomaly trigger (spend spike). |
+| Cryptographic erasure design (`docs/engineer/specs/phase-x/2026-06-02-crypto-shredding-design.md`) | SPECCED, Phase-X gated | C1.2 disposal of confidential information; later reusable for P4 retention. |
+| Outbox primitive (`docs/engineer/specs/phase-x/2026-06-02-external-effect-outbox-primitive.md`) | SPECCED | CC2.3 communication of incidents to external parties; future SIEM export. |
 
 The headline gap is **evidence-collection automation**: today the substrate writes audit events but there is no SOC-2-shaped query interface, no operator-facing "show me every change to access-control config in the past 90 days" report. The spec carries that slice.
 
@@ -174,9 +174,9 @@ What a hostile reader would object to:
 - Substrate event log: `internal/orchestrator/state/substrate/event.go`.
 - Secret routing: `internal/secrets/secrets.go`.
 - Approval token canonical surface: `internal/canon/approvaltoken/token.go`.
-- W7 L4-as-review: `docs/engineer/specs/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md`.
+- W7 L4-as-review: `docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md`.
 - W8 RBAC + multi-tenant: `docs/engineer/specs/2026-06-01-w8-opa-rbac-design.md`.
 - W10 supply-chain signing: `docs/engineer/specs/2026-06-01-w10-sigstore-design.md`.
 - W12 billing: `docs/engineer/specs/2026-06-01-w12-billing-design.md`.
-- Crypto-shredding: `docs/engineer/specs/2026-06-02-crypto-shredding-design.md`.
-- Outbox primitive: `docs/engineer/specs/2026-06-02-external-effect-outbox-primitive.md`.
+- Crypto-shredding: `docs/engineer/specs/phase-x/2026-06-02-crypto-shredding-design.md`.
+- Outbox primitive: `docs/engineer/specs/phase-x/2026-06-02-external-effect-outbox-primitive.md`.

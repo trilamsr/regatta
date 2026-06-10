@@ -42,7 +42,7 @@ Prior-art baseline: `docs/engineer/specs/2026-06-01-w12-billing-design.md` (50 K
 | Metered-usage model | [Stripe Metered Billing](https://stripe.com/docs/billing/subscriptions/metered) | n/a | Stripe docs | Per-subscription-item usage records; monthly aggregation by Stripe |
 | Invoice markdown shape | `docs/operator/billing.md` (this repo, to be authored at impl time) | n/a | repo-internal | Header + table + footer template; reused from S3-T3 operator-doc style |
 | Substrate event reducer | `internal/substrate/reducer.go::lww` (regatta, shipped Wave 1) | n/a | repo-internal | `lww` reducer for `billing_period_closed` keyed by `(tenant_id, period_start)` |
-| Cost-governor rollup source | `docs/engineer/specs/2026-06-01-cost-governor-design.md` §3.4 (Wave 2 reconciler) | n/a | repo-internal | `budget_reconciled` event is the canonical USD ground-truth — billing is pure consumer |
+| Cost-governor rollup source | `docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md` §3.4 (Wave 2 reconciler) | n/a | repo-internal | `budget_reconciled` event is the canonical USD ground-truth — billing is pure consumer |
 
 Rejected alternatives: bespoke Stripe-API HTTP client (re-implementing stripe-go's idempotency + retry); Lago / OpenMeter (adds infra surface a single-binary regatta should not depend on); per-tenant cron writing usage rows in-app (cost-governor reconciler is already this loop).
 
@@ -97,7 +97,7 @@ Close ritual (single transaction per tenant):
 ## 5. Dep order
 
 1. **MUST be merged first:** P3.8 billing-adapter seam (`docs/engineer/specs/2026-06-01-adapter-contracts-design.md`) — same seam as MVR-3-T1 signer.
-2. **MUST be merged first:** Cost-governor Wave 2 reconciler (`docs/engineer/specs/2026-06-01-cost-governor-design.md` §3.4) — billing is a pure consumer of `budget_reconciled` events.
+2. **MUST be merged first:** Cost-governor Wave 2 reconciler (`docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md` §3.4) — billing is a pure consumer of `budget_reconciled` events.
 3. **MUST be merged first:** Substrate Wave 1 (`substrate_events`) — billing rides the substrate; ZERO new migrations.
 4. **SHOULD be merged first:** W7 Wave 2 admin pages (`docs/engineer/specs/2026-06-01-w7-wave2-admin-pages-design.md`) — reuses the embed.FS template loader + cookie-HMAC middleware for the `/billing` route.
 5. **No dep on MVR-3-T1 / T3 / T4** — Stripe metering is orthogonal to Sigstore, blackboard, and research-mode.

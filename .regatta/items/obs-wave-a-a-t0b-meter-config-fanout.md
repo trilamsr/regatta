@@ -4,10 +4,10 @@ title: Config.Meter retrofit fan-out — 6 remaining Config structs (scheduler, 
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T0a
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §2.4 (impl seam), §7 Wave-A table row A-T0b (post-amendment split).
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §2.4 (impl seam), §7 Wave-A table row A-T0b (post-amendment split).
 Amendment ref: review of PR #410 §3 (A-T0a/A-T0b split rationale — same `setup.go` file forces serial after A-T0a).
 
 ## Task

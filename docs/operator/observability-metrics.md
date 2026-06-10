@@ -8,7 +8,7 @@ Goal: pick the metric wire format, provision the dashboards, understand
 the cardinality budget that protects your bill, and tune the
 trace-sampling knobs.
 Expires when: spec
-[`docs/engineer/specs/2026-06-02-observability-roadmap.md`](../engineer/specs/2026-06-02-observability-roadmap.md)
+[`docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md`](../engineer/specs/phase-x/2026-06-02-observability-roadmap.md)
 §2 (metric naming + tag schema + sampling policy) changes.
 
 ## 1. Pick a wire format: OTLP push vs Prometheus pull
@@ -153,7 +153,7 @@ PR rather than a quiet runtime change.
 minutes during a real LLM-provider tail (5-10× normal latency for
 30-60 min is common). `[OBS-followup]` is filed to widen the budget
 to 5% or extend the window to 28 days once Wave-B has 30 days of
-real burn-rate data — see [the obs-roadmap spec](../engineer/specs/2026-06-02-observability-roadmap.md)
+real burn-rate data — see [the obs-roadmap spec](../engineer/specs/phase-x/2026-06-02-observability-roadmap.md)
 §5.
 
 Verify by running:
@@ -165,7 +165,7 @@ make slo-compile && ls dashboards/prometheus/rules/
 ## 5. Cardinality budget and the AST-walk lint
 
 Every metric tag carries a documented cardinality cap in
-[spec §2.2](../engineer/specs/2026-06-02-observability-roadmap.md).
+[spec §2.2](../engineer/specs/phase-x/2026-06-02-observability-roadmap.md).
 Three labels are **banned on metrics** because they are unbounded or
 high-cardinality in steady state:
 
@@ -265,7 +265,7 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317 \
 
 Single source of truth for what regatta emits, what env vars it reads,
 what tags appear on each metric, and what sampling policy ships:
-[docs/engineer/specs/2026-06-02-observability-roadmap.md](../engineer/specs/2026-06-02-observability-roadmap.md).
+[docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md](../engineer/specs/phase-x/2026-06-02-observability-roadmap.md).
 
 When this doc drifts from the spec, the spec wins; file an issue with
 the `[OBS-followup]` tag.

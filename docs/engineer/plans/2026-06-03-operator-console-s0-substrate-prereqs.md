@@ -8,7 +8,7 @@
 
 **Tech Stack:** Go 1.25.x; sqlite3 migrations; `internal/canon` canonical JSON; `internal/orchestrator/state/substrate.AppendEvent` (HMAC-signed event writer); `gh` CLI shell-out (no `go-github`).
 
-**Spec reference:** `docs/engineer/specs/2026-06-02-operator-console-design.md` (PR #701) §3.2 substrate prereqs.
+**Spec reference:** `docs/engineer/specs/phase-x/2026-06-02-operator-console-design.md` (PR #701) §3.2 substrate prereqs.
 
 **v3 rework notes (post-2nd-reviewer ground-truth pass):**
 - `*state.DB` field is `sql` (not `db`) per `state.go:55`.
@@ -2217,7 +2217,7 @@ gh pr create --title "[FEATURE] operator-console S0 — substrate prereqs (runs 
 ## Summary
 
 S0 of operator console v1 (spec
-`docs/engineer/specs/2026-06-02-operator-console-design.md`, PR #701).
+`docs/engineer/specs/phase-x/2026-06-02-operator-console-design.md`, PR #701).
 
 Lands substrate + scheduler + spawner + gh-poller infrastructure that
 unblocks S1-S4:

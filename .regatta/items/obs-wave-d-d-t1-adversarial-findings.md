@@ -4,10 +4,10 @@ title: adversarial-findings counter + dashboard tile + A-T4 placeholder removal 
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T0a
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-1 row item #3, §7 Wave-D table row D-T1, §6.2 first-digest degraded contract (placeholder removal), §7 Wave-D exit gate (dismissal-rate alarm).
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 Tier-1 row item #3, §7 Wave-D table row D-T1, §6.2 first-digest degraded contract (placeholder removal), §7 Wave-D exit gate (dismissal-rate alarm).
 
 ## Task
 

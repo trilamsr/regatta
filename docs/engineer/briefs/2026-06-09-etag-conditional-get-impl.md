@@ -5,13 +5,13 @@ status: draft
 phase: self-host-first
 owner: trilamsr@gmail.com
 created: 2026-06-09
-summary: "Implementer-ready brief for Rung 1 of the polling-improvement-ladder spec (`docs/engineer/specs/2026-06-09-polling-improvement-ladder.md`). Introduces an ETag-aware `http.RoundTripper` under `internal/ghclient/` plus three new `internal/obs/events.go` event kinds (`EventGhclientPollHit`, `EventGhclientPollMiss`, `EventGhclientPollNotModified`). Targets ≥80% rate-budget reduction on a 5-min idle window via 304-Not-Modified short-circuit. Closes #1164."
+summary: "Implementer-ready brief for Rung 1 of the polling-improvement-ladder spec (`docs/engineer/specs/phase-x/2026-06-09-polling-improvement-ladder.md`). Introduces an ETag-aware `http.RoundTripper` under `internal/ghclient/` plus three new `internal/obs/events.go` event kinds (`EventGhclientPollHit`, `EventGhclientPollMiss`, `EventGhclientPollNotModified`). Targets ≥80% rate-budget reduction on a 5-min idle window via 304-Not-Modified short-circuit. Closes #1164."
 ---
 
 # ETag conditional GET — Implementer Brief (Rung 1)
 
 Tracks: #1164.
-Sibling spec: `docs/engineer/specs/2026-06-09-polling-improvement-ladder.md` (Rung 1, §3 + §4.1).
+Sibling spec: `docs/engineer/specs/phase-x/2026-06-09-polling-improvement-ladder.md` (Rung 1, §3 + §4.1).
 Cross-ref: `internal/ghclient/client.go` (current gh-CLI seam — no `http.Client` exists yet; this brief introduces it), `internal/obs/events.go` (event-kind registry; load-bearing surface per `CLAUDE.md` reviewer-verdict gate).
 
 Memory rules in force: `feedback_default_simpler`, `feedback_tdd_discipline`, `feedback_validate_before_ship`, `feedback_adversarial_review_every_step`, `feedback_no_signatures`, `feedback_spec_pattern_authority`, `feedback_subagent_cicheck_compress`.

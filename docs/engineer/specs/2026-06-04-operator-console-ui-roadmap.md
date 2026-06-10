@@ -5,14 +5,14 @@ revision: v1 (Phase-S delivery roadmap; scopes down v5.1 design to self-host fil
 author: design-subagent
 date: 2026-06-04
 superseded_by:
-  - docs/engineer/specs/2026-06-08-operator-console-ui-roadmap-v2.md
+  - docs/engineer/specs/phase-x/2026-06-08-operator-console-ui-roadmap-v2.md
 companion:
-  - docs/engineer/specs/2026-06-02-operator-console-design.md
-  - docs/engineer/specs/2026-06-02-operator-console-v2-backlog.md
+  - docs/engineer/specs/phase-x/2026-06-02-operator-console-design.md
+  - docs/engineer/specs/phase-x/2026-06-02-operator-console-v2-backlog.md
   - docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md
 scope_umbrella: "[#183](https://github.com/trilamsr/regatta/issues/183) operator web UI"
 framing: |
-  SUPERSEDED 2026-06-08 by docs/engineer/specs/2026-06-08-operator-console-ui-roadmap-v2.md.
+  SUPERSEDED 2026-06-08 by docs/engineer/specs/phase-x/2026-06-08-operator-console-ui-roadmap-v2.md.
   The operator decision on 2026-06-08 flipped the SvelteKit prohibition
   recorded here; v2 re-sequences the slices for the SvelteKit target
   while preserving substrate prereqs and the operator-experience
@@ -498,8 +498,8 @@ clauses and the dispatch-brief citation requirement.
 
 ## 12. References
 
-- `docs/engineer/specs/2026-06-02-operator-console-design.md` (v5.1 design ledger)
-- `docs/engineer/specs/2026-06-02-operator-console-v2-backlog.md` (deferred items)
+- `docs/engineer/specs/phase-x/2026-06-02-operator-console-design.md` (v5.1 design ledger)
+- `docs/engineer/specs/phase-x/2026-06-02-operator-console-v2-backlog.md` (deferred items)
 - `docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md` (S0 substrate)
 - `docs/engineer/briefs/2026-06-01-self-host-first.md` (Phase-S filter; Phase-X gate)
 - `docs/operator/runbooks/` (9 runbooks driving the 80/20 surface choice)

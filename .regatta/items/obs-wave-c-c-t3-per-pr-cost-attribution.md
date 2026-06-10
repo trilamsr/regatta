@@ -4,10 +4,10 @@ title: per-PR cost attribution log-event + aggregate counter (item #11)
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T1
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-2 row item #11, §7 Wave-C table row C-T3 (shared-owner pin), §11 RISK-B (cost-per-agent rollup deferral), §9 follow-up issue #3.
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 Tier-2 row item #11, §7 Wave-C table row C-T3 (shared-owner pin), §11 RISK-B (cost-per-agent rollup deferral), §9 follow-up issue #3.
 
 ## Task
 

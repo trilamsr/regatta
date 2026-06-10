@@ -1,6 +1,6 @@
 # MVP-3 W9 — Replay + Diff Harness — Implementer Task Breakdown (2026-06-01)
 
-Source-of-truth spec: `docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md` (#292, MERGED). Read fully §3 Architecture (3.1–3.7), §5 Risk register (R1–R10), §8 File-disjoint implementation preview (T1–T6), §9 Sequencing.
+Source-of-truth spec: `docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md` (#292, MERGED). Read fully §3 Architecture (3.1–3.7), §5 Risk register (R1–R10), §8 File-disjoint implementation preview (T1–T6), §9 Sequencing.
 
 Authority: `feedback_spec_pattern_authority` — implementer deviation from this spec MUST re-spawn the design subagent.
 
@@ -292,7 +292,7 @@ Per `feedback_tdd_discipline`: each test ships first; implementer runs `go test 
 
 T1 ships `internal/history/` package with the `DurableHistory` Go
 interface + the substrate-default implementation per
-docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md §3.1
+docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md §3.1
 §3.2 §5 §6 T1 §8 T1.
 
 - internal/history/durable_history.go: DurableHistory interface +
@@ -372,7 +372,7 @@ Dispatch in PARALLEL with T4 + T5 + T6 (file-disjoint per the plan's
 # Spec authority
 
 Source-of-truth spec:
-docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md.
+docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md.
 Read ALL of: §3.1 (DurableHistory interface signatures — verbatim;
 v1 reserved-field rejection semantics), §3.2 (ReplayedEvent +
 DiffResult shapes), §4 (reducer-aware fold contract), §5 R2 R6 R7 R8
@@ -581,7 +581,7 @@ Final report MUST contain:
 ## Summary
 
 T2 ships the Replay engine + diff harness + re-executor registry per
-docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md §3.3
+docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md §3.3
 §3.4 §5 §6 T2 §8 T2.
 
 - internal/history/replay.go: streaming Replay engine; O(1) memory
@@ -649,7 +649,7 @@ main; T2 imports DurableHistory + ReplayedEvent + DiffResult from T1.
 # Spec authority
 
 Source-of-truth spec:
-docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md.
+docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md.
 Read ALL of: §3.3 (re-executor registry + quarantine — verbatim;
 nondeterministic.Mark(ctx, reason) API contract), §3.4 (Diff
 contract; reducer-aware; canonical-JSON byte-equality), §5 R1 R3 R4
@@ -807,7 +807,7 @@ A+ Scorecard verbatim.
 ## Summary
 
 T3 ships the operator-UI replay trigger + background job + progress
-page per docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md
+page per docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md
 §3.5 §6 T3 §8 T3.
 
 - internal/uiserver/replay.go: POST /runs/{run_id}/replay (W8 OPA
@@ -869,7 +869,7 @@ T3 is SEQUENTIAL — last to dispatch. Pre-dispatch verify on main:
 # Spec authority
 
 Source-of-truth spec:
-docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md §3.5
+docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md §3.5
 §5 R7 R8 §6 T3 §8 T3. W7 spec §3.4 (TailFacts cadence) +
 §3.6.4 (Principal forward-compat). W8 spec §3.6 (Authorizer
 middleware shape).
@@ -997,7 +997,7 @@ PR URL, failing outputs, reviewer verdict, diff stat, A+ Scorecard.
 ## Summary
 
 T4 ships OTel span helpers + the non-determinism quarantine API per
-docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md §3.3
+docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md §3.3
 §3.7 §6 T4 §8 T4.
 
 - internal/history/otel.go: StartReplaySpan + SetDivergenceCount +
@@ -1046,7 +1046,7 @@ T5 + T6): `git checkout -b feat/w9-t4-otel-quarantine main`.
 # Spec authority
 
 Source-of-truth spec:
-docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md §3.3
+docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md §3.3
 §3.7 §5 R6 §6 T4 §8 T4. W6 §3.3 §3.5 (Config.Tracer + trace_id
 column).
 
@@ -1161,7 +1161,7 @@ PR URL, failing outputs, reviewer verdict, diff stat, A+ Scorecard.
 ## Summary
 
 T5 ships the three P2.5 trigger metric instruments per
-docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md §3.6
+docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md §3.6
 §5 R10 §6 T5 §8 T5.
 
 - internal/history/metrics.go: MetricsRecorder with
@@ -1213,7 +1213,7 @@ T4 + T6): `git checkout -b feat/w9-t5-metrics main`.
 # Spec authority
 
 Source-of-truth spec:
-docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md §3.6
+docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md §3.6
 §5 R10 §6 T5 §8 T5.
 
 Plan: docs/engineer/plans/2026-06-01-w9-replay-diff-tasks.md §6 +
@@ -1323,7 +1323,7 @@ T6 ships zero code. No tests. **Markdown gates only:**
 ## Summary
 
 T6 ships the Temporal-backed DurableHistory impl design-only stub per
-docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md §3.6
+docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md §3.6
 §5 R5 §8 T6.
 
 - internal/history/temporal/README.md: design stub — trigger
@@ -1364,7 +1364,7 @@ T4 + T5): `git checkout -b docs/w9-t6-temporal-stub main`.
 # Spec authority
 
 Source-of-truth spec:
-docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md §3.6
+docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md §3.6
 §5 R5 §8 T6. Locked red-team spec
 docs/engineer/specs/2026-06-01-w9-temporal-vs-bespoke-redteam.md §4
 + §7 (Option C lock-in budget; dual-write window).

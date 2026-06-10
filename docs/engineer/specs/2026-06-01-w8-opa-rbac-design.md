@@ -8,9 +8,9 @@ summary: "Full W8 RBAC + multi-tenant tenant_id propagation — Phase-X per docs
 
 _Author: design subagent, 2026-06-01. Scope: roadmap wedge W8 (MVP-3 rank #3). Source-of-truth_:
 - `docs/engineer/specs/2026-06-01-w7-operator-web-ui-design.md` §3.6.4 (Principal seam + W8 swap point).
-- `docs/engineer/specs/2026-06-01-unified-substrate-design.md` §13 row #2 (deferred `policies` primitive — W8 owns it).
+- `docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md` §13 row #2 (deferred `policies` primitive — W8 owns it).
 - `docs/engineer/plans/2026-06-01-substrate-w1-tasks.md` (T-S1 `AppendEvent` / `Fold` / `RegisterPayloadValidator` / sign+UNIQUE pattern to reuse).
-- `docs/engineer/specs/2026-06-01-cost-governor-design.md` §3.6 (config-field convention; W8 mirrors).
+- `docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md` §3.6 (config-field convention; W8 mirrors).
 - Memory: `feedback_research_design_principles` (OPA > reimpl), `feedback_grade_rubric`, `feedback_spec_pattern_authority`, `feedback_deletion_default`.
 
 ---
@@ -310,7 +310,7 @@ otherwise: proceed to handler body (approval.DecideTx, runs render, etc.)
 
 ### 3.7 OTel attributes
 
-W8 reuses the W6 OTel attribute set (`docs/engineer/specs/2026-05-31-mvp-3-w6-otel-backbone.md`). New attributes on every gated handler span:
+W8 reuses the W6 OTel attribute set (`docs/engineer/specs/phase-x/2026-05-31-mvp-3-w6-otel-backbone.md`). New attributes on every gated handler span:
 
 | Attribute | Type | Cardinality | Notes |
 |---|---|---|---|
@@ -527,10 +527,10 @@ Per `feedback_unaddressed_load_bearing` — file as gh issues, cite by number in
 ## 11. References
 
 - W7 v2 spec: `docs/engineer/specs/2026-06-01-w7-operator-web-ui-design.md` §3.6.4 (Principal seam) + R4 (Authorizer deferral closed by W8 born-with-two-callers).
-- Substrate v2 spec: `docs/engineer/specs/2026-06-01-unified-substrate-design.md` §13 row #2 (policies primitive deferred to W8) + §4 (LWW reducer default) + §5 (sign-with-nonce invariant) + §6 (lint-substrate-queries).
+- Substrate v2 spec: `docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md` §13 row #2 (policies primitive deferred to W8) + §4 (LWW reducer default) + §5 (sign-with-nonce invariant) + §6 (lint-substrate-queries).
 - Substrate W1 task plan: `docs/engineer/plans/2026-06-01-substrate-w1-tasks.md` §"Cross-task seam contracts" (T-S1 exports `AppendEvent`, `Fold`, `RegisterPayloadValidator`, `DefaultTenantID`).
-- Cost-governor spec: `docs/engineer/specs/2026-06-01-cost-governor-design.md` §3.6 (CUE config field convention; W8 mirrors as `safety.authz.policy_dir`).
-- W6 OTel backbone: `docs/engineer/specs/2026-05-31-mvp-3-w6-otel-backbone.md` §3 (attribute set + tracer factory).
+- Cost-governor spec: `docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md` §3.6 (CUE config field convention; W8 mirrors as `safety.authz.policy_dir`).
+- W6 OTel backbone: `docs/engineer/specs/phase-x/2026-05-31-mvp-3-w6-otel-backbone.md` §3 (attribute set + tracer factory).
 - OPA Rego Go library: https://pkg.go.dev/github.com/open-policy-agent/opa/rego (Apache-2.0).
 - OPA bundles: https://www.openpolicyagent.org/docs/latest/management-bundles/.
 - Memory: `feedback_research_design_principles`, `feedback_grade_rubric`, `feedback_spec_pattern_authority`, `feedback_deletion_default`, `feedback_unaddressed_load_bearing`, `feedback_agent_pr_review`.

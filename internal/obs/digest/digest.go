@@ -1,5 +1,5 @@
 // Package digest renders the daily operator digest per spec
-// docs/engineer/specs/2026-06-02-observability-roadmap.md §6.2.
+// docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md §6.2.
 //
 // The package splits "fetch metrics" from "render markdown" so tests
 // inject a stub Source and assert on the rendered bytes — the cmd

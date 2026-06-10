@@ -24,7 +24,7 @@ import (
 const costGovernorDoc = "cost-governor.md"
 
 // costGovernorConfigFields is the safety.cost schema from spec
-// docs/engineer/specs/2026-06-01-cost-governor-design.md §3.6. Every
+// docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md §3.6. Every
 // entry must appear verbatim in cost-governor.md or operators reading
 // the doc will not know the knob exists.
 var costGovernorConfigFields = []string{

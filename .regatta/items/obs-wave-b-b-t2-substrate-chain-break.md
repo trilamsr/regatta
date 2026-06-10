@@ -4,10 +4,10 @@ title: substrate chain-break counter + critical alarm + dashboard tile (item #6)
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T0b
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-1 row item #6, §7 Wave-B table row B-T2, §2.5 trace head-sampling (chain-verify always-on override), §10 R8.
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 Tier-1 row item #6, §7 Wave-B table row B-T2, §2.5 trace head-sampling (chain-verify always-on override), §10 R8.
 
 ## Task
 

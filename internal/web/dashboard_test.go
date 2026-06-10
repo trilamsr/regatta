@@ -599,7 +599,7 @@ func TestLoadWorkItemsView_HintHidesBucketsWhenEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTemplates: %v", err)
 	}
-	labels := []string{"Planned", "Running", statusLabelPROpen, "merged-bucket-sentinel"}
+	labels := []string{"Planned", bucketLabelRunning, statusLabelPROpen, "merged-bucket-sentinel"}
 	buckets := make([]dashboardBucket, len(labels))
 	for i, l := range labels {
 		buckets[i] = dashboardBucket{Label: l, Count: 0}
@@ -639,5 +639,54 @@ func TestLoadEventsView_EmptyHintWhenNoEvents(t *testing.T) {
 	}
 	if v.EmptyHint == "" {
 		t.Fatalf("EmptyHint empty; want operator-friendly copy when zero events")
+	}
+}
+
+// TestLoadWorkItemsView_RunningReflectsAgents asserts work-items panel running-bucket reflects active agents not work_items.status (#1217).
+func TestLoadWorkItemsView_RunningReflectsAgents(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "wi-running.db")
+	clock := func() time.Time { return time.Date(2026, 6, 10, 12, 0, 0, 0, time.UTC) }
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		workID := fmt.Sprintf("WORK-%d", i+1)
+		wi := state.WorkItem{ID: workID, Kind: state.KindFeature, Title: "title", Lane: "server", Status: state.WorkStatusPlanned}
+		if err := db.UpsertWorkItem(ctx, wi, state.SourceAdapter, clock()); err != nil {
+			t.Fatalf("UpsertWorkItem %s: %v", workID, err)
+		}
+		a, err := db.UpsertPending(ctx, workID, "server")
+		if err != nil {
+			t.Fatalf("UpsertPending %s: %v", workID, err)
+		}
+		pid := 1000 + i
+		sess := fmt.Sprintf("sess-%d", i)
+		if _, err := db.TransitionAgent(ctx, a.ID, state.AgentSpawning, state.AgentMutation{PID: &pid, SessionID: &sess}); err != nil {
+			t.Fatalf("TransitionAgent spawning %s: %v", workID, err)
+		}
+		if _, err := db.TransitionAgent(ctx, a.ID, state.AgentRunning, state.AgentMutation{}); err != nil {
+			t.Fatalf("TransitionAgent running %s: %v", workID, err)
+		}
+	}
+	view := loadWorkItemsView(ctx, Dependencies{DB: db, Clock: clock})
+	v, ok := view.(dashboardWorkItemsView)
+	if !ok {
+		t.Fatalf("loadWorkItemsView returned %T, want dashboardWorkItemsView", view)
+	}
+	var running *dashboardBucket
+	for i := range v.Buckets {
+		if v.Buckets[i].Label == bucketLabelRunning {
+			running = &v.Buckets[i]
+			break
+		}
+	}
+	if running == nil {
+		t.Fatalf("Running bucket not found in %v", v.Buckets)
+	}
+	if running.Count != 3 {
+		t.Fatalf("Running bucket count=%d, want 3 (agents alive while work_items.status stays planned)", running.Count)
 	}
 }
