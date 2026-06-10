@@ -1,13 +1,15 @@
 # 30d soak window starts 2026-06-10; revisit branch-protection after 2026-07-10. Tracks #1237.
+#
+# WHY no paths: filter — govulncheck is on the branch-protection required list,
+# so PRs that don't touch go.mod/go.sum (e.g. doc-only changes) never trigger
+# the workflow and stay stuck at BLOCKED because the required check is "expected
+# but missing". Fire on every PR; the job is ~2min and continue-on-error: true
+# so it doesn't gate merges on findings, only on presence.
 name: govulncheck
 
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'go.mod'
-      - 'go.sum'
-      - '.github/workflows/govulncheck.yml'
   push:
     branches: [main]
   schedule:
