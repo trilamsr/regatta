@@ -13,11 +13,7 @@ import (
 	"github.com/trilamsr/regatta/internal/program"
 )
 
-// orchestratorWiring bundles the inputs newOrchestrator stitches into
-// orchestrator.New. Pulled out of serve.go so the boot file stays under
-// the 400-line god-file ceiling (audit Wave D); the same pointer the
-// helper returns for HealthHeartbeat is shared with bootListener so
-// /healthz reads the cell the Run loop Touches (#1218).
+// orchestratorWiring carries the shared HealthHeartbeat pointer between Run loop + /healthz (#1218).
 type orchestratorWiring struct {
 	Syncer    *adaptersync.Syncer
 	Loader    *program.BriefLoader
@@ -29,9 +25,7 @@ type orchestratorWiring struct {
 	Clock     func() time.Time
 }
 
-// newOrchestrator constructs the Orchestrator + the /healthz heartbeat
-// cell as one unit; returning the cell makes the shared-pointer contract
-// explicit at the call site.
+// newOrchestrator returns the orchestrator + its HealthHeartbeat cell as one unit.
 func newOrchestrator(w orchestratorWiring) (*orchestrator.Orchestrator, *health.HeartbeatCell) {
 	hb := health.NewHeartbeatCell(w.Clock)
 	o := orchestrator.New(orchestrator.Config{
