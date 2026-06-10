@@ -160,8 +160,9 @@ func buildScheduler(db *state.DB, f serveFlags, deps schedulerDeps) *scheduler.S
 		GateResolver:     deps.GateResolver,
 		CostCap:          deps.CostCap,
 		Clock:            deps.Clock,
-		MergeCoordinator: deps.MergeCoordinator,
-		MergeWorker:      deps.MergeWorker,
-		Meter:            deps.Meter,
+		MergeCoordinator:   deps.MergeCoordinator,
+		MergeWorker:        deps.MergeWorker,
+		Meter:              deps.Meter,
+		FileScopeExtractor: scheduler.DefaultFileScopeExtractor,
 	})
 }
