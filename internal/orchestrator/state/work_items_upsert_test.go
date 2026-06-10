@@ -140,13 +140,7 @@ func TestTombstoneBySource_SkipsAlreadyArchived(t *testing.T) {
 	}
 }
 
-// TestTombstoneBySource_WithdrawsPendingAndCrashedAgents pins the
-// ghost-recovery-storm fix (#1208 follow-up): when work_items tombstone,
-// any agent bound to a tombstoned id and still in pending/crashed MUST
-// be cascaded to withdrawn in the SAME tx. Otherwise restart's
-// orchestrator.Recover requeues them through crashed→pending and the
-// scheduler dispatches all of them simultaneously despite the work_item
-// being archived (orchestrator.recovered_crashed storm).
+// TestTombstoneBySource_WithdrawsPendingAndCrashedAgents asserts the cascade-withdraw of bound pending+crashed agents in the tombstone tx (#1208 retro).
 func TestTombstoneBySource_WithdrawsPendingAndCrashedAgents(t *testing.T) {
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	t1 := t0.Add(time.Minute)
@@ -196,11 +190,7 @@ func TestTombstoneBySource_WithdrawsPendingAndCrashedAgents(t *testing.T) {
 	}
 }
 
-// TestTombstoneBySource_LeavesActiveAgentsUntouched pins the
-// cascade-soft invariant: in-flight agents (spawning, running, pr_open,
-// awaiting_merge) keep running to natural terminal even when their
-// work_item is tombstoned. Only pending/crashed (no live PID) get
-// withdrawn so the orchestrator does not re-spawn them on restart.
+// TestTombstoneBySource_LeavesActiveAgentsUntouched pins the cascade-soft invariant: in-flight agents (running/spawning/etc.) survive a tombstone (#1208 retro).
 func TestTombstoneBySource_LeavesActiveAgentsUntouched(t *testing.T) {
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	t1 := t0.Add(time.Minute)

@@ -12,13 +12,7 @@ import (
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
-// TestTick_SkipsOrphanWhenWorkItemArchived pins the defence-in-depth
-// guard for the ghost-recovery storm (#1208 follow-up). When a pending
-// agent's bound work_item is archived (TombstoneBySource cascade
-// missed it, or test fixture seeded one directly), reserveOrphans →
-// recheckGates MUST skip it rather than dispatching the orphan.
-// Without this guard, restart re-spawns every archived agent the
-// scheduler can reach.
+// TestTick_SkipsOrphanWhenWorkItemArchived pins the scheduler safety-net: orphans bound to archived work_items must not dispatch (#1208 retro).
 func TestTick_SkipsOrphanWhenWorkItemArchived(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)

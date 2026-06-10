@@ -68,29 +68,84 @@ func (d *DB) UpsertWorkItem(ctx context.Context, item WorkItem, source WorkItemS
 }
 
 // TombstoneBySource archives rows whose source matches and
-// last_seen_at < before. Per-source so AdapterSync and BriefLoader
-// cannot tombstone each other's rows. Idempotent under retry.
+// last_seen_at < before, then cascade-withdraws any agent bound to a
+// tombstoned work_item that is still in pending or crashed. Per-source
+// so AdapterSync and BriefLoader cannot tombstone each other's rows.
+// Both flips commit in a single tx so a restart cannot observe an
+// archived work_item paired with a still-pending agent (#1208 retro:
+// orchestrator.recovered_crashed storm).
+//
+// Cascade-soft for in-flight states (spawning, running, pr_open,
+// gates_running, awaiting_merge, gates_failed): those agents finish to
+// their natural terminal — only pending and crashed (no live PID, no
+// in-flight work) get withdrawn so the scheduler will not re-dispatch
+// them on the next tick. Idempotent under retry.
 func (d *DB) TombstoneBySource(ctx context.Context, source WorkItemSource, before time.Time) ([]string, error) {
 	cutoff := before.UTC().Unix()
-	rows, err := d.sql.QueryContext(ctx, `
-		UPDATE work_items
-		SET status = ?, updated_at = ?
-		WHERE source = ? AND last_seen_at < ? AND status != ?
-		RETURNING id`,
-		string(WorkStatusArchived), cutoff, string(source), cutoff, string(WorkStatusArchived))
-	if err != nil {
-		return nil, fmt.Errorf("state: tombstone: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
 	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("state: scan tombstone id: %w", err)
+	err := d.WithTx(ctx, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx, `
+			UPDATE work_items
+			SET status = ?, updated_at = ?
+			WHERE source = ? AND last_seen_at < ? AND status != ?
+			RETURNING id`,
+			string(WorkStatusArchived), cutoff, string(source), cutoff, string(WorkStatusArchived))
+		if err != nil {
+			return fmt.Errorf("state: tombstone: %w", err)
 		}
-		ids = append(ids, id)
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				_ = rows.Close()
+				return fmt.Errorf("state: scan tombstone id: %w", err)
+			}
+			ids = append(ids, id)
+		}
+		if err := rows.Err(); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		// rows MUST be closed before further writes on the same tx;
+		// sqlite serializes per-conn statements and a live cursor
+		// blocks the cascade UPDATE below.
+		if err := rows.Close(); err != nil {
+			return fmt.Errorf("state: close tombstone rows: %w", err)
+		}
+		return cascadeWithdrawTombstonedAgentsTx(ctx, tx, ids, cutoff)
+	})
+	if err != nil {
+		return nil, err
 	}
-	return ids, rows.Err()
+	return ids, nil
+}
+
+// cascadeWithdrawTombstonedAgentsTx flips pending+crashed agents whose
+// work_item_id is in tombstoned to AgentWithdrawn. Same tx as the
+// work_items archive so the two flips commit atomically. Bypasses the
+// per-agent FSM step by design: this is a bulk archive driven by the
+// tombstone sweep, not a TransitionAgent flow. The crashed→withdrawn
+// edge is in AgentEdges so per-agent paths stay correct too; the bulk
+// UPDATE just avoids the N+1 cost of looping TransitionAgentTx.
+func cascadeWithdrawTombstonedAgentsTx(ctx context.Context, tx *sql.Tx, tombstoned []string, cutoff int64) error {
+	if len(tombstoned) == 0 {
+		return nil
+	}
+	q := `UPDATE agents SET state = ?, updated_at = ?
+	      WHERE state IN (?, ?) AND work_item_id IN (`
+	args := make([]any, 0, 4+len(tombstoned))
+	args = append(args, string(AgentWithdrawn), cutoff, string(AgentPending), string(AgentCrashed))
+	for i, id := range tombstoned {
+		if i > 0 {
+			q += ","
+		}
+		q += "?"
+		args = append(args, id)
+	}
+	q += ")"
+	if _, err := tx.ExecContext(ctx, q, args...); err != nil {
+		return fmt.Errorf("state: cascade-withdraw agents: %w", err)
+	}
+	return nil
 }
 
 // CascadeArchiveChildren archives live children of parentID and

@@ -33,11 +33,7 @@ func TestAgentEdges_CrashedRequeues(t *testing.T) {
 	}
 }
 
-// TestAgentEdges_CrashedCanWithdraw pins crashed→withdrawn cascade-archive edge.
-// When TombstoneBySource archives a work_item, any agent bound to it
-// and still in crashed (recovered but not yet requeued to pending)
-// MUST be cascadable to withdrawn — otherwise the agent re-spawns
-// after the next Recover→Tick cycle (ghost-recovery storm #1208 retro).
+// TestAgentEdges_CrashedCanWithdraw pins crashed→withdrawn cascade-archive edge for the tombstone drain (#1208 retro).
 func TestAgentEdges_CrashedCanWithdraw(t *testing.T) {
 	if _, ok := AgentEdges["crashed"]["withdrawn"]; !ok {
 		t.Fatal("AgentEdges[crashed][withdrawn] missing — tombstone cascade cannot drop crashed orphans")
