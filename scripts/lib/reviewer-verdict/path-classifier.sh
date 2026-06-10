@@ -8,11 +8,9 @@
 # Closes #1189 + #1190 (audit 2026-06-10): .claude/skills/* added because
 # skill files encode operator-authority surfaces.
 # Closes #1264 (N1, audit 2026-06-10): docs/engineer/{specs,briefs,
-# dispatch-templates}/*.md + CLAUDE.md REMOVED from auto-flag. Empirical:
-# PR #1248 was [DOCS] but classified load-bearing → 80.7min cycle for
-# 1-file doc change + 70 empty-commit snapshot refreshes on main. Solo
-# operator may still spawn reviewer voluntarily; prod-path edits remain
-# auto-flagged.
+# dispatch-templates}/*.md + CLAUDE.md REMOVED from auto-flag. Solo
+# doc PRs auto-skip per feedback_review_proportional; operator may
+# spawn reviewer voluntarily.
 
 rv_classify_paths() {
   LOAD_BEARING_BY_PATH=0
