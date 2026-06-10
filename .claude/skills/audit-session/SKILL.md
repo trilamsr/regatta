@@ -39,6 +39,51 @@ Rules:
 - `state==MERGED AND body~/Reviewer-recommendation: (REVISE|BLOCK)/` → file `[SESSION-AUDIT][post-merge] PR#<N>`.
 - `mergeStateStatus IN (BLOCKED,DIRTY,UNSTABLE)` → file `[SESSION-AUDIT][automerge-stall] PR#<N>`.
 - `Reviewer-agent-id:` matches PR author login → file `[SESSION-AUDIT][self-approve-leak]` per `feedback_no_self_tagged_approve`.
+- **Self-approve-after-amend (binding gate, per `feedback_no_self_approve_after_edits`).** The canonical verdict set is `clear-to-merge` | `block-on-findings` | `re-spawn-design`. Verdict strings appear in TWO surfaces — (a) inline review/comment bodies on GitHub, AND (b) this session's transcript when reviewers were spawned as inline Agent tool calls whose output never reached GitHub. **Both surfaces must be scanned** — defaulting to (a) alone silently passes reviewer-runs that never posted.
+
+  Per-PR algorithm:
+
+  ```bash
+  events=()  # each: <iso-timestamp>\t<verdict>\t<agent-id-or-source>
+
+  # Source (a) — GitHub review/comment bodies, timestamped by submittedAt/createdAt.
+  jq -r '
+    (.reviews // [])[] | select(.body | test("block-on-findings|clear-to-merge")) |
+      "\(.submittedAt)\t\((.body | capture("(?<v>block-on-findings|clear-to-merge)").v))\tgh-review-\(.author.login)",
+    (.comments // [])[] | select(.body | test("block-on-findings|clear-to-merge")) |
+      "\(.createdAt)\t\((.body | capture("(?<v>block-on-findings|clear-to-merge)").v))\tgh-comment-\(.author.login)"
+  ' "$HANDOFF_DIR/pr-$N.json" >> "$HANDOFF_DIR/pr-$N-events.tsv"
+
+  # Source (b) — session transcript. Resolution: line-order ≈ wall-clock order, so
+  # synthesize a monotonic timestamp from `mergedAt - (line_count - line_number) seconds`
+  # which preserves ordering across the merged event list (a-events stay at their real
+  # ISO time; b-events sort into the same chronological slot relative to mergedAt).
+  if [ -n "${CLAUDE_TRANSCRIPT:-}" ] && [ -r "$CLAUDE_TRANSCRIPT" ]; then
+    total=$(wc -l < "$CLAUDE_TRANSCRIPT")
+    merged_epoch=$(date -j -f '%Y-%m-%dT%H:%M:%SZ' "$(jq -r .mergedAt "$HANDOFF_DIR/pr-$N.json")" '+%s')
+    grep -nE "PR\s*#?$N\b" "$CLAUDE_TRANSCRIPT" |
+      grep -E 'block-on-findings|clear-to-merge' |
+      awk -F: -v t="$total" -v m="$merged_epoch" '{
+        ts = m - (t - $1);
+        printf "%s\t%s\ttranscript-line-%d\n", strftime("%Y-%m-%dT%H:%M:%SZ", ts), ($0 ~ /block-on-findings/ ? "block-on-findings" : "clear-to-merge"), $1
+      }' >> "$HANDOFF_DIR/pr-$N-events.tsv"
+  else
+    # Fallback: $CLAUDE_TRANSCRIPT unset or unreadable → main thread surfaces
+    # the gap interactively in the consolidated hand-back instead of auto-filing
+    # an issue. Phase 7 cross-ref still records "transcript unavailable" so the
+    # operator knows the GH-only path is the only signal.
+    echo "transcript_unavailable" >> "$HANDOFF_DIR/pr-$N-events.tsv"
+  fi
+
+  # Walk forward. For each block-on-findings event, require a later clear-to-merge
+  # from a distinct agent-id (cavecrew-reviewer-* OR a[0-9a-f]{16}) before mergedAt.
+  sort "$HANDOFF_DIR/pr-$N-events.tsv" |
+    awk -F'\t' 'BEGIN{block=""} $2=="block-on-findings"{block=$3; next}
+                $2=="clear-to-merge" && block!="" && $3!=block {block=""}
+                END{if(block!="") exit 1}'
+  ```
+
+  Exit 1 → file `[SESSION-AUDIT][self-approve-after-amend] PR#<N>`. "transcript_unavailable" sentinel → main thread surfaces gap in hand-back, never auto-files (per Hard Nos `NO auto-file on uncertain detection`). (Does NOT detect `re-spawn-design` slips — those rebuild the change wholesale and bypass the simple later-clear-to-merge heuristic; flag as future-lever in Phase A2.)
 
 ## Phase 2: Reviewer-comment audit
 
@@ -92,10 +137,20 @@ Unfiled → operator hand-back list. **Do NOT auto-file** (noise).
 
 Deletion debt per `feedback_deletion_default`:
 ```bash
-git log --since "$SESSION_START" --author "$GIT_AUTHOR" --shortstat --merges \
+# Refresh origin/main first — local ref can lag the remote if no fetch
+# fired this session, undercounting pure-add commits merged after the
+# last fetch. Read-only; safe in primary checkout.
+git fetch origin main --quiet
+
+# --merges filter misses squash-and-merge (the common GH path), which
+# lands as a single non-merge commit on origin/main. Use --first-parent
+# against origin/main to enumerate squash-merged commits and --no-merges
+# to drop true merge commits if any exist; --shortstat surfaces ins/del.
+git log --since "$SESSION_START" --author "$GIT_AUTHOR" \
+  --first-parent --no-merges --shortstat origin/main \
   | awk '/insertions/ && !/deletion/ {print}'
 ```
-≥3 pure-add merged PRs → `[DELETION-DEBT]` audit issue.
+≥3 pure-add commits on origin/main → `[DELETION-DEBT]` audit issue.
 
 ## Phase 6: Worktree + branch cleanup
 
@@ -257,6 +312,7 @@ NEXT-SESSION FIRST ACTION: <from frontmatter>
 - NO container stop / regatta kill.
 - NO auto-invoke other skills.
 - NO unbounded CI poll per `feedback_bounded_ci_poll` (CLAUDE.md rule landed via this PR; pattern landed via #1186).
+- NO auto-file on uncertain detection (e.g. Phase 1 transcript-unavailable sentinel → surface gap in hand-back, never auto-file).
 
 ## A+ rubric (mandatory per `feedback_grade_rubric`)
 
