@@ -369,7 +369,7 @@ When a finding is flagged `bottleneck=true`:
 2. **File the issue normally** (with surface prefix + `$SPAWN_LABEL`).
 3. **Spawn adversarial reviewer subagent** with the finding body. Reviewer hunts: is the proposed fix the right shape? Smallest? Reversible? Per `feedback_adversarial_review_every_step`.
 4. **Apply reviewer's narrowest fix** in a worktree. If reviewer says BLOCK, ask `AskUserQuestion` (this IS an exception to auto-act — bottlenecks are irreversible-shaped).
-5. **Verify in the live stack.** Rebuild + restart per the post-merge cycle below; replay the canary that hit the bottleneck.
+5. **Verify in the live stack.** Rebuild + restart per the post-merge cycle below; replay the canary that hit the bottleneck. Verify in the live stack via the bounded CI poll above; never use unbounded `until SUCCESS` loops.
 6. **If still bottlenecked → repeat** from step 3 with a fresh reviewer. Track iteration count; ≥3 attempts without resolution = escalate to operator via `AskUserQuestion`.
 7. **Resolved → close the issue** + write a follow-up canary fixture in `$CANARY_DIR_<role>` so the bottleneck cannot silently regress.
 8. **Resume observation** from a clean snapshot. Discard the pre-bottleneck baseline — orchestrator behavior pre/post-fix is not comparable.
@@ -430,6 +430,26 @@ Hard refusals (operator delegation does NOT extend to):
 - Merging into `$TARGET_REPO`'s `main` when `$TARGET_REPO` != `$ORCH_SOURCE_REPO`. Target-side merges always require operator (no reliable in-skill mechanism to scope canary-fix vs broader change; safer-default until labels-as-marker land).
 
 Bottleneck-resolution loop fix PRs follow the same gate. Skill-opened PRs only; never operator-authored PRs.
+
+### Bounded CI poll (mandatory pattern)
+
+**Failure mode.** Open-ended `until CLEAN; sleep; done` loops silently hang on FAILED CI runs. The PR sits BLOCKED, the gate condition (`mergeStateStatus=CLEAN`) is never reached, the loop polls forever, and the failure is never reported to the operator — the bottleneck-resolution loop never triggers. Observed self-evidence: regatta-operator skill session 5 hit this trap on PRs #1183 / #1184 / #1185 (Jun 9, 2026). Three PRs sat BLOCKED while the skill silently polled.
+
+**Mandatory pattern.** Every CI poll loop MUST:
+
+1. Check for ANY failure conclusion at each tick and break on first failure.
+2. Report the failure summary back to the operator within 1 tick.
+3. Cap total iterations to `MAX_TICKS=10` with explicit hand-back on cap (never poll indefinitely).
+
+```
+until [ "$(gh pr view <N> --json mergeStateStatus --jq .mergeStateStatus)" = "CLEAN" ]; do
+  fails=$(gh pr checks <N> 2>&1 | grep -cE '^[^[:space:]]+\s+fail')
+  [ "$fails" -gt 0 ] && { echo "FAIL detected on PR <N>"; break; }
+  sleep 60
+done
+```
+
+Wrap with an iteration counter that breaks at `MAX_TICKS=10` and hands back to the operator with the current PR state. Failure detection feeds the bottleneck-resolution loop.
 
 ## Reviewer prompt shape
 
