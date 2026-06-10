@@ -115,7 +115,7 @@ Adversarial review of <diff>. Five lenses (in this order):
     delete restate-the-code prose, collapse multi-line test/fuzz/benchmark
     godocs to one line per feedback_test_godoc_one_line, kill comments
     that would not confuse a future reader if removed. New prod .go files must stay <5% comment density; pre-existing files
-    must stay <10% drift ceiling per check-comment-density;
+    keep comment-density low; reviewer catches WHAT-narration drift;
     operator-escape via PR-body justified tag only.
 (5) ORGANIZATION — files in the right package / dir; functions in the
     right file (the one whose name says "this is where you find X"); no

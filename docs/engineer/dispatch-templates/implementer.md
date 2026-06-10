@@ -37,7 +37,7 @@ Allowed (WHY-only):
 - Non-obvious invariant or workaround that would surprise a reader ("// HACK: pin random seed to keep golden-file stable across go versions.").
 - Cross-file contract reference ("// Pairs with internal/X.Foo — drift here breaks ZZ.").
 
-Net comment-density of any new prod `.go` file should be ≤ 5% of LOC. If higher, prepare to justify in PR body OR cut. `scripts/check-comment-density.sh` (in `make check`) gates this in the PR diff; operator escape is `<!-- comment-density-justified: <reason> -->` in PR body.
+Net comment-density of any new prod `.go` file should stay low. Default to no comment; reviewer subagent lens 9 (comment-sweep) catches WHAT-narration drift.
 
 ## Preamble blocks (paste verbatim)
 

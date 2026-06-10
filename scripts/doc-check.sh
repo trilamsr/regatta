@@ -88,11 +88,6 @@ fi
 
 echo "doc-check: $link_count markdown link(s) resolve to on-disk files"
 
-# --- Banned-phrase lint REMOVED 2026-06-10 (closes #1266) -----------------
-# Deletion-adversary audit: 0 fires in 90d caught a real defect; 4 commits
-# in window were operator-side gate-dodging (back-tick escapes, prose
-# rewords) NOT failure-mode catches. Per feedback_default_simpler.
-
 # Comment-noise diff-scope gate.
 # Blocks three patterns on PR-added lines that rot in long-lived files:
 # review-cycle inline tags, bare PR-number backreferences in source-code

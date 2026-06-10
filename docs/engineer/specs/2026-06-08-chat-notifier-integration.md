@@ -174,7 +174,7 @@ See §3.6. One additive block; no existing field changes. CUE `*"low"` default k
 
 6.3 **Zero added env vars**: `REGATTA_SLACK_WEBHOOK_URL` resolved through `secrets.Fetcher`, not raw `os.Getenv`. Reuses `#911` canonical-key registry.
 
-6.4 **CI green**: `make pre-push-check` clean, including `check-comment-density` ≤5% on new prod files. Per-criterion citation token rules apply to the implementer scorecard.
+6.4 **CI green**: `make pre-push-check` clean. Per-criterion citation token rules apply to the implementer scorecard.
 
 6.5 **Property test**: severity router preserves event count modulo eviction (`internal/notifier/router_property_test.go`); no event is double-delivered to backend.
 
