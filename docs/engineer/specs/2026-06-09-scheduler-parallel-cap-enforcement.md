@@ -202,7 +202,7 @@ Independent reviewer dispatched per CLAUDE.md `feedback_adversarial_review_every
 
 ## §8 Implementer brief
 
-Stage / Rung scopes already enumerated above; each implementer PR carries: failing test (per `feedback_tdd_discipline`), measurement-before-after (per `feedback_validate_before_ship`), three-lens reviewer (per the new docs/engineer/dispatch-templates/reviewer.md §Three-lens prompt), A+ rubric scorecard. Independent reviewer enforces `feedback_no_self_tagged_approve`.
+Stage / Rung scopes already enumerated above; each implementer PR carries: failing test (per `feedback_tdd_discipline`), measurement-before-after (per `feedback_validate_before_ship`), five-lens reviewer (per docs/engineer/dispatch-templates/reviewer.md §Five-lens prompt), A+ rubric scorecard. Independent reviewer enforces `feedback_no_self_tagged_approve`.
 
 ## §9 Reopen trigger
 

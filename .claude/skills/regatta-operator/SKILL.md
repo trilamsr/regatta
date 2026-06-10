@@ -414,7 +414,7 @@ Default per CLAUDE.md `feedback_no_implementer_automerge`: skill does NOT enable
 
 BUT: in autonomous operation (operator said "loop" / "autonomous" / "keep going" / "merge when green") the human has explicitly delegated merge authority for THIS session. In that mode, after ALL conditions are met for a PR the skill itself opened:
 
-1. Independent adversarial reviewer returned `Reviewer-recommendation: APPROVE` (real subagent ID in PR body, NOT self-tagged — per `feedback_no_self_tagged_approve`). Reviewer prompt uses the three-lens prompt at `docs/engineer/dispatch-templates/reviewer.md` (defects + simplification + refactor), not defect-only.
+1. Independent adversarial reviewer returned `Reviewer-recommendation: APPROVE` (real subagent ID in PR body, NOT self-tagged — per `feedback_no_self_tagged_approve`). Reviewer prompt uses the five-lens prompt at `docs/engineer/dispatch-templates/reviewer.md` (defects + simplification + refactor + comments + organization), not defect-only.
 2. `gh pr view <N> --json state,mergeStateStatus,statusCheckRollup` shows `state=OPEN`, `mergeStateStatus=CLEAN` (not BLOCKED / DIRTY / UNSTABLE / UNKNOWN / HAS_HOOKS). Pick latest-by-`completedAt` per name; entries with `completedAt=null` are PENDING → wait, do not merge. Required: every name has ≥1 entry AND latest is `SUCCESS`.
 3. **Skill-opened PR detection.** Skill writes `Skill-session-id: <session>` into the PR body footer when opening AND prepends `feat/skill-` / `fix/skill-` / `chore/skill-` to the branch name. Merge gate requires BOTH (token match AND branch prefix); either alone fails. Operator-authored PRs lack both.
 
@@ -453,7 +453,7 @@ Wrap with an iteration counter that breaks at `MAX_TICKS=10` and hands back to t
 
 ## Reviewer prompt shape
 
-Every reviewer subagent the skill dispatches uses the three-lens prompt at `docs/engineer/dispatch-templates/reviewer.md` (defects + simplification + refactor). Defect-only reviews are forbidden as default — they missed 134 LOC of redundancy on this skill's own development. Template is authoritative; this skill defers.
+Every reviewer subagent the skill dispatches uses the five-lens prompt at `docs/engineer/dispatch-templates/reviewer.md` (defects + simplification + refactor + comments + organization). Defect-only reviews are forbidden as default — they missed 134 LOC of redundancy on this skill's own development. Template is authoritative; this skill defers.
 
 ## Hand-off
 
