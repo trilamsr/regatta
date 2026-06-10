@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
 
 	"github.com/trilamsr/regatta/internal/cost/spend"
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -87,6 +90,10 @@ func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger
 			Command: claudeBin,
 			BaseRef: baseRef,
 			Args:    args,
+			Logger:  logger,
+		}
+		if db != nil {
+			cfg.OnAgentExited = newAgentExitedCascade(db, logger)
 		}
 		if db != nil && len(costKey) > 0 {
 			cfg.OnResultEventFor = spend.SpawnerCallback(db.SQL(),
@@ -102,4 +109,56 @@ func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger
 	default:
 		return spawnerSet{}, fmt.Errorf("unknown spawner %q (want stub|claude)", name)
 	}
+}
+
+// newAgentExitedCascade returns the OnAgentExited callback the claude
+// spawner fires after cmd.Wait observes child termination. The callback
+// drives the running→crashed FSM transition + records the agent.exited
+// audit row so the agents table never leaks phantoms with dead PIDs
+// (#1218 stall root cause). Best-effort: state-load failures and
+// FSM-rejected transitions (already terminal) are logged at WARN; the
+// reaper sweeps the surviving cases via PID-liveness checks.
+func newAgentExitedCascade(db *state.DB, logger *slog.Logger) spawner.AgentExitedCallback {
+	return func(agentID int64, workItemID string, exitCode int, reason spawner.ExitReason, durationMs int64) {
+		ctx := context.Background()
+		a, err := db.GetAgent(ctx, agentID)
+		if err != nil {
+			logger.Warn("orchestrator.agent_exited_load_failed",
+				string(obs.KeyAgentID), agentID,
+				string(obs.KeyWorkItemID), workItemID,
+				string(obs.KeyErr), err.Error())
+			return
+		}
+		// Skip the FSM call when the agent already left an active
+		// state (race with reaper or rejection-router). The slog line
+		// already fired upstream so observability stays intact.
+		if isTerminalAgentState(a.State) {
+			return
+		}
+		if _, err := db.TransitionAgent(ctx, agentID, state.AgentCrashed, state.AgentMutation{}); err != nil {
+			if errors.Is(err, state.ErrInvalidTransition) {
+				return
+			}
+			logger.Warn("orchestrator.agent_exited_transition_failed",
+				string(obs.KeyAgentID), agentID,
+				string(obs.KeyWorkItemID), workItemID,
+				string(obs.KeyErr), err.Error())
+			return
+		}
+		payload := fmt.Sprintf(`{"exit_code":%d,"exit_reason":%q,"duration_ms":%d}`,
+			exitCode, string(reason), durationMs)
+		if err := db.RecordEvent(ctx, agentID, string(obs.EventAgentExited), payload); err != nil {
+			logger.Warn("orchestrator.agent_exited_record_failed",
+				string(obs.KeyAgentID), agentID,
+				string(obs.KeyErr), err.Error())
+		}
+	}
+}
+
+func isTerminalAgentState(s state.AgentState) bool {
+	switch s {
+	case state.AgentDone, state.AgentWithdrawn, state.AgentCrashed, state.AgentEscalated:
+		return true
+	}
+	return false
 }

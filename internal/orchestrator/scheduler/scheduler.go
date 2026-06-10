@@ -329,6 +329,12 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 	var spawnable []state.WorkItem
 	var occupancy map[string]int
 	var attempted map[int64]struct{}
+	// l0Count is the spawnable set size right after gate_l0, before any
+	// downstream gate prunes it. The dispatch step compares len(reserved)
+	// against this to detect the #1218 starved-tick signal (spawnable
+	// >0 but reservation produced zero) regardless of WHICH gate
+	// blocked dispatch.
+	var l0Count int
 
 	// Spec §2.3 + §4 trap #2: ONE span around the step loop with an
 	// iteration counter — NOT one span per step.
@@ -357,6 +363,7 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 				return fmt.Errorf("scheduler: list spawnable: %w", e)
 			}
 			spawnable = sp
+			l0Count = len(sp)
 			return nil
 		}},
 		// gate_parallel_cap: aggregate ceiling across ALL lanes (#1169).
@@ -444,6 +451,18 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 			r, att, e := s.reserveFromSpawnable(ctx, tc, spawnable, occupancy)
 			reserved = r
 			attempted = att
+			// #1218: when L0 surfaced spawnable rows but reserve produced
+			// zero agents, lane caps, parallel cap, or hotspot locks
+			// blocked dispatch this tick. Surface at INFO so the operator
+			// log surface carries the starved signal even when
+			// tickLogLevel masks tick.completed at DEBUG.
+			if l0Count > 0 && len(reserved) == 0 {
+				s.log.Info(string(obs.EventSchedulerTickStarved),
+					string(obs.KeyWorkItemsEvaluated), int64(l0Count),
+					string(obs.KeyAgentsReserved), int64(0),
+					string(obs.KeyReason), "lane_saturated",
+				)
+			}
 			return e
 		}},
 		// persist: orphan re-reservation (spec §3.2 step 0.9). Append

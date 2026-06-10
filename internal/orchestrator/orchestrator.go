@@ -58,6 +58,7 @@ type Orchestrator struct {
 	cfg         Config
 	log         *slog.Logger
 	tracer      trace.Tracer
+	heartbeat   HeartbeatToucher
 }
 
 // New constructs an Orchestrator from a Config. All deps are wired
@@ -96,6 +97,7 @@ func New(cfg Config) *Orchestrator {
 		cfg:         cfg,
 		log:         log,
 		tracer:      tracer,
+		heartbeat:   cfg.HealthHeartbeat,
 	}
 }
 
@@ -114,6 +116,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	// Kick off one cycle immediately so the daemon does useful work
 	// before the first tick. Errors here are non-fatal for the same
 	// reason as the periodic ticks.
+	o.touchHealthHeartbeat()
 	if err := o.PollOnce(ctx); err != nil {
 		o.log.Warn("orchestrator.poll_failed", "phase", "initial", string(obs.KeyErr), err.Error())
 	}
@@ -126,10 +129,12 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-pollT.C:
+			o.touchHealthHeartbeat()
 			if err := o.PollOnce(ctx); err != nil {
 				o.log.Warn("orchestrator.poll_failed", string(obs.KeyErr), err.Error())
 			}
 		case <-tickT.C:
+			o.touchHealthHeartbeat()
 			if err := o.ScheduleOnce(ctx); err != nil {
 				o.log.Warn("orchestrator.schedule_failed", string(obs.KeyErr), err.Error())
 			}
@@ -143,10 +148,20 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 				o.log.Warn("orchestrator.prwatch_failed", string(obs.KeyErr), err.Error())
 			}
 		case <-heartT.C:
+			o.touchHealthHeartbeat()
 			if err := o.Heartbeat(ctx); err != nil {
 				o.log.Warn("orchestrator.heartbeat_failed", string(obs.KeyErr), err.Error())
 			}
 		}
+	}
+}
+
+// touchHealthHeartbeat refreshes the /healthz liveness cell when one
+// is wired. Nil-safe so unit-tests that omit the cell keep their
+// existing zero-cfg semantics (#1218).
+func (o *Orchestrator) touchHealthHeartbeat() {
+	if o.heartbeat != nil {
+		o.heartbeat.Touch()
 	}
 }
 

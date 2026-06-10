@@ -25,6 +25,14 @@ type BriefLoader interface {
 // ItemBodyLoader feeds spawner.Request.ItemBody; nil or ok=false degrades to identifier-only prompt so a missing brief never strands the reservation.
 type ItemBodyLoader func(ctx context.Context, workItemID string) (body string, ok bool)
 
+// HeartbeatToucher is the narrow seam the orchestrator uses to refresh
+// the /healthz heartbeat cell every Run-loop tick. The interface stays
+// in this package so cmd/regatta can wire the live health.HeartbeatCell
+// without forcing orchestrator to import the health package (#1218).
+type HeartbeatToucher interface {
+	Touch()
+}
+
 // Config holds tunables and dependencies for an Orchestrator, wired via
 // construction-time DI so tests can swap any seam without touching
 // internal helpers.
@@ -80,6 +88,13 @@ type Config struct {
 	// real-world lock liveness and must keep using wall time so a
 	// deterministic test clock cannot mask a stuck heartbeat.
 	Clock func() time.Time
+
+	// HealthHeartbeat is the /healthz liveness cell the orchestrator
+	// Touches every Run-loop tick so the readiness probe reports a fresh
+	// age. Nil leaves the cell stale — /healthz then reports
+	// heartbeat.status=stale at the default 365-day age_seconds the
+	// cell uses for never-touched (#1218 root cause: orphaned cell).
+	HealthHeartbeat HeartbeatToucher
 }
 
 // ResolveMeter returns the configured meter or falls back lazily to the

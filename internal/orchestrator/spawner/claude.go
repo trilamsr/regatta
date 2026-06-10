@@ -84,7 +84,22 @@ type ClaudeSpawnerConfig struct {
 	// accounting. Nil falls back to time.Now; tests pin deterministic
 	// timestamps via this seam.
 	Clock func() time.Time
+
+	// OnAgentExited fires inside the cmd.Wait goroutine after the
+	// agent.exited slog line lands. The orchestrator wires this to
+	// state.DB.TransitionAgent(running→crashed) + state.DB.RecordEvent
+	// so the agents table never leaks phantoms whose PIDs are dead but
+	// whose row stays at `running` — #1218 stall root cause. Nil is
+	// safe (the slog line still fires); callers MUST treat both the
+	// callback and the slog emission as best-effort.
+	OnAgentExited AgentExitedCallback
 }
+
+// AgentExitedCallback is the orchestrator-side hook fired after the
+// spawner's cmd.Wait goroutine observes child termination. The signature
+// is deliberately narrow (primitives only) so the spawner package stays
+// import-cycle-free w.r.t. state.
+type AgentExitedCallback func(agentID int64, workItemID string, exitCode int, reason ExitReason, durationMs int64)
 
 // lastTextRingSize bounds the trailing-stdout window the agent.exited
 // fingerprint hashes. 4 KiB is large enough to cover a typical claude-
@@ -413,19 +428,24 @@ func (s *ClaudeSpawner) emitAgentExited(req Request, cmd *exec.Cmd, waitErr erro
 	last := ring.Snapshot()
 	sum := sha256.Sum256(last)
 	fp := hex.EncodeToString(sum[:8])
+	reason := ClassifyExitReason(last, exitCode)
+	durationMs := s.cfg.Clock().Sub(start).Milliseconds()
 	attrs := []any{
 		string(obs.KeyAgentID), req.AgentID,
 		string(obs.KeyWorkItemID), req.WorkItemID,
 		string(obs.KeyLane), req.Lane,
 		string(obs.KeyExitCode), exitCode,
-		string(obs.KeyExitReason), string(ClassifyExitReason(last, exitCode)),
-		string(obs.KeyDurationMs), s.cfg.Clock().Sub(start).Milliseconds(),
+		string(obs.KeyExitReason), string(reason),
+		string(obs.KeyDurationMs), durationMs,
 		string(obs.KeyLastTextFingerprint), fp,
 	}
 	if waitErr != nil {
 		attrs = append(attrs, string(obs.KeyErr), waitErr.Error())
 	}
 	s.cfg.Logger.Info(string(obs.EventAgentExited), attrs...)
+	if cb := s.cfg.OnAgentExited; cb != nil {
+		cb(req.AgentID, req.WorkItemID, exitCode, reason, durationMs)
+	}
 }
 
 // execStarter is the production ProcessStarter. Stderr forwards to

@@ -31,6 +31,13 @@ type listenerConfig struct {
 	// --public-url. Reverse-proxy deployments set it so OriginCheck pins
 	// the public hostname instead of the inner pod's r.Host (#304).
 	PublicHost string
+	// Heartbeat is the live /healthz liveness cell the orchestrator
+	// Touches every Run-loop tick. bootListener installs it into the
+	// /healthz handler; the orchestrator wiring at serve.go shares the
+	// same pointer so age_seconds reflects real ticks (#1218). Nil
+	// falls back to a fresh never-touched cell — preserved for backward
+	// compatibility with the W3 unit harness.
+	Heartbeat *health.HeartbeatCell
 }
 
 // preflightUIBoot fires BEFORE state.Open so the operator sees the HMAC misconfig at the loud-at-boot moment (spec §1.3 open-q 9.8) rather than as a render-time lie.
@@ -62,9 +69,13 @@ func bootListener(cfg listenerConfig) (*http.Server, error) {
 	if cfg.DB != nil {
 		healthDB = cfg.DB.SQL()
 	}
+	hb := cfg.Heartbeat
+	if hb == nil {
+		hb = health.NewHeartbeatCell(cfg.Clock)
+	}
 	mux.HandleFunc("/healthz", health.Handler(health.Dependencies{
 		DB:        healthDB,
-		Heartbeat: health.NewHeartbeatCell(cfg.Clock),
+		Heartbeat: hb,
 		Brief:     health.NewBriefCell(),
 		Version:   version,
 	}))

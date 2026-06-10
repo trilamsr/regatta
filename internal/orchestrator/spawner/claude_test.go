@@ -501,6 +501,61 @@ func TestClaudeSpawn_EmitsAgentExitedAfterChildWait(t *testing.T) {
 	}
 }
 
+// TestClaudeSpawn_OnAgentExitedCallbackFires asserts the OnAgentExited callback fires inside the cmd.Wait goroutine carrying agentID + exit_code + reason + duration_ms so the orchestrator can cascade running→crashed and break the #1218 phantom-agent stall.
+func TestClaudeSpawn_OnAgentExitedCallbackFires(t *testing.T) {
+	cs, _, _ := newClaudeHarness(t)
+	type call struct {
+		agentID    int64
+		workItemID string
+		exitCode   int
+		reason     ExitReason
+		durationMs int64
+	}
+	var (
+		mu    sync.Mutex
+		calls []call
+	)
+	cs.cfg.OnAgentExited = func(agentID int64, workItemID string, exitCode int, reason ExitReason, durationMs int64) {
+		mu.Lock()
+		calls = append(calls, call{agentID, workItemID, exitCode, reason, durationMs})
+		mu.Unlock()
+	}
+	cs.SetStarter(func(ctx context.Context, name string, args []string, stdin io.Reader, stdout io.Writer, dir string) (*exec.Cmd, error) {
+		_, _ = io.Copy(io.Discard, stdin)
+		cmd := exec.CommandContext(ctx, "sh", "-c", "exit 3")
+		cmd.Dir = dir
+		if err := cmd.Start(); err != nil {
+			return nil, err
+		}
+		return cmd, nil
+	})
+	if _, err := cs.Spawn(context.Background(), Request{AgentID: 99, WorkItemID: "WORK-CB", Lane: "server"}); err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	testutil.Eventually(t, ctx, 5*time.Millisecond, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(calls) >= 1
+	}, "OnAgentExited callback never fired")
+	mu.Lock()
+	got := calls[0]
+	mu.Unlock()
+	if got.agentID != 99 {
+		t.Fatalf("agentID: got %d want 99", got.agentID)
+	}
+	if got.workItemID != "WORK-CB" {
+		t.Fatalf("workItemID: got %q want WORK-CB", got.workItemID)
+	}
+	if got.exitCode != 3 {
+		t.Fatalf("exitCode: got %d want 3", got.exitCode)
+	}
+	if got.reason == "" {
+		t.Fatalf("reason: empty — want ClassifyExitReason result")
+	}
+}
+
 type syncBuf struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
