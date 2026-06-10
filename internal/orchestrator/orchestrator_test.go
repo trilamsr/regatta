@@ -534,9 +534,7 @@ func (f *fakeHeartbeatToucher) Count() int {
 	return f.counts
 }
 
-// TestRunTouchesHealthHeartbeat asserts the orchestrator Run loop calls
-// HealthHeartbeat.Touch on every tick so the /healthz heartbeat cell
-// never goes stale while the daemon is ticking — #1218 stall observation.
+// TestRunTouchesHealthHeartbeat asserts Run touches HealthHeartbeat every tick so /healthz stays fresh (#1218).
 func TestRunTouchesHealthHeartbeat(t *testing.T) {
 	o, _, _, _ := newHarness(t, 0)
 	o.cfg.PollInterval = 5 * time.Millisecond
