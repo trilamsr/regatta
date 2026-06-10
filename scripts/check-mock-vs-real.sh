@@ -18,7 +18,7 @@
 # Why 70%: empirically derived from 2026-06-08 session post-hoc audit.
 # Subagent test files that crossed 70% mock tokens were the same files
 # adversarial-review later flagged as "tests stub away the real interaction"
-# (#1088 wedge). Tighten if false-positives stay below 1/10 PRs over a
+# Tighten if false-positives stay below 1/10 PRs over a
 # 30-day window; loosen if legitimate mock-heavy fixtures (table-driven
 # pure-logic tests) repeatedly trip the gate.
 #

@@ -12,8 +12,6 @@
 #
 # Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a
 # slug bullet to mark it intentionally reviewer-only / operator-only.
-# Closes #901.
-
 set -uo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)

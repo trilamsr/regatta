@@ -277,7 +277,7 @@ func TestMagic(t *testing.T) {
 EOF
 }
 
-# c1 negative (#1057): test mentions the prod symbol ONLY inside a Go
+# c1 negative: test mentions the prod symbol ONLY inside a Go
 # string literal (\`_ = "Wire"\`). The pre-#1057 \`grep -qw\` matched any
 # whole-word occurrence including string-literal contents; the test
 # files cannot game the gate with a quoted identifier. Post-fix: the
@@ -300,7 +300,7 @@ func TestNothing(t *testing.T) {
 EOF
 }
 
-# c1 negative (#1057): test mentions the prod symbol ONLY inside a Go
+# c1 negative: test mentions the prod symbol ONLY inside a Go
 # line comment. Same forcing-function bypass as the string-literal
 # case; comment-stripping must reject this.
 case_cross_pkg_symbol_in_comment_only_fails() {
@@ -322,7 +322,7 @@ func TestNothing(t *testing.T) {
 EOF
 }
 
-# c1 positive (#1057): test imports + calls the prod symbol on a real
+# c1 positive: test imports + calls the prod symbol on a real
 # code line (no quotes, no comment). The tightening must keep this
 # path green — production-code-grade tightenings must not regress the
 # happy path.
@@ -482,7 +482,7 @@ echo
 echo "summary: $pass passed, $failed failed"
 exit $failed
 
-# c1 negative (#1057 reviewer af5d41c1a7a01a792): test mentions the prod
+# c1 negative: test mentions the prod
 # symbol ONLY inside a Go string literal with escaped quotes. Pre-fix the
 # strip pattern stopped at the first internal escape, leaving the rest
 # of the literal — including the symbol — exposed.
@@ -492,7 +492,7 @@ case_cross_pkg_symbol_in_escaped_string_only_fails() {
   printf 'package foo\n\nimport "testing"\n\nfunc TestNothing(t *testing.T) {\n  _ = "foo\\"Wire\\"bar"\n}\n' > internal/foo/foo_test.go
 }
 
-# c1 negative (#1057 reviewer af5d41c1a7a01a792): test mentions the prod
+# c1 negative: test mentions the prod
 # symbol ONLY inside a Go raw-string backtick literal.
 case_cross_pkg_symbol_in_raw_string_only_fails() {
   mkdir -p cmd/regatta internal/foo
@@ -500,7 +500,7 @@ case_cross_pkg_symbol_in_raw_string_only_fails() {
   printf 'package foo\n\nimport "testing"\n\nfunc TestNothing(t *testing.T) {\n  _ = `Wire`\n}\n' > internal/foo/foo_test.go
 }
 
-# c1 positive (#1057 reviewer af5d41c1a7a01a792): test that USES the
+# c1 positive: test that USES the
 # symbol in a real call AND happens to mention it in a comment. The
 # tightening must keep this case green.
 case_cross_pkg_symbol_in_call_plus_comment_passes() {

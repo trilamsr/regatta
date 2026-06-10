@@ -1,7 +1,7 @@
 # reviewer-verdict/token-extract.sh — extract bare Reviewer-recommendation
 # and Reviewer-agent-id tokens from PR body. Strips ```-fenced blocks first
-# so stale draft tokens cannot shadow the bare footer (#922). Picks the LAST
-# bare token so a stale REVISE preceding a fresh APPROVE does not win (#923).
+# so stale draft tokens cannot shadow the bare footer. Picks the LAST
+# bare token so a stale REVISE preceding a fresh APPROVE does not win.
 
 rv_extract_tokens() {
   RECOMMENDATION=$(awk '

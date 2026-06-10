@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-reviewer-verdict_test.sh asserts the reviewer-verdict gate fails
-# closed on load-bearing PRs without APPROVE recommendation per #899.
+# closed on load-bearing PRs without APPROVE recommendation.
 
 set -u
 # pipefail intentionally omitted: tests assert the gate exits non-zero and pipe
@@ -179,9 +179,9 @@ Reviewer-recommendation: APPROVE
 ```
 EOF
   if "$GATE" --body-file "$body" --load-bearing >/dev/null 2>&1; then
-    pass "fenced REVISE + bare APPROVE → bare APPROVE wins (#922)"
+    pass "fenced REVISE + bare APPROVE → bare APPROVE wins"
   else
-    fail "fenced REVISE + bare APPROVE should pass — fenced tokens must be stripped (#922)"
+    fail "fenced REVISE + bare APPROVE should pass — fenced tokens must be stripped"
   fi
   rm -f "$body"
 }
@@ -205,9 +205,9 @@ Reviewer-recommendation: REVISE
 ```
 EOF
   if "$GATE" --body-file "$body" --load-bearing 2>&1 | grep -qE "REVISE|BLOCK"; then
-    pass "fenced APPROVE + bare REVISE → bare REVISE wins (#922)"
+    pass "fenced APPROVE + bare REVISE → bare REVISE wins"
   else
-    fail "fenced APPROVE + bare REVISE should fail — fenced tokens must be stripped (#922)"
+    fail "fenced APPROVE + bare REVISE should fail — fenced tokens must be stripped"
   fi
   rm -f "$body"
 }
@@ -352,22 +352,22 @@ Reviewer-recommendation: APPROVE
 ```
 EOF
   if "$GATE" --body-file "$body" --load-bearing >/dev/null 2>&1; then
-    pass "stale REVISE + fresh APPROVE → last token wins (#923)"
+    pass "stale REVISE + fresh APPROVE → last token wins"
   else
-    fail "stale REVISE + fresh APPROVE should pass — last token must win (#923)"
+    fail "stale REVISE + fresh APPROVE should pass — last token must win"
   fi
   rm -f "$body"
 }
 
 run_case_load_bearing_path_classifier() {
-  # Retro audit 2026-06-08 (#985 #986): 5 structural refactors self-tagged
+  # Retro audit 2026-06-08: 5 structural refactors self-tagged
   # APPROVE bypassing review because the workflow path classifier missed
   # agent-rule + CI-gate surfaces. When --changed-paths-file lists any of
   # CLAUDE.md, Makefile, Makefile.d/*, .github/workflows/*, scripts/check-*.sh,
   # docs/engineer/dispatch-templates/*, the script MUST treat the PR as
   # load-bearing AND require the Reviewer-recommendation token even when the
   # release-notes category is [DOCS]/[CHORE]/[CI]/[NONE]/[CHANGE].
-  # Extended 2026-06-09 (#1133): internal/web/ (operator dashboard UX) and
+  # Extended 2026-06-09: internal/web/ (operator dashboard UX) and
   # internal/obs/ (event vocabulary) are load-bearing — dashboard XSS,
   # broken polling, and event-name drift silently break monitoring.
   local paths
@@ -692,7 +692,7 @@ Reviewer-recommendation: APPROVE
 ```
 EOF
   if "$GATE" --body-file "$body" --load-bearing --automerge-enabled 2>&1 | grep -qE "automerge_with_agent_id_on_load_bearing"; then
-    pass "automerge + agent-id on load-bearing fails with stderr token (#1046)"
+    pass "automerge + agent-id on load-bearing fails with stderr token"
   else
     fail "automerge + agent-id on load-bearing should fail with stderr token automerge_with_agent_id_on_load_bearing"
   fi

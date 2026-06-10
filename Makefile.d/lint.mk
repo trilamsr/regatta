@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-memory-citations check-memory-citations-test check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test next-migration
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
 	bash scripts/doc-check.sh
@@ -9,12 +9,6 @@ doc-check-test:  ## Assert banned-phrase gate strips fenced + inline backtick sp
 
 prose-dup:  ## Fail if a previously-deduped prose phrase reappears in 2+ markdown files.
 	bash scripts/check-prose-dup.sh
-
-check-memory-citations:  ## Fail if a feedback_* slug cited in CLAUDE.md/boot-prompt/templates does not resolve under MEMORY_DIR (or its archive/).
-	bash scripts/check-memory-citations.sh
-
-check-memory-citations-test:  ## Fixture-driven test for check-memory-citations.sh (live-resolve → 0, broken slug → 1).
-	bash scripts/check-memory-citations_test.sh
 
 check-phase-x-leak:  ## Fail when an active spec names a Phase-X token (tenant_id/RBAC/Stripe/Sigstore/Rekor/blackboard/Temporal) without `phase: x-forward-fit` opt-in.
 	bash scripts/check-phase-x-leak.sh

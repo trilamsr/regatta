@@ -165,6 +165,7 @@ Self-rate headline must reflect the WEAKEST tier carrying any ⚠/❌. All B + A
 - [ ] AT MOST ONE aggregate tracking issue filed for this PR review (with `kind:reviewer-finding` + matching `severity:*` label); LOW findings posted as PR comments only
 - [ ] `## Comment sweep` section emitted (offenders or `clean`)
 - [ ] memory rules cited
+- [ ] Reviewer-* tokens absent OR valid (APPROVE/REVISE/BLOCK + subagent id). NEVER `<pending>`.
 
 ## RECURRING-FAILURE TRAPS
 

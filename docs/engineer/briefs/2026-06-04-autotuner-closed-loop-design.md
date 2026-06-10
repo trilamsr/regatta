@@ -114,7 +114,7 @@ Implementation contract:
 4. On CUE error: drop the candidate, do NOT open a PR, file a `kind=autotune_action` event with `pr_number=0` + `after=""` (rejected-candidate trace) so audits can replay "what did the autotuner consider but reject?".
 5. On CUE pass: open the PR; emit the full event.
 
-For dispatch-template + banned-list write-backs (not yaml), the equivalent gate is the existing `scripts/doc-check.sh` + `scripts/check-memory-citations.sh` battery already in `make check` per CLAUDE.md "CI gates". Autotuner runs `make check` locally on the candidate before opening the PR; failures drop the candidate the same way.
+For dispatch-template + banned-list write-backs (not yaml), the equivalent gate is the existing `scripts/doc-check.sh` battery in `make check` per CLAUDE.md "CI gates". Autotuner runs `make check` locally on the candidate before opening the PR; failures drop the candidate the same way.
 
 No new schema, no new validator. **The autotuner rides the existing yaml/markdown gate stack byte-for-byte.**
 

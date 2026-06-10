@@ -24,7 +24,7 @@
 #                         list (docs/engineer/specs/*.md,
 #                         docs/engineer/briefs/*.md) sets load-bearing=1
 #                         AND BYPASSES the release-notes category auto-skip
-#                         (closes #985 #986 #991 retro audit 2026-06-08).
+#                         (closes #985 #986 retro audit).
 #     --skip              short-circuit pass (operator-discretion escape)
 #     --pr-author <login> PR author login (e.g. from `gh api .../pulls/N
 #                         --jq .user.login`). When provided AND the PR
@@ -66,7 +66,7 @@
 #   Pass: body contains `Reviewer-recommendation: APPROVE` ON ITS OWN
 #   line (case-insensitive, leading/trailing whitespace allowed). Tokens
 #   inside ```-fenced code blocks are stripped before the scan so stale
-#   examples or draft snippets cannot beat the bare footer token (#922).
+#   examples or draft snippets cannot beat the bare footer token.
 #
 #   Fail: token absent OR equals REVISE/BLOCK when --load-bearing.
 #
@@ -76,7 +76,6 @@
 #   2 REVISE / BLOCK recommendation.
 #   3 usage error.
 #
-# Closes #899.
 #
 # Refactor #1044: per-check functions live under scripts/lib/reviewer-verdict/;
 # this top-level file is the orchestrator that sources them. Behavior is

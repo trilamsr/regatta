@@ -1,12 +1,12 @@
 # reviewer-verdict/verdict.sh — decide pass/fail given RECOMMENDATION
 # and REVIEWER_AGENT_ID. Handles operator-escape comment, allowlist shape,
 # self-tag mismatch vs PR_AUTHOR, and the automerge-with-agent-id guard
-# (closes #1046).
+#.
 
 rv_decide_verdict() {
   case "$RECOMMENDATION" in
     APPROVE)
-      # Automerge guard (closes #1046): if the agent both writes its own
+      # Automerge guard: if the agent both writes its own
       # APPROVE and enables automerge, zero operator window exists between
       # APPROVE-token landing and merge. Pairs with the no-self-tag rule
       # to keep an independent reviewer in the loop. Fires only when an

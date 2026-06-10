@@ -8,4 +8,3 @@ Canonical cross-ref index for agent rule surfaces. Extracted from `CLAUDE.md` to
 - Self-host brief: `docs/engineer/briefs/2026-06-01-self-host-first.md`
 - Testing conventions (build-tag namespaces `e2e` / `integration_gh` / `e2e_otel`): `docs/engineer/testing-conventions.md`
 - Per-operator memory (citation-only; NEVER `Read` from agents): `~/.claude/projects/<project-hash>/memory/MEMORY.md`
-- CI-portable slug fixtures (stub-only re-export; `scripts/check-memory-citations.sh` resolves here when `MEMORY_DIR` is unset): `scripts/testdata/memory/`

@@ -151,7 +151,7 @@ while IFS= read -r pf; do
     [ "$found" -eq 1 ] && break
     d=$(dirname "$d")
   done
-  # Cross-package symbol-match fallback (#1055): cmd/ wire files are
+  # Cross-package symbol-match fallback: cmd/ wire files are
   # commonly exercised by internal/ unit tests, which the ancestor
   # walk cannot reach (cmd/ and internal/ share no ancestor below /).
   if [ "$found" -eq 0 ]; then
@@ -186,7 +186,7 @@ while IFS= read -r pf; do
         # Strip Go string literals (handling escaped quotes), raw-string
         # backticks, and line comments before symbol search so a test file
         # that mentions the prod symbol ONLY inside `"..."`, `` `...` ``, or
-        # after `//` cannot game the gate (#1057). Block `/* ... */` comments
+        # after `//` cannot game the gate. Block `/* ... */` comments
         # are NOT stripped; reopen #1057 if a real bypass surfaces (escalate
         # to a go/scanner helper at that point).
         tf_stripped=$(git show "$head:$tf" 2>/dev/null | awk '

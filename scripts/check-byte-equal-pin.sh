@@ -4,11 +4,11 @@
 # gate.
 #
 # Drift pattern this closes: CLAUDE.md §CI gates "Byte-equal-refactor pin"
-# rule (#985) mandates that any refactor whose correctness story is
+# rule mandates that any refactor whose correctness story is
 # "set is byte-equal pre/post" MUST ship a mechanical gate — the PR-body
 # claim alone is rejected because drift surfaces in the next sibling PR,
 # not the current one. The rule was documented but had no enforcement until
-# now; this gate is the enforcement (#1031).
+# now; this gate is the enforcement.
 #
 # Gate:
 #   Inputs:
