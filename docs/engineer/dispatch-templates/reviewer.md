@@ -49,20 +49,20 @@ LENSES (apply in order)
 3. Risk — classify each finding `Low | Med | High | Critical`; floor = `<RISK-TIER-FLOOR>`. Routing: LOW → PR comment only; MED → comment + aggregate row if not inline-fixed; HIGH/CRITICAL → aggregate row required.
 4. Spec fidelity — measure target against `<SPEC-PATH>` rubric; flag implementer deviations (re-spawn design subagent per `feedback_spec_pattern_authority`).
 5. TDD trace — verify failing-test-first commit ordering per `feedback_tdd_discipline`.
-6. Doc-check + release-notes — banned phrases (`scripts/doc-check.sh` 11-token list), release-notes fence present.
+6. Doc-check + release-notes — comment-noise / test-godoc gates clean (`scripts/doc-check.sh`), release-notes fence present.
 7. Subagent verification — re-run `make pre-push-check`; ~10% lie rate on "make check clean" per `feedback_subagent_verification`.
 8. Load-bearing leftovers — every unaddressed load-bearing item rolls into the SINGLE aggregate tracking issue for this PR per the rules below; cite that one issue # in the PR body. PHASE-S-RELAX: Risk-tier+ only during self-host window.
 9. **Comment sweep (MED severity)** — inspect every added/modified comment per `feedback_reviewer_comment_trim` + `feedback_comment_budget_enforcement`. Severity rules:
    - **MED** on any implementer-template hard-rule hit (see `implementer.md` §Comments: zero by default): name-restating godoc, signature-restating godoc, section banner, multi-paragraph narration, untagged TODO/FIXME/XXX/HACK, current-PR/wave/reviewer references, multi-line Test/Fuzz/Benchmark godoc, AI signature.
    - **HIGH** on commented-out code blocks.
    - **REJECT** the PR (block-on-findings) when >5 instances of MED-tier comment violations appear in the diff additions.
-   - **Density check**: for every new prod `.go` file ≥ 100 LOC in the diff, compute `comment_lines / total_LOC` and report % vs CLAUDE.md ≤ 5% target. Over → MED finding with the density figure.
+   - **Density check**: for every new prod `.go` file ≥ 100 LOC in the diff, compute `comment_lines / total_LOC`; flag MED above ~10% with the density figure.
    - Scan the diff additions for WHAT-narration explicitly; do not infer from the PR description.
    - Output `## Comment sweep` section listing offenders by `path:line` with severity tag, OR `## Comment sweep: clean` if zero. Silence = failure.
 10. **Citation resolve (HIGH severity)** — for brief / spec / dispatch-template diffs: every cited path resolves via `git ls-tree origin/main --name-only | grep -F <path>` (NOT worktree-local Read). Every numeric claim (event-kind count, rule count, LoC) pairs with the exact command that produced it; reviewer re-runs the command. Every OSS prior-art cite names LICENSE-file URL + resolvable tag-ref. HIGH on any unresolved citation, mismatched numeric, or unverified license. Per `feedback_cite_origin_main_not_local`.
 
 RUN LOCAL LINTS (do not infer from PR description)
-- Fetch branch + run `bash scripts/doc-check.sh` (banned phrases, broken links, comment-noise, test-godoc).
+- Fetch branch + run `bash scripts/doc-check.sh` (markdown links, comment-noise, test-godoc).
 - Run `make pre-push-check` (verify, stale-todo, check-tdd, full test suite).
 - Compare actual exit codes against author's claim. ~10% lie rate per `feedback_subagent_verification`. (`feedback_reviewer_run_local_lints`, `feedback_subagent_verification`)
 

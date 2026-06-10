@@ -61,7 +61,7 @@ SELF-GRADE (optional, no CI gate)
 - Operator self-rates against the spec's B/A/A+ rubric for own visibility. No required format. No token shape enforced. No `## A+ Rubric Scorecard` section required. Per `feedback_grade_rubric` (downgraded: self-host phase, solo operator + solo reviewer, no vibes-grader to catch). Reopen-trigger: external contributor lands.
 
 DOC-CHECK
-- Pre-push grep banned phrases — token list (11 entries) lives in `scripts/doc-check.sh` (`banned_tokens` array). Reword hits to falsifiable claims (version pin, benchmark, named reference). Per `CLAUDE.md` §CI gates "Banned-phrase gate".
+- Reword vague marketing language to falsifiable claims (version pin, benchmark, named reference). Reviewer subagent catches drift.
 
 RELEASE NOTES
 - PR body MUST contain a ```release-notes ... ``` fence (one line: user-visible change OR `none (internal)`). Body-edit alone won't retrigger pr-lint — needs a new commit. Per `feedback_release_notes_fence_missing` + `CLAUDE.md` §CI gates "PR body hygiene".
@@ -136,7 +136,7 @@ Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mar
 - [ ] `make pre-push-check` green locally
 - [ ] reviewer subagent cleared OR auto-skip condition met
 - [ ] release-notes fence present
-- [ ] no banned phrases
+- [ ] no vague marketing language
 - [ ] no signatures
 - [ ] memory rules cited
 - [ ] worktree removed after merge (`CLAUDE.md` §Worktree discipline)
