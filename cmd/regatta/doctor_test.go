@@ -78,7 +78,7 @@ func TestDoctor_JSONOutput_StableSchema(t *testing.T) {
 	wantNames := map[string]bool{
 		"secrets": false, "binaries": false, "gh-auth": false,
 		"git-state": false, "config": false, "branch-protection": false,
-		"supervisor": false,
+		"supervisor": false, "spawner-auth": false,
 	}
 	for _, c := range got.Checks {
 		if _, ok := wantNames[c.Name]; ok {
@@ -139,6 +139,48 @@ func allPassEnv() doctorEnv {
 		validateConfig:    func(path string) error { return nil },
 		verifyRepoConfig:  func(ctx context.Context) (bool, []string, error) { return true, nil, nil },
 		supervisorPresent: func() (bool, string, error) { return false, "no install-service marker", nil },
-		toolPins:          []string{"osv-scanner", "gitleaks"},
+		getenv: func(key string) string {
+			if key == "CLAUDE_CODE_OAUTH_TOKEN" {
+				return "sk-ant-oat01-test-fixture"
+			}
+			return ""
+		},
+		toolPins: []string{"osv-scanner", "gitleaks"},
+	}
+}
+
+// TestCheckSpawnerAuth_RecognizesOAuthToken pins the doctor hint when subscription auth flows via CLAUDE_CODE_OAUTH_TOKEN (the macOS Docker Desktop unblock). The hint MUST name the env var so operators can grep `regatta doctor` output to confirm which path is active.
+func TestCheckSpawnerAuth_RecognizesOAuthToken(t *testing.T) {
+	env := doctorEnv{getenv: func(key string) string {
+		if key == "CLAUDE_CODE_OAUTH_TOKEN" {
+			return "sk-ant-oat01-test-fixture"
+		}
+		return ""
+	}}
+	got := checkSpawnerAuth(env)
+	if got.Status != statusPass {
+		t.Fatalf("status=%q want PASS; hint=%q err=%q", got.Status, got.Hint, got.Error)
+	}
+	if !strings.Contains(got.Hint, "CLAUDE_CODE_OAUTH_TOKEN") {
+		t.Fatalf("hint must name CLAUDE_CODE_OAUTH_TOKEN; got %q", got.Hint)
+	}
+}
+
+// TestCheckSpawnerAuth_FailNamesAllPaths: when no credential path is reachable the FAIL hint MUST mention all three escape hatches so the operator does not need to grep docs.
+func TestCheckSpawnerAuth_FailNamesAllPaths(t *testing.T) {
+	env := doctorEnv{getenv: func(key string) string {
+		if key == "HOME" {
+			return t.TempDir()
+		}
+		return ""
+	}}
+	got := checkSpawnerAuth(env)
+	if got.Status != statusFail {
+		t.Fatalf("status=%q want FAIL; hint=%q", got.Status, got.Hint)
+	}
+	for _, token := range []string{"CLAUDE_CODE_OAUTH_TOKEN", ".claude", "ANTHROPIC_API_KEY"} {
+		if !strings.Contains(got.Hint, token) {
+			t.Fatalf("hint must name %q; got %q", token, got.Hint)
+		}
 	}
 }

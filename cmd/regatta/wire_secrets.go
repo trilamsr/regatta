@@ -24,8 +24,11 @@ import (
 // names that existing serve.go consumers already read. Setting these
 // at boot means we do NOT touch the five env-var fan-out points in
 // serve.go — they continue to call os.Getenv unchanged.
+// envAnthropicAPIKey is the legacy env var name for the Anthropic API key, referenced from secretEnvOverrides + doctor.go.
+const envAnthropicAPIKey = "ANTHROPIC_API_KEY" //nolint:gosec // env-var NAME, not a credential value
+
 var secretEnvOverrides = map[string][]string{
-	secrets.KeyAnthropic:     {"ANTHROPIC_API_KEY"},
+	secrets.KeyAnthropic:     {envAnthropicAPIKey},
 	secrets.KeyGHToken:       {"GH_TOKEN", "GITHUB_TOKEN"},
 	secrets.KeyBriefHMACs:    {"REGATTA_HMAC_KEYRING"},
 	secrets.KeyAuditHMACKey:  {"REGATTA_AUDIT_HMAC_KEY"},

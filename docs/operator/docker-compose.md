@@ -67,9 +67,9 @@ confirms a platform gap:
 
 | Host platform        | Subscription via container | Pay-as-you-go via container | Native install path                |
 |---|---|---|---|
-| macOS Docker Desktop | NOT supported (creds live in Keychain, unreachable from Linux container) | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | `regatta install-service` (LaunchAgent — runs as user, inherits Keychain access). The `--system` flag installs a LaunchDaemon which runs as root and CANNOT reach the user Keychain |
-| Linux Docker         | Works IF host Claude Code writes a file-based token (run `ls ~/.claude/daemon/auth.json ~/.claude/.credentials.json 2>/dev/null` — a hit means file-based; empty means token lives elsewhere) | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | `regatta install-service --system` (systemd) |
-| Linux Docker (no `~/.claude` file) | NOT supported | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | Same as above |
+| macOS Docker Desktop | `CLAUDE_CODE_OAUTH_TOKEN` in `.env` (run `claude setup-token` on host). The `~/.claude` mount path does NOT work — creds live in Keychain, unreachable from Linux container | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | `regatta install-service` (LaunchAgent — runs as user, inherits Keychain access). The `--system` flag installs a LaunchDaemon which runs as root and CANNOT reach the user Keychain |
+| Linux Docker         | `CLAUDE_CODE_OAUTH_TOKEN` in `.env` (universal), OR mount `~/.claude` IF host Claude Code writes a file-based token (run `ls ~/.claude/daemon/auth.json ~/.claude/.credentials.json 2>/dev/null` — a hit means file-based) | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | `regatta install-service --system` (systemd) |
+| Linux Docker (no `~/.claude` file) | `CLAUDE_CODE_OAUTH_TOKEN` in `.env` | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | Same as above |
 
 #### Subscription via mounted `~/.claude` (Linux-only, conditional)
 
@@ -93,6 +93,27 @@ hosts hit `EACCES` without an explicit `--user` override or `chmod`,
 and (b) `~/.claude` is the full Claude Code session dir (memory,
 plans, file-history), not just credentials — exposing the whole tree
 by default is broader than necessary.
+
+#### Subscription via long-lived OAuth (recommended for containerized hosts)
+
+Run `claude setup-token` once on the host to issue a long-lived OAuth
+token (format `sk-ant-oat01-...`). Pass it to the container via the
+`CLAUDE_CODE_OAUTH_TOKEN` env var — e.g. add to `.env`:
+
+```
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-...
+```
+
+The spawner does not scrub this var (`internal/orchestrator/spawner/child_env.go`
+only scrubs `ANTHROPIC_API_KEY` + `ANTHROPIC_AUTH_TOKEN`), so it
+passes through to every spawned `claude` child. Billing: subscription-priced.
+Works on macOS Docker Desktop where Keychain is unreachable from the
+Linux container.
+
+Token rotation: re-run `claude setup-token` on the host and update
+`.env`. Trade-off vs the `~/.claude` mount path: a long-lived token
+sits on disk in `.env` rather than rotating via Keychain — mitigate by
+keeping `.env` mode `0600` (`chmod 600 .env`).
 
 #### Failure signature
 

@@ -13,6 +13,7 @@ func TestPreflightSpawnerAuth_StripDefaultRefusesWhenNoClaudeDir(t *testing.T) {
 	t.Setenv("REGATTA_SPAWNER_STRIP_API_KEY", "1")
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
 	err := preflightSpawnerAuth("claude")
 	if err == nil {
 		t.Fatal("preflightSpawnerAuth(claude) with strip=1 and no $HOME/.claude must refuse to boot")
@@ -67,5 +68,46 @@ func TestPreflightSpawnerAuth_NonClaudeSpawnerSkipped(t *testing.T) {
 func TestPreflightSpawnerAuth_StripFlag_UsesSharedFalsyLexicon(t *testing.T) {
 	if spawner.IsFalsyEnv("0") != true || spawner.IsFalsyEnv("1") != false {
 		t.Fatalf("spawner.IsFalsyEnv lexicon drifted")
+	}
+}
+
+// TestPreflightSpawnerAuth_StripPassesWhenOAuthTokenPresent pins the third auth path: subscription via long-lived OAuth token. On macOS Docker Desktop the Keychain isn't mountable, so `claude setup-token` issues `CLAUDE_CODE_OAUTH_TOKEN` (format sk-ant-oat01-...) which the spawner auto-passes to children. The gate accepts this credential path even when $HOME/.claude is absent.
+func TestPreflightSpawnerAuth_StripPassesWhenOAuthTokenPresent(t *testing.T) {
+	t.Setenv("REGATTA_SPAWNER_STRIP_API_KEY", "1")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-test-fixture")
+	if err := preflightSpawnerAuth("claude"); err != nil {
+		t.Fatalf("preflightSpawnerAuth(claude) with strip=1 + CLAUDE_CODE_OAUTH_TOKEN set must boot; got %v", err)
+	}
+}
+
+// TestPreflightSpawnerAuth_StripRefusalNamesBothEscapeHatches: when neither $HOME/.claude exists nor CLAUDE_CODE_OAUTH_TOKEN is set, the refusal error MUST name BOTH escape hatches so the operator can resolve without grepping docs.
+func TestPreflightSpawnerAuth_StripRefusalNamesBothEscapeHatches(t *testing.T) {
+	t.Setenv("REGATTA_SPAWNER_STRIP_API_KEY", "1")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "")
+	err := preflightSpawnerAuth("claude")
+	if err == nil {
+		t.Fatal("preflightSpawnerAuth(claude) with strip=1 + no $HOME/.claude + no CLAUDE_CODE_OAUTH_TOKEN must refuse to boot")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "CLAUDE_CODE_OAUTH_TOKEN") {
+		t.Fatalf("error must name CLAUDE_CODE_OAUTH_TOKEN escape hatch; got %q", msg)
+	}
+	if !strings.Contains(msg, ".claude") {
+		t.Fatalf("error must name ~/.claude escape hatch; got %q", msg)
+	}
+}
+
+// TestPreflightSpawnerAuth_StripOAuthTokenWhitespaceOnlyRejected: a whitespace-only CLAUDE_CODE_OAUTH_TOKEN must not satisfy the credential gate — TrimSpace matches the ANTHROPIC_API_KEY path treatment so accidental quoting in .env does not slip through.
+func TestPreflightSpawnerAuth_StripOAuthTokenWhitespaceOnlyRejected(t *testing.T) {
+	t.Setenv("REGATTA_SPAWNER_STRIP_API_KEY", "1")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("ANTHROPIC_API_KEY", "")
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "   ")
+	if err := preflightSpawnerAuth("claude"); err == nil {
+		t.Fatal("whitespace-only CLAUDE_CODE_OAUTH_TOKEN must NOT satisfy the gate")
 	}
 }

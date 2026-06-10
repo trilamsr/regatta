@@ -66,6 +66,7 @@ type doctorEnv struct {
 	validateConfig    func(path string) error
 	verifyRepoConfig  func(ctx context.Context) (passed bool, failedIDs []string, err error)
 	supervisorPresent func() (installed bool, detail string, err error)
+	getenv            func(key string) string // nil → spawner-auth check returns SKIP
 	toolPins          []string
 	configPath        string
 }
@@ -97,6 +98,7 @@ func runDoctorTo(out, errW io.Writer, args []string, env doctorEnv) int {
 		{"config", func() doctorCheckResult { return checkConfig(env) }},
 		{checkNameBranchProtect, func() doctorCheckResult { return checkBranchProtection(ctx, env) }},
 		{"supervisor", func() doctorCheckResult { return checkSupervisor(env) }},
+		{"spawner-auth", func() doctorCheckResult { return checkSpawnerAuth(env) }},
 	}
 
 	results := make([]doctorCheckResult, 0, len(checks))
@@ -186,7 +188,7 @@ func envVarHint(keys []string) string {
 func secretEnvVar(canonicalKey string) string {
 	switch canonicalKey {
 	case secrets.KeyAnthropic:
-		return "ANTHROPIC_API_KEY"
+		return envAnthropicAPIKey
 	case secrets.KeyGHToken:
 		return "GITHUB_TOKEN"
 	case secrets.KeyBriefHMACs:
@@ -313,6 +315,54 @@ func checkSupervisor(env doctorEnv) doctorCheckResult {
 	return doctorCheckResult{Status: statusPass, Hint: detail}
 }
 
+// checkSpawnerAuth reports which credential path the spawner will use at runtime: pay-as-you-go (ANTHROPIC_API_KEY), subscription via mounted ~/.claude, or subscription via long-lived CLAUDE_CODE_OAUTH_TOKEN. Mirrors preflightSpawnerAuth's branching so doctor surfaces the same decision the boundary gate makes (#1166-fix3, OAuth-token follow-up). nil env.getenv → SKIP so unit tests pin behavior without touching process env.
+func checkSpawnerAuth(env doctorEnv) doctorCheckResult {
+	if env.getenv == nil {
+		return doctorCheckResult{Status: statusSkip, Hint: "no env probe wired"}
+	}
+	stripFlag := strings.ToLower(strings.TrimSpace(env.getenv("REGATTA_SPAWNER_STRIP_API_KEY")))
+	payAsYouGo := stripFlag == "0" || stripFlag == "false" || stripFlag == "no" || stripFlag == "off"
+	if payAsYouGo {
+		if strings.TrimSpace(env.getenv(envAnthropicAPIKey)) == "" {
+			return doctorCheckResult{
+				Status: statusFail,
+				Hint:   "REGATTA_SPAWNER_STRIP_API_KEY=0 (pay-as-you-go) requires ANTHROPIC_API_KEY",
+				Error:  "ANTHROPIC_API_KEY empty",
+			}
+		}
+		return doctorCheckResult{Status: statusPass, Hint: "pay-as-you-go via ANTHROPIC_API_KEY"}
+	}
+	if strings.TrimSpace(env.getenv("CLAUDE_CODE_OAUTH_TOKEN")) != "" {
+		return doctorCheckResult{Status: statusPass, Hint: "subscription via long-lived OAuth token (CLAUDE_CODE_OAUTH_TOKEN)"}
+	}
+	home := env.getenv("HOME")
+	if home == "" {
+		return doctorCheckResult{
+			Status: statusFail,
+			Hint:   "subscription path requires $HOME OR CLAUDE_CODE_OAUTH_TOKEN",
+			Error:  "$HOME empty",
+		}
+	}
+	claudeDir := home + "/.claude"
+	if _, err := osStat(claudeDir); err != nil {
+		return doctorCheckResult{
+			Status: statusFail,
+			Hint:   "mount ~/.claude OR set CLAUDE_CODE_OAUTH_TOKEN (run `claude setup-token` on host) OR REGATTA_SPAWNER_STRIP_API_KEY=0 + ANTHROPIC_API_KEY",
+			Error:  err.Error(),
+		}
+	}
+	return doctorCheckResult{Status: statusPass, Hint: "subscription via mounted ~/.claude"}
+}
+
+// osStat is var so tests can stub the stat boundary without bringing in a filesystem mock framework.
+var osStat = func(path string) (isDir bool, err error) {
+	st, err := os.Stat(path) //nolint:gosec // operator-controlled path resolved by doctor probe
+	if err != nil {
+		return false, err
+	}
+	return st.IsDir(), nil
+}
+
 // stringList satisfies flag.Value for repeatable + comma-separated --skip.
 type stringList []string
 
@@ -355,6 +405,7 @@ func liveDoctorEnv() doctorEnv {
 		validateConfig:    liveValidateConfig,
 		verifyRepoConfig:  liveVerifyRepoConfig,
 		supervisorPresent: liveSupervisorPresent,
+		getenv:            os.Getenv,
 		toolPins:          []string{"osv-scanner", "gitleaks"},
 		configPath:        "regatta.yaml",
 	}
