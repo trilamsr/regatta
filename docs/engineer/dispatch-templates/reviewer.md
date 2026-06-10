@@ -2,6 +2,17 @@
 
 Adversarial review subagent. Read-only against a target PR or spec. Never approves on autopilot.
 
+## Anti-patterns (block-list)
+
+The PR-author dispatching you MUST follow these rules. Flag any violation as a HIGH-severity finding:
+
+1. `Reviewer-recommendation:` or `Reviewer-agent-id:` tokens in commit messages instead of the PR body. The gate (`scripts/check-reviewer-verdict.sh`) reads PR body only — commit-message tokens are invisible and the gate fails closed silently. Per `feedback_no_self_tagged_approve`.
+2. `gh pr merge --auto` enabled on a load-bearing PR carrying agent-id tokens. The gate emits `automerge_with_agent_id_on_load_bearing`. Authors must end with `gh pr ready <N>` + operator-merge handoff. Per `feedback_no_implementer_automerge`.
+3. Author operating in `.claude/worktrees/operator-docker-soak/` or any shared-named worktree concurrently with another agent. HEAD clobber + lost work. Authors must use orchestrator-pinned `regatta/agent-<N>` branch. Per `feedback_keep_orchestrator_branch_name`.
+4. Author self-tagging `Reviewer-recommendation: APPROVE`. The token MUST come from an independent reviewer subagent dispatched in a separate slot — YOU are that reviewer right now. If the PR body already carries an APPROVE token from the author, this is a CRITICAL finding. Per `feedback_no_self_tagged_approve`.
+
+Operator escape (rare, author-side): PR-body HTML comment `<!-- antipattern-justified: <reason ≥4 chars> -->`. Verify the reason is concrete; treat boilerplate ("legacy", "tested", "approved") as insufficient and flag.
+
 ## Variables
 - `<TARGET>` — `PR #N` | `spec path` | `commit sha range`.
 - `<SPEC-PATH>` — canonical spec the target implements (rubric source).
