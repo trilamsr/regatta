@@ -1,6 +1,6 @@
 ---
 name: regatta-operator
-description: Act as the human-in-the-loop operator of regatta running against a target repo. Monitor the running orchestrator, observe agent/PR/CI state by all available means, notice inefficiencies and bugs, and file issues + capture meta-lessons across the four surfaces (regatta-core, orchestrator, operator-loop, agent-prompt). Use when the user says "operate regatta", "babysit regatta", "regatta operator mode", "run regatta on <repo>", "watch the swarm", or any phrasing that asks Claude to drive a regatta session end-to-end. The skill takes a TARGET_REPO argument naming the GitHub repo regatta will work against; defaults to the in-tree test target. Containment first — every action is scoped, reversible, and logged.
+description: Act as the human-in-the-loop operator of regatta running against a target repo. Two co-equal primary responsibilities — (1) FEED the orchestrator by picking next wedges from roadmap / milestones / ready-labeled issues / briefs / specs and filing them as orchestrator-consumable issues, and (2) OBSERVE the running orchestrator for errors / inefficiencies / stuck agents and file findings + capture meta-lessons across the four surfaces (regatta-core, orchestrator, operator-loop, agent-prompt). Loop is unbounded by design — exits only on wedge-queue exhaustion + quiet observation OR operator interrupt OR recurring-trap fire. Use when the user says "operate regatta", "babysit regatta", "regatta operator mode", "run regatta on <repo>", "watch the swarm", or any phrasing that asks Claude to drive a regatta session end-to-end. The skill takes a TARGET_REPO argument naming the GitHub repo regatta will work against; defaults to the in-tree test target. Containment first — every action is scoped, reversible, and logged.
 ---
 
 # regatta-operator
@@ -313,27 +313,48 @@ Cheap-first (PR sweep before logs before DB). Silence on a channel that should b
 
 | Channel | Command shape (uses pre-flight values) | What it tells you |
 |---|---|---|
-| Dashboard | `curl -sf "http://localhost:${PORT}/api/agents" \| jq` | Agent state, last heartbeat, current PR |
+| Dashboard health | `curl -sf "http://localhost:${PORT}/healthz" \| jq` | JSON: orchestrator status (ok/degraded), db, heartbeat freshness, brief presence |
+| Dashboard agents | `curl -sf "http://localhost:${PORT}/ui/panels/agents"` (HTML) | Agent state, last heartbeat, current PR. Note: regatta UI is HTML panel, not JSON `/api/agents`; for structured data use the State DB row or `/ui/drawer/agent/<id>` |
 | GH PR sweep | `gh pr list -R "$TARGET_REPO" --json number,headRefName,state,mergeStateStatus,statusCheckRollup,isDraft -L 20` | What landed, what's stuck, CI flake pattern |
 | Agent logs | `tail -F .claude/worktrees/agent-*/logs/*.log` (or whatever the spawner discovered) | Worker reasoning, prompt drift, tool-denial loops |
 | Orchestrator logs | `journalctl -u $SYSTEMD_UNIT -f` if systemd; else `tail -F` discovered file; else attach to PID's fd/2 | State transitions, reaper events, prwatch warnings |
-| State DB | `sqlite3 "$DB" 'select kind,count(*) from events group by kind'` | Event-vocabulary drift, idempotency failures |
+| State DB | `sqlite3 "$DB" 'select kind,count(*) from events group by kind'` (distroless containers lack `sqlite3` — exec via sidecar: `docker run --rm -v <volume>:/data alpine sh -c 'apk add -q sqlite && sqlite3 /data/regatta.db "..."'` OR mount volume to host + run host-side sqlite3) | Event-vocabulary drift, idempotency failures |
 | Heartbeat health | `gh pr view <N> --json mergeStateStatus,statusCheckRollup` | Pre-merge gate health per PR |
 | Binary staleness | `go version -m "$(which regatta)"` or `docker inspect --format '{{.Image}}' <container>` | Confirm a rebuild actually took effect |
-| State DB health | `sqlite3 "$DB" 'pragma integrity_check'` + `sqlite3 "$DB" "select max(ts) from events"` | Lock orphans, recent event freshness |
+| State DB health | `sqlite3 "$DB" 'pragma integrity_check'` + `sqlite3 "$DB" "select max(ts) from events"` (distroless: sidecar pattern same as State DB row above) | Lock orphans, recent event freshness |
 
+
+## Wedge sourcing (FEED responsibility — co-equal w/ OBSERVE)
+
+The operator's first job is to keep the orchestrator's intake non-empty. Empty intake = idle agents = wasted parallel headroom. Pick the next wedge from the sources below in priority order; stop at the first non-empty source per tick.
+
+Sources, highest → lowest:
+
+1. **Ready-labeled backlog.** `gh issue list -R "$ORCH_SOURCE_REPO" --label "$SPAWN_LABEL" --state open --json number,title,labels,body -L 20`. Already triaged + scoped; safe to dispatch as-is. The orchestrator's poller picks these up on its next tick.
+2. **Brief-ready specs.** `git ls-tree -r origin/main docs/engineer/briefs/ docs/engineer/specs/` — frontmatter `status: ready` (specs) OR brief w/ explicit `## Acceptance criteria` block. File an issue w/ brief link + `$SPAWN_LABEL` so orchestrator consumes.
+3. **Milestones.** `gh api "repos/$ORCH_SOURCE_REPO/milestones" --jq '.[] | select(.state=="open") | {number,title,due_on}'` → for the soonest-due open milestone, `gh issue list -R "$ORCH_SOURCE_REPO" --milestone <N> --state open --label "ready" --json number,title -L 20`. Pick one; if it has a brief, dispatch directly; if not, dispatch a designer-subagent issue first (`[OPS] design brief: <topic>` w/ `$SPAWN_LABEL`).
+4. **Roadmap active-phase items.** Walk `$ROADMAP_PATHS` for the `[IN-FLIGHT]` phase block: `for p in $ROADMAP_PATHS; do [ -f "$p" ] && grep -nE '^(P[0-9]+|PHASE).*\[IN-FLIGHT\]' "$p"; done` ( `[ -f ]` guard is REQUIRED — unquoted glob expansion fails-loud under `zsh` `nomatch` when a path pattern matches nothing; `[ -f ]` skips silently. ERE pipe is bare `|`, NOT `\|`). Pick the topmost item w/ no linked open PR + no linked open issue. File as a brief-stub issue.
+5. **Self-improve detector backlog.** `[OPS]` / `[AGENT]` findings the skill already filed this session that are scoped + still open AND have ≥2 INDEPENDENT observations (separate agents / separate iterations / separate root-cause traces — NOT 2 comments on the same issue). Recurrence-only counts (single root cause seen N times on one agent) bump the existing issue's occurrence counter per recurrence rule; they do not become new wedges. Circuit-breaker: if a source-5 wedge produces a finding that itself becomes a source-5 candidate w/in 3 ticks, halt source-5 sourcing for the session + file `[OPS]` finding "recursive wedge loop detected".
+
+**Wedge dispatch shape.** Every operator-filed wedge issue MUST have: (a) title w/ surface prefix `[CORE]/[ORCH]/[OPS]/[AGENT]`, (b) `## Brief` linking to a doc OR inline 5–15 line scope, (c) `## Acceptance criteria` bulleted list — these are the test-derivable specs the orchestrator's implementer subagent will write the failing test against per CLAUDE.md `feedback_tdd_discipline` (RED commit first; brief + criteria MUST be specific enough that a failing test compiles + fails on `main` for the right reason), (d) `## File scope` glob list (use w/ shared-primitive owner audit per CLAUDE.md), (e) `$SPAWN_LABEL` label applied. Wedges touching load-bearing surfaces (per CLAUDE.md reviewer-verdict gate path list) carry `## Downstream review` note: "PR will require independent reviewer per `feedback_no_self_tagged_approve` — `Reviewer-agent-id:` + `Reviewer-recommendation: APPROVE` mandatory in PR body footer". Operator does not enable automerge per `feedback_no_implementer_automerge`.
+
+**Audit main before filing** (per CLAUDE.md `feedback_audit_main_before_implementing`). Before filing ANY wedge: `git ls-tree -r origin/main --name-only | grep -E '<expected-path>'` AND `gh pr list -R "$ORCH_SOURCE_REPO" --search "in:title <wedge-keyword>" --state all -L 5 --json number,state,mergedAt`. If shipped → skip wedge + close source item w/ "shipped in #<PR>". Wastes orchestrator dispatch otherwise.
+
+**Self-host filter applies.** Mechanism: skip a candidate iff `gh issue view <N> --json labels --jq '.labels[].name'` returns ANY label appearing in `$defer_labels` (target YAML, default `[phase-x, phase-x-forward-fit, wontfix, deferred]`). Distinct from `check-phase-x-leak.sh` which gates spec frontmatter in source files — that gate runs in CI on the orchestrator-source repo; this filter runs on issue / spec / roadmap CANDIDATES before they become wedges.
+
+**Roadmap-empty ≠ ship anything.** If sources 1–4 are all empty AND source 5 is empty, do NOT manufacture work. Mark the queue exhausted; exit predicate fires after N quiet ticks.
 
 ## Run loop
 
-Five phases. One narration line per phase.
+Two co-equal primary phases per tick: FEED + OBSERVE. Three support phases. One narration line per phase.
 
-1. **Snapshot.** Pull current state from available channels in one parallel sweep. Diff against the previous snapshot kept in `$CLAUDE_JOB_DIR/regatta-snapshot.json` when `$CLAUDE_JOB_DIR` is set; otherwise `$TMPDIR/regatta-snapshot.json`. First iteration has no diff — state "cold start".
-2. **Classify.** For each delta: expected progress / known-recurrence / new finding.
-3. **Triage.** For each new finding: surface + severity (CRIT/HIGH/MED/LOW) + smallest reproducer. If HIGH+ AND blocks the running session → fix-in-place via worktree + small targeted PR. Otherwise → file issue.
-4. **Act.** EITHER (a) file GitHub issue with surface prefix, (b) draft memory entry under `~/.claude/projects/-Users-treedesk-Desktop-Projects-regatta/memory/` if operator-loop lesson, OR (c) draft CLAUDE.md candidate rule if universal-agent lesson. NEVER both for the same finding — pick the surface.
-5. **Pause.** One-sentence status hand-back. Autonomous looping is NOT default; only schedule via `ScheduleWakeup` when (a) the harness exposes it AND (b) the operator explicitly said "autonomous" / "loop" / "keep watching".
+1. **FEED.** Top up to queue-healthy in one tick — file up to `max(0, $PARALLEL_CAP - $UNCLAIMED)` wedges per §Wedge sourcing, not one. `$UNCLAIMED` = `gh issue list -R "$ORCH_SOURCE_REPO" --label "$SPAWN_LABEL" --state open --search "no:assignee" --json number -L 50 | jq length` (open + `$SPAWN_LABEL` + no assignee — GH search supports `no:assignee` but NOT `no:linked-pr`; over-count when an issue has a linked PR is acceptable false-positive — orchestrator's own dedupe handles it, and the issue auto-closes when the PR merges). Single-wedge-per-tick under-fills when agents consume faster than the operator tick interval; top-up matches throughput. Files as `$SPAWN_LABEL`-labeled issues in `$ORCH_SOURCE_REPO`. Skip entirely if `$UNCLAIMED >= $PARALLEL_CAP`.
+2. **OBSERVE.** Snapshot current state from available channels in one parallel sweep. Diff against previous snapshot kept in `$CLAUDE_JOB_DIR/regatta-snapshot.json` when `$CLAUDE_JOB_DIR` is set; otherwise `$TMPDIR/regatta-snapshot.json`. First iteration has no diff — state "cold start". Per-role canary replay due → run inside this phase per heartbeat cadence.
+3. **Classify + triage.** For each delta + each finding: expected progress / known-recurrence / new finding. New finding gets surface + severity (CRIT/HIGH/MED/LOW) + smallest reproducer. If HIGH+ AND blocks the running session → fix-in-place via worktree + small targeted PR. Otherwise → file issue. Every defect filed = future wedge for FEED phase next tick.
+4. **Act.** EITHER (a) file GitHub issue w/ surface prefix, (b) draft memory entry under `~/.claude/projects/-Users-treedesk-Desktop-Projects-regatta/memory/` if operator-loop lesson, OR (c) draft CLAUDE.md candidate rule if universal-agent lesson. NEVER both for the same finding — pick the surface.
+5. **Continue OR exit.** Exit predicates (in priority): (a) operator interrupt, (b) recurring-trap fire per `feedback_trap_projection` → hand back for root-cause, (c) wedge queue empty AND zero new observations across `QUIET_TICKS=3` consecutive ticks. Otherwise schedule next tick via `ScheduleWakeup` when (i) harness exposes it AND (ii) operator said "autonomous" / "loop" / "keep watching"; else hand back one-shot.
 
-End every iteration with: `result: operator loop <N> — <findings> new, <issues> filed, <fixes> pushed, green-clock=<days>`.
+End every iteration with: `result: operator loop <N> — <wedges-filed> fed, <findings> new, <issues> filed, <fixes> pushed, green-clock=<days>, quiet-streak=<K>/3`.
 
 ## Recurrence rule (CRITICAL — don't spam tracker)
 
