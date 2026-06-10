@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/testutil"
 )
 
 func recordHasAttr(r slog.Record, key string) (slog.Value, bool) {
@@ -201,11 +203,11 @@ func TestRecoverRequeuesDeadAgents(t *testing.T) {
 
 // failingAdapter returns an error on every List call. Used to prove
 // Run survives a broken SpecAdapter without crashing.
-type failingAdapter struct{ calls int }
+type failingAdapter struct{ calls atomic.Int64 }
 
 func (a *failingAdapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
-	a.calls++
-	return nil, fmt.Errorf("synthetic adapter failure %d", a.calls)
+	n := a.calls.Add(1)
+	return nil, fmt.Errorf("synthetic adapter failure %d", n)
 }
 func (a *failingAdapter) Get(context.Context, schemas.WorkItemID) (schemas.WorkItem, error) {
 	return schemas.WorkItem{}, schemas.ErrNotFound
@@ -243,11 +245,21 @@ func TestRunSurvivesFailingAdapter(t *testing.T) {
 		LockTTL:           time.Minute,
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	// #1156: prior assertion timed Run for 80ms then required calls>=2.
+	// Race: scheduler stall could cancel ctx before the first ticker tick,
+	// leaving calls==1. Poll until the threshold is met, then cancel Run.
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
 	go func() { done <- o.Run(ctx) }()
 
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer waitCancel()
+	testutil.Eventually(t, waitCtx, 5*time.Millisecond, func() bool {
+		return ad.calls.Load() >= 2
+	}, "adapter polled <2 times despite failures")
+
+	cancel()
 	select {
 	case err := <-done:
 		if err != nil {
@@ -255,9 +267,6 @@ func TestRunSurvivesFailingAdapter(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return after ctx cancel")
-	}
-	if ad.calls < 2 {
-		t.Fatalf("expected adapter polled ≥2 times despite failures, got %d", ad.calls)
 	}
 }
 
