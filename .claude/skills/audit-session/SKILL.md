@@ -207,7 +207,7 @@ Update `autonomous-session-prompt.md` PRIORITY block via Edit when reorder is op
 Scan the session for places where the operator was a bottleneck — i.e. an action the orchestrator could have done by itself if it had X capability. Categorise:
 
 - **Boot-time precondition gap** — failure mode that should have refused-at-boot per `feedback_loud_at_boot`. File `[AUTONOMY-LEVER]` issue with proposed gate.
-- **Reviewer prompt gap** — finding type a three-lens reviewer should have caught. File issue with proposed prompt addition.
+- **Reviewer prompt gap** — finding type a five-lens reviewer should have caught. File issue with proposed prompt addition.
 - **Implementer prompt gap** — trap an implementer should have avoided. File issue with proposed `internal/orchestrator/spawner/claude.go::defaultPromptBuilder` addition per `feedback_trap_projection`.
 - **Self-improve detector gap** — observed pattern that the autonomy loop's #832 R6-R11 detector should have caught but didn't. File against `#832`.
 - **CI gate gap** — drift that a `scripts/check-*.sh` script should mechanically catch.
@@ -266,7 +266,7 @@ NEXT-SESSION FIRST ACTION: <from frontmatter>
 | A | Smallest fix | 9 + 2 phases each ≤30 LOC; could split if growing |
 | A | Operator-helpful failure mode | Single-block hand-back; explicit no-auto-merge |
 | A | Cross-cuts | Cites `feedback_no_memory_reread`, `feedback_pr_body_cache_per_phase`, `feedback_no_self_tagged_approve`, `feedback_operator_minimal_input`, `feedback_meta_codify_repeat_directives`, `feedback_trap_projection`, `feedback_double_fail_root_cause`, `feedback_deletion_default`, `feedback_bounded_ci_poll`, `feedback_loud_at_boot` |
-| A | Adversarial pass | Pending — three-lens reviewer |
+| A | Adversarial pass | Pending — five-lens reviewer |
 | A+ | Eliminates a class of failures | Every session-end forgotten leftover gets mechanical sweep |
 | A+ | Generalises a primitive | `$HANDOFF_DIR` schema + next-session-read pattern reusable |
 | A+ | Carries forward | regatta-operator + autonomous-session-prompt gain handoff-read line; future skills inherit the handoff schema |

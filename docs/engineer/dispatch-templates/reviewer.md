@@ -85,12 +85,12 @@ OUTPUT FORMAT
 NO SIGNATURES
 - Per `feedback_no_signatures`.
 
-## Three-lens prompt (mandatory)
+## Five-lens prompt (mandatory)
 
-Defect-only reviews are forbidden as default — they reliably miss prose redundancy + structural drift that ship into long-lived files (per the 134 LOC of bloat caught only by a separate simplification audit on `.claude/skills/regatta-operator/SKILL.md` round 7+1). Every reviewer dispatch includes all three lenses unless explicitly opted out for a code-only diff.
+Defect-only reviews are forbidden as default — they reliably miss prose redundancy + structural drift that ship into long-lived files (per the 134 LOC of bloat caught only by a separate simplification audit on `.claude/skills/regatta-operator/SKILL.md` round 7+1). Every reviewer dispatch includes all five lenses unless explicitly opted out for a code-only diff (still keep lenses 1+2+4).
 
 ```
-Adversarial review of <diff>. Three lenses (in this order):
+Adversarial review of <diff>. Five lenses (in this order):
 (1) DEFECTS — bugs, races, edge cases, security. Standard hunt.
 (2) SIMPLIFICATION — same rule in ≥2 places, prose ↔ code dup,
     defensive narration ("note that" / "important" / "to be clear"),
@@ -98,19 +98,33 @@ Adversarial review of <diff>. Three lenses (in this order):
     home + delete.
 (3) REFACTOR — table↔list flips, example pruning, section merges,
     enumeration collapses. Per cut, name LOC saved.
+(4) COMMENTS — apply feedback_comments_discipline mechanically:
+    drop WHAT-narration (name+signature already says it), keep WHY only,
+    delete restate-the-code prose, collapse multi-line test/fuzz/benchmark
+    godocs to one line per feedback_test_godoc_one_line, kill comments
+    that would not confuse a future reader if removed. New prod .go
+    files must stay <5% comment density per check-comment-density;
+    operator-escape via PR-body justified tag only.
+(5) ORGANIZATION — files in the right package / dir; functions in the
+    right file (the one whose name says "this is where you find X"); no
+    god-files (>500 LOC = split candidate); no leaked private symbols
+    used cross-package; tests co-located with prod code; specs under
+    docs/engineer/specs/, briefs under docs/engineer/briefs/, skills
+    under .claude/skills/. Suggest move-target + LOC moved.
 
 Output: <file>:<line>: <severity>: <finding>. <fix>. <LOC-if-applicable>.
 End with verdict APPROVE | REVISE | BLOCK + total estimated LOC savings.
 
-Defects MUST be addressed pre-merge; simplification + refactor SHOULD be
-addressed pre-merge but acceptable as a follow-up PR if scope is large.
+Defects MUST be addressed pre-merge; simplification + refactor + comments
++ organization SHOULD be addressed pre-merge but acceptable as a
+follow-up PR if scope is large.
 ```
 
-Skip lens (3) only when the diff is exclusively code-change (no markdown / docstring / spec / prompt template content). Even on code-only diffs, lens (1) + (2) remain mandatory.
+Skip lens (3) and (5) only when the diff is exclusively code-change with no structural-move opportunity (no markdown / docstring / spec / prompt template content; single existing file edited). Lenses (1) + (2) + (4) remain mandatory on every diff.
 
 ## A+ rubric scorecard template
 
-MANDATORY per CLAUDE.md `feedback_grade_rubric` on every `[FEAT]` / `[FIX]` / `[CHANGE]` / `[REFACTOR]` PR + every load-bearing-artifact `[DOCS]` PR. Reviewer re-scores all 10 rows via the three-lens prompt above. ⚠/❌ on any A or A+ row blocks merge until addressed OR waived via `<!-- rubric-waiver-row-<N>: <reason ≥4 chars> -->` in the PR body.
+MANDATORY per CLAUDE.md `feedback_grade_rubric` on every `[FEAT]` / `[FIX]` / `[CHANGE]` / `[REFACTOR]` PR + every load-bearing-artifact `[DOCS]` PR. Reviewer re-scores all 10 rows via the five-lens prompt above. ⚠/❌ on any A or A+ row blocks merge until addressed OR waived via `<!-- rubric-waiver-row-<N>: <reason ≥4 chars> -->` in the PR body.
 
 Paste into the PR body, fill `Self-rate` column (✅ / ⚠ / ❌ + ≤1-line evidence each), set the headline:
 

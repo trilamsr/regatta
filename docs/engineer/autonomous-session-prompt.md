@@ -31,7 +31,7 @@ Current direct path per 2026-06-08 operator reorder (operator feeds these to reg
 The operator has FULL authority to do whatever is necessary to unblock regatta — including taking over work regatta would normally own. Triggers: regatta's bottleneck-resolution loop hits ≥3 attempts without progress (per `regatta-operator` skill rule), an `autonomous`-issue sits open >24h without regatta dispatching, the spawner emits ≥5 same-fingerprint exits in 30s, or regatta's self-improve detector files the same root cause ≥2x without a fix landing. On any of these:
 
 1. **Operator opens the PR** in a worktree-isolated branch (`feat/skill-<slug>` / `fix/skill-<slug>` / `chore/skill-<slug>` per `feedback_keep_orchestrator_branch_name`).
-2. **Operator spawns adversarial reviewer subagent** with the three-lens prompt at `docs/engineer/dispatch-templates/reviewer.md §Three-lens prompt`. Real subagent ID lands in PR body per `feedback_no_self_tagged_approve`. APPROVE required before merge.
+2. **Operator spawns adversarial reviewer subagent** with the five-lens prompt at `docs/engineer/dispatch-templates/reviewer.md §Five-lens prompt`. Real subagent ID lands in PR body per `feedback_no_self_tagged_approve`. APPROVE required before merge.
 3. **Operator merges the PR** via `gh pr merge <N> --squash --delete-branch` (NEVER `--admin`, NEVER `--auto`, NEVER force-push per `audit-session` skill hard nos).
 4. **Operator rebuilds + restarts the docker stack** per the TIGHT FEEDBACK LOOP block below. Confirm binary changed via image SHA; smoke-watch 30s for the prior failure signature.
 5. **Operator re-runs regatta** against the same input that hit the bottleneck. If the unblocking PR resolved it → file `[OPS]` learning entry per `feedback_meta_codify_repeat_directives`. If NOT resolved → escalate via `audit-session` Phase A2 (file `[AUTONOMY-LEVER]` issue against the orchestrator surface that should have caught this self).
@@ -51,7 +51,7 @@ BOOT
 
 PARALLEL WORK CAP
 
-- **6 concurrent subagents MAX per dispatch wave** (per `feedback_parallel_safety`; bumped from CLAUDE.md 3-4 because session 5 evidence shows quota stable up to 6 with three-lens reviewer rotation). Heavy-context sessions cap at 4. Implementer + reviewer roles count against the same cap.
+- **6 concurrent subagents MAX per dispatch wave** (per `feedback_parallel_safety`; bumped from CLAUDE.md 3-4 because session 5 evidence shows quota stable up to 6 with five-lens reviewer rotation). Heavy-context sessions cap at 4. Implementer + reviewer roles count against the same cap.
 - **Every 5 min OR every dispatch tick:** report `agents=<running>/<cap> · roles=<impl:N rev:M des:K tri:L> · current-tasks=<comma-sep-summary>`. If <cap, scan open headroom + dispatch a file-disjoint follow-up from `OPEN FOLLOWUPS` per `feedback_free_headroom_backfill`. If at cap and ≥2 agents share file scope, queue + warn.
 - **Disjoint-work scan:** before any new dispatch, run `git diff --name-only origin/main...<active-branches>` against the proposed scope. Overlap → sequence; disjoint → dispatch in parallel.
 
@@ -76,7 +76,7 @@ P0 — Operator console v5.1 UI build [IN-FLIGHT]
 P0.5 — Autonomy levers from skill session 5 [LANDED / DOCUMENTED]
   - Boot precondition probe — landed via #1183 (preflightSpawnerAuth + IsFalsyEnv exported).
   - Bounded CI poll — landed via #1186 (skill pattern + dispatch-template).
-  - Three-lens reviewer (defects + simplification + refactor) — MANDATORY per #1185 CLAUDE.md + #1184 dispatch-templates/reviewer.md.
+  - Three-lens reviewer (defects + simplification + refactor + comments + organization) — MANDATORY per #1185 CLAUDE.md + #1184 dispatch-templates/reviewer.md.
   - A+ rubric MANDATORY per #1185.
   - Operator-delegated merge clause — landed via #1171.
   - macOS keychain gap documented + structurally impossible without host bridge — see #1181 + #1182.
