@@ -21,14 +21,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      # N2 (#1265): fetch live PR body via `gh pr view` instead of the
+      # event payload snapshot. The `github.event.pull_request.body`
+      # context is captured at trigger time and goes stale on body
+      # edits, forcing operator empty-commit refreshes. Live fetch
+      # eliminates the snapshot lag; SNAPSHOT_BODY is retained as
+      # fallback when the API call fails.
       - name: release-notes block edited
         if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
         env:
-          BODY: ${{ github.event.pull_request.body }}
+          SNAPSHOT_BODY: ${{ github.event.pull_request.body }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # N2 live body fetch w/ snapshot fallback.
+          if BODY=$(gh pr view "$PR_NUMBER" --json body --jq '.body' 2>/dev/null) && [ -n "$BODY" ]; then
+            echo "::notice::pr-body fetched live via gh pr view at $(date -u +%FT%TZ)"
+          else
+            BODY="$SNAPSHOT_BODY"
+            echo "::warning::pr-body live fetch failed; falling back to event-payload snapshot"
+          fi
           # Skip the check entirely when the PR only touches paths with no
           # user-visible runtime behavior (docs, CI, build system, tooling
           # pins). A release-notes block on those is theatre. Exiting 0 here
