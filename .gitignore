@@ -1,6 +1,7 @@
 .claude/*.local.md
 .claude/settings.local.json
 .claude/worktrees/
+.regatta/worktrees/
 .claude/scheduled_tasks.lock
 
 # Local planning artifacts (specs, plans, design notes). Each

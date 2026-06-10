@@ -68,12 +68,16 @@
 #   inside ```-fenced code blocks are stripped before the scan so stale
 #   examples or draft snippets cannot beat the bare footer token.
 #
-#   Fail: token absent OR equals REVISE/BLOCK when --load-bearing.
+#   Fail: token absent OR equals REVISE/BLOCK/INSUFFICIENT_EVIDENCE when
+#   --load-bearing. INSUFFICIENT_EVIDENCE additionally requires a bare
+#   `Confidence-evidence-needed: #NNN` token in the body footer; missing
+#   token → exit 1, present token → exit 2 (same as REVISE, prompts
+#   resolution).
 #
 # Exit:
 #   0 pass / category-exempt / not load-bearing.
-#   1 missing token on load-bearing PR.
-#   2 REVISE / BLOCK recommendation.
+#   1 missing token on load-bearing PR (or INSUFFICIENT_EVIDENCE missing Confidence-evidence-needed).
+#   2 REVISE / BLOCK / INSUFFICIENT_EVIDENCE recommendation.
 #   3 usage error.
 #
 #
