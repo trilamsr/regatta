@@ -12,11 +12,7 @@ import (
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
-// TestScheduler_TickHonorsParallelCap_WhenSpawnableLargerThanCap asserts
-// that with N spawnable items > ParallelCap, exactly ParallelCap reservations
-// land in one Tick (#1169 §A). Pre-impl: scheduler walks the entire spawnable
-// slice (43 spawns in <5s observed live). Post-impl: spawnable truncated to
-// ParallelCap before reserveFromSpawnable runs.
+// TestScheduler_TickHonorsParallelCap_WhenSpawnableLargerThanCap asserts ParallelCap truncates spawnable (#1169).
 func TestScheduler_TickHonorsParallelCap_WhenSpawnableLargerThanCap(t *testing.T) {
 	db := statetest.OpenDB(t)
 	ctx := context.Background()
@@ -57,10 +53,7 @@ func TestScheduler_TickHonorsParallelCap_WhenSpawnableLargerThanCap(t *testing.T
 	}
 }
 
-// TestScheduler_TickWithParallelCapZero_PreservesLaneCapBehavior locks the
-// backward-compat path: ParallelCap == 0 disables the global cap; only
-// lane-cap semantics apply. With 6 spawnable, no lane caps, ParallelCap=0,
-// all 6 reserve in one tick (pre-#1169 behavior).
+// TestScheduler_TickWithParallelCapZero_PreservesLaneCapBehavior asserts cap=0 disables global cap (#1169 back-compat).
 func TestScheduler_TickWithParallelCapZero_PreservesLaneCapBehavior(t *testing.T) {
 	db := statetest.OpenDB(t)
 	ctx := context.Background()
@@ -79,10 +72,7 @@ func TestScheduler_TickWithParallelCapZero_PreservesLaneCapBehavior(t *testing.T
 	}
 }
 
-// TestScheduler_TickRespectsCapAcrossTicks_WhenAgentsStillActive asserts that
-// running agents from a prior tick count against ParallelCap. Tick 1 reserves
-// 4; tick 2 with 4 agents still in spawning state and 4 more spawnable must
-// reserve 0 (cap saturated).
+// TestScheduler_TickRespectsCapAcrossTicks_WhenAgentsStillActive asserts running agents count against ParallelCap (#1169).
 func TestScheduler_TickRespectsCapAcrossTicks_WhenAgentsStillActive(t *testing.T) {
 	db := statetest.OpenDB(t)
 	ctx := context.Background()

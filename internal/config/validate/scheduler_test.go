@@ -5,9 +5,7 @@ import (
 	"testing"
 )
 
-// TestLoadConfig_SchedulerParallelCap_RoundTrips asserts spec
-// 2026-06-09-scheduler-parallel-cap-enforcement §3.1: a yaml block
-// `scheduler: { parallel_cap: N }` decodes into Config.Scheduler.ParallelCap.
+// TestLoadConfig_SchedulerParallelCap_RoundTrips asserts yaml `scheduler.parallel_cap: N` decodes (#1169).
 func TestLoadConfig_SchedulerParallelCap_RoundTrips(t *testing.T) {
 	yaml := strings.Replace(minimalValid, "safety:", `scheduler:
   parallel_cap: 6
@@ -21,9 +19,7 @@ safety:`, 1)
 	}
 }
 
-// TestLoadConfig_SchedulerAbsent_DefaultsZero asserts the absent-block
-// path: pre-#1169 yaml (no scheduler key) keeps ParallelCap=0 (disabled,
-// lane-cap-only). Backward-compat for shipped configs.
+// TestLoadConfig_SchedulerAbsent_DefaultsZero asserts pre-#1169 yaml keeps ParallelCap=0 (back-compat).
 func TestLoadConfig_SchedulerAbsent_DefaultsZero(t *testing.T) {
 	cfg, err := LoadConfig([]byte(minimalValid))
 	if err != nil {
@@ -34,8 +30,7 @@ func TestLoadConfig_SchedulerAbsent_DefaultsZero(t *testing.T) {
 	}
 }
 
-// TestLoadConfig_SchedulerOverCap_Rejected asserts the CUE upper bound
-// (16) fires on operator typo.
+// TestLoadConfig_SchedulerOverCap_Rejected asserts CUE upper-bound 16 fires on operator typo (#1169).
 func TestLoadConfig_SchedulerOverCap_Rejected(t *testing.T) {
 	yaml := strings.Replace(minimalValid, "safety:", `scheduler:
   parallel_cap: 999
