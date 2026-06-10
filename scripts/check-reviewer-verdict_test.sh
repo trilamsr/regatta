@@ -894,6 +894,315 @@ BODY_EOF
   rm -f "$body"
 }
 
+run_case_quality_all_three_sections_present_passes() {
+  # Closes #1062: on a load-bearing PR with APPROVE, all three review-quality
+  # sections (A+ delta, Negative-space audit, Reviewer confidence) MUST be
+  # present and non-empty. Positive case.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+## A+ delta
+Live integration test against `regatta serve` would close the B->A+ gap.
+
+## Negative-space audit
+1. mitigated — stale token shadowed by bare token; ```-strip prevents.
+2. accepted — author can re-edit body post-merge; out of scope.
+3. filed — #999 tracks edge case.
+
+## Reviewer confidence
+APPROVE — independent reviewer ran lenses 1-9 on HEAD, no HIGH/MED findings.
+
+Reviewer-agent-id: cavecrew-reviewer-abc123
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing >/dev/null 2>&1; then
+    pass "all 3 quality sections present + APPROVE → pass (#1062)"
+  else
+    fail "all 3 quality sections present + APPROVE should pass (#1062)"
+  fi
+  rm -f "$body"
+}
+
+run_case_quality_missing_a_plus_delta_fails() {
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+## Negative-space audit
+1. mitigated — bypass A.
+2. mitigated — bypass B.
+3. accepted — bypass C; tracked in #999.
+
+## Reviewer confidence
+APPROVE — no gaps.
+
+Reviewer-agent-id: cavecrew-reviewer-abc123
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing 2>&1 | grep -qE "missing_a_plus_delta"; then
+    pass "missing ## A+ delta fails with token (#1062)"
+  else
+    fail "missing ## A+ delta should fail with stderr token missing_a_plus_delta (#1062)"
+  fi
+  rm -f "$body"
+}
+
+run_case_quality_missing_negative_space_fails() {
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+## A+ delta
+Live integration test would close the gap.
+
+## Reviewer confidence
+APPROVE — no gaps.
+
+Reviewer-agent-id: cavecrew-reviewer-abc123
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing 2>&1 | grep -qE "missing_negative_space_audit"; then
+    pass "missing ## Negative-space audit fails with token (#1062)"
+  else
+    fail "missing ## Negative-space audit should fail with stderr token missing_negative_space_audit (#1062)"
+  fi
+  rm -f "$body"
+}
+
+run_case_quality_missing_reviewer_confidence_fails() {
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+## A+ delta
+Live integration test would close the gap.
+
+## Negative-space audit
+1. mitigated — bypass A.
+2. mitigated — bypass B.
+3. accepted — bypass C.
+
+Reviewer-agent-id: cavecrew-reviewer-abc123
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing 2>&1 | grep -qE "missing_reviewer_confidence"; then
+    pass "missing ## Reviewer confidence fails with token (#1062)"
+  else
+    fail "missing ## Reviewer confidence should fail with stderr token missing_reviewer_confidence (#1062)"
+  fi
+  rm -f "$body"
+}
+
+run_case_quality_empty_a_plus_section_fails() {
+  # Heading present but body empty (just whitespace) → fail.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+## A+ delta
+
+## Negative-space audit
+1. mitigated.
+2. mitigated.
+3. accepted.
+
+## Reviewer confidence
+APPROVE.
+
+Reviewer-agent-id: cavecrew-reviewer-abc123
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing 2>&1 | grep -qE "missing_a_plus_delta"; then
+    pass "empty ## A+ delta body fails (#1062)"
+  else
+    fail "empty ## A+ delta body should fail with stderr token missing_a_plus_delta (#1062)"
+  fi
+  rm -f "$body"
+}
+
+run_case_quality_a_plus_not_applicable_escape_passes() {
+  # `<!-- a-plus-not-applicable: <reason> -->` allows empty ## A+ delta.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+## A+ delta
+
+<!-- a-plus-not-applicable: mechanical refactor, no behavior change -->
+
+## Negative-space audit
+1. mitigated — byte-equal pin script lands w/ this PR.
+2. mitigated — table-driven coverage in *_test.go matches.
+3. accepted — reviewer can rerun byte-equal script post-merge.
+
+## Reviewer confidence
+APPROVE — byte-equal pin verifies pre/post.
+
+Reviewer-agent-id: cavecrew-reviewer-abc123
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[REFACTOR] split file
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing >/dev/null 2>&1; then
+    pass "a-plus-not-applicable escape passes (#1062)"
+  else
+    fail "a-plus-not-applicable escape should pass (#1062)"
+  fi
+  rm -f "$body"
+}
+
+run_case_quality_negative_space_not_applicable_escape_passes() {
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+## A+ delta
+N/A reason captured below.
+
+## Negative-space audit
+
+<!-- negative-space-not-applicable: pure-deletion PR, no new surface -->
+
+## Reviewer confidence
+APPROVE — deletion-only.
+
+Reviewer-agent-id: cavecrew-reviewer-abc123
+Reviewer-recommendation: APPROVE
+
+```release-notes
+[REFACTOR] drop dead code
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing >/dev/null 2>&1; then
+    pass "negative-space-not-applicable escape passes (#1062)"
+  else
+    fail "negative-space-not-applicable escape should pass (#1062)"
+  fi
+  rm -f "$body"
+}
+
+run_case_quality_insufficient_evidence_verdict_passes() {
+  # Closes #1062 c3: INSUFFICIENT_EVIDENCE is a recognized verdict and the
+  # gate does not fail closed when it appears.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+## A+ delta
+Would need 24h soak under production-shaped load to confirm A+.
+
+## Negative-space audit
+1. mitigated — race detector run.
+2. accepted — leak detector not yet wired.
+3. filed — #999 tracks soak run.
+
+## Reviewer confidence
+INSUFFICIENT_EVIDENCE — see Confidence-evidence-needed.
+Confidence-evidence-needed: 24h soak run results from staging, tracked in #999.
+
+Reviewer-agent-id: cavecrew-reviewer-abc123
+Reviewer-recommendation: INSUFFICIENT_EVIDENCE
+
+```release-notes
+[FEAT] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing >/dev/null 2>&1; then
+    pass "INSUFFICIENT_EVIDENCE verdict accepted (#1062 c3)"
+  else
+    fail "INSUFFICIENT_EVIDENCE verdict should be accepted (#1062 c3)"
+  fi
+  rm -f "$body"
+}
+
+run_case_quality_not_load_bearing_skips_section_check() {
+  # Non-load-bearing PRs do NOT require the three review-quality sections.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Tweak docs.
+
+```release-notes
+[DOCS] tweak
+```
+EOF
+  if "$GATE" --body-file "$body" >/dev/null 2>&1; then
+    pass "non-load-bearing PR skips review-quality section check (#1062)"
+  else
+    fail "non-load-bearing PR should skip review-quality section check (#1062)"
+  fi
+  rm -f "$body"
+}
+
+run_case_quality_chore_autoskip_still_works() {
+  # [CHORE] release-notes on non-load-bearing paths still auto-skips the
+  # quality-section check — it runs only when reviewer-verdict gate runs.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+```release-notes
+[CHORE] mechanical bump
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing >/dev/null 2>&1; then
+    pass "[CHORE] release-notes still auto-skips quality-section check (#1062)"
+  else
+    fail "[CHORE] release-notes should still auto-skip quality-section check (#1062)"
+  fi
+  rm -f "$body"
+}
+
 run_case_load_bearing_missing_token
 run_case_load_bearing_approve_passes
 run_case_load_bearing_approve_without_agent_id_fails
@@ -925,6 +1234,16 @@ run_case_operator_opened_marker_bypasses_self_tag
 run_case_operator_opened_marker_too_short_rejected
 run_case_operator_opened_still_requires_reviewer_id
 run_case_operator_opened_does_not_bypass_allowlist
+run_case_quality_all_three_sections_present_passes
+run_case_quality_missing_a_plus_delta_fails
+run_case_quality_missing_negative_space_fails
+run_case_quality_missing_reviewer_confidence_fails
+run_case_quality_empty_a_plus_section_fails
+run_case_quality_a_plus_not_applicable_escape_passes
+run_case_quality_negative_space_not_applicable_escape_passes
+run_case_quality_insufficient_evidence_verdict_passes
+run_case_quality_not_load_bearing_skips_section_check
+run_case_quality_chore_autoskip_still_works
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"
