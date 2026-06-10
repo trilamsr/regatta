@@ -113,6 +113,7 @@ These slugs MUST be cited by `internal/orchestrator/spawner/claude.go::defaultPr
 - `feedback_tdd_discipline`
 - `feedback_comments_discipline`
 - `feedback_deletion_default`
+- `feedback_deletion_sweep_full_repo`
 - `feedback_pr_body_hygiene`
 - `feedback_review_proportional`
 - `feedback_no_implementer_automerge`
@@ -159,7 +160,9 @@ Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mar
 
 5. **Release-notes fence ALWAYS required** per `feedback_release_notes_fence_missing`. Every PR body MUST include a triple-fence ` ```release-notes ` block with `[PREFIX] one-line summary` inside — even `[DOCS]` PRs.
 
-6. **Rebase `--theirs` vs `--ours` is counterintuitive** (closes #779). During `git rebase` replay, git treats the rebase target (main) as `--ours` and the commit being replayed (your PR's work) as `--theirs` — opposite of `git merge` semantics where `--ours` = current branch. Lost #772 (~10 sites #760 migration) this way. Resolution snippet (also in `CLAUDE.md` §Worktree discipline "Rebase conflict resolution"):
+6. **Deletion sweep MANDATORY** per `feedback_deletion_sweep_full_repo`. Before opening any PR that deletes a file or symbol, run `git grep` for the basename + stem across the WHOLE worktree (not just adjacent files). Strip stale refs in the same PR OR add `<!-- stale-refs-justified: <reason ≥4 chars> -->` to the body for historical-accuracy specs. `scripts/check-stale-refs.sh` enforces in `make check` — fail-closed. Closes 8-round-reviewer trap (PR #1275, session 2026-06-10).
+
+7. **Rebase `--theirs` vs `--ours` is counterintuitive** (closes #779). During `git rebase` replay, git treats the rebase target (main) as `--ours` and the commit being replayed (your PR's work) as `--theirs` — opposite of `git merge` semantics where `--ours` = current branch. Lost #772 (~10 sites #760 migration) this way. Resolution snippet (also in `CLAUDE.md` §Worktree discipline "Rebase conflict resolution"):
    ```
    git checkout --theirs <conflict-file>
    git add <file>

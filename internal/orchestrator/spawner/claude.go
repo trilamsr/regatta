@@ -306,6 +306,7 @@ func defaultPromptBuilder(req Request) string {
 	b.WriteString("- TDD: failing test FIRST per CLAUDE.md feedback_tdd_discipline.\n")
 	b.WriteString("- Comments: WHY-not-WHAT per CLAUDE.md feedback_comments_discipline.\n")
 	b.WriteString("- Deletion default: every PR answers \"what got smaller?\" per CLAUDE.md feedback_deletion_default.\n")
+	b.WriteString("- Deletion sweep: when deleting a file/symbol, `git grep` the basename + stem across the whole worktree before opening the PR; strip stale refs in the same PR OR add `<!-- stale-refs-justified: <reason> -->` to PR body. Per CLAUDE.md feedback_deletion_sweep_full_repo.\n")
 	b.WriteString("- PR hygiene: --body-file always, release-notes fence required per CLAUDE.md feedback_pr_body_hygiene.\n")
 	b.WriteString("- NO automerge: never run `gh pr merge --auto`; end with `gh pr ready <N>`. Per CLAUDE.md feedback_no_implementer_automerge.\n")
 	b.WriteString("- NO self-tagged APPROVE: never write `Reviewer-recommendation: APPROVE` (or `Reviewer-agent-id:`) for your own PR. Independent reviewer subagent dispatches in a separate slot. End with `gh pr ready <N>` only. Per CLAUDE.md feedback_no_self_tagged_approve.\n")
