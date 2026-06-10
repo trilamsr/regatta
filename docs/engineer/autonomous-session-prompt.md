@@ -15,6 +15,27 @@ BOOT
 3. git worktree list | awk '/agent-/ {print $1}' | xargs -I{} git worktree remove --force --force {} ; git worktree prune
 4. gh pr list --state open  (note current state; in-flight PRs are normal)
 5. Read MEMORY.md + AGENTS.md (auto-loaded). Specs in `docs/engineer/specs/` are canonical for execution.
+6. **Read latest session handoff:** `cat .claude/session-handoffs/$(ls -t .claude/session-handoffs/ 2>/dev/null | head -1)` — picks up exactly where the prior session ended (per `audit-session` skill Phase 9). Skip if no handoff file.
+7. **Spawn docker stack (operator-supplied override required):** `docker compose --env-file .env up -d` (with `docker-compose.override.yml` mounting `~/.claude` per docs/operator/docker-compose.md §Spawner billing mode). Tail logs in background: `docker compose logs -f regatta > .claude/regatta.live.log 2>&1 &`. This is the tight feedback loop for every code change touching `internal/orchestrator/` or `internal/ghclient/`; rebuild + restart cycle ≤90s per `feedback_tight_build_loop`.
+
+PARALLEL WORK CAP
+
+- **6 concurrent subagents MAX per dispatch wave** (per `feedback_parallel_safety`; bumped from CLAUDE.md 3-4 because session 5 evidence shows quota stable up to 6 with three-lens reviewer rotation). Heavy-context sessions cap at 4. Implementer + reviewer roles count against the same cap.
+- **Every 5 min OR every dispatch tick:** report `agents=<running>/<cap> · roles=<impl:N rev:M des:K tri:L> · current-tasks=<comma-sep-summary>`. If <cap, scan open headroom + dispatch a file-disjoint follow-up from `OPEN FOLLOWUPS` per `feedback_free_headroom_backfill`. If at cap and ≥2 agents share file scope, queue + warn.
+- **Disjoint-work scan:** before any new dispatch, run `git diff --name-only origin/main...<active-branches>` against the proposed scope. Overlap → sequence; disjoint → dispatch in parallel.
+
+SELF-CORRECT TICK (every 10 min OR every operator turn, whichever first)
+
+- Re-read the last 3 operator turns + the active PRIORITY P0/P0.5/P1 lines. Compare against current activity: is the in-flight work still on the named direct path?
+- Drift signals: (a) dispatching against issues outside the OPEN FOLLOWUPS list without operator ask, (b) editing files outside the current P-priority scope, (c) reviewer subagent prompts narrowed to defects-only (missing simplification/refactor per `feedback_three_lens_reviewer_mandatory`), (d) skipping the A+ rubric scorecard on a non-trivial PR (violates `feedback_grade_rubric`).
+- Drift detected → STOP current dispatch, narrate one line ("self-correct: drift on X; pivoting to Y"), re-dispatch on the correct surface. NO operator round-trip required.
+
+TIGHT FEEDBACK LOOP
+
+- **Every PR merge that touches `internal/orchestrator/`, `internal/ghclient/`, `cmd/regatta/`, or `docker-compose.yml`:** rebuild + restart docker stack within 60s. Confirm binary changed via `docker inspect --format '{{.Image}}' regatta`. Smoke-watch agent.exited stream for 30s; ≥5 same-fingerprint failures in 30s → file `[ORCH]` issue per the `regatta-operator` skill bottleneck rule.
+- **Bounded CI poll** (per skill #1186): every `gh pr` watch loop has explicit failure-exit branch; cap iterations at 10. NEVER `until SUCCESS; sleep; done`.
+- **Local pre-push:** `make pre-push-check` before every `git push`. Authoritative target list at `Makefile.d/ci.mk::check`.
+- **Failure feedback minimum:** when a CI gate fails, fetch the failing job log via `curl -sL -H "Authorization: token $(gh auth token)" https://api.github.com/repos/$REPO/actions/jobs/<id>/logs` rather than waiting for the gh CLI's logs-locked-until-run-complete behavior.
 
 PRIORITY (top-down — 2026-06-08 reorder; current direct path: ship operator console UI v5.1 → unblock parallel velocity via cascade fixes → operator install DEPLOY → green-clock → arbitrary-repo generalization → first paying customer)
 
