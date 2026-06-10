@@ -17,7 +17,7 @@ End-of-session validator + handoff. Catches what slipped, codifies what was lear
 
 - `$SESSION_START` — ISO. Default 8h ago.
 - `$GIT_AUTHOR` — git `user.email`.
-- `$HANDOFF_DIR` — `.claude/session-handoffs/`. Created if missing.
+- `$HANDOFF_DIR` — `.claude/session-handoffs/`. Created if missing. Override via `SESSION_HANDOFF_DIR` env var. Next-session BOOT step 6 reads from the same path; both sides must use the same `$HANDOFF_DIR` resolution. Path is gitignored (operator-local handoffs).
 
 ## Default behavior
 
@@ -36,9 +36,9 @@ gh pr list --author "@me" --search "updated:>=$SESSION_START" \
 
 Rules:
 - `mergedAt==null AND state==OPEN` → log + offer operator merge. NOT auto-merge.
-- `state==MERGED AND body~/Reviewer-recommendation: (REVISE|BLOCK)/` → file `[POST-MERGE-AUDIT] PR#<N>`.
-- `mergeStateStatus IN (BLOCKED,DIRTY,UNSTABLE)` → file `[AUTOMERGE-STALL] PR#<N>`.
-- `Reviewer-agent-id:` matches PR author login → file `[SELF-APPROVE-LEAK]` per `feedback_no_self_tagged_approve`.
+- `state==MERGED AND body~/Reviewer-recommendation: (REVISE|BLOCK)/` → file `[SESSION-AUDIT][post-merge] PR#<N>`.
+- `mergeStateStatus IN (BLOCKED,DIRTY,UNSTABLE)` → file `[SESSION-AUDIT][automerge-stall] PR#<N>`.
+- `Reviewer-agent-id:` matches PR author login → file `[SESSION-AUDIT][self-approve-leak]` per `feedback_no_self_tagged_approve`.
 
 ## Phase 2: Reviewer-comment audit
 
@@ -116,6 +116,8 @@ Decision: hand back commands; NO auto-remove. Per `feedback_post_worktree_remova
 
 ## Phase 7: Learning + memory
 
+**Scope:** universal patterns + operator-personal `feedback_*` rules. **NOT** worker-side prompt fixes — those belong to Phase A2 (file `[AUTONOMY-LEVER][prompt]` issue against `internal/orchestrator/spawner/claude.go::defaultPromptBuilder`). Phase 7 writes memory + CLAUDE.md candidates; Phase A2 writes implementer/reviewer/designer prompt-template updates.
+
 - **Twice-burned scan.** Transcript grep `same|again|twice|retry|second time|broken again`. Cluster by root cause. ≥2 + no `feedback_*` entry → new candidate.
 - **Repeated operator directive.** ≥2 user turns with same phrasing → queue codification PR per `feedback_meta_codify_repeat_directives`.
 - **Trap projection.** Trap operator hit ≥2 → propose worker-side fix at gate / prompt / knowledge boundary per `feedback_trap_projection`.
@@ -189,7 +191,7 @@ cat .claude/session-handoffs/<this-file>
 
 Update `docs/engineer/autonomous-session-prompt.md` BOOT section to add `cat .claude/session-handoffs/$(ls -t .claude/session-handoffs/ | head -1)` after step 1 (pull main). regatta-operator skill pre-flight gains the same line.
 
-## Phase A1 (autonomy-prompt audit, OPTIONAL but RECOMMENDED on session-end)
+## Phase A1: autonomy-prompt audit (MANDATORY when session touched roadmap)
 
 Re-read `docs/engineer/autonomous-session-prompt.md`. Compare against the session's actual evidence. Find:
 
@@ -200,7 +202,7 @@ Re-read `docs/engineer/autonomous-session-prompt.md`. Compare against the sessio
 
 Update `autonomous-session-prompt.md` PRIORITY block via Edit when reorder is operator-confirmed. Otherwise list candidates in handoff.
 
-## Phase A2 (more-autonomy lever scan)
+## Phase A2: more-autonomy lever scan (MANDATORY when session hit any operator-bottleneck)
 
 Scan the session for places where the operator was a bottleneck — i.e. an action the orchestrator could have done by itself if it had X capability. Categorise:
 
@@ -220,7 +222,7 @@ These directly populate `docs/engineer/autonomous-session-prompt.md` PRIORITY li
 
 ## Hand-off summary (consolidated operator output)
 
-After all 9 phases + A1/A2 run, emit ONE block ≤30 lines:
+After all 9 phases + A1/A2 run, emit ONE consolidated hand-back block:
 
 ```
 audit-session: <N PRs merged, M issues, K subagents this session>
@@ -252,7 +254,7 @@ NEXT-SESSION FIRST ACTION: <from frontmatter>
 - NO `git gc --prune=now` or reflog-destructive cleanup.
 - NO container stop / regatta kill.
 - NO auto-invoke other skills.
-- NO unbounded CI poll (per `feedback_bounded_ci_poll`, the rule established by skill PR #1186).
+- NO unbounded CI poll per `feedback_bounded_ci_poll` (CLAUDE.md rule landed via this PR; pattern landed via #1186).
 
 ## A+ rubric (mandatory per `feedback_grade_rubric`)
 
