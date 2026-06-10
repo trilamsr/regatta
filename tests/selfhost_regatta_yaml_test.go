@@ -41,8 +41,8 @@ func TestSelfHost_RegattaYAML_Validates(t *testing.T) {
 	}
 }
 
-// TestSelfHost_RegattaYAML_DeclaresMarkdownCatalog pins the self-host adapter choice: the brief §3 calls out markdown adap
-func TestSelfHost_RegattaYAML_DeclaresMarkdownCatalog(t *testing.T) {
+// TestSelfHost_RegattaYAML_DeclaresGithubIssues pins the self-host adapter (brief §3).
+func TestSelfHost_RegattaYAML_DeclaresGithubIssues(t *testing.T) {
 	path := filepath.Join(repoRoot(t), "regatta.yaml")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -52,9 +52,20 @@ func TestSelfHost_RegattaYAML_DeclaresMarkdownCatalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	root := cfg.MarkdownCatalogRoot()
-	if root == "" {
-		t.Fatal("repo-root regatta.yaml does not declare spec_adapter.type=markdown_catalog; brief §3 requires it for self-host")
+	if cfg.SpecAdapter == nil {
+		t.Fatal("repo-root regatta.yaml does not declare spec_adapter; brief §3 requires github_issues for self-host")
+	}
+	if got, want := cfg.SpecAdapter.Type, validate.SpecAdapterTypeGitHubIssues; got != want {
+		t.Fatalf("spec_adapter.type = %q; want %q (brief §3 self-host pin)", got, want)
+	}
+	if got, want := cfg.SpecAdapter.Selector, "label:autonomous"; got != want {
+		t.Fatalf("spec_adapter.selector = %q; want %q (FEED phase intake gate per PR #1206)", got, want)
+	}
+	if got, want := cfg.SpecAdapter.AcceptanceSection, "## Acceptance criteria"; got != want {
+		t.Fatalf("spec_adapter.acceptance_section = %q; want %q", got, want)
+	}
+	if got, want := cfg.SpecAdapter.DefaultLane, "self-host"; got != want {
+		t.Fatalf("spec_adapter.default_lane = %q; want %q (lane backfill for unlabelled issues per #1117)", got, want)
 	}
 }
 

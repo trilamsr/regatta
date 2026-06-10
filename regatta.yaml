@@ -18,10 +18,10 @@ repo:
   default_branch: main
 
 spec_adapter:
-  type: markdown_catalog
-  # Items live at <repo>/.regatta/items/. The runtime resolves a
-  # relative root against the --repo flag at serve-time.
-  root: .
+  type: github_issues
+  selector: "label:autonomous"
+  acceptance_section: "## Acceptance criteria"
+  default_lane: self-host
 
 ci:
   command: make check

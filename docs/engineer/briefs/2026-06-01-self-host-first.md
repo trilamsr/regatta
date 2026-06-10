@@ -30,27 +30,45 @@ Missing for unattended self-dispatch: a `regatta.yaml` pointing at this repo + s
 
 ### Phase S1 — dogfood-ready core _(1-2 weeks)_
 
-**Acceptance gate**: regatta dispatches itself on a real `[autonomous]`-labeled GH issue in this repo, opens a PR, gates run, operator clicks merge.
+**Acceptance gate**: regatta dispatches itself on a real `autonomous`-labeled GH issue in this repo, opens a PR, gates run, operator clicks merge.
+
+#### 3.1. Adapter pin: `github_issues` (amended 2026-06-09)
+
+The original S1-T1 entry deferred GH-vs-markdown to §8 Q1; the markdown
+adapter landed first as the self-host pin. PR #1206 shipped the
+`regatta-operator` skill, whose FEED phase files wedges directly to GH
+issues (label `autonomous`) — that is now the live backlog the operator
+already maintains (#1196, #1094, #1092, #1163, ~20 ready wedges as of
+2026-06-09). The orchestrator reading markdown_catalog would leave every
+FEED write uneaten.
+
+The flip: `spec_adapter.type: github_issues` is the self-host default
+going forward. `markdown_catalog` remains schema-supported for archived
+briefs + Phase-X buyers but is no longer the self-host pin. GH issues do
+not require public ingress for this — the orchestrator pulls issues
+outbound via the GitHub API (no webhook inbound), so the single-operator
+/ no-public-surface premise of §1 holds. The Phase-S filter still
+applies, with the `autonomous` label as the mechanical intake gate.
 
 | # | Task | Status | Effort |
 |---|---|---|---|
-| S1-T1 | `regatta.yaml` for this repo — markdown adapter against `docs/engineer/briefs/*.md` OR GH-issue adapter against `[autonomous]` label | NEW | S |
+| S1-T1 | `regatta.yaml` for this repo — `github_issues` adapter against `label:autonomous` (flipped from markdown_catalog 2026-06-09 per §3.1) | SHIPPED | S |
 | S1-T2 | Close #282 — wire `spend.SpawnerCallback` into `cmd/regatta/serve.go::buildSpawner` | FILED | XS |
-| S1-T3 | Boot-prompt → work_item brief converter — script that turns `autonomous-session-prompt.md` PRIORITY entries into briefs the markdown adapter ingests | NEW | S |
+| S1-T3 | Boot-prompt → work_item brief converter — script that turns `autonomous-session-prompt.md` PRIORITY entries into GH issues the github_issues adapter ingests (was: markdown briefs) | NEW | S |
 | S1-T4 | Cost-governor Wave 3 (T5+T6+T7 docs) — already next on PRIORITY; ships caps-spend-if-Claude-loops safety | IN FLIGHT | S |
-| S1-T5 | Self-host smoke test — end-to-end fixture: regatta picks one `[followup]` issue → PR → green gates → operator merges | NEW | M |
+| S1-T5 | Self-host smoke test — end-to-end fixture: regatta picks one `autonomous` issue → PR → green gates → operator merges | NEW | M |
 
 Effort total: ~5-7 days subagent-time.
 
 ### Phase S2 — trust-the-loop _(2-3 weeks)_
 
-**Acceptance gate**: operator leaves `regatta serve` running overnight against `[autonomous]` queue without watching every PR. Adversarial review catches the bad PRs; cost caps stop runaway spend; replay-diff lets the operator re-run a flaky decision deterministically the next morning.
+**Acceptance gate**: operator leaves `regatta serve` running overnight against `autonomous`-labeled queue without watching every PR. Adversarial review catches the bad PRs; cost caps stop runaway spend; replay-diff lets the operator re-run a flaky decision deterministically the next morning.
 
 | # | Task | Status | Effort |
 |---|---|---|---|
 | S2-T1 | W9 replay+diff harness, substrate-default `DurableHistory` impl ONLY (skip Temporal-backed variant) — promoted from MVP-3 rank #4 to rank #2 for self-host | SPECCED | M |
 | S2-T2 | Adversarial reviewer subagent → first-class gate L4 — bake the prompt-side reviewer into `internal/gates/`; today it lives only in Claude Code dispatch prompts | NEW | M |
-| S2-T3 | Followup-issue auto-triage — regatta reads its own `[followup]`-tagged GH issues, self-files plan briefs back into the markdown adapter directory | NEW | S |
+| S2-T3 | Followup-issue auto-triage — regatta reads its own `followup`-tagged GH issues, self-files plan briefs back as new GH issues (was: markdown adapter directory; updated per §3.1 adapter flip) | NEW | S |
 | S2-T4 | Mutation testing on cost-governor + scheduler (top 2 A+ rubric items from prior waves) | FILED | S |
 
 Effort total: ~10-15 days subagent-time.
@@ -123,7 +141,7 @@ Neither has fired. Stay self-host-first until one does.
 
 ## 8. Open questions
 
-- **GH-issue adapter vs markdown adapter for S1-T1**: GH issues give richer state (assignees, projects), but markdown is already implemented + works against the boot-prompt directly. Decision: ship markdown adapter first (S1-T1a); GH-issue adapter as S2 stretch (S1-T1b).
+- **GH-issue adapter vs markdown adapter for S1-T1**: GH issues give richer state (assignees, projects), but markdown is already implemented + works against the boot-prompt directly. Decision: ship markdown adapter first (S1-T1a); GH-issue adapter as S2 stretch (S1-T1b). _Update 2026-06-09 (see §3.1):_ flipped to github_issues. The regatta-operator skill (PR #1206) writes wedges to GH issues as part of its FEED phase; keeping markdown_catalog left every operator-filed wedge uneaten by the orchestrator. GH issues do not require public ingress (orchestrator pulls outbound), so the single-operator no-public-surface premise of §1 is preserved.
 - **Boot-prompt converter scope (S1-T3)**: minimum-viable = converts the PRIORITY block into N briefs. Stretch = round-trips updates back into the prompt when waves drain. Decision: ship MV in S1; round-trip in S2 if Time.
 - **Adversarial-reviewer-as-gate (S2-T2) model choice**: Sonnet 4.6 in main session, Opus 4.7 in design subagent. For gate use, default Sonnet 4.6 (cost) with `regatta.yaml: gates.l4.model` escape hatch.
 
