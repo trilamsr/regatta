@@ -57,12 +57,25 @@ REGATTA_UI` before `docker compose up` if the default is what you want.
 
 The compose default `REGATTA_SPAWNER_STRIP_API_KEY=1` strips the parent
 `ANTHROPIC_API_KEY` from spawned `claude` CLI children so they
-authenticate via the operator's subscription credentials at `~/.claude`.
-Pay-as-you-go operators set `REGATTA_SPAWNER_STRIP_API_KEY=0` in `.env`
-to pass the parent token through.
+authenticate via the operator's subscription credentials. Pay-as-you-go
+operators set `REGATTA_SPAWNER_STRIP_API_KEY=0` in `.env` to pass the
+parent token through.
 
-The subscription path requires the operator to expose `~/.claude` to
-the container via a `docker-compose.override.yml` (gitignored). Example:
+Whether the subscription path actually works depends on where the host
+Claude Code installation stores its tokens. Live verification (#1181)
+confirms a platform gap:
+
+| Host platform        | Subscription via container | Pay-as-you-go via container | Native install path                |
+|---|---|---|---|
+| macOS Docker Desktop | NOT supported (creds live in Keychain, unreachable from Linux container) | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | `regatta install-service` (launchd) — subscription works because the native process inherits Keychain access |
+| Linux Docker         | Works IF host Claude Code writes a file-based token under `~/.claude` (verify per distro) | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | `regatta install-service --system` (systemd) |
+| Linux Docker (no `~/.claude` file) | NOT supported | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | Same as above |
+
+#### Subscription via mounted `~/.claude` (Linux-only, conditional)
+
+When the host installation does write a file-based token, expose
+`~/.claude` to the container via a `docker-compose.override.yml`
+(gitignored):
 
 ```yaml
 # docker-compose.override.yml (operator-supplied, not in tree)
@@ -73,19 +86,27 @@ services:
 ```
 
 Override is auto-merged by `docker compose` at boot. The mount is not
-baked into the main compose file because (a) the host directory mode is
-typically `0700` owned by the operator uid (501 macOS / 1000 Linux)
-while the distroless container runs uid 65532, so Linux native hosts
-hit `EACCES` without an explicit `--user` override or `chmod`, and (b)
-`~/.claude` is the operator's full Claude Code session dir (memory,
+baked into the main compose file because (a) host `~/.claude` is
+typically mode `0700` owned by the operator uid (501 macOS / 1000
+Linux) while the distroless container runs uid 65532 — Linux native
+hosts hit `EACCES` without an explicit `--user` override or `chmod`,
+and (b) `~/.claude` is the full Claude Code session dir (memory,
 plans, file-history), not just credentials — exposing the whole tree
-by default is broader than necessary. The per-operator override lets
-each host pick the right subset and mount mode.
+by default is broader than necessary.
 
-Without an override AND without `REGATTA_SPAWNER_STRIP_API_KEY=0`,
-spawned children emit `Not logged in · Please run /login` and exit
-with `exit_reason=auth_precondition_failed`. Either fix the override
-or flip the flag; both are explicit operator choices.
+On macOS Docker Desktop the mount still completes but yields zero
+credentials because the token never lived in any file under `~/.claude`
+to begin with. Setting `REGATTA_SPAWNER_STRIP_API_KEY=0` is the only
+container-side option; the native `regatta install-service` path is
+the way to use subscription billing on macOS.
+
+#### Failure signature
+
+Without a working subscription path AND without
+`REGATTA_SPAWNER_STRIP_API_KEY=0`, spawned children emit
+`Not logged in · Please run /login` and exit with
+`exit_reason=auth_precondition_failed` (~1s per spawn, classified
+correctly per #1170 so the scheduler does not loop).
 
 ## Verify
 
