@@ -1,7 +1,7 @@
 // Package transitions is the pure-data agent + work-item edge tables consumed by state (one-direction: never imports state); see specs/2026-06-04-state-package-split-design.md §4.2.
 package transitions
 
-// AgentEdges is the agent state-machine adjacency map (docs/design.md §378); crashed→pending is the merge-recovery requeue edge.
+// AgentEdges is the agent state-machine adjacency map (docs/design.md §378); crashed→pending is the merge-recovery requeue edge, crashed→withdrawn is the tombstone cascade-archive drain (#1208 retro).
 var AgentEdges = map[string]map[string]struct{}{
 	"pending": {
 		"pending":   {},
@@ -38,7 +38,7 @@ var AgentEdges = map[string]map[string]struct{}{
 	},
 	"done":      {},
 	"withdrawn": {},
-	"crashed":   {"pending": {}},
+	"crashed":   {"pending": {}, "withdrawn": {}},
 	"escalated": {},
 }
 

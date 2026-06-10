@@ -103,14 +103,35 @@ func (s *Scheduler) costCapDeniesOrphans(ctx context.Context, n int) bool {
 // this tick; err halts the tick (only the approval-gate reject
 // CAS path returns one — paused/denied/blocked all skip and log).
 // Gate or GateResolver nil → that sub-check is a no-op.
+//
+// Before any gate runs, the orphan is skipped when its bound work_item
+// is archived — the cascade in state.TombstoneBySource should have
+// withdrawn the agent already, but the safety net keeps the scheduler
+// from re-dispatching ghosts on restart even if the cascade is missed
+// for any reason (#1208 retro: orchestrator.recovered_crashed storm).
+// When gates are wired the archived check piggybacks on the existing
+// fetchWorkItemForRecheck result; when gates are unwired the guard
+// does its own light fetch so the safety net still fires.
 func (s *Scheduler) recheckGates(ctx context.Context, tc *tickCtx, workItemID string) (skip bool, err error) {
 	wi, fetched, ok := s.fetchWorkItemForRecheck(ctx, workItemID)
 	if !ok {
+		// Gates unwired: still run the archived safety-net so the
+		// scheduler does not dispatch ghosts on a missed cascade.
+		if s.orphanArchivedNoGates(ctx, workItemID) {
+			return true, nil
+		}
 		return false, nil
 	}
 	if !fetched {
 		// fetch failure already warned; fail-closed to keep the orphan
 		// pending until next tick rather than spawn blind.
+		return true, nil
+	}
+	if wi.Status == state.WorkStatusArchived {
+		s.log.Info("scheduler.orphan_skipped_archived",
+			string(obs.KeyWorkItemID), workItemID,
+			string(obs.KeyReason), "work_item_archived",
+		)
 		return true, nil
 	}
 	if skip, err := s.recheckApproval(ctx, tc, wi); err != nil || skip {
@@ -123,6 +144,30 @@ func (s *Scheduler) recheckGates(ctx context.Context, tc *tickCtx, workItemID st
 		return true, nil
 	}
 	return false, nil
+}
+
+// orphanArchivedNoGates is the safety-net fetch for the gates-unwired
+// path. Returns false (do not skip) when the upcast or fetch fails so
+// the guard never blocks reservation on a misconfigured wiring or a
+// transient DB hiccup — the production scheduler always exposes
+// GetWorkItem so this only matters in tests.
+func (s *Scheduler) orphanArchivedNoGates(ctx context.Context, workItemID string) bool {
+	getter, ok := s.db.(workItemGetter)
+	if !ok {
+		return false
+	}
+	wi, err := getter.GetWorkItem(ctx, workItemID)
+	if err != nil {
+		return false
+	}
+	if wi.Status != state.WorkStatusArchived {
+		return false
+	}
+	s.log.Info("scheduler.orphan_skipped_archived",
+		string(obs.KeyWorkItemID), workItemID,
+		string(obs.KeyReason), "work_item_archived",
+	)
+	return true
 }
 
 // fetchWorkItemForRecheck centralises the workItemGetter upcast +

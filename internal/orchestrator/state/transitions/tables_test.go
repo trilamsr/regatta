@@ -16,7 +16,7 @@ func TestAgentEdges_TerminalsHaveNoOutgoing(t *testing.T) {
 		{"done", 0},
 		{"withdrawn", 0},
 		{"escalated", 0},
-		{"crashed", 1}, // crashed→pending recovery edge
+		{"crashed", 2}, // crashed→pending recovery edge; crashed→withdrawn cascade-archive edge
 	}
 	for _, c := range cases {
 		got := len(AgentEdges[c.state])
@@ -30,6 +30,13 @@ func TestAgentEdges_TerminalsHaveNoOutgoing(t *testing.T) {
 func TestAgentEdges_CrashedRequeues(t *testing.T) {
 	if _, ok := AgentEdges["crashed"]["pending"]; !ok {
 		t.Fatal("AgentEdges[crashed][pending] missing — merge-recovery requeue edge broken")
+	}
+}
+
+// TestAgentEdges_CrashedCanWithdraw pins crashed→withdrawn cascade-archive edge for the tombstone drain (#1208 retro).
+func TestAgentEdges_CrashedCanWithdraw(t *testing.T) {
+	if _, ok := AgentEdges["crashed"]["withdrawn"]; !ok {
+		t.Fatal("AgentEdges[crashed][withdrawn] missing — tombstone cascade cannot drop crashed orphans")
 	}
 }
 

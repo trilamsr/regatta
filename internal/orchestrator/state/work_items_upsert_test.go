@@ -140,6 +140,91 @@ func TestTombstoneBySource_SkipsAlreadyArchived(t *testing.T) {
 	}
 }
 
+// TestTombstoneBySource_WithdrawsPendingAndCrashedAgents asserts the cascade-withdraw of bound pending+crashed agents in the tombstone tx (#1208 retro).
+func TestTombstoneBySource_WithdrawsPendingAndCrashedAgents(t *testing.T) {
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	t1 := t0.Add(time.Minute)
+	db := fixedClockDB(t, t0)
+	ctx := context.Background()
+
+	// Three work_items from the same source; one pending agent each.
+	// Then mutate two of the agents to crashed (simulates post-recover
+	// state that has not yet been re-queued to pending).
+	ids := []string{"BRIEF-A", "BRIEF-B", "BRIEF-C"}
+	for _, id := range ids {
+		wi := WorkItem{ID: id, Kind: KindFeature, Title: id, Lane: "server", Status: WorkStatusPlanned}
+		if err := db.UpsertWorkItem(ctx, wi, SourceBrief, t0); err != nil {
+			t.Fatalf("upsert %s: %v", id, err)
+		}
+		if _, err := db.UpsertPending(ctx, id, "server"); err != nil {
+			t.Fatalf("upsert pending agent for %s: %v", id, err)
+		}
+	}
+	// Drop two agents into crashed via direct UPDATE — emulates
+	// orchestrator.Recover's spawning→crashed step prior to the
+	// crashed→pending requeue.
+	if _, err := db.sql.ExecContext(ctx,
+		`UPDATE agents SET state=? WHERE work_item_id IN (?, ?)`,
+		string(AgentCrashed), "BRIEF-B", "BRIEF-C"); err != nil {
+		t.Fatalf("force crashed: %v", err)
+	}
+
+	archived, err := db.TombstoneBySource(ctx, SourceBrief, t1)
+	if err != nil {
+		t.Fatalf("TombstoneBySource: %v", err)
+	}
+	if len(archived) != 3 {
+		t.Fatalf("archived=%v want 3", archived)
+	}
+
+	// Every bound agent (pending OR crashed) must now be withdrawn —
+	// otherwise the next Recover→Tick will re-dispatch them.
+	for _, id := range ids {
+		a, err := db.GetAgentByWorkItemID(ctx, id)
+		if err != nil {
+			t.Fatalf("get agent %s: %v", id, err)
+		}
+		if a.State != AgentWithdrawn {
+			t.Fatalf("agent for %s state=%s want withdrawn (cascade missing → ghost recovery storm on restart)", id, a.State)
+		}
+	}
+}
+
+// TestTombstoneBySource_LeavesActiveAgentsUntouched pins the cascade-soft invariant: in-flight agents (running/spawning/etc.) survive a tombstone (#1208 retro).
+func TestTombstoneBySource_LeavesActiveAgentsUntouched(t *testing.T) {
+	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	t1 := t0.Add(time.Minute)
+	db := fixedClockDB(t, t0)
+	ctx := context.Background()
+
+	wi := WorkItem{ID: "BRIEF-X", Kind: KindFeature, Title: "x", Lane: "server", Status: WorkStatusPlanned}
+	if err := db.UpsertWorkItem(ctx, wi, SourceBrief, t0); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	if _, err := db.UpsertPending(ctx, "BRIEF-X", "server"); err != nil {
+		t.Fatalf("upsert pending: %v", err)
+	}
+	// Walk the agent forward to running so the cascade-soft invariant
+	// has a concrete in-flight target.
+	if _, err := db.sql.ExecContext(ctx,
+		`UPDATE agents SET state=? WHERE work_item_id=?`,
+		string(AgentRunning), "BRIEF-X"); err != nil {
+		t.Fatalf("force running: %v", err)
+	}
+
+	if _, err := db.TombstoneBySource(ctx, SourceBrief, t1); err != nil {
+		t.Fatalf("TombstoneBySource: %v", err)
+	}
+
+	a, err := db.GetAgentByWorkItemID(ctx, "BRIEF-X")
+	if err != nil {
+		t.Fatalf("get agent: %v", err)
+	}
+	if a.State != AgentRunning {
+		t.Fatalf("running agent state=%s want running (cascade-soft: in-flight agents keep running)", a.State)
+	}
+}
+
 func TestCascadeArchiveChildren_FlipsStatusOnly(t *testing.T) {
 	t0 := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
 	db := fixedClockDB(t, t0)
