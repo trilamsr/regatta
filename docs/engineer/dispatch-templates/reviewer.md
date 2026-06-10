@@ -165,7 +165,7 @@ Self-rate headline must reflect the WEAKEST tier carrying any ⚠/❌. All B + A
 - [ ] AT MOST ONE aggregate tracking issue filed for this PR review (with `kind:reviewer-finding` + matching `severity:*` label); LOW findings posted as PR comments only
 - [ ] `## Comment sweep` section emitted (offenders or `clean`)
 - [ ] memory rules cited
-- [ ] PR body Reviewer-agent-id + Reviewer-recommendation footer tokens are EITHER absent (no review yet — gate refuses load-bearing PRs without them at merge time) OR contain a real subagent id + exact token (APPROVE/REVISE/BLOCK). NEVER write the literal string `<pending>` — it is not a recognized token and the gate rejects it as invalid input
+- [ ] Reviewer-* tokens absent OR valid (APPROVE/REVISE/BLOCK + subagent id). NEVER `<pending>`.
 
 ## RECURRING-FAILURE TRAPS
 

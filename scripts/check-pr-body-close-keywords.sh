@@ -4,7 +4,7 @@
 # closes the FIRST issue number on such a line; the rest stay open.
 #
 # Catches the 2026-06-08 trap where PR titles like
-# "[FIX] foo" closed #986 only.
+# "[FIX] foo closes #A #B #C" only closes the first; GitHub ignores #B #C.
 #
 # Inputs:
 #   --pr <number>        fetch body via `gh pr view`
