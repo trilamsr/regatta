@@ -25,3 +25,20 @@ func loadMarkdownCatalogRoot(repoRoot string) (string, bool) {
 	}
 	return root, true
 }
+
+// loadSchedulerParallelCap reads regatta.yaml at repoRoot and returns
+// the resolved `scheduler.parallel_cap` value (spec
+// 2026-06-09-scheduler-parallel-cap-enforcement §3.1; closes #1169).
+// Returns 0 when the yaml is missing, malformed, or the scheduler block
+// is absent — preserves pre-#1169 lane-cap-only behavior byte-equal.
+// Read-only-best-effort mirrors loadMarkdownCatalogRoot's contract:
+// downstream loaders (wire_authz, wire_secrets) catch the same yaml
+// and surface load errors with operator-visible signals.
+func loadSchedulerParallelCap(repoRoot string) int {
+	cfgPath := filepath.Join(repoRoot, "regatta.yaml")
+	cfg, err := validateconfig.LoadConfigFile(cfgPath)
+	if err != nil {
+		return 0
+	}
+	return cfg.SchedulerParallelCap()
+}

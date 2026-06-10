@@ -90,6 +90,17 @@ type Config struct {
 	// Default lane uses the empty-string key.
 	LaneCaps map[string]int
 
+	// ParallelCap is the aggregate ceiling across ALL lanes for one
+	// Tick (spec 2026-06-09 §3.1; closes #1169). Zero = disabled
+	// (backward-compat: lane-cap-only semantics). When > 0 and
+	// runningAgents + len(spawnable) > ParallelCap, the scheduler
+	// truncates the spawnable slice after gate_l0 and BEFORE the
+	// cost / approval / l4 gates so per-tick gate-evaluation cost
+	// scales with the cap, not queue depth (#1172 tick.slow).
+	// Lane caps still bind first; ParallelCap applies on top of the
+	// already-lane-filtered set.
+	ParallelCap int
+
 	// LockTTL is the heartbeat lease for TryAcquireLocks; older locks
 	// may be stolen.
 	LockTTL time.Duration
@@ -348,6 +359,46 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 			spawnable = sp
 			return nil
 		}},
+		// gate_parallel_cap: aggregate ceiling across ALL lanes (#1169).
+		// Pulled BEFORE gate_cost_cap / gate_cost / gate_l4 so the gate
+		// chain only pays per-candidate work for at most ParallelCap
+		// items, not the full queue depth (#1172 tick.slow root cause).
+		// Disabled when ParallelCap <= 0; lane-cap-only semantics
+		// preserved byte-equal for currently-shipped configs.
+		{"gate_parallel_cap", func() error {
+			if s.cfg.ParallelCap <= 0 {
+				return nil
+			}
+			occ, e := s.db.CountAgentsByLane(ctx, activeStates...)
+			if e != nil {
+				return fmt.Errorf("scheduler: count agents by lane: %w", e)
+			}
+			occupancy = occ
+			running := 0
+			for _, n := range occ {
+				running += n
+			}
+			budget := s.cfg.ParallelCap - running
+			if budget <= 0 {
+				s.log.Info("scheduler.parallel_cap_saturated",
+					"running", running,
+					"cap", s.cfg.ParallelCap,
+					"queued", len(spawnable),
+				)
+				spawnable = nil
+				return nil
+			}
+			if len(spawnable) > budget {
+				s.log.Info("scheduler.parallel_cap_truncated",
+					"running", running,
+					"cap", s.cfg.ParallelCap,
+					"queued", len(spawnable),
+					"kept", budget,
+				)
+				spawnable = spawnable[:budget]
+			}
+			return nil
+		}},
 		// Run cost-cap BEFORE per-scope evaluation: a saturated 24h
 		// budget halts the whole tick and saves the approval/cost/l4
 		// passes their per-candidate work (spec PHASE-AUTONOMY W5 §5).
@@ -381,11 +432,15 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 			return nil
 		}},
 		{"dispatch", func() error {
-			occ, e := s.db.CountAgentsByLane(ctx, activeStates...)
-			if e != nil {
-				return e
+			// Reuse occupancy from gate_parallel_cap when it ran;
+			// avoids double CountAgentsByLane on hot tick.
+			if occupancy == nil {
+				occ, e := s.db.CountAgentsByLane(ctx, activeStates...)
+				if e != nil {
+					return e
+				}
+				occupancy = occ
 			}
-			occupancy = occ
 			r, att, e := s.reserveFromSpawnable(ctx, tc, spawnable, occupancy)
 			reserved = r
 			attempted = att

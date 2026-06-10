@@ -15,6 +15,7 @@ import (
 )
 
 // expectedSteps pins the spec §3 row 4 / §10 brief A-T3 enum to one place.
+// gate_parallel_cap added by spec 2026-06-09 §3.1 (#1169).
 var expectedSteps = []string{
 	"dispatch",
 	"fold",
@@ -23,6 +24,7 @@ var expectedSteps = []string{
 	"gate_cost_cap",
 	"gate_l0",
 	"gate_l4",
+	"gate_parallel_cap",
 	"persist",
 	"reaper",
 }

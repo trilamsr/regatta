@@ -152,14 +152,15 @@ type schedulerDeps struct {
 // buildScheduler hoists the scheduler.New(...) composition out of runServe so each subsystem-touching PR stops dirtying serve.go (#975 slice 1).
 func buildScheduler(db *state.DB, f serveFlags, deps schedulerDeps) *scheduler.Scheduler {
 	return scheduler.New(db, scheduler.Config{
-		LaneCaps:         map[string]int(f.LaneCaps),
-		LockTTL:          f.LockTTL,
-		Evaluator:        deps.Evaluator,
-		OutputsSchemas:   deps.OutputsSchemas,
-		Gate:             deps.Gate,
-		GateResolver:     deps.GateResolver,
-		CostCap:          deps.CostCap,
-		Clock:            deps.Clock,
+		LaneCaps:           map[string]int(f.LaneCaps),
+		LockTTL:            f.LockTTL,
+		ParallelCap:        loadSchedulerParallelCap(f.RepoRoot),
+		Evaluator:          deps.Evaluator,
+		OutputsSchemas:     deps.OutputsSchemas,
+		Gate:               deps.Gate,
+		GateResolver:       deps.GateResolver,
+		CostCap:            deps.CostCap,
+		Clock:              deps.Clock,
 		MergeCoordinator:   deps.MergeCoordinator,
 		MergeWorker:        deps.MergeWorker,
 		Meter:              deps.Meter,
