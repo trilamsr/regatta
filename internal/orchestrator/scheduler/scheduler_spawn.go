@@ -21,9 +21,42 @@ import (
 func (s *Scheduler) reserveFromSpawnable(ctx context.Context, tc *tickCtx, spawnable []state.WorkItem, occupancy map[string]int) (reserved []int64, attempted map[int64]struct{}, err error) {
 	attempted = map[int64]struct{}{}
 	var failures int
+	activeScopes := s.buildActiveFileScopes(ctx)
+	// reservedScopes captures scopes committed earlier in THIS tick so a
+	// second same-tick candidate sees the first as in-flight; without it
+	// 3 same-lane same-file candidates would all spawn on a cold start.
+	reservedScopes := map[int64]activeScope{}
+	collisions := 0
+	candidates := 0
 	for _, w := range spawnable {
 		if err := ctx.Err(); err != nil {
 			return reserved, attempted, err
+		}
+		candidates++
+		if s.cfg.FileScopeExtractor != nil {
+			if conflict, overlap, ok := s.detectScopeCollision(w, activeScopes, reservedScopes); ok {
+				collisions++
+				s.log.Info(string(obs.EventSchedulerFileScopeCollisionDeferred),
+					string(obs.KeyWorkItemID), w.ID,
+					string(obs.KeyLane), w.Lane,
+					"conflicting_agent_id", conflict.agentID,
+					"conflicting_work_item_id", conflict.workItemID,
+					"overlap_paths", overlap,
+				)
+				// Materialize the pending row so the next tick's
+				// reserveOrphans pass picks it up once the conflicting
+				// agent terminates — mirrors the lane-capped path.
+				if a, upErr := s.db.UpsertPending(ctx, w.ID, w.Lane); upErr == nil {
+					attempted[a.ID] = struct{}{}
+				} else {
+					s.log.Warn(string(obs.EventSchedulerMaterializeFailure),
+						string(obs.KeyWorkItemID), w.ID,
+						string(obs.KeyReason), "upsert_after_file_scope_defer_failed",
+						string(obs.KeyErr), upErr.Error(),
+					)
+				}
+				continue
+			}
 		}
 		// W6 spec §3.5: one `work_item` span per work_item lifecycle
 		// under the active `tick` span. Attrs match spec §4.1.
@@ -86,7 +119,18 @@ func (s *Scheduler) reserveFromSpawnable(ctx context.Context, tc *tickCtx, spawn
 		if transitioned {
 			occupancy[w.Lane]++
 			reserved = append(reserved, agentID)
+			if s.cfg.FileScopeExtractor != nil {
+				if paths := s.cfg.FileScopeExtractor(w); len(paths) > 0 {
+					reservedScopes[agentID] = activeScope{workItemID: w.ID, paths: paths}
+				}
+			}
 		}
+	}
+	if candidates > 0 && collisions == candidates {
+		s.log.Warn(string(obs.EventSchedulerFileScopeCycleStalled),
+			"candidates", candidates,
+			"collisions", collisions,
+		)
 	}
 	if failures > 0 {
 		s.log.Warn(string(obs.EventSchedulerMaterializeFailure),

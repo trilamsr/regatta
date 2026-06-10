@@ -33,6 +33,19 @@ const (
 
 	EventSchedulerMaterializeFailure EventName = "scheduler.materialize_failure"
 
+	// EventSchedulerFileScopeCollisionDeferred fires per candidate that
+	// the scheduler defers because its predicted file scope overlaps an
+	// in-flight agent on the same lane (#1065). Carries candidate work
+	// item, conflicting agent + work item, and overlap paths so an
+	// operator can trace which shared anchor parked the candidate.
+	EventSchedulerFileScopeCollisionDeferred EventName = "scheduler.file_scope_collision_deferred"
+
+	// EventSchedulerFileScopeCycleStalled fires WARN once per tick when
+	// every spawnable candidate collides (#1065 c3). Prevents per-item
+	// log spam in a saturated cascade-rebase scenario while still
+	// surfacing the stall.
+	EventSchedulerFileScopeCycleStalled EventName = "scheduler.file_scope_cycle_stalled"
+
 	EventSpawnStarted   EventName = "spawn.started"
 	EventSpawnCompleted EventName = "spawn.completed"
 	EventSpawnFailed    EventName = "spawn.failed"
@@ -162,6 +175,8 @@ func AllEventNames() []EventName {
 		EventEdgeJournalLoadFailed,
 		EventEdgeMultipleDefaultsPerFrom,
 		EventSchedulerMaterializeFailure,
+		EventSchedulerFileScopeCollisionDeferred,
+		EventSchedulerFileScopeCycleStalled,
 		EventSpawnStarted,
 		EventSpawnCompleted,
 		EventSpawnFailed,
