@@ -98,7 +98,7 @@ Edges: `adapter → scheduler → spawner → agent → review → merge`. Edges
 
 **htmx targets:** the aggregate STAGE DAG band re-renders from `GET /ui/panels/stage-dag` (5s poll). Each node carries `hx-get="/ui/drawer/stage/<slug>"` `hx-target="#drawer-mount"` — re-uses the existing `/ui/drawer/pipeline/<slug>` handler shape; rename for clarity. Per-task miniatures render inline (no per-row htmx swap — the parent TASK GRID's 5s poll redraws all rows together; htmx-per-row would N+1 the substrate query).
 
-**Active state:** a node is "active" when its Count > 0 AND the work item under inspection (per-task miniature) OR the swarm (aggregate band) currently has a row in that stage. Active nodes carry CSS class `stage-active` which applies `opacity: 1.0` and a 1.4s opacity-pulse animation (`0.6 → 1.0 → 0.6`); inactive nodes sit at `opacity: 0.55`.
+**Active state:** a node is "active" when its Count > 0 AND the work item under inspection (per-task miniature) OR the swarm (aggregate band) currently has a row in that stage. Active nodes carry CSS class `stage-active` which applies `opacity: 1.0` and the `pulse 2s infinite ease-in-out` animation (`0.6 → 1.0 → 0.6`) per `DESIGN-SYSTEM-REFERENCE.md` §Effects; inactive nodes sit at `opacity: 0.55`. `@media (prefers-reduced-motion: reduce)` freezes the pulse and keeps any fade-in under 200ms.
 
 ## 5. Cycle counter — `revision_cycle_count(work_item_id)`
 
@@ -112,37 +112,86 @@ SELECT COUNT(*) FROM substrate_events
 
 The `KindReviewRequested` event kind does not yet exist in `internal/orchestrator/state/substrate/event.go` (verified against `git ls-tree origin/main`); the implementation PR MUST add it under the existing `EventKind` const block. Existing emit sites that semantically mean "we asked for a review pass" — the reviewer-verdict gate fail-then-retry path in `internal/gates/`, the PR-watch transition into `pr_open` in `internal/orchestrator/prwatch/`, and any explicit `gh pr ready` retry — get a single `substrate.Append(KindReviewRequested, work_item_id, ...)` call. Cycle 1 is the first request; subsequent retries increment by 1.
 
-**Display shape:** `cyc N/M` where `N` is the count (always ≥1 once the work item has been reviewed at least once), `M` is a soft ceiling configured by the dashboard (default 5; lives next to `pipelineStageOrder` in `internal/web/dashboard.go` so a future spec-pin moves one constant). When `N` exceeds `M`, the cycle counter renders with `stage-blocked` color (red) and the active stage box gets the same blocked tint — operator-visible "this task is stuck in revise hell." Tasks that have never been reviewed render `cyc 0/M` in inactive gray.
+**Display shape:** `cyc N/M` where `N` is the count (always ≥1 once the work item has been reviewed at least once), `M` is a soft ceiling configured by the dashboard (default 5; lives next to `pipelineStageOrder` in `internal/web/dashboard.go` so a future spec-pin moves one constant). When `N` exceeds `M`, the cycle counter renders with `stage-blocked` color (orange) and the active stage box gets the same blocked tint — operator-visible "this task is stuck in revise hell." Tasks that have never been reviewed render `cyc 0/M` in inactive gray.
+
+**Per-row metadata badges (operator post-launch enrichment):** each TASK GRID row carries (a) the GH issue ref (`#NNNN` + truncated title + first label) sourced from `work_items.issue_number`, (b) when the agent is in REVIEW or MERGE, the PR link `#NNNN` (clickable, opens `https://github.com/<owner>/<repo>/pull/N`) sourced from `agents.pr_number`, (c) the `cyc N/M` revision_cycle_count badge described above. Empty / N/A states render as `—` in `txt-dim`. Per `DESIGN-SYSTEM-REFERENCE.md` §Additional operator requirements (3) + (4) + (5).
 
 **Edge case:** events are append-only; rolling back a deletion is impossible. A task whose PR is closed-without-merge and reopened still counts every prior `review_requested` row — by design, the cycle counter is total-attempts, not currently-pending. Operator notes per `feedback_root_cause`: if the counter looks "stuck high," the fix is to investigate why review keeps failing, not to reset the counter.
 
 ## 6. Color system
 
-Strict 5-color palette. No animations beyond the 1.4s opacity pulse on active stage nodes. Dark background, mid-contrast text — JetBrains Mono throughout (already preloaded by `layout.tmpl`).
+Strict 11-token palette adopted verbatim from `DESIGN-SYSTEM-REFERENCE.md` §Color tokens — the operator's enrichment doc is authoritative; the brief reconciles to it. Dark-only mode (no light toggle). WCAG AAA contrast (`--color-fg` on `--color-bg` measures > 17:1). JetBrains Mono throughout, regular weight only (no bold — bold breaks mono spacing).
 
 | Token | Hex | Used for |
 |-------|-----|----------|
-| `bg-control` | `#0B1014` | page background, top-band background |
-| `bg-panel` | `#121821` | zone backgrounds (DAG, TASK GRID, LIVE STREAM, METRICS, CONTROLS) |
-| `txt-primary` | `#E2E8F0` | labels, counts, work-item titles |
-| `txt-dim` | `#64748B` | inactive stage labels, meta, "cycN" when N=0 |
-| `stage-idle` | `#475569` | inactive stage node fill |
-| `stage-active` | `#34D399` | active stage node fill (emerald — distinct from existing pill-running green) |
-| `stage-blocked` | `#F87171` | blocked / over-cycle-cap / failed stage tint |
-| `stage-done` | `#0EA5E9` | merged/done stage — terminal success |
-| `accent-stream` | `#FACC15` | LIVE STREAM tool-call name (yellow) so the rail visually separates from stage zones |
+| `--color-bg` | `#0F172A` | page background (deep slate, OLED-friendly) |
+| `--color-surface` | `#1F1E27` | zone / card / panel backgrounds |
+| `--color-border` | `rgba(255,255,255,0.08)` | 1px panel borders + dividers |
+| `--color-fg` | `#FFFFFF` | primary text — labels, counts, work-item titles |
+| `--color-fg-muted` | `#94A3B8` | secondary text — meta, "cyc 0/M", inactive stage labels |
+| `--color-idle` | `#475569` | inactive stage node fill (gray slate) |
+| `--color-active` | `#00FF88` | active stage node fill — pulses per §6b |
+| `--color-blocked` | `#FFA500` | blocked / over-cycle-cap stage tint (orange, attention) |
+| `--color-error` | `#DC2626` | critical failure tint (red) |
+| `--color-done` | `#6366F1` | merged / terminal-success stage (indigo) |
+| `--color-streaming` | `#0080FF` | LIVE STREAM in-flight data accent (blue) |
+| `--color-accent` | `#D97706` | primary action buttons (amber) |
+| `--color-ring` | `#D97706` | 2-4px focus ring (a11y) |
 
-The existing `dashboard.css` already declares slate-700 / slate-500 / emerald-700 — extend the palette via CSS custom properties so the redesign and the legacy panels (used by `/ui/drawer/*` modals) read from one source.
+The existing `dashboard.css` declares slate-700 / slate-500 / emerald-700 — those constants are superseded; extend via the CSS custom properties above so the redesign and the legacy `/ui/drawer/*` modals read from one source. Effect rule: `text-shadow: 0 0 10px var(--color-active)` on ACTIVE stage labels only (minimal glow per `DESIGN-SYSTEM-REFERENCE.md` §Effects).
+
+## 6a. Spacing + typography (spacious, not dense)
+
+Per `DESIGN-SYSTEM-REFERENCE.md` §Layout feel — the operator overrides the data-dense default with breathing-room mandates. The brief pins these as load-bearing acceptance criteria:
+
+| Property | Value | Rationale |
+|----------|-------|-----------|
+| Panel padding | `24px` | NOT 12px — operator wants breathing room. |
+| Grid gap | `24px` | NOT 8px — zone separation reads as mission-control, not log-viewer. |
+| Section gap | `48px` | Between major zones (HEADER → STAGE DAG → TASK GRID, etc.). |
+| Card min-height | `80px` | Each TASK GRID row sits ≥80px tall — work-item cards breathe. |
+| Card internal padding | `20px` | Inside each work-item card. |
+| Max container width | `1440px` | Centered on ≥1600px viewports; generous horizontal margins. |
+| Body font size | `14px` | NO 12px. Too cramped for a desktop dashboard. |
+| Heading font size | `16px` | Mono headings still. |
+| Font weight | `400` only | No bold body or heading — breaks JetBrains Mono character. |
+| Body line-height | `1.5` | NOT 1.2 (the data-dense default) — spacious. |
+| Touch target min | `44 × 44px` | a11y; covers any operator-clickable control. |
+| Grid columns | `12` | Standard CSS grid; gap `24px`; padding `24px`. |
+| Header height | `56px` | mission status + clock + uptime. |
+| Sticky stage-flow height | `120px` | Full-width DAG, pinned. |
+| Body column ratio | 4 / 5 / 3 | TASK GRID left (4) · LIVE STREAM center (5) · METRICS right (3) on ≥1024px. |
+
+## 6b. Animation choreography
+
+Adopted verbatim from `DESIGN-SYSTEM-REFERENCE.md` §Animation choreography. CSS-only (no JS beyond htmx). Transform / opacity only — never animate width/height (performance). `@media (prefers-reduced-motion: reduce) { animation: none; transition-duration: 0ms; }` honored; fades collapse to <200ms or freeze entirely.
+
+| Trigger | Animation | Duration | Easing |
+|---------|-----------|----------|--------|
+| New event arrives in LIVE STREAM | Fade-in row (opacity 0 → 1) | 200ms | `ease-out` |
+| Active stage node | Opacity pulse (0.6 → 1.0 → 0.6) | `2s` infinite | `ease-in-out` |
+| Agent transitions stage → stage | Edge pulse + node glow | 300ms | spring `cubic-bezier(.34,1.56,.64,1)` |
+| Work item enters PR-watch | Tab badge increments + pulse | 400ms | spring |
+| Cycle counter increments | Number flip (CSS keyframe) | 250ms | `ease-out` |
+| LIVE STREAM tick refresh | Smooth slide-left | 100ms | `linear` |
+| Alert (e.g. `provider_credit_exhausted`) | Border-flash red, persist | 600ms → 0 | `ease-out` |
 
 ## 7. Implementation pointers
 
-**htmx-only — no React.** The redesign reuses every existing handler shape; only the layout template and one new panel handler are net-new.
+**htmx-only — no React.** The redesign reuses every existing handler shape; only the layout template and three new panel handlers are net-new.
 
-**Files modified (4):**
+**Single bundled impl PR — operator velocity directive.** Per the post-launch operator boost, the implementation PR ships THREE bundled changes together (single PR, not three):
 
-- `internal/web/templates/layout.tmpl` — full rewrite. Drops the 7-section flow, swaps in the 5-zone CSS grid. Header inlines MET clock + status; STAGE DAG zone hosts `#stage-dag` panel polling `/ui/panels/stage-dag`; TASK GRID hosts `#task-grid` panel polling `/ui/panels/task-grid`; LIVE STREAM hosts `#live-stream` panel polling `/ui/panels/live-stream` at 2s; METRICS folds existing SPEND + DOCKER SOAK; CONTROLS is static links.
-- `internal/web/dashboard.go` — add three new handlers: `/ui/panels/stage-dag` (renames current `pipeline`), `/ui/panels/task-grid` (new — joins agents + work_items + revision_cycle_count), `/ui/panels/live-stream` (new — tails last-25 `obs.EventToolCall` records). Existing `loadPipelineView` becomes `loadStageDagView` (same shape, renamed slug). `loadFlowView` + `loadWorkItemsView` + `loadDockerSoakView` + `loadSpendView` retained but no longer wired to layout — kept for the `/ui/drawer/*` re-use surfaces. Delete unused panel routes only after a follow-up sweep PR.
-- `internal/web/static/dashboard.css` — extend palette per §6 via CSS custom properties; add `.stage-active`, `.stage-blocked`, `.stage-done`, the 1.4s `@keyframes stage-pulse`, and the 5-zone grid template.
+1. Dashboard mission-control redesign (this brief).
+2. CSP closure (`closes #1215`) — see "Files modified" below.
+3. Work-items running-count fix (`closes #1217`) — TASK GRID query must surface the corrected running-count; co-located with the new `/ui/panels/task-grid` handler so the fix lands in the same file the redesign touches.
+
+**Files modified (5):**
+
+- `internal/web/templates/layout.tmpl` — full rewrite. Drops the 7-section flow, swaps in the 5-zone CSS grid (12-col, gap 24px, padding 24px, max-width 1440px, section gap 48px). Header inlines MET clock + status; STAGE DAG zone hosts `#stage-dag` panel polling `/ui/panels/stage-dag`; TASK GRID hosts `#task-grid` panel polling `/ui/panels/task-grid`; LIVE STREAM hosts `#live-stream` panel polling `/ui/panels/live-stream` at 2s; METRICS folds existing SPEND + DOCKER SOAK; CONTROLS is static links.
+- `internal/web/dashboard.go` — add three new handlers: `/ui/panels/stage-dag` (renames current `pipeline`), `/ui/panels/task-grid` (new — joins `agents` + `work_items` + `revision_cycle_count` + `issue_number` + `pr_number`; ALSO fixes the work-items running-count regression per `closes #1217`), `/ui/panels/live-stream` (new — tails last-25 `obs.EventToolCall` records, htmx poll `2s`). Existing `loadPipelineView` becomes `loadStageDagView` (same shape, renamed slug). `loadFlowView` + `loadWorkItemsView` + `loadDockerSoakView` + `loadSpendView` retained but no longer wired to layout — kept for the `/ui/drawer/*` re-use surfaces. Delete unused panel routes only after a follow-up sweep PR.
+- `internal/web/static/dashboard.css` — extend palette per §6 via CSS custom properties; add `.stage-active`, `.stage-blocked`, `.stage-done`, `.stage-error`, `.stage-streaming`, the `@keyframes pulse` (2s ease-in-out infinite) + fade-in (200ms ease-out) + cycle-counter flip (250ms ease-out) + slide-left (100ms linear) + border-flash (600ms ease-out) keyframes, the 5-zone grid template, the `prefers-reduced-motion` block, and the `:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }` ring per a11y.
+- `internal/web/csp.go` — close `#1215`. Add `sha256-<hash>` directives for the legitimate htmx inline-style patterns the redesign emits (computed by enumerating every inline `style=...` produced by the new templates), OR migrate to nonce-per-request (preferred — cleaner long-term, removes per-pattern allowlist drift). Implementer's call; spec brief leaves the choice open but mandates `closes #1215` lands in this same PR. Validation: load the new dashboard, open browser devtools, confirm zero CSP violation reports.
 - `internal/orchestrator/state/substrate/event.go` — add `KindReviewRequested EventKind = "review_requested"`; add to `AllKinds()` slice.
 
 **Files new (1):**
@@ -153,7 +202,9 @@ The existing `dashboard.css` already declares slate-700 / slate-500 / emerald-70
 
 - `internal/orchestrator/prwatch/` — emit on transition into `pr_open` from a state that was previously `pr_open` within the same work_item (re-review path).
 - `internal/gates/` — emit when the reviewer-verdict gate parks the PR back into REVISE.
-- Any explicit `gh pr ready` retry path — `TBD` by the implementer; the implementer brief MUST grep for `gh pr ready` and audit every call site.
+- Any explicit `gh pr ready` retry path — the implementer MUST grep for `gh pr ready` and audit every call site.
+
+**PR body close-keyword form** (per `feedback_github_auto_close_syntax`): use comma-separated form — `Closes #1184, closes #1215, closes #1217` — NOT the space-separated `closes #N #M` shape, which only closes the first issue.
 
 ## 8. Out of scope (NOT this PR — file follow-ups if needed)
 
@@ -167,15 +218,18 @@ The existing `dashboard.css` already declares slate-700 / slate-500 / emerald-70
 
 ## 9. Acceptance criteria
 
-This PR is brief-only. Acceptance for the implementation PR (separate, follow-up):
+This PR is brief-only. Acceptance for the bundled implementation PR (single PR closing `#1184` (this brief's tracker) + `#1215` (CSP) + `#1217` (work-items running-count) per the operator velocity directive in §7):
 
-1. On a 1440×900 viewport, all 5 zones are visible without scroll; HEADER + STAGE DAG + METRICS + CONTROLS are pinned; TASK GRID + LIVE STREAM scroll inside their zones.
-2. STAGE DAG renders the 6-node ordered graph; nodes with Count > 0 carry the `stage-active` class and the 1.4s opacity pulse animates.
-3. Each TASK GRID row renders the 6-node mini-DAG with exactly ONE node bracketed/highlighted as the current stage for that work item. Cycle counter `cyc N/M` is shown to the right.
-4. LIVE STREAM tails the last 25 `obs.EventToolCall` records, newest-first, with `accent-stream` yellow on the tool name. Auto-refreshes at 2s htmx poll.
+1. On a 1440×900 viewport, all 5 zones are visible without scroll; HEADER + STAGE DAG + METRICS + CONTROLS are pinned; TASK GRID + LIVE STREAM scroll inside their zones. Container max-width 1440px, centered on ≥1600px viewports.
+2. STAGE DAG renders the 6-node ordered graph; nodes with Count > 0 carry the `stage-active` class and the `pulse 2s infinite ease-in-out` opacity animation runs (per §4 + §6b). `prefers-reduced-motion` honored — pulse freezes, fade-in collapses to <200ms.
+3. Each TASK GRID row renders the 6-node mini-DAG with exactly ONE node bracketed/highlighted as the current stage for that work item. Each row carries: `cyc N/M` revision_cycle_count badge, GH issue ref (`#NNNN` + truncated title + first label), PR link `#NNNN` when present. Row min-height 80px, internal padding 20px.
+4. LIVE STREAM tails the last 25 `obs.EventToolCall` records, newest-first, with `--color-streaming` blue on the tool name. Auto-refreshes at 2s htmx poll. New rows fade-in 200ms ease-out.
 5. `KindReviewRequested` lands in `substrate/event.go`; at least one emit site is wired (PR-watch re-review path); a unit test asserts `revision_cycle_count` returns 2 after two appends for the same work_item_id.
-6. No JavaScript beyond `htmx.min.js` + `htmx-config.js`. CSS-only animations.
-7. `make pre-push-check` green.
+6. Spacing + typography tokens from §6a applied uniformly — panel padding 24px, grid gap 24px, section gap 48px, body 14px / heading 16px, line-height 1.5, mono regular only.
+7. CSP — `#1215` closed in the same PR: zero CSP-violation reports in browser devtools on the new dashboard. Either inline-style sha256 directives OR nonce-per-request in `internal/web/csp.go`.
+8. Work-items running-count regression — `#1217` closed in the same PR: TASK GRID query returns the corrected running count.
+9. No JavaScript beyond `htmx.min.js` + `htmx-config.js`. CSS-only animations. Transform / opacity only — never width/height.
+10. `make pre-push-check` green.
 
 ## 10. A+ rubric scorecard template
 
@@ -196,16 +250,17 @@ Per `feedback_grade_rubric`. Implementer self-rates; reviewer re-scores using th
 
 ## 11. Adversarial review
 
-A designer-side adversarial pass ran before landing (no Task tool was available in-session to spawn a fully-independent reviewer subagent). Findings + resolutions:
+Independent reviewer pass dispatched by operator post-PR-open per `feedback_adversarial_review_every_step`. This brief contains adversarial findings from the operator-spawned `cavecrew-rqkfqp7s7xlcahfz` review (REVISE × 5, all applied in this commit).
 
-| # | Severity | Finding | Resolution |
-|---|----------|---------|------------|
-| 1 | MED | Brief used the banned phrase "first-class" in §1 problem statement. `scripts/doc-check.sh` would have rejected the PR at pre-push. | Reworded to "load-bearing." Re-ran doc-check: clean. |
-| 2 | HIGH | Brief asserted `MaxReviewCycles` lives "in spec" as a published constant, but `grep -rn MaxReviewCycles internal/` returns empty — fabricated symbol per `feedback_cite_origin_main_not_local`. | Rewrote §5 to declare M as a dashboard-local constant living next to `pipelineStageOrder` in `internal/web/dashboard.go`; removed the fabricated spec-pin claim. |
-| 3 | LOW | Brief originally claimed "five operator deficiencies" but enumerated five legitimate ones — no fix needed; noted to confirm the count survived edits. | Count verified post-edit: still five. |
-| 4 | LOW | Brief is 207 LoC; well under the 500-LoC cap requested in dispatch prompt. | No fix needed. |
+| # | Severity | Reviewer finding | Resolution in this commit |
+|---|----------|------------------|---------------------------|
+| 1 | HIGH | Pulse timing mismatch — brief said "1.4s opacity-pulse"; operator spec mandates `pulse 2s infinite ease-in-out`. Operator's value wins. | §4 + §6b updated to `2s infinite ease-in-out`; legacy 1.4s constant deleted. |
+| 2 | HIGH | Palette count error — brief claimed "Strict 5-color palette" but the table listed 9 tokens. Reconcile to the operator's 11-token list (bg, surface, border, fg, fg-muted, idle, active, blocked, error, done, streaming + accent + ring). | §6 rewritten to "Strict 11-token palette" with the operator's exact hex values + accent/ring; supersedes the brief's earlier 5/9-token wording. |
+| 3 | HIGH | Spacious-feel requirements missing — operator pinned panel padding 24px, grid gap 24px, section gap 48px, card min-height 80px, card padding 20px, max-width 1440px centered ≥1600px, 14px body / 16px headings (NO 12px), mono regular only (no bold), line-height 1.5 (not 1.2). | New §6a "Spacing + typography (spacious, not dense)" pins every value as load-bearing acceptance criteria. |
+| 4 | HIGH | CSP compliance + `#1215` closure missing from implementation pointers — operator wants this bundled into the impl PR. | §7 explicitly modifies `internal/web/csp.go` (sha256 hashes OR nonce-per-request) and marks `closes #1215` for the impl PR. §7 also bundles `closes #1217` (work-items running-count) per the operator velocity directive — single PR ships dashboard redesign + CSP fix + running-count fix. |
+| 5 | HIGH | "Self-tagged adversarial pass discharges review" framing removed — independent-reviewer mandate per `feedback_adversarial_review_every_step` requires the operator-spawned reviewer subagent, not a designer self-pass. | This §11 rewritten — designer self-pass framing dropped; replaced with operator-spawned `cavecrew-rqkfqp7s7xlcahfz` finding table. |
 
-Per `feedback_no_self_tagged_approve` AND the dispatch prompt's explicit instruction ("operator spawns independent reviewer pass; do not write Reviewer-* tokens"), this brief does NOT carry a `Reviewer-recommendation: APPROVE` token. The independent reviewer pass is the operator's responsibility post-handback. The PR is opened in draft / non-automerge state to preserve the operator's review window.
+Per `feedback_no_self_tagged_approve` AND the dispatch prompt's explicit instruction ("operator spawns independent reviewer pass; do not write Reviewer-* tokens"), this brief does NOT carry a `Reviewer-recommendation: APPROVE` token in the PR body. The operator runs a second independent reviewer pass post-commit to confirm the REVISE × 5 findings are discharged. The PR remains in draft / non-automerge state to preserve the operator's review window.
 
 <!-- Reference URLs indexed via ctx_fetch_and_index 2026-06-10:
      - airflow-ui::https://airflow.apache.org/docs/apache-airflow/stable/ui.html
