@@ -17,6 +17,9 @@ repo:
   name: regatta
   default_branch: main
 
+scheduler:
+  parallel_cap: 3  # containment per CLAUDE.md feedback_parallel_safety
+
 spec_adapter:
   type: github_issues
   selector: "label:autonomous"

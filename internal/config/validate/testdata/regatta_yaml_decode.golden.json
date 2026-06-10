@@ -11,5 +11,8 @@
     "acceptance_section": "## Acceptance criteria",
     "default_lane": "self-host"
   },
-  "safety": {}
+  "safety": {},
+  "scheduler": {
+    "parallel_cap": 3
+  }
 }
