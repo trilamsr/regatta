@@ -6,12 +6,10 @@
 # Closes #1133 (audit 2026-06-09): internal/web/ + internal/obs/ added.
 # Closes #1189 + #1190 (audit 2026-06-10): .claude/skills/* added because
 # skill files encode operator-authority surfaces (delegated-merge auth,
-# bottleneck-loop rules, three-lens reviewer template citations,
-# session-handoff schema). Before this fix, PR #1163 merged with a
-# REVISE token (round-5 APPROVE never bumped into body) and PR #1186
-# merged with NO reviewer tokens at all (subagent self-graded via A+
-# rubric inline) — both because [CHORE] release-notes auto-skipped the
-# gate when only .claude/skills/ paths changed.
+# bottleneck-loop rules, reviewer template citations, session-handoff
+# schema). Two prior skill PRs slipped through token-less because
+# [CHORE] release-notes auto-skipped the gate when only .claude/skills/
+# paths changed.
 
 rv_classify_paths() {
   LOAD_BEARING_BY_PATH=0
