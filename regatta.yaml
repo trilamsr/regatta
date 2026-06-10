@@ -18,10 +18,16 @@ repo:
   default_branch: main
 
 spec_adapter:
-  type: markdown_catalog
-  # Items live at <repo>/.regatta/items/. The runtime resolves a
-  # relative root against the --repo flag at serve-time.
-  root: .
+  # Self-host pin per docs/engineer/briefs/2026-06-01-self-host-first.md §3
+  # (flipped from markdown_catalog 2026-06-09). The regatta-operator skill's
+  # FEED phase (PR #1206) files wedges as GH issues labelled `autonomous`;
+  # the orchestrator pulls them outbound — no public ingress required.
+  # markdown_catalog remains schema-supported for archived briefs and
+  # Phase-X buyers but is no longer the self-host default.
+  type: github_issues
+  selector: "label:autonomous"
+  acceptance_section: "## Acceptance criteria"
+  default_lane: self-host
 
 ci:
   command: make check

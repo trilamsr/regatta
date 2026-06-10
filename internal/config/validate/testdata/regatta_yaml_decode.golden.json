@@ -6,8 +6,10 @@
     "default_branch": "main"
   },
   "spec_adapter": {
-    "type": "markdown_catalog",
-    "root": "."
+    "type": "github_issues",
+    "selector": "label:autonomous",
+    "acceptance_section": "## Acceptance criteria",
+    "default_lane": "self-host"
   },
   "safety": {}
 }
