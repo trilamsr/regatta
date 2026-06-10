@@ -26,6 +26,20 @@ Current direct path per 2026-06-08 operator reorder (operator feeds these to reg
 - **Operator must feed regatta** (file `autonomous`-issue, watch regatta open + merge a PR): feature work in regatta's roadmap (P0 console UI, P3 arbitrary-repo slices, P4 awareness integrations), bug fixes on regatta's product surfaces that regatta CAN self-discover via the self-improve detector.
 - When in doubt → feed regatta. Operator's job is to keep the queue useful, not to replace the worker.
 
+**Operator unblocking authority (when regatta cannot resolve OR is bottlenecked):**
+
+The operator has FULL authority to do whatever is necessary to unblock regatta — including taking over work regatta would normally own. Triggers: regatta's bottleneck-resolution loop hits ≥3 attempts without progress (per `regatta-operator` skill rule), an `autonomous`-issue sits open >24h without regatta dispatching, the spawner emits ≥5 same-fingerprint exits in 30s, or regatta's self-improve detector files the same root cause ≥2x without a fix landing. On any of these:
+
+1. **Operator opens the PR** in a worktree-isolated branch (`feat/skill-<slug>` / `fix/skill-<slug>` / `chore/skill-<slug>` per `feedback_keep_orchestrator_branch_name`).
+2. **Operator spawns adversarial reviewer subagent** with the three-lens prompt at `docs/engineer/dispatch-templates/reviewer.md §Three-lens prompt`. Real subagent ID lands in PR body per `feedback_no_self_tagged_approve`. APPROVE required before merge.
+3. **Operator merges the PR** via `gh pr merge <N> --squash --delete-branch` (NEVER `--admin`, NEVER `--auto`, NEVER force-push per `audit-session` skill hard nos).
+4. **Operator rebuilds + restarts the docker stack** per the TIGHT FEEDBACK LOOP block below. Confirm binary changed via image SHA; smoke-watch 30s for the prior failure signature.
+5. **Operator re-runs regatta** against the same input that hit the bottleneck. If the unblocking PR resolved it → file `[OPS]` learning entry per `feedback_meta_codify_repeat_directives`. If NOT resolved → escalate via `audit-session` Phase A2 (file `[AUTONOMY-LEVER]` issue against the orchestrator surface that should have caught this self).
+
+The unblocking authority does NOT extend to: bypassing branch protection, force-pushing to spawned-agent branches (loses heartbeat anchor per `feedback_keep_orchestrator_branch_name`), or skipping adversarial review per `feedback_adversarial_review_every_step`. Authority is scope-bounded to UNBLOCK; the operator does not become the new implementer for routine work just because they CAN.
+
+Pattern observed this session: 11 PRs merged across PRs #1163-#1188; at least 6 of those were operator-direct fixes (boot precondition, compose default, HOME env, platform-matrix doc, A+ mandatory, bounded poll) on orchestrator-side defects regatta could not have self-discovered. Each was followed by docker rebuild + restart + re-observe; each landed as one merged PR + one learning. This is the canonical pattern.
+
 BOOT
 1. cd /Users/treedesk/Desktop/Projects/regatta && git fetch && git pull --ff-only main
 2. make check && bash scripts/cleanup-merged-branches.sh
