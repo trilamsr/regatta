@@ -224,11 +224,13 @@ run_case_docs_spec_requires_token() {
 [DOCS] new spec
 ```
 EOF
+  # Per N1 (#1264): docs/engineer/specs/*.md no longer auto-flagged load-bearing.
+  # Operator may spawn reviewer voluntarily; auto-skip per feedback_review_proportional.
   printf 'docs/engineer/specs/2026-06-08-new.md\n' > "$diff_file"
-  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" 2>&1 | grep -qE "Reviewer-recommendation"; then
-    pass "[DOCS] spec change without token fails (load-bearing carve-out)"
+  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" >/dev/null 2>&1; then
+    pass "[DOCS] spec change auto-skips (N1 narrowed classifier)"
   else
-    fail "[DOCS] spec change without token should fail — specs are load-bearing"
+    fail "[DOCS] spec change should auto-skip per N1 (#1264)"
   fi
   rm -f "$body" "$diff_file"
 }
@@ -245,11 +247,12 @@ run_case_docs_brief_requires_token() {
 [DOCS] new brief
 ```
 EOF
+  # Per N1 (#1264): docs/engineer/briefs/*.md no longer auto-flagged load-bearing.
   printf 'docs/engineer/briefs/2026-06-08-thing.md\n' > "$diff_file"
-  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" 2>&1 | grep -qE "Reviewer-recommendation"; then
-    pass "[DOCS] brief change without token fails (load-bearing carve-out)"
+  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" >/dev/null 2>&1; then
+    pass "[DOCS] brief change auto-skips (N1 narrowed classifier)"
   else
-    fail "[DOCS] brief change without token should fail — briefs are load-bearing"
+    fail "[DOCS] brief change should auto-skip per N1 (#1264)"
   fi
   rm -f "$body" "$diff_file"
 }
@@ -263,11 +266,12 @@ run_case_docs_template_requires_token() {
 [DOCS] tweak dispatch template
 ```
 EOF
+  # Per N1 (#1264): docs/engineer/dispatch-templates/*.md no longer auto-flagged.
   printf 'docs/engineer/dispatch-templates/implementer.md\n' > "$diff_file"
-  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" 2>&1 | grep -qE "Reviewer-recommendation"; then
-    pass "[DOCS] dispatch-template change without token fails (load-bearing carve-out)"
+  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" >/dev/null 2>&1; then
+    pass "[DOCS] dispatch-template change auto-skips (N1 narrowed classifier)"
   else
-    fail "[DOCS] dispatch-template change without token should fail — templates are agent-rule surface"
+    fail "[DOCS] dispatch-template change should auto-skip per N1 (#1264)"
   fi
   rm -f "$body" "$diff_file"
 }
@@ -281,11 +285,12 @@ run_case_docs_claudemd_requires_token() {
 [DOCS] CLAUDE.md tweak
 ```
 EOF
+  # Per N1 (#1264): CLAUDE.md no longer auto-flagged. Operator may spawn reviewer voluntarily.
   printf 'CLAUDE.md\n' > "$diff_file"
-  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" 2>&1 | grep -qE "Reviewer-recommendation"; then
-    pass "[DOCS] CLAUDE.md change without token fails (load-bearing carve-out)"
+  if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" >/dev/null 2>&1; then
+    pass "[DOCS] CLAUDE.md change auto-skips (N1 narrowed classifier)"
   else
-    fail "[DOCS] CLAUDE.md change without token should fail — agent-rule surface"
+    fail "[DOCS] CLAUDE.md change should auto-skip per N1 (#1264)"
   fi
   rm -f "$body" "$diff_file"
 }
@@ -323,11 +328,13 @@ Reviewer-recommendation: APPROVE
 [DOCS] new spec
 ```
 EOF
-  printf 'docs/engineer/specs/2026-06-08-new.md\n' > "$diff_file"
+  # Post-N1: spec paths auto-skip, so token presence is moot. Use internal/web/
+  # to verify token-present path still passes on load-bearing prod surface.
+  printf 'internal/web/dashboard.go\n' > "$diff_file"
   if "$GATE" --body-file "$body" --load-bearing --changed-paths-file "$diff_file" >/dev/null 2>&1; then
-    pass "[DOCS] spec change WITH token passes"
+    pass "load-bearing internal/web/ change WITH token passes"
   else
-    fail "[DOCS] spec change WITH token should pass"
+    fail "load-bearing internal/web/ change WITH token should pass"
   fi
   rm -f "$body" "$diff_file"
 }
@@ -363,20 +370,21 @@ run_case_load_bearing_path_classifier() {
   # Retro audit 2026-06-08: 5 structural refactors self-tagged
   # APPROVE bypassing review because the workflow path classifier missed
   # agent-rule + CI-gate surfaces. When --changed-paths-file lists any of
-  # CLAUDE.md, Makefile, Makefile.d/*, .github/workflows/*, scripts/check-*.sh,
-  # docs/engineer/dispatch-templates/*, the script MUST treat the PR as
-  # load-bearing AND require the Reviewer-recommendation token even when the
-  # release-notes category is [DOCS]/[CHORE]/[CI]/[NONE]/[CHANGE].
+  # Makefile, Makefile.d/*, .github/workflows/*, scripts/check-*.sh,
+  # the script MUST treat the PR as load-bearing AND require the
+  # Reviewer-recommendation token even when the release-notes category is
+  # [DOCS]/[CHORE]/[CI]/[NONE]/[CHANGE].
   # Extended 2026-06-09: internal/web/ (operator dashboard UX) and
   # internal/obs/ (event vocabulary) are load-bearing — dashboard XSS,
   # broken polling, and event-name drift silently break monitoring.
+  # Narrowed 2026-06-10 (N1 #1264): CLAUDE.md, dispatch-templates,
+  # specs, briefs REMOVED from auto-flag — solo doc PRs auto-skip
+  # per feedback_review_proportional.
   local paths
   for path in \
-    "CLAUDE.md" \
     "Makefile" \
     "Makefile.d/check.mk" \
     ".github/workflows/pr-lint.yml" \
-    "docs/engineer/dispatch-templates/implementer.md" \
     "scripts/check-scorecard.sh" \
     "internal/web/dashboard.go" \
     "internal/web/static/dashboard.css" \
@@ -405,23 +413,24 @@ EOF
     rm -f "$body" "$paths_file"
   done
 
-  # APPROVE on a load-bearing-by-path PR still passes.
+  # APPROVE on a load-bearing-by-path PR still passes. Post-N1 use Makefile
+  # as the load-bearing trigger (CLAUDE.md no longer auto-flagged).
   local body paths_file
   body=$(mktemp)
   paths_file=$(mktemp)
   write_body "$body" <<'EOF'
 ## Summary
 
-Touches CLAUDE.md.
+Touches Makefile.
 
 Reviewer-agent-id: cavecrew-reviewer-abc123
 Reviewer-recommendation: APPROVE
 
 ```release-notes
-[DOCS] update CLAUDE.md
+[CHORE] update Makefile
 ```
 EOF
-  printf '%s\n' "CLAUDE.md" > "$paths_file"
+  printf '%s\n' "Makefile" > "$paths_file"
   if "$GATE" --body-file "$body" --changed-paths-file "$paths_file" >/dev/null 2>&1; then
     pass "load-bearing-by-path + APPROVE exits 0"
   else
@@ -439,7 +448,7 @@ Reviewer-recommendation: APPROVE
 [FEAT] x
 ```
 EOF
-  printf '%s\n' "CLAUDE.md" > "$paths_file"
+  printf '%s\n' "Makefile" > "$paths_file"
   if "$GATE" --body-file "$body" --changed-paths-file "$paths_file" >/dev/null 2>&1; then
     fail "self-tag 'main-thread-adversarial-self' must be rejected on load-bearing PR"
   else
