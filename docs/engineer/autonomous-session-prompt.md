@@ -21,8 +21,17 @@ PRIORITY (top-down — 2026-06-08 reorder; current direct path: ship operator co
 P0 — Operator console v5.1 UI build [IN-FLIGHT]
   UI roadmap v2 + S0 substrate prereqs + SvelteKit scaffold. SvelteKit promoted from MVR-1 to immediate priority per 2026-06-08 operator decision (prior SvelteKit prohibition explicitly flipped). Rationale: operator-facing surface is the dominant UX gap once autonomous loop is structurally closed; full-speed build authorized. References: spec #701 (docs/engineer/specs/2026-06-02-operator-console-design.md) · S0 substrate-prereqs plan (docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md).
 
+P0.5 — Autonomy levers from skill session 5 [LANDED / DOCUMENTED]
+  - Boot precondition probe — landed via #1183 (preflightSpawnerAuth + IsFalsyEnv exported).
+  - Bounded CI poll — landed via #1186 (skill pattern + dispatch-template).
+  - Three-lens reviewer (defects + simplification + refactor) — MANDATORY per #1185 CLAUDE.md + #1184 dispatch-templates/reviewer.md.
+  - A+ rubric MANDATORY per #1185.
+  - Operator-delegated merge clause — landed via #1171.
+  - macOS keychain gap documented + structurally impossible without host bridge — see #1181 + #1182.
+
 P1 — Cascade-rebase structural fixes [MIXED — some shipped, some spec'd this session]
   Enables parallel velocity for every other slot. Shipped this session: Makefile glob (#960), pr-lint split (#959). Specs landed: CUE schema split (#970), serve.go split (#975), migration-number lock (#971). Rationale: cascade-rebase root cause tripped ≥6x in 2026-06-04/08 sessions per `feedback_cascade_rebase_root_cause`; structural splits unblock downstream PR throughput.
+  Scheduler parallel-cap enforcement (#1184 spec; closes #1169) — implementer brief next; gates downstream throughput. [NEXT-IMPL]
 
 P2 — DEPLOY install + GREEN-CLOCK start [READY — OPERATOR ACTION PENDING]
   Operator-side gate; nothing downstream proceeds until install fires. See PHASE DEPLOY below for invocation options. Day-0 of 30-day-green starts only after install.
@@ -46,6 +55,8 @@ Reorder 2026-06-08 — evidence
 - Roadmap discovery + arbitrary-repo umbrella specs landed (#963 #964) → P3 generalization slot promoted with concrete slice issues.
 
 History markers — DO NOT redo (per feedback_boot_prompt_per_wave_refresh; pruned >2 waves old)
+
+Skill session 5 2026-06-09→2026-06-10: 11 PRs (#1163-#1187 sweep, see git log), 6 retro rubrics on #1163/1170/1171/1176/1180/1182, 1 brand-new skill `audit-session` per operator ask.
 
 PHASE S — Self-host dogfood-ready core [COMPLETE 2026-06-02]
   S1+S2+S3 shipped. Acceptance: regatta dispatches itself on this repo end-to-end. Smoke test PASSED LIVE. (Detail in git history — pruned per feedback_boot_prompt_per_wave_refresh.)
@@ -124,6 +135,8 @@ OPEN FOLLOWUPS (sweep when between phase items, ≤5 trivial PRs/session cap)
 - #858 [TEST-UMBRELLA] E2E + integration test harnesses post-#846 loop closure
 - #860 docs: fix scorecard evidence in PR #843 — alpine→busybox
 - #861 docs: clarify init-container pattern is Linux-specific (not os-agnostic)
+- #1177 [PARTIAL] mount perm gap on macOS keychain — closed by structural-impossibility doc #1181/1182, leave open for next-layer fix
+- #1175 [PHASE-X] check-aplus-rubric.sh CI gate — defer until rubric bypassed ≥2x
 <!-- END auto-priority -->
 
 - RISK followups — strategic-design closeout: #423 #424 #426 #427 all CLOSED 2026-06-03; no open RISK trackers remain in this slice.
