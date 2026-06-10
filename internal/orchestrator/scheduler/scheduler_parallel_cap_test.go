@@ -45,8 +45,9 @@ func TestScheduler_TickHonorsParallelCap_WhenSpawnableLargerThanCap(t *testing.T
 		}
 	}
 	if !gotCapLog {
-		msgs := []string{}
-		for _, r := range h.Records() {
+		records := h.Records()
+		msgs := make([]string, 0, len(records))
+		for _, r := range records {
 			msgs = append(msgs, r.Message)
 		}
 		t.Fatalf("expected scheduler.parallel_cap_* log, got %v", msgs)
