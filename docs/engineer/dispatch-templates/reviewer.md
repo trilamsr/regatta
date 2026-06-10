@@ -91,7 +91,8 @@ Defect-only reviews are forbidden as default — they reliably miss prose redund
 
 ```
 Adversarial review of <diff>. Five lenses (in this order):
-(1) DEFECTS — bugs, races, edge cases, security. Standard hunt.
+(1) DEFECTS — bugs, races, edge cases, security, cross-package symbol
+    leaks (private-via-export). Standard hunt.
 (2) SIMPLIFICATION — same rule in ≥2 places, prose ↔ code dup,
     defensive narration ("note that" / "important" / "to be clear"),
     forward/back refs that signal wrong structure. Suggest canonical
@@ -102,12 +103,12 @@ Adversarial review of <diff>. Five lenses (in this order):
     drop WHAT-narration (name+signature already says it), keep WHY only,
     delete restate-the-code prose, collapse multi-line test/fuzz/benchmark
     godocs to one line per feedback_test_godoc_one_line, kill comments
-    that would not confuse a future reader if removed. New prod .go
-    files must stay <5% comment density per check-comment-density;
+    that would not confuse a future reader if removed. New prod .go files must stay <5% comment density; pre-existing files
+    must stay <10% drift ceiling per check-comment-density;
     operator-escape via PR-body justified tag only.
 (5) ORGANIZATION — files in the right package / dir; functions in the
     right file (the one whose name says "this is where you find X"); no
-    god-files (>500 LOC = split candidate); no leaked private symbols
+    god-files (≥400 LOC = split candidate per #737); no leaked private symbols
     used cross-package; tests co-located with prod code; specs under
     docs/engineer/specs/, briefs under docs/engineer/briefs/, skills
     under .claude/skills/. Suggest move-target + LOC moved.
@@ -120,7 +121,7 @@ Defects MUST be addressed pre-merge; simplification + refactor + comments
 follow-up PR if scope is large.
 ```
 
-Skip lens (3) and (5) only when the diff is exclusively code-change with no structural-move opportunity (no markdown / docstring / spec / prompt template content; single existing file edited). Lenses (1) + (2) + (4) remain mandatory on every diff.
+Skip lens (3) and (5) only when the diff is exclusively code-change with no structural-move opportunity. Lenses (1) + (2) + (4) remain mandatory on every diff.
 
 ## A+ rubric scorecard template
 

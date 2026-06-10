@@ -76,7 +76,7 @@ P0 — Operator console v5.1 UI build [IN-FLIGHT]
 P0.5 — Autonomy levers from skill session 5 [LANDED / DOCUMENTED]
   - Boot precondition probe — landed via #1183 (preflightSpawnerAuth + IsFalsyEnv exported).
   - Bounded CI poll — landed via #1186 (skill pattern + dispatch-template).
-  - Three-lens reviewer (defects + simplification + refactor + comments + organization) — MANDATORY per #1185 CLAUDE.md + #1184 dispatch-templates/reviewer.md.
+  - Five-lens reviewer (defects + simplification + refactor + comments + organization) — MANDATORY per #1185 CLAUDE.md + #1184 dispatch-templates/reviewer.md.
   - A+ rubric MANDATORY per #1185.
   - Operator-delegated merge clause — landed via #1171.
   - macOS keychain gap documented + structurally impossible without host bridge — see #1181 + #1182.
