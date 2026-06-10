@@ -135,18 +135,27 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			}
 		case <-tickT.C:
 			o.touchHealthHeartbeat()
-			if err := o.ScheduleOnce(ctx); err != nil {
+			// Defense-in-depth: cap the synchronous tick body at one
+			// TickInterval so a future timeout-less shell-out (#1227
+			// root cause: prwatch's gh) cannot wedge the loop. The
+			// inner methods already accept ctx; passing tickCtx
+			// propagates the deadline through every callee. Per-tick
+			// cancel runs the moment the body returns so a slow tick
+			// does not leak a context past the next case-fire.
+			tickCtx, tickCancel := context.WithTimeout(ctx, o.cfg.TickInterval)
+			if err := o.ScheduleOnce(tickCtx); err != nil {
 				o.log.Warn("orchestrator.schedule_failed", string(obs.KeyErr), err.Error())
 			}
-			if err := o.RouteRejections(ctx); err != nil {
+			if err := o.RouteRejections(tickCtx); err != nil {
 				o.log.Warn("orchestrator.rejection_route_failed", string(obs.KeyErr), err.Error())
 			}
-			if err := o.ReapTerminal(ctx); err != nil {
+			if err := o.ReapTerminal(tickCtx); err != nil {
 				o.log.Warn("orchestrator.reap_failed", string(obs.KeyErr), err.Error())
 			}
-			if err := o.WatchPRs(ctx); err != nil {
+			if err := o.WatchPRs(tickCtx); err != nil {
 				o.log.Warn("orchestrator.prwatch_failed", string(obs.KeyErr), err.Error())
 			}
+			tickCancel()
 		case <-heartT.C:
 			o.touchHealthHeartbeat()
 			if err := o.Heartbeat(ctx); err != nil {
