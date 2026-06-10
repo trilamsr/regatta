@@ -81,7 +81,17 @@ Each rung is independently shippable; ordering reflects cost-of-implementation �
 - After N=3 consecutive empty polls (no new work items for adaptersync; no head-SHA / state change for prwatch), double the effective interval up to a ceiling of `8 × configured`.
 - On any non-empty result, immediately reset to `configured` (the active-window snap-back, NOT a gradual decay — operator-felt latency wins under `feedback_decision_priority` UX > performance).
 
+**Design strategy — adaptive backoff state-machine.** Per-resource counter `consecutiveEmptyPolls int` initialized 0; current backoff multiplier `mult int` initialized 1. On each poll completion:
+
+- Empty result: `consecutiveEmptyPolls++`. When `consecutiveEmptyPolls >= 3`, double `mult` (1 → 2 → 4 → 8) up to the ceiling of 8×, then reset `consecutiveEmptyPolls = 0` so the next doubling window starts fresh. Emit `ghclient.poll.backoff resource=<key> mult=<n>` at the moment of doubling.
+- Non-empty result: snap `mult = 1` AND `consecutiveEmptyPolls = 0` in one transition. Emit `ghclient.poll.snap_back resource=<key>` once per snap-back (not on every floor-cadence poll).
+- Gate read: `EffectivePollInterval = configured × mult`. The doubling window is bounded — at ceiling, `mult` saturates at 8 and stops growing regardless of further empty polls.
+
+**Implementation surface.** Extend `internal/orchestrator/adaptersync/` `MinPollInterval` gate at line ~131: introduce a per-`Syncer` struct field `backoff backoffState` (3 ints: `mult`, `consecutiveEmpty`, plus a `ceiling` set from `configured × 8` at construction). The gate at line 131 reads `s.backoff.effective(configured)` in place of bare `configured`. Mirror the same `backoffState` struct in `internal/orchestrator/prwatch/` `Watcher` — per-resource, NOT a shared package-global. New events declared in `internal/obs/events.go`: `EventGhclientPollBackoff = "ghclient.poll.backoff"` and `EventGhclientPollSnapBack = "ghclient.poll.snap_back"` (registry append + event-kind table row per `CLAUDE.md` event-vocabulary rules).
+
 **Scope is per-resource, not global.** A quiet adapter must not slow down a busy prwatch sweep. Counter lives in the `Syncer` / `Watcher` struct, not a process-global.
+
+**Event vocabulary.** Two additions: `ghclient.poll.backoff` (multiplier doubled), `ghclient.poll.snap_back` (multiplier reset to 1 on first non-empty result). Wired via `internal/obs/` per `CLAUDE.md` event-vocabulary rules — same load-bearing-surface reviewer-dispatch requirement as Rung 1.
 
 **Acceptance.** §4.2.
 

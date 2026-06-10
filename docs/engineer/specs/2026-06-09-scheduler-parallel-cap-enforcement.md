@@ -45,7 +45,6 @@ Per `feedback_recognize_session_end`: this spec is bounded — it does NOT chase
 
 - New transports (gRPC, NATS, Kafka).
 - Temporal / blackboard / external workflow engine adoption.
-- Per-tenant cap matrices, RBAC, billing-tier caps. Self-host phase: single operator, single repo, single cap.
 - Adaptive autotuner (#1166 fix proposal 1) is **scoped to Stage 3 as deferred**; not in v1.
 - Cross-lane fairness / weighted-round-robin. Stage 1 enforces aggregate ceiling only; existing per-lane caps still bind first.
 - UI surfacing of the cap. Operator reads the value out of `regatta.yaml` or scheduler logs.
@@ -160,7 +159,7 @@ Deferred. Reopen trigger documented in §3.3.
 Explicit Phase-X items NOT addressed:
 
 - **Temporal / Cadence / external workflow engine.** Self-host phase: single sqlite substrate, single binary. Re-evaluate per `feedback_decision_priority` long-term > short-term only after multi-tenant becomes a real ask.
-- **Multi-tenant cap matrices** (`tenant_id` → `ParallelCap`). Single-operator phase; one global cap.
+- **Single operator, single cap — multi-tenant cap matrices** (`tenant_id` → `ParallelCap`) are Phase-X; reopen trigger: external customer ask OR multi-tenant phase fires.
 - **RBAC over the cap knob.** Operator-only YAML key.
 - **Stripe / billing-tier caps.** No billing surface in self-host.
 - **Sigstore / Rekor attestations on dispatched agents.** Out of scope; tracked separately under `2026-06-01-w10-sigstore-design.md`.
