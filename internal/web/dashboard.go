@@ -290,7 +290,12 @@ func loadWorkItemsView(ctx context.Context, deps Dependencies) any {
 				ID: w.ID, Title: truncate(workItemTitleMaxBytes, workItemDisplayTitle(w)), Lane: w.Lane, UpdatedAt: w.UpdatedAt,
 			})
 		}
-		buckets[i] = dashboardBucket{Label: labels[i], Count: sum.Count, Top: top}
+		count := sum.Count
+		// #1217: Running bucket tracks live agents — work_items.status lags spawning, so the panel reported 0 while 3 agents were alive.
+		if s == state.WorkStatusRunning {
+			count = scanInt(ctx, deps.DB.SQL(), `SELECT COUNT(*) FROM agents WHERE state = ?`, string(state.AgentRunning))
+		}
+		buckets[i] = dashboardBucket{Label: labels[i], Count: count, Top: top}
 	}
 	view := dashboardWorkItemsView{Buckets: buckets}
 	total := 0
