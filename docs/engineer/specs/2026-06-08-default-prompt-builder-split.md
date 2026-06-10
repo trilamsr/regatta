@@ -8,7 +8,7 @@ summary: "defaultPromptBuilder is THE most-touched cascade source per 2026-06-04
 
 Date: 2026-06-08
 Trigger source: `feedback_cascade_rebase_root_cause` — session retro 2026-06-04 names `defaultPromptBuilder` as THE most-touched cascade source (#834, #851, #856, #966, #1000). Every prompt-rule tweak collides on the same `strings.Builder` body.
-Prior art: `cmd/regatta/serve.go` per-subsystem split (#737, #744, `docs/engineer/specs/phase-x/2026-06-08-serve-go-subsystem-split.md`) — same pattern, different composition root.
+Prior art: `cmd/regatta/serve.go` per-subsystem split (#737, #744, `docs/engineer/specs/2026-06-08-serve-go-subsystem-split.md`) — same pattern, different composition root.
 Memory rules in force: `feedback_default_simpler`, `feedback_deletion_default`, `feedback_root_cause`, `feedback_cascade_rebase_root_cause`, `feedback_adversarial_review`, `feedback_audit_main_before_implementing`, `feedback_spec_pattern_authority`, `feedback_no_signatures`.
 
 ```release-notes
@@ -306,5 +306,5 @@ Pure-addition cost: 6 new files in `internal/orchestrator/prompt/sections/`. Per
 - `internal/orchestrator/prompt/enrich.go` — L2 adaptive enrichment (unchanged).
 - `docs/engineer/dispatch-templates/implementer.md` §Anchored rules (worker-prompt parity) — touched by slice 3.
 - `scripts/check-prompt-parity.sh` — parity gate (slice 3 verifies, may need grep-path update).
-- `docs/engineer/specs/phase-x/2026-06-08-serve-go-subsystem-split.md` — sibling pattern (composition-root split).
+- `docs/engineer/specs/2026-06-08-serve-go-subsystem-split.md` — sibling pattern (composition-root split).
 - #834, #851, #856, #966, #1000 — the five recent PRs whose collisions motivate this split.

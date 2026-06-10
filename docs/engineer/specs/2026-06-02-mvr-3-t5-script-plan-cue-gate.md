@@ -322,8 +322,8 @@ State: **clean**. All comments in the new package are WHY-form one-liners per `f
 
 Per `feedback_dispatch_discipline`, the dep chain:
 
-1. **W5 cost-cap** (`docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w5-cost-cap-autonomic-enforcement.md`) - in flight; provides L6 counter. **Must merge first.**
-2. **S2-T2 adversarial-L4-gate** (`docs/engineer/specs/phase-x/2026-06-02-s2-t2-adversarial-l4-gate.md`) - provides L4 client + prompt-loader pattern. **Must merge first.**
+1. **W5 cost-cap** (`docs/engineer/specs/2026-06-02-phase-autonomy-w5-cost-cap-autonomic-enforcement.md`) - in flight; provides L6 counter. **Must merge first.**
+2. **S2-T2 adversarial-L4-gate** (`docs/engineer/specs/2026-06-02-s2-t2-adversarial-l4-gate.md`) - provides L4 client + prompt-loader pattern. **Must merge first.**
 3. **MVR-2-T6 substrate bridge** (`.regatta/items/mvr-2-t6-dw-superset-substrate-bridge.md`) - provides the `workflow.*` event topic and emit ACL. **Must merge first.**
 4. **MVR-3-T5 (this spec)** - implements validator.
 5. **MVR-3-T6 LLM JS runtime** - calls validator before goja accepts a plan.

@@ -490,7 +490,7 @@ Per `feedback_adversarial_review`, the spec author pre-addresses the most likely
 - Predecessor PR (merged): #558.
 - Generalize-later (the outbox primitive this spec rides on): #551, #273, #219.
 - Sibling specs: `docs/engineer/specs/2026-06-02-orchestrator-pr-watcher.md` (the watcher that drives `running → pr_open`; this spec consumes its downstream `gates_running → awaiting_merge` edge).
-- OTel backbone the trace span rides on: `docs/engineer/specs/phase-x/2026-05-31-mvp-3-w6-otel-backbone.md`.
+- OTel backbone the trace span rides on: `docs/engineer/specs/2026-05-31-mvp-3-w6-otel-backbone.md`.
 
 ---
 

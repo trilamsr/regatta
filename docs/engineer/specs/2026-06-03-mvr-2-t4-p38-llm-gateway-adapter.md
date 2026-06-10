@@ -6,7 +6,7 @@ summary: "Pre-fetch skeleton for MVR-2 T4. Replaces direct Anthropic shell-out (
 
 # MVR-2 T4 — P3.8 LLM-gateway adapter — skeleton spec
 
-_Pre-fetch skeleton, 2026-06-03. Material elaboration deferred to MVR-2 dispatch. Source-of-truth: `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §4 MVR-2-T4. Prior adapter pattern: `docs/engineer/specs/2026-06-01-adapter-contracts-design.md` §6 (sql.Register-style). Companion: MVR-1-T5 SCM adapter (`docs/engineer/specs/phase-x/2026-06-02-mvr-1-t3-p38-scm-adapter-gitea-first.md`) — same contract shape, different domain._
+_Pre-fetch skeleton, 2026-06-03. Material elaboration deferred to MVR-2 dispatch. Source-of-truth: `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §4 MVR-2-T4. Prior adapter pattern: `docs/engineer/specs/2026-06-01-adapter-contracts-design.md` §6 (sql.Register-style). Companion: MVR-1-T5 SCM adapter (`docs/engineer/specs/2026-06-02-mvr-1-t3-p38-scm-adapter-gitea-first.md`) — same contract shape, different domain._
 
 ## 1. Scope
 

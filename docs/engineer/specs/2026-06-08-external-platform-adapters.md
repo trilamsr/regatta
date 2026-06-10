@@ -12,7 +12,7 @@ Source: operator question — "ingest design/spec/roadmap from non-GitHub platfo
 Companion specs:
 
 - `docs/engineer/specs/2026-06-01-adapter-contracts-design.md` — P3.8 adapter-contract pattern (`sql.Register`-style); the registration mechanism this spec composes onto.
-- `docs/engineer/specs/phase-x/2026-06-02-mvr-1-t3-p38-scm-adapter-gitea-first.md` — sibling pattern (SCM seam) for second-source adapter.
+- `docs/engineer/specs/2026-06-02-mvr-1-t3-p38-scm-adapter-gitea-first.md` — sibling pattern (SCM seam) for second-source adapter.
 - `docs/engineer/specs/2026-06-04-mvr-1-t4-github-issues-adapter-impl.md` — reference `SpecAdapter` impl (status filter, label routing, ETag mutation guard).
 - `docs/engineer/specs/2026-06-07-scheduler-adaptersync-unification.md` — scheduler that already polls a single adapter; multi-adapter fan-in lands here.
 - `contracts/schemas/spec_adapter.go` — interface authority (List / Get / UpdateStatus / Capabilities + sentinel errors).

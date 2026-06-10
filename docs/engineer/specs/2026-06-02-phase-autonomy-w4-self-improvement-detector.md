@@ -460,7 +460,7 @@ Per `feedback_research_design_principles` — adopt-first, cite version + licens
 - `grafana/oncall` v1.5.x (AGPL-3) — **referenced** for event-aggregation pattern.
 - `nodejs/diagnostics` Bayesian alerts — **referenced** for rolling-window anomaly-detection pattern.
 - `docs/engineer/briefs/2026-06-02-phase-autonomy-amendment.md` §11 W4 — source brief.
-- `docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md` — substrate events schema (read-only consumer).
+- `docs/engineer/specs/2026-06-01-unified-substrate-design.md` — substrate events schema (read-only consumer).
 - `.regatta/items/phase-autonomy-w1-alarm-webhook.md` — GH-client adapter source (W1).
 - `.regatta/items/phase-autonomy-w5-cost-cap-autonomic.md` — pause-flag soft dependency (W5).
 - `memory/feedback_decision_priority.md` — UX > ease > performance > best-practices priority.
