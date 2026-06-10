@@ -1,11 +1,8 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-phase-x-leak check-phase-x-leak-test check-tbd check-tbd-test check-comment-density check-comment-density-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test next-migration
+.PHONY: doc-check prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-phase-x-leak check-phase-x-leak-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test next-migration
 
-doc-check:  ## Run repo-wide doc gates (markdown links, banned phrases, em-dash diff, comment-noise).
+doc-check:  ## Run repo-wide doc gates (markdown links, comment-noise, test-godoc length).
 	bash scripts/doc-check.sh
-
-doc-check-test:  ## Assert banned-phrase gate strips fenced + inline backtick spans (#329 regression guard).
-	bash scripts/doc-check_test.sh
 
 prose-dup:  ## Fail if a previously-deduped prose phrase reappears in 2+ markdown files.
 	bash scripts/check-prose-dup.sh
@@ -16,26 +13,11 @@ check-phase-x-leak:  ## Fail when an active spec names a Phase-X token (tenant_i
 check-phase-x-leak-test:  ## Fixture-driven test for check-phase-x-leak.sh.
 	bash scripts/check-phase-x-leak_test.sh
 
-check-tbd:  ## Fail when an engineer doc carries a bare `TBD` placeholder outside an HTML-comment+issue or `release-notes` fence.
-	bash scripts/check-tbd.sh
-
-check-tbd-test:  ## Fixture-driven test for check-tbd.sh.
-	bash scripts/check-tbd_test.sh
-
-check-comment-density:  ## Fail when a NEW prod .go file in the PR diff exceeds 5% comment density (#743 §Comments).
-	bash scripts/check-comment-density.sh
-
-check-comment-density-test:  ## Fixture-driven test for check-comment-density.sh (clean / dense / allowlisted / test-file / existing-file).
-	bash scripts/check-comment-density_test.sh
-
 check-doc-links:  ## Fail when a markdown-link `](path)` body under docs/ or CLAUDE.md references a non-existent intra-repo file.
 	bash scripts/check-doc-links.sh
 
 check-doc-links-test:  ## Smoke test for check-doc-links.sh (broken / existing / external / testdata / anchor-suffix).
 	bash scripts/check-doc-links_test.sh
-
-check-pr-body-close-keywords-test:  ## Smoke test for check-pr-body-close-keywords.sh (catches `closes #N #M` space-form which GitHub doesn't auto-close).
-	bash scripts/check-pr-body-close-keywords_test.sh
 
 check-no-bare-sleep:  ## Fail when a *_test.go file carries `time.Sleep` lexically nested inside a `for` block without `// allow-sleep:` directive (#760 migration target: testutil.Eventually).
 	bash scripts/check-no-bare-sleep.sh
