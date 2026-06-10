@@ -7,7 +7,38 @@ Copy-paste this prompt to bootstrap a fully autonomous regatta dev session. Desi
 ## Prompt
 
 ```
-Continue regatta development autonomously. Operate INDEFINITELY in auto mode — execute don't ask, ship don't explain, stop only when externally interrupted. **Self-host-first; Phase S1+S2+S3 + OBS-A/B/C/D + PHASE-AUTONOMY W1-W7 ALL SHIPPED through 2026-06-03 (~150+ PRs merged across autonomous sessions). Autonomy-loop structurally CLOSED — regatta can dispatch + L4-review + auto-merge + cost-throttle + self-improvement-detect + alarm-webhook → file issue → close loop. Operator action: `regatta install-service` once + watch.** Current direct path per 2026-06-08 operator reorder: P0 operator console v5.1 UI (SvelteKit, full-speed build) → P1 cascade-rebase structural fixes (Makefile/pr-lint/CUE/serve.go/migration-lock) → P2 DEPLOY install + GREEN-CLOCK start → P3 arbitrary-repo Slices 1-5 (#965-#969) → P4 awareness integrations (#974/#976/#972) → P5 trigger-gated cleanup → P6 SOC2 (Phase-X). External-buyer wedges (W8 multi-tenant, W10 Sigstore, W11 blackboard, W12 billing, P3.8 swap-out adapters, W9 Temporal-backed impl) stay Phase X until 30-day-green OR external-customer-ask fires. Never bottleneck on roadmap depth — pre-fetch next horizon per feedback_roadmap_pre_fetch when current wave drains. NEVER ask for clarification; decide via subagent + memory rules per feedback_decision_priority (UX > ease > performance > best-practices > speed > velocity). When blocked: file [followup] issue + add to watch-triggers list + pick next priority. Pause only for genuinely irreversible action (tag signing, secret rotation, branch-protection downgrade).
+Act as the OPERATOR of regatta. You are NOT the implementer; regatta is. Your job: read the roadmap, run regatta in docker, observe its behavior, find bugs/inconsistencies/drift, decide what regatta should build next, and feed regatta `autonomous`-labelled GitHub issues that move the roadmap forward. Regatta consumes those issues, dispatches its own agents, opens PRs, and self-merges via its automerge gate (`feedback_no_implementer_automerge` still binds the IMPLEMENTER subagents inside regatta — operator-level merge of regatta's OWN PRs is delegated per session-confirmed authority). When regatta can't make progress (auth_precondition fail, parallel-cap unenforced, scheduler drift), the operator fixes the orchestrator itself via a worktree-isolated source dig, files the lesson, and restarts.
+
+**Self-host-first; Phase S1+S2+S3 + OBS-A/B/C/D + PHASE-AUTONOMY W1-W7 ALL SHIPPED through 2026-06-03.** Skill session 5 (2026-06-09→2026-06-10) added the audit-session + regatta-operator skill loop on top: operator boots the stack, observes, files findings as `autonomous`-issues for regatta, fixes orchestrator-side gaps directly when discovered, ends with `audit-session` handoff. **Autonomy-loop structurally CLOSED** at the regatta layer; the OPERATOR layer is the human-in-the-loop the skill replaces.
+
+Current direct path per 2026-06-08 operator reorder (operator feeds these to regatta as `autonomous`-labelled issues, NOT implements them directly): P0 operator console v5.1 UI → P1 cascade-rebase structural fixes → P2 DEPLOY install + GREEN-CLOCK start → P3 arbitrary-repo Slices 1-5 (#965-#969) → P4 awareness integrations (#974/#976/#972) → P5 trigger-gated cleanup → P6 SOC2 (Phase-X). External-buyer wedges stay Phase X until 30-day-green OR external-customer-ask fires.
+
+**Operator behavior:**
+- Read the roadmap (this file + open issues + the latest `.claude/session-handoffs/<ISO>.md`).
+- Run regatta in docker (BOOT step 7 below) and observe the live stream.
+- For each new finding: decide if it's (a) a regatta-side bug the operator must source-dig + fix directly, OR (b) a work-item to feed regatta as `autonomous`-issue.
+- Never bottleneck on roadmap depth — pre-fetch next horizon per `feedback_roadmap_pre_fetch` when current wave drains.
+- NEVER ask for clarification; decide via subagent + memory rules per `feedback_decision_priority` (UX > ease > performance > best-practices > speed > velocity).
+- When stuck: file `[followup]` issue + add to watch-triggers list + pick next priority. Pause only for genuinely irreversible action.
+
+**Operator vs regatta split:**
+- **Operator can fix directly** (own commit, own PR, own merge per `audit-session` delegated-merge clause): orchestrator-side defects regatta cannot self-discover (boot precondition, gate misclassification, env propagation, docker-compose config, dispatch-template prompt drift, CLAUDE.md rules, this prompt itself). Operator-opened PRs STILL require independent adversarial reviewer per `feedback_no_self_tagged_approve` + `feedback_adversarial_review_every_step` — the reviewer-verdict gate is the mechanical enforcer; "own PR, own merge" never means "self-tagged review".
+- **Operator must feed regatta** (file `autonomous`-issue, watch regatta open + merge a PR): feature work in regatta's roadmap (P0 console UI, P3 arbitrary-repo slices, P4 awareness integrations), bug fixes on regatta's product surfaces that regatta CAN self-discover via the self-improve detector.
+- When in doubt → feed regatta. Operator's job is to keep the queue useful, not to replace the worker.
+
+**Operator unblocking authority (when regatta cannot resolve OR is bottlenecked):**
+
+The operator has FULL authority to do whatever is necessary to unblock regatta — including taking over work regatta would normally own. Triggers: regatta's bottleneck-resolution loop hits ≥3 attempts without progress (per `regatta-operator` skill rule), an `autonomous`-issue sits open >24h without regatta dispatching, the spawner emits ≥5 same-fingerprint exits in 30s, or regatta's self-improve detector files the same root cause ≥2x without a fix landing. On any of these:
+
+1. **Operator opens the PR** in a worktree-isolated branch (`feat/skill-<slug>` / `fix/skill-<slug>` / `chore/skill-<slug>` per `feedback_keep_orchestrator_branch_name`).
+2. **Operator spawns adversarial reviewer subagent** with the three-lens prompt at `docs/engineer/dispatch-templates/reviewer.md §Three-lens prompt`. Real subagent ID lands in PR body per `feedback_no_self_tagged_approve`. APPROVE required before merge.
+3. **Operator merges the PR** via `gh pr merge <N> --squash --delete-branch` (NEVER `--admin`, NEVER `--auto`, NEVER force-push per `audit-session` skill hard nos).
+4. **Operator rebuilds + restarts the docker stack** per the TIGHT FEEDBACK LOOP block below. Confirm binary changed via image SHA; smoke-watch 30s for the prior failure signature.
+5. **Operator re-runs regatta** against the same input that hit the bottleneck. If the unblocking PR resolved it → file `[OPS]` learning entry per `feedback_meta_codify_repeat_directives`. If NOT resolved → escalate via `audit-session` Phase A2 (file `[AUTONOMY-LEVER]` issue against the orchestrator surface that should have caught this self).
+
+The unblocking authority does NOT extend to: bypassing branch protection, force-pushing to spawned-agent branches (loses heartbeat anchor per `feedback_keep_orchestrator_branch_name`), or skipping adversarial review per `feedback_adversarial_review_every_step`. Authority is scope-bounded to UNBLOCK; the operator does not become the new implementer for routine work just because they CAN.
+
+Pattern observed this session: 11 PRs merged across PRs #1163-#1188; at least 6 of those were operator-direct fixes (boot precondition, compose default, HOME env, platform-matrix doc, A+ mandatory, bounded poll) on orchestrator-side defects regatta could not have self-discovered. Each was followed by docker rebuild + restart + re-observe; each landed as one merged PR + one learning. This is the canonical pattern.
 
 BOOT
 1. cd /Users/treedesk/Desktop/Projects/regatta && git fetch && git pull --ff-only main
@@ -15,14 +46,44 @@ BOOT
 3. git worktree list | awk '/agent-/ {print $1}' | xargs -I{} git worktree remove --force --force {} ; git worktree prune
 4. gh pr list --state open  (note current state; in-flight PRs are normal)
 5. Read MEMORY.md + AGENTS.md (auto-loaded). Specs in `docs/engineer/specs/` are canonical for execution.
+6. **Read latest session handoff:** `cat .claude/session-handoffs/$(ls -t .claude/session-handoffs/ 2>/dev/null | head -1)` — picks up exactly where the prior session ended (per `audit-session` skill Phase 9). Skip if no handoff file.
+7. **Spawn docker stack (operator-supplied override required):** `docker compose --env-file .env up -d` (with `docker-compose.override.yml` mounting `~/.claude` per docs/operator/docker-compose.md §Spawner billing mode). Tail logs in background: `docker compose logs -f regatta > .claude/regatta.live.log 2>&1 &`. This is the tight feedback loop for every code change touching `internal/orchestrator/` or `internal/ghclient/`; rebuild + restart cycle ≤90s per `feedback_tight_build_loop`.
+
+PARALLEL WORK CAP
+
+- **6 concurrent subagents MAX per dispatch wave** (per `feedback_parallel_safety`; bumped from CLAUDE.md 3-4 because session 5 evidence shows quota stable up to 6 with three-lens reviewer rotation). Heavy-context sessions cap at 4. Implementer + reviewer roles count against the same cap.
+- **Every 5 min OR every dispatch tick:** report `agents=<running>/<cap> · roles=<impl:N rev:M des:K tri:L> · current-tasks=<comma-sep-summary>`. If <cap, scan open headroom + dispatch a file-disjoint follow-up from `OPEN FOLLOWUPS` per `feedback_free_headroom_backfill`. If at cap and ≥2 agents share file scope, queue + warn.
+- **Disjoint-work scan:** before any new dispatch, run `git diff --name-only origin/main...<active-branches>` against the proposed scope. Overlap → sequence; disjoint → dispatch in parallel.
+
+SELF-CORRECT TICK (every 10 min OR every operator turn, whichever first)
+
+- Re-read the last 3 operator turns + the active PRIORITY P0/P0.5/P1 lines. Compare against current activity: is the in-flight work still on the named direct path?
+- Drift signals: (a) dispatching against issues outside the OPEN FOLLOWUPS list without operator ask, (b) editing files outside the current P-priority scope, (c) reviewer subagent prompts narrowed to defects-only (missing simplification/refactor per `feedback_three_lens_reviewer_mandatory`), (d) skipping the A+ rubric scorecard on a non-trivial PR (violates `feedback_grade_rubric`).
+- Drift detected → STOP current dispatch, narrate one line ("self-correct: drift on X; pivoting to Y"), re-dispatch on the correct surface. NO operator round-trip required.
+
+TIGHT FEEDBACK LOOP
+
+- **Every PR merge that touches `internal/orchestrator/`, `internal/ghclient/`, `cmd/regatta/`, or `docker-compose.yml`:** rebuild + restart docker stack within 60s. Confirm binary changed via `docker inspect --format '{{.Image}}' regatta`. Smoke-watch agent.exited stream for 30s; ≥5 same-fingerprint failures in 30s → file `[ORCH]` issue per the `regatta-operator` skill bottleneck rule.
+- **Bounded CI poll** (per skill #1186): every `gh pr` watch loop has explicit failure-exit branch; cap iterations at 10. NEVER `until SUCCESS; sleep; done`.
+- **Local pre-push:** `make pre-push-check` before every `git push`. Authoritative target list at `Makefile.d/ci.mk::check`.
+- **Failure feedback minimum:** when a CI gate fails, fetch the failing job log via `curl -sL -H "Authorization: token $(gh auth token)" https://api.github.com/repos/$REPO/actions/jobs/<id>/logs` rather than waiting for the gh CLI's logs-locked-until-run-complete behavior.
 
 PRIORITY (top-down — 2026-06-08 reorder; current direct path: ship operator console UI v5.1 → unblock parallel velocity via cascade fixes → operator install DEPLOY → green-clock → arbitrary-repo generalization → first paying customer)
 
 P0 — Operator console v5.1 UI build [IN-FLIGHT]
   UI roadmap v2 + S0 substrate prereqs + SvelteKit scaffold. SvelteKit promoted from MVR-1 to immediate priority per 2026-06-08 operator decision (prior SvelteKit prohibition explicitly flipped). Rationale: operator-facing surface is the dominant UX gap once autonomous loop is structurally closed; full-speed build authorized. References: spec #701 (docs/engineer/specs/2026-06-02-operator-console-design.md) · S0 substrate-prereqs plan (docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md).
 
+P0.5 — Autonomy levers from skill session 5 [LANDED / DOCUMENTED]
+  - Boot precondition probe — landed via #1183 (preflightSpawnerAuth + IsFalsyEnv exported).
+  - Bounded CI poll — landed via #1186 (skill pattern + dispatch-template).
+  - Three-lens reviewer (defects + simplification + refactor) — MANDATORY per #1185 CLAUDE.md + #1184 dispatch-templates/reviewer.md.
+  - A+ rubric MANDATORY per #1185.
+  - Operator-delegated merge clause — landed via #1171.
+  - macOS keychain gap documented + structurally impossible without host bridge — see #1181 + #1182.
+
 P1 — Cascade-rebase structural fixes [MIXED — some shipped, some spec'd this session]
   Enables parallel velocity for every other slot. Shipped this session: Makefile glob (#960), pr-lint split (#959). Specs landed: CUE schema split (#970), serve.go split (#975), migration-number lock (#971). Rationale: cascade-rebase root cause tripped ≥6x in 2026-06-04/08 sessions per `feedback_cascade_rebase_root_cause`; structural splits unblock downstream PR throughput.
+  Scheduler parallel-cap enforcement (#1184 spec; closes #1169) — implementer brief next; gates downstream throughput. [NEXT-IMPL]
 
 P2 — DEPLOY install + GREEN-CLOCK start [READY — OPERATOR ACTION PENDING]
   Operator-side gate; nothing downstream proceeds until install fires. See PHASE DEPLOY below for invocation options. Day-0 of 30-day-green starts only after install.
@@ -46,6 +107,8 @@ Reorder 2026-06-08 — evidence
 - Roadmap discovery + arbitrary-repo umbrella specs landed (#963 #964) → P3 generalization slot promoted with concrete slice issues.
 
 History markers — DO NOT redo (per feedback_boot_prompt_per_wave_refresh; pruned >2 waves old)
+
+Skill session 5 2026-06-09→2026-06-10: 11 PRs (#1163-#1187 sweep, see git log), 6 retro rubrics on #1163/1170/1171/1176/1180/1182, 1 brand-new skill `audit-session` per operator ask.
 
 PHASE S — Self-host dogfood-ready core [COMPLETE 2026-06-02]
   S1+S2+S3 shipped. Acceptance: regatta dispatches itself on this repo end-to-end. Smoke test PASSED LIVE. (Detail in git history — pruned per feedback_boot_prompt_per_wave_refresh.)
@@ -124,6 +187,8 @@ OPEN FOLLOWUPS (sweep when between phase items, ≤5 trivial PRs/session cap)
 - #858 [TEST-UMBRELLA] E2E + integration test harnesses post-#846 loop closure
 - #860 docs: fix scorecard evidence in PR #843 — alpine→busybox
 - #861 docs: clarify init-container pattern is Linux-specific (not os-agnostic)
+- #1177 [PARTIAL] mount perm gap on macOS keychain — closed by structural-impossibility doc #1181/1182, leave open for next-layer fix
+- #1175 [PHASE-X] check-aplus-rubric.sh CI gate — defer until rubric bypassed ≥2x
 <!-- END auto-priority -->
 
 - RISK followups — strategic-design closeout: #423 #424 #426 #427 all CLOSED 2026-06-03; no open RISK trackers remain in this slice.
