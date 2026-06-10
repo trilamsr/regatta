@@ -10,8 +10,6 @@ NEVER:
 3. Operate in `.claude/worktrees/operator-docker-soak/` or any shared-named worktree when ≥1 other agent uses it concurrently. HEAD clobber + lost work. Use orchestrator-pinned `regatta/agent-<N>` branch in the pre-created worktree. Per `feedback_keep_orchestrator_branch_name`.
 4. Self-tag `Reviewer-recommendation: APPROVE` as the implementer. Independent reviewer subagent dispatches in a separate slot — implementer ends with `gh pr ready <N>` only. Per `feedback_no_self_tagged_approve`.
 
-Operator escape: PR-body HTML comment `<!-- antipattern-justified: <reason ≥4 chars> -->` for rare edge cases.
-
 ## Variables
 - `<TASK-ID>` — wave/task tag (e.g. `S1-T2`, `cost-gov-W3-T7`).
 - `<SPEC-PATH>` — canonical spec under `docs/engineer/specs/`.
@@ -119,6 +117,7 @@ These slugs MUST be cited by `internal/orchestrator/spawner/claude.go::defaultPr
 - `feedback_review_proportional`
 - `feedback_no_implementer_automerge`
 - `feedback_keep_orchestrator_branch_name`
+- `feedback_no_self_tagged_approve`
 - `feedback_pre_commit_make_check`
 
 Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mark a slug intentionally kept here but not pushed to the prompt.

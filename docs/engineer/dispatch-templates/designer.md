@@ -10,8 +10,6 @@ NEVER (apply to YOU as designer, AND propagate to any implementer you dispatch d
 3. Operate in `.claude/worktrees/operator-docker-soak/` or any shared-named worktree when ≥1 other agent uses it concurrently. HEAD clobber + lost work. Use orchestrator-pinned `regatta/agent-<N>` branch in the pre-created worktree. Per `feedback_keep_orchestrator_branch_name`.
 4. Self-tag `Reviewer-recommendation: APPROVE` as the author. Independent reviewer subagent dispatches in a separate slot — author ends with `gh pr ready <N>` only. Per `feedback_no_self_tagged_approve`.
 
-Operator escape: PR-body HTML comment `<!-- antipattern-justified: <reason ≥4 chars> -->` for rare edge cases.
-
 ## Variables
 - `<TOPIC>` — one-line problem statement.
 - `<SPEC-SLUG>` — `YYYY-MM-DD-<short-slug>` (date locked at dispatch).

@@ -11,7 +11,7 @@ The PR-author dispatching you MUST follow these rules. Flag any violation as a H
 3. Author operating in `.claude/worktrees/operator-docker-soak/` or any shared-named worktree concurrently with another agent. HEAD clobber + lost work. Authors must use orchestrator-pinned `regatta/agent-<N>` branch. Per `feedback_keep_orchestrator_branch_name`.
 4. Author self-tagging `Reviewer-recommendation: APPROVE`. The token MUST come from an independent reviewer subagent dispatched in a separate slot — YOU are that reviewer right now. If the PR body already carries an APPROVE token from the author, this is a CRITICAL finding. Per `feedback_no_self_tagged_approve`.
 
-Operator escape (rare, author-side): PR-body HTML comment `<!-- antipattern-justified: <reason ≥4 chars> -->`. Verify the reason is concrete; treat boilerplate ("legacy", "tested", "approved") as insufficient and flag.
+These anti-patterns are invisible to gates (which read PR body, not commit messages) — flag any violation as a HIGH-severity finding.
 
 ## Variables
 - `<TARGET>` — `PR #N` | `spec path` | `commit sha range`.
