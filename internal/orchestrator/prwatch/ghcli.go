@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -65,6 +66,15 @@ func (g *GHCLILister) queryHead(ctx context.Context, branch string) ([]PullReque
 		"--json", ghJSONFields,
 	)
 	if err != nil {
+		if isBlankSlateExit(err, out) {
+			// Normal state: agent has not pushed the branch yet (or it
+			// was already merged + deleted). gh emits exit-4 + empty
+			// (or `[]`) stdout. Swallow to silence the
+			// `prwatch.list_failed` warning storm; real failures (auth,
+			// repo-not-found) carry a non-empty stdout payload and
+			// still surface as errors.
+			return nil, nil
+		}
 		return nil, fmt.Errorf("prwatch: gh pr list --head %s: %w", branch, err)
 	}
 	return decodePRs(out)
@@ -77,6 +87,9 @@ func (g *GHCLILister) queryTitle(ctx context.Context, titlePrefix string) ([]Pul
 		"--json", ghJSONFields,
 	)
 	if err != nil {
+		if isBlankSlateExit(err, out) {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("prwatch: gh pr list --search title %s: %w", titlePrefix, err)
 	}
 	prs, err := decodePRs(out)
@@ -171,6 +184,35 @@ func (p *GHCLIVersionProbe) Version(ctx context.Context) (string, error) {
 	// rest is build metadata the caller does not need.
 	line := string(bytes.SplitN(out, []byte{'\n'}, 2)[0])
 	return strings.TrimSpace(line), nil
+}
+
+// exitCoder is the minimal interface satisfied by `*exec.ExitError`
+// (production) and by the test stand-in. Using an interface avoids
+// the awkward construction of a real `*exec.ExitError` from a fake
+// in tests while still matching the production type via `errors.As`.
+type exitCoder interface {
+	ExitCode() int
+}
+
+// isBlankSlateExit reports whether the (err, stdout) pair from a `gh
+// pr list` invocation means "no PR found" rather than a real failure.
+// gh exits 4 with empty (or `[]`) stdout when the query matches zero
+// PRs — a normal state for agents whose branch was never pushed.
+// Non-empty stdout under exit-4 carries the real failure payload
+// (auth, repo-not-found) and is treated as a true error so the
+// watcher logs it. Any non-exit-4 error (network, context deadline)
+// is also a true error.
+//
+// The conflation between "no match" and "real failure" was the source
+// of the `prwatch.list_failed` per-tick warning storm tracked in the
+// orchestrator observability spec.
+func isBlankSlateExit(err error, stdout []byte) bool {
+	var ec exitCoder
+	if !errors.As(err, &ec) || ec.ExitCode() != 4 {
+		return false
+	}
+	trimmed := bytes.TrimSpace(stdout)
+	return len(trimmed) == 0 || bytes.Equal(trimmed, []byte("[]"))
 }
 
 // defaultExec is the production Runner. The gh CLI binary name +
