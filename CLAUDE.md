@@ -2,7 +2,7 @@
 
 Single source of truth for any agent (main session, subagent, CI) operating in this repo. Subagents do NOT inherit `~/.claude/projects/.../memory/` — rules below MUST be self-sufficient. Memory dir stays per-operator (personal preferences only); load-bearing rules live here.
 
-When a rule cites `feedback_<slug>`, the slug names a per-operator memory file kept only for citation traceability. The rule body is fully captured here — do NOT `Read` the slug file.
+When a rule cites `feedback_<slug>`, the slug is an inline anchor for cross-reference; the canonical text lives here in CLAUDE.md. Operator memory files under `~/.claude/projects/<hash>/memory/` are personal and not load-bearing — do NOT `Read` them.
 
 ## Decision priority (apply to every choice)
 
