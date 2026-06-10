@@ -67,8 +67,8 @@ confirms a platform gap:
 
 | Host platform        | Subscription via container | Pay-as-you-go via container | Native install path                |
 |---|---|---|---|
-| macOS Docker Desktop | NOT supported (creds live in Keychain, unreachable from Linux container) | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | `regatta install-service` (launchd) — subscription works because the native process inherits Keychain access |
-| Linux Docker         | Works IF host Claude Code writes a file-based token under `~/.claude` (verify per distro) | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | `regatta install-service --system` (systemd) |
+| macOS Docker Desktop | NOT supported (creds live in Keychain, unreachable from Linux container) | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | `regatta install-service` (LaunchAgent — runs as user, inherits Keychain access). The `--system` flag installs a LaunchDaemon which runs as root and CANNOT reach the user Keychain |
+| Linux Docker         | Works IF host Claude Code writes a file-based token (run `ls ~/.claude/daemon/auth.json ~/.claude/.credentials.json 2>/dev/null` — a hit means file-based; empty means token lives elsewhere) | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | `regatta install-service --system` (systemd) |
 | Linux Docker (no `~/.claude` file) | NOT supported | `REGATTA_SPAWNER_STRIP_API_KEY=0` + `.env` | Same as above |
 
 #### Subscription via mounted `~/.claude` (Linux-only, conditional)
@@ -93,12 +93,6 @@ hosts hit `EACCES` without an explicit `--user` override or `chmod`,
 and (b) `~/.claude` is the full Claude Code session dir (memory,
 plans, file-history), not just credentials — exposing the whole tree
 by default is broader than necessary.
-
-On macOS Docker Desktop the mount still completes but yields zero
-credentials because the token never lived in any file under `~/.claude`
-to begin with. Setting `REGATTA_SPAWNER_STRIP_API_KEY=0` is the only
-container-side option; the native `regatta install-service` path is
-the way to use subscription billing on macOS.
 
 #### Failure signature
 
