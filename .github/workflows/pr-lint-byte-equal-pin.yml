@@ -21,19 +21,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      # NOTE: pr-lint snapshots PR body at trigger event payload. After
-      # editing the body to add a parity gate citation or the
-      # <!-- byte-equal-justified: ... --> escape, push an empty commit to
-      # force re-trigger with the live body — body-edit alone reuses the
-      # stored payload.
+      # N2 (#1265): fetch live PR body via `gh pr view` instead of the
+      # event payload snapshot. Eliminates empty-commit refresh ritual.
       - name: check-byte-equal-pin
         if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
         env:
-          BODY: ${{ github.event.pull_request.body }}
+          SNAPSHOT_BODY: ${{ github.event.pull_request.body }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # N2 live body fetch w/ snapshot fallback.
+          if BODY=$(gh pr view "$PR_NUMBER" --json body --jq '.body' 2>/dev/null) && [ -n "$BODY" ]; then
+            echo "::notice::pr-body fetched live via gh pr view at $(date -u +%FT%TZ)"
+          else
+            BODY="$SNAPSHOT_BODY"
+            echo "::warning::pr-body live fetch failed; falling back to event-payload snapshot"
+          fi
           base="${BASE_SHA}"
           if git rev-parse --verify origin/main >/dev/null 2>&1; then
             live_base="$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null || echo "")"

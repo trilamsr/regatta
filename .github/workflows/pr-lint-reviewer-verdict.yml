@@ -21,14 +21,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      # NOTE: pr-lint snapshots PR body at trigger event payload. After
-      # editing the body to add Reviewer-recommendation: APPROVE (or fix
-      # scorecard/release-notes), push an empty commit to force re-trigger
-      # with the live body — body-edit alone reuses the stored payload.
+      # N2 (#1265): fetch live PR body via `gh pr view` instead of the
+      # event payload snapshot. The `github.event.pull_request.body`
+      # context is captured at trigger time and goes stale on body
+      # edits, forcing operator empty-commit refreshes (70 such commits
+      # to main this session per git log grep). Live fetch eliminates
+      # the snapshot lag; SNAPSHOT_BODY is retained as fallback when
+      # the API call fails (fork PRs w/o read token, transient API
+      # outages).
       - name: check-reviewer-verdict
         if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
         env:
-          BODY: ${{ github.event.pull_request.body }}
+          SNAPSHOT_BODY: ${{ github.event.pull_request.body }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_AUTHOR: ${{ github.event.pull_request.user.login }}
@@ -36,6 +40,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # N2 live body fetch w/ snapshot fallback.
+          if BODY=$(gh pr view "$PR_NUMBER" --json body --jq '.body' 2>/dev/null) && [ -n "$BODY" ]; then
+            echo "::notice::pr-body fetched live via gh pr view at $(date -u +%FT%TZ)"
+          else
+            BODY="$SNAPSHOT_BODY"
+            echo "::warning::pr-body live fetch failed; falling back to event-payload snapshot"
+          fi
           # Per CLAUDE.md "TDD + review": every load-bearing PR (security,
           # concurrency, schema, public API, agent rules, CI gates)
           # requires an independent reviewer subagent pass.
