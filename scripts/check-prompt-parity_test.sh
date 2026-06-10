@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check-prompt-parity_test.sh asserts the prompt-parity gate fails closed
-# on slug drift and passes on aligned state per #901.
+# on slug drift and passes on aligned state.
 
 set -uo pipefail
 

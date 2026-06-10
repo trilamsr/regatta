@@ -7,7 +7,6 @@
 #   (2) a Go test name matching Test.*ByteEqual.* or Test.*Parity.*,
 #   (3) a `<!-- byte-equal-justified: <reason> -->` operator escape in body.
 #
-# Closes #1031.
 #
 # Cases:
 #   A. byte-equal claim + paths include scripts/check-*-parity.sh -> exit 0
