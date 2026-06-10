@@ -57,11 +57,11 @@ func resetStripLogOnceForTest() { stripLogOnce = sync.Once{} }
 
 // shouldStripAPIKey returns true (strip → subscription path) by default; explicit opt-out via REGATTA_SPAWNER_STRIP_API_KEY=0|false|no|off passes the parent ANTHROPIC_API_KEY through to children (pay-as-you-go billing). Empty env = default behavior.
 func shouldStripAPIKey() bool {
-	return !isFalsyEnv(os.Getenv(envStripAPIKey))
+	return !IsFalsyEnv(os.Getenv(envStripAPIKey))
 }
 
-// isFalsyEnv normalizes a free-form env-var string to a bool — recognized falsy tokens are 0|false|no|off (case-insensitive). Used by every spawner env knob to keep the lexicon uniform.
-func isFalsyEnv(v string) bool {
+// IsFalsyEnv normalizes a free-form env-var string to a bool — recognized falsy tokens are 0|false|no|off (case-insensitive). Used by every spawner env knob to keep the lexicon uniform. Exported so cmd/regatta boundary gates (preflightSpawnerAuth) classify the same lexicon without duplicating the truth table.
+func IsFalsyEnv(v string) bool {
 	switch strings.ToLower(strings.TrimSpace(v)) {
 	case "0", "false", "no", "off":
 		return true
