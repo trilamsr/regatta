@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"encoding/json"
+	"path"
 	"regexp"
 	"strings"
 
@@ -72,6 +73,7 @@ func fileScopeCollides(active, incoming []string) bool {
 	return false
 }
 
+// pathsOverlap returns true on exact-path match, directory-prefix containment, or shared parent package (c6 shared-package rule — two files in the same dir collide to prevent cascade-rebase storms).
 func pathsOverlap(a, b string) bool {
 	if a == b {
 		return true
@@ -82,7 +84,14 @@ func pathsOverlap(a, b string) bool {
 	if strings.HasSuffix(b, "/") && strings.HasPrefix(a, b) {
 		return true
 	}
-	return false
+	return parentDir(a) == parentDir(b)
+}
+
+func parentDir(p string) string {
+	if strings.HasSuffix(p, "/") {
+		return strings.TrimSuffix(p, "/")
+	}
+	return path.Dir(p)
 }
 
 // buildActiveFileScopes maps in-flight agents to their predicted file scopes; nil when the extractor is unwired or schedulerDB lacks GetWorkItem.
