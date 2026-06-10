@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # check-stale-refs.sh - fail when a PR deletes files but other tracked
 # files still reference the deleted basenames. Closes the 8-round-reviewer
-# trap from session 2026-06-10 PR #1275: round-N reviewer kept finding
-# stale refs round-(N-1) missed because no mechanical sweep existed.
+# trap where stale refs slipped past adjacent-file review.
 #
 # Algorithm:
 #   1. Resolve base ref (live merge-base preferred over BASE_SHA env).
@@ -23,7 +22,7 @@ set -uo pipefail
 usage() {
   cat <<EOF >&2
 Usage: check-stale-refs.sh [--body-file <path>] [--base <ref>] [--head <ref>]
-Closes the stale-ref trap from PR #1275. Per feedback_deletion_sweep_full_repo.
+Closes the stale-ref trap. Per feedback_deletion_sweep_full_repo.
 EOF
   exit 3
 }

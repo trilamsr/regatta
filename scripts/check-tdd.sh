@@ -58,6 +58,7 @@ if [ -z "$base" ]; then
 fi
 
 # Category opt-out via release-notes block.
+category=""
 if [ -n "${BODY:-}" ]; then
   category=$(printf '%s\n' "$BODY" | awk '
     /^```release-notes/ { capture=1; next }
@@ -75,13 +76,13 @@ if [ -n "${BODY:-}" ]; then
   esac
 fi
 
-# TDD-order check (closes #1235 trap). For [FEAT]/[FIX]/[CHANGE]/[REFACTOR]
-# release-notes categories, the FIRST commit on the branch MUST be a test
-# commit. Test commit = adds/modifies a *_test.go OR commit subject matches
-# RED/FAIL/test/fixture marker. Catches impl-first ordering that the
-# co-located-test check accepts (test landing in commit N after impl in
-# commit 1 is not TDD per feedback_tdd_discipline "Order matters; commit
-# log must show the failing test landed first").
+# TDD-order check. For [FEAT]/[FIX]/[CHANGE]/[REFACTOR] release-notes
+# categories, the FIRST commit on the branch MUST be a test commit. Test
+# commit = adds/modifies a *_test.go OR commit subject matches RED/FAIL/
+# test/fixture marker. Catches impl-first ordering that the co-located
+# test check accepts (test landing in commit N after impl in commit 1 is
+# not TDD per feedback_tdd_discipline "Order matters; commit log must
+# show the failing test landed first").
 #
 # Skip when:
 #   - no category match (FEAT|FIX|CHANGE|REFACTOR not in body)
@@ -101,7 +102,10 @@ case "$category" in
         if echo "$first_files" | grep -qE '_test\.go$|/testdata/|test/' ; then
           is_test_commit=1
         fi
-        if echo "$first_subject" | grep -qiE '\b(RED|FAIL|test|fixture|tdd):?\b' ; then
+        # Subject prefix patterns: `test:`, `RED:`, `fail:`, `tdd:`, `[TEST]`,
+        # `[RED]` etc. Anchored to subject-prefix to avoid false-positive on
+        # arbitrary words like `Testify` matching `\btest\b`.
+        if echo "$first_subject" | grep -qiE '^(\[)?(RED|FAIL|TEST|TDD|FIXTURE)(\])?[: ]|^(test|red|tdd|fail|fixture):' ; then
           is_test_commit=1
         fi
         if [ "$is_test_commit" -ne 1 ]; then
