@@ -4,10 +4,10 @@ title: regatta status TUI subcommand (bubbletea, 5 panels) (item #13)
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T0a, OBS-WAVE-A-T0b, OBS-WAVE-A-T1, OBS-WAVE-A-T2, OBS-WAVE-A-T3, OBS-WAVE-B-T1, OBS-WAVE-B-T2, OBS-WAVE-B-T3, OBS-WAVE-B-T4, OBS-WAVE-C-T1, OBS-WAVE-C-T2, OBS-WAVE-C-T3, OBS-WAVE-C-T4
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-2 row item #13, §7 Wave-D table row D-T2, §6.1 panel-budget table (80×24 terminal), §10 R5 (Prom-unreachable banner), §7 Wave-D exit gate (< 3 s cold render).
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 Tier-2 row item #13, §7 Wave-D table row D-T2, §6.1 panel-budget table (80×24 terminal), §10 R5 (Prom-unreachable banner), §7 Wave-D exit gate (< 3 s cold render).
 
 ## Task
 

@@ -43,7 +43,7 @@ MVR-4-T1 W9 Temporal-backed `DurableHistory`, MVR-4-T2 Postgres HA (rows at `202
 
 ### What is missing today
 
-`docs/engineer/specs/2026-06-02-phase-autonomy-w4-self-improvement-detector.md:153-157` ships the 5 W4 rules. `docs/engineer/specs/2026-06-02-obs-wave-c-agent-loop-telemetry.md:27-101` ships the dispatch-span + outcome-counter + duration-histogram. **Issue #832 R6-R11 + autotuner have no slot in §4 today.** The roadmap is silent on closed-loop self-tuning.
+`docs/engineer/specs/2026-06-02-phase-autonomy-w4-self-improvement-detector.md:153-157` ships the 5 W4 rules. `docs/engineer/specs/phase-x/2026-06-02-obs-wave-c-agent-loop-telemetry.md:27-101` ships the dispatch-span + outcome-counter + duration-histogram. **Issue #832 R6-R11 + autotuner have no slot in §4 today.** The roadmap is silent on closed-loop self-tuning.
 
 ## 3. Proposed sequence
 
@@ -255,7 +255,7 @@ Per CLAUDE.md "Per-criterion citation gate" — every `[x]` cites file:line OR `
 - Source #832: `gh issue view 832` — single tracking issue for R6-R11 + autotuner.
 - Source roadmap superseded (advisory): `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §4.
 - Source W4 detector spec: `docs/engineer/specs/2026-06-02-phase-autonomy-w4-self-improvement-detector.md`.
-- Source OBS-C spec (subagent telemetry surface this brief consumes): `docs/engineer/specs/2026-06-02-obs-wave-c-agent-loop-telemetry.md`.
+- Source OBS-C spec (subagent telemetry surface this brief consumes): `docs/engineer/specs/phase-x/2026-06-02-obs-wave-c-agent-loop-telemetry.md`.
 - Source self-host filter: `docs/engineer/briefs/2026-06-01-self-host-first.md`.
 - Source arch-simplification gates: `docs/engineer/briefs/2026-06-01-arch-simplification-pass.md`.
 - Source research-mode (downstream consumer of `internal/selfimprove/`): `docs/engineer/briefs/2026-06-01-regatta-research-vision.md`.

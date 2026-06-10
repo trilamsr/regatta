@@ -8,7 +8,7 @@
 # a `docs/engineer/specs/` reference would point the worker at a file
 # that does not exist on the target — degrading prompt quality silently.
 #
-# Spec: docs/engineer/specs/2026-06-08-regatta-on-arbitrary-repo.md
+# Spec: docs/engineer/specs/phase-x/2026-06-08-regatta-on-arbitrary-repo.md
 #       §3 L1, acceptance L1.3.
 
 set -uo pipefail

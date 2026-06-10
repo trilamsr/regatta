@@ -4,10 +4,10 @@ title: operator-facing metric-layer doc — env vars, exporter choice, dashboard
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T5
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §6.4 (dashboards-as-code commitment), §7 Wave-A table row A-T6, §9 R4 (Prom-vs-OTLP wire choice), §10 dispatch brief A-T6.
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §6.4 (dashboards-as-code commitment), §7 Wave-A table row A-T6, §9 R4 (Prom-vs-OTLP wire choice), §10 dispatch brief A-T6.
 
 ## Task
 

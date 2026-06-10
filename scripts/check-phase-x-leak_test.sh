@@ -67,6 +67,7 @@ run_case "H-active-fenced-only-allowed"  0 "$FIXTURES/spec-active-fenced-mention
 run_case "I-active-htmx-leak-fails"      1 "$FIXTURES/spec-active-htmx-leak.md" \
   "spec-active-htmx-leak\.md.*htmx"
 run_case "J-htmx-forward-fit-allowed"    0 "$FIXTURES/spec-forward-fit-htmx-allowed.md"
+run_case "K-phase-x-deferred-skipped"    0 "$FIXTURES/spec-phase-x-deferred.md"
 
 echo "---"
 echo "passes=$passes fails=$fails"

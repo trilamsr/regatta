@@ -10,7 +10,7 @@ _Author: design subagent, 2026-06-03. Skeleton-tier per `docs/engineer/briefs/20
 
 Cites: `feedback_research_design_principles` (adopt sqlite-CAS over external KV), `feedback_decision_priority`, `feedback_grade_rubric`, `feedback_deletion_default`, `feedback_migration_number_lock` (one migration; number pinned at dispatch), `feedback_spec_pattern_authority`.
 
-Prior-art baseline: `docs/engineer/specs/2026-06-01-w11-blackboard-design.md` (50 KB Wave 1 design) is the source-of-truth for the full surface. Substrate Wave 1 (`docs/engineer/specs/2026-06-01-unified-substrate-design.md`) already shipped `kind=fact` events + the `blob_digest` forward-fit column + `RegisterPayloadValidator` dispatch. This skeleton re-litigates only the MVR-3 slice that the substrate deliberately deferred.
+Prior-art baseline: `docs/engineer/specs/2026-06-01-w11-blackboard-design.md` (50 KB Wave 1 design) is the source-of-truth for the full surface. Substrate Wave 1 (`docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md`) already shipped `kind=fact` events + the `blob_digest` forward-fit column + `RegisterPayloadValidator` dispatch. This skeleton re-litigates only the MVR-3 slice that the substrate deliberately deferred.
 
 ---
 
@@ -92,7 +92,7 @@ Reducer registration is boot-time only — runtime swap returns `ErrReducerFroze
 
 ## 5. Dep order
 
-1. **MUST be merged first:** Substrate Wave 1 (`docs/engineer/specs/2026-06-01-unified-substrate-design.md`) — `kind=fact` channel + `blob_digest` forward-fit + `RegisterPayloadValidator` dispatch.
+1. **MUST be merged first:** Substrate Wave 1 (`docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md`) — `kind=fact` channel + `blob_digest` forward-fit + `RegisterPayloadValidator` dispatch.
 2. **MUST be merged first:** S3-T2 substrate cutover phase B+C (`docs/engineer/specs/2026-06-02-s3-t2-substrate-cutover.md`) — facts must be on substrate before blackboard layers on top.
 3. **SHOULD be merged first:** W8 OPA RBAC slim (`docs/engineer/specs/2026-06-02-s3-t1-w8-opa-slim.md`) — semantic validation hooks into OPA; v1 ships without OPA dep but adapter is wired.
 4. **No dep on MVR-3-T1 / T2 / T4** — blackboard is orthogonal to signer, billing, research-mode.

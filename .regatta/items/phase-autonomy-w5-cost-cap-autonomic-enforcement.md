@@ -37,7 +37,7 @@ Extend `internal/cost` so that when the daily cap is exceeded, the substrate fli
 | Tier | Criteria |
 |---|---|
 | B (floor) | (a) c1+c2 ship. (b) Default-on once `cost.daily_cap_usd` set. (c) Release-notes fence. |
-| A (target) | B + (d) c3+c4+c5+c6. (e) Substrate event schema for `regatta_pause_all` documented in `docs/engineer/specs/2026-06-01-unified-substrate-design.md`. |
+| A (target) | B + (d) c3+c4+c5+c6. (e) Substrate event schema for `regatta_pause_all` documented in `docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md`. |
 | A+ (stretch) | A + (f) Per-DAG pause (some DAGs halt while others continue) via label-set. (g) Property test: 100 random scheduler ticks under random pause/resume sequences; assert no dispatch fires when paused. (h) W4 self-improvement detector wired to detect pause-cycling (≥3 daily-cap hits in 7 days = self-improvement issue suggesting cap raise). |
 
 ## Cites

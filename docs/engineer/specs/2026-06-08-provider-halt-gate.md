@@ -11,7 +11,7 @@ Status: design
 Date: 2026-06-08
 Author: design subagent
 Tracks: #1096 (this gate), #1063 (exit_reason classifier dependency, MERGED in PR #1104)
-Cross-ref: `internal/orchestrator/spawner/exit_reason.go` (classifier), `internal/orchestrator/scheduler/scheduler.go` (Tick step loop), `internal/orchestrator/scheduler/scheduler_cost_gate.go` (cost-cap pattern — closest analog), `docs/engineer/specs/2026-06-02-phase-autonomy-w5-cost-cap-autonomic-enforcement.md` (sibling tick-level halt primitive).
+Cross-ref: `internal/orchestrator/spawner/exit_reason.go` (classifier), `internal/orchestrator/scheduler/scheduler.go` (Tick step loop), `internal/orchestrator/scheduler/scheduler_cost_gate.go` (cost-cap pattern — closest analog), `docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w5-cost-cap-autonomic-enforcement.md` (sibling tick-level halt primitive).
 
 Memory rules in force: `feedback_decision_priority`, `feedback_default_simpler`, `feedback_root_cause`, `feedback_deletion_default`, `feedback_adversarial_review`, `feedback_adversarial_review_every_step`, `feedback_unaddressed_load_bearing`, `feedback_spec_pattern_authority`, `feedback_no_signatures`, `feedback_validate_before_ship`, `feedback_no_self_tagged_approve`.
 

@@ -1,6 +1,6 @@
 # Substrate Wave 1 — Implementer Task Breakdown (2026-06-01)
 
-Source-of-truth spec: `docs/engineer/specs/2026-06-01-unified-substrate-design.md`.
+Source-of-truth spec: `docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md`.
 Authority: `feedback_spec_pattern_authority` — implementer deviation from spec MUST re-spawn design subagent.
 
 ---
@@ -97,7 +97,7 @@ Per `feedback_tdd_discipline`: implementer writes each test, runs `go test ./int
 ## Summary
 
 T-S1 ships the substrate event log primitive per
-docs/engineer/specs/2026-06-01-unified-substrate-design.md §2 §4 §5.
+docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md §2 §4 §5.
 Phase A only (substrate dark, no readers, SUBSTRATE_ENABLED=false).
 
 - Migration `0006_substrate.sql`: `substrate_events` table + 5 indexes
@@ -175,7 +175,7 @@ You are an implementer subagent working on a git worktree at
 
 # Spec authority
 
-Source-of-truth spec: docs/engineer/specs/2026-06-01-unified-substrate-design.md.
+Source-of-truth spec: docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md.
 Read ALL of: §2 (schema), §4 (reducers), §5 (HMAC), §7 (perf budget),
 §8 (failure modes), §9 (grade rubric), §10 (red-team), §11 (sequencing),
 §13 (task split row #1 — that's you).
@@ -320,7 +320,7 @@ Final report MUST contain:
 ## Summary
 
 T-S2 ships the CELDecider concrete type per
-docs/engineer/specs/2026-06-01-unified-substrate-design.md §2.2 §10 #17.
+docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md §2.2 §10 #17.
 
 - internal/program/cel_decider.go — CELDecider with pre-compiled
   cel.Program; Snapshot + GateResult structs; Decide method runs
@@ -379,7 +379,7 @@ After T-S1's PR merges to main, rebase onto main before pushing your PR.
 
 # Spec authority
 
-Source-of-truth spec: docs/engineer/specs/2026-06-01-unified-substrate-design.md.
+Source-of-truth spec: docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md.
 Read ALL of: §2.2 (CELDecider), §10 #17 (tx discipline), §11 (Decider
 interface deferred per S5), §13 row #2 (you).
 
@@ -502,7 +502,7 @@ Final report MUST contain:
 ## Summary
 
 T-S3 ships the substrate lint gates + property tests + adversarial
-test coverage per docs/engineer/specs/2026-06-01-unified-substrate-design.md
+test coverage per docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md
 §5 §6 §9 A-rubric §10.
 
 - tools/lint-substrate-queries — AST + SQL walker rejects unscoped
@@ -560,7 +560,7 @@ your PR.
 
 # Spec authority
 
-Source-of-truth spec: docs/engineer/specs/2026-06-01-unified-substrate-design.md.
+Source-of-truth spec: docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md.
 Read ALL of: §5 (keyring readonly), §6 (lint-substrate-queries), §9
 A-tier + A+-tier (enum parity + lint in CI), §10 #3 #13 #14 #15,
 §13 row #3 (you).

@@ -179,7 +179,7 @@ The original 7-stage bootstrap roadmap (reactive-janitor → doc/test surgeon �
 
 - `PRINCIPLES.md` §2 (Reversibility before optionality), §4 (Do not police what you do not have)
 - `MEMORY.md` `feedback_deletion_default`, `feedback_drop_ceremony`
-- `docs/engineer/specs/2026-06-01-unified-substrate-design.md` — the consolidation discipline applied to one layer; this brief is that discipline applied to the rest
+- `docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md` — the consolidation discipline applied to one layer; this brief is that discipline applied to the rest
 - `docs/engineer/specs/2026-06-01-adapter-contracts-design.md` — deletion candidate
 - `docs/wedges/research-mode.md` — the wedge this brief unblocks
 - `docs/engineer/briefs/2026-06-01-regatta-research-vision.md` — strategic vision dependent on this simplification pass

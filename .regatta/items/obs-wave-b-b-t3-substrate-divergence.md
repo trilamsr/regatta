@@ -4,10 +4,10 @@ title: substrate divergence-detected counter + dashboard tile (item #7)
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T0b
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-1 row item #7, §7 Wave-B table row B-T3, §2.5 trace head-sampling (divergence-audit always-on override).
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 Tier-1 row item #7, §7 Wave-B table row B-T3, §2.5 trace head-sampling (divergence-audit always-on override).
 
 ## Task
 

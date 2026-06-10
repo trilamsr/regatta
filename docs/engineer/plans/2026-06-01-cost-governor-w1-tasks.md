@@ -1,6 +1,6 @@
 # Cost Governor (P8) Wave 1 — Implementer Task Breakdown (2026-06-01)
 
-Source-of-truth spec: `docs/engineer/specs/2026-06-01-cost-governor-design.md`.
+Source-of-truth spec: `docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md`.
 Authority: `feedback_spec_pattern_authority` — implementer deviation from any spec-mandated pattern (Gate concrete-type-no-interface per spec S5, Verdict + Request struct fields per spec §3.2, Reader "single SELECT with json_extract" per spec §3.5, CUE additive-only `#CostGovernor` per spec §3.6, scheduler step-0.6 ordering, UpperBound formula per spec §3.3, hardcoded pricing table per spec §3.8) MUST re-spawn the design subagent. NO implementer-chosen alternatives.
 
 Design priority for every decision below (`feedback_decision_priority`): **UX → ease of use → best practices → execution speed → velocity**. Grade rubric (`feedback_grade_rubric`) inherited verbatim from spec §7 — each Wave 1 task carries the spec's B / A / A+ tool-checkable criteria.
@@ -138,7 +138,7 @@ Total: **20 named tests** (12 B + 4 A + 4 A+). PR body lists every test name + p
 
 Cost-governor Wave 1 T1 ships the gate seam, spend reader, CUE config
 extension, validator, and scheduler step-0.6 wiring per
-docs/engineer/specs/2026-06-01-cost-governor-design.md §3.2 §3.5 §3.6 §3.7.
+docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md §3.2 §3.5 §3.6 §3.7.
 
 - internal/cost/gate/ — Gate concrete type (no interface per spec S5);
   Gate.Evaluate(ctx, Request) (Verdict, error).
@@ -217,7 +217,7 @@ You are an implementer subagent working on a git worktree at
 
 # Spec authority
 
-Source-of-truth spec: docs/engineer/specs/2026-06-01-cost-governor-design.md.
+Source-of-truth spec: docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md.
 Read ALL of: §2 (scope, in/out), §3.2 (Gate seam), §3.5 (Reader +
 substrate hook), §3.6 (CUE config), §3.7 (OTel attrs), §6 T1 (named
 test list), §7 (B/A/A+ rubric), §8 (file-disjoint table row 1), §10 S3
@@ -408,7 +408,7 @@ Total: **8 named tests** (4 B + 2 A + 2 reviewer-added). PR body lists every tes
 ## Summary
 
 Cost-governor Wave 1 T2 ships the pricing table + UpperBound estimator
-+ claude-CLI probe per docs/engineer/specs/2026-06-01-cost-governor-design.md
++ claude-CLI probe per docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md
 §3.3 §3.8.
 
 - internal/cost/pricing/anthropic.go — hardcoded Go map of model SKU →
@@ -483,7 +483,7 @@ You are an implementer subagent working on a git worktree at
 
 # Spec authority
 
-Source-of-truth spec: docs/engineer/specs/2026-06-01-cost-governor-design.md.
+Source-of-truth spec: docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md.
 Read ALL of: §2 (scope), §3.1 (adopted-OSS scan — Portkey silent-zero
 trap), §3.3 (estimator strategy + heuristic safety margin), §3.8
 (pricing table), §6 T2 (named test list), §7 (B/A/A+ rubric), §8

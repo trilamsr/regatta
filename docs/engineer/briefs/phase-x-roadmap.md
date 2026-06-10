@@ -25,7 +25,7 @@ Mechanical gate (`scripts/check-phase-x-leak.sh`) blocks these tokens in active 
 
 **Issues:** #492, #218, #221.
 
-W8 wedge: per-context tenant resolver replaces the `regatta.tenant_id=default` constant baked into the OTel resource (`internal/obs/otel/setup.go::buildResource`); CLI `regatta substrate retag-tenant --run-prefix=<X> --tenant=<Y>` re-tags + re-signs rows on single→multi cutover; substrate_policies primitive adds the `(tenant_id, kind, key, strategy, ttl)` table that overrides hardcoded `defaultReducer()` strategies. Specs: `docs/engineer/specs/2026-06-01-unified-substrate-design.md` §S1+§12 F3/F7, `2026-06-02-observability-roadmap.md` §9 R8.
+W8 wedge: per-context tenant resolver replaces the `regatta.tenant_id=default` constant baked into the OTel resource (`internal/obs/otel/setup.go::buildResource`); CLI `regatta substrate retag-tenant --run-prefix=<X> --tenant=<Y>` re-tags + re-signs rows on single→multi cutover; substrate_policies primitive adds the `(tenant_id, kind, key, strategy, ttl)` table that overrides hardcoded `defaultReducer()` strategies. Specs: `docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md` §S1+§12 F3/F7, `2026-06-02-observability-roadmap.md` §9 R8.
 
 **Reopen trigger:** signed LOI from a customer requiring data isolation between ≥2 tenants on the same regatta instance. NOT lumalabs-internal multi-project (one operator = one tenant).
 
@@ -65,7 +65,7 @@ Compliance pitch (SOC2, EU AI Act traceability) sells an append-only HMAC-signed
 
 **Issues:** #217, #223.
 
-`schema_version` v2 migration recipe — first real kind-payload bump: bump const for affected kind only → ship versioned canonicalization helper → run one release cycle with v1+v2 verifiers → writers may emit v2 only → operator runbook entry. Reducer-strategy re-fold tool: `regatta substrate refold --run=<X> --kind=<K> --from=lww --to=append` asserts old strategy on disk, writes new policy row, emits audit event. Specs: `docs/engineer/specs/2026-06-01-unified-substrate-design.md` §5+§8+§12 F2/F10.
+`schema_version` v2 migration recipe — first real kind-payload bump: bump const for affected kind only → ship versioned canonicalization helper → run one release cycle with v1+v2 verifiers → writers may emit v2 only → operator runbook entry. Reducer-strategy re-fold tool: `regatta substrate refold --run=<X> --kind=<K> --from=lww --to=append` asserts old strategy on disk, writes new policy row, emits audit event. Specs: `docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md` §5+§8+§12 F2/F10.
 
 **Reopen trigger (F2):** first kind-payload schema change post-Wave 1 (no v2 exists yet). **Reopen trigger (F10):** B1 substrate_policies primitive ships (F10 depends on F7).
 
@@ -75,7 +75,7 @@ Compliance pitch (SOC2, EU AI Act traceability) sells an append-only HMAC-signed
 
 **Issues:** #324, #678, #679, #728.
 
-`check-tdd` downgrade-to-warning rejected (violates `feedback_tdd_discipline`); lower-risk `[REFACTOR]` opt-out expansion deferred. Windows GitHub Actions runner matrix entry + `TestStatus_RendersOnWindows` smoke test for stdlib ANSI renderer. Mutation testing on `internal/triggers/greenclock.go` via `gremlins` / `go-mutesting` — requires Makefile target + per-package config + CI gate-vs-informational decision. S2-T2 adversarial L4 gate umbrella (`docs/engineer/specs/2026-06-02-s2-t2-adversarial-l4-gate.md`) — `scheduler.l4Gate` rejects `mode=adversarial` verdicts.
+`check-tdd` downgrade-to-warning rejected (violates `feedback_tdd_discipline`); lower-risk `[REFACTOR]` opt-out expansion deferred. Windows GitHub Actions runner matrix entry + `TestStatus_RendersOnWindows` smoke test for stdlib ANSI renderer. Mutation testing on `internal/triggers/greenclock.go` via `gremlins` / `go-mutesting` — requires Makefile target + per-package config + CI gate-vs-informational decision. S2-T2 adversarial L4 gate umbrella (`docs/engineer/specs/phase-x/2026-06-02-s2-t2-adversarial-l4-gate.md`) — `scheduler.l4Gate` rejects `mode=adversarial` verdicts.
 
 **Reopen triggers (each falsifiable):**
 - check-tdd: ≥5 PRs blocked-on-check-tdd in 7-day window where blocker was a refactor PR with zero new prod code.
@@ -116,7 +116,7 @@ CHECK constraint on `approval_events.kind` enum after Wave 5 e2e shakedown locks
 
 **Issues:** #615, #617, #551, #727.
 
-`GH_TOKEN` SIGHUP / file-watcher hot-reload — current `internal/webhook` reads once at startup, rotation requires process restart. GPL-2 NOTICE + source-offer for `regatta-with-pass` container variant (`pass` Linux password-store backend in PR #592). Generalize intent/outbox primitive (`intent(key) -> effect(idempotent) -> executed(key)` riding substrate nonce) beyond W2 merge — approval-notify is currently class C (unsafe ordering, unguarded); first real Slack/email notifier will double-send on retry. Cost-governor design spec umbrella (`docs/engineer/specs/2026-06-01-cost-governor-design.md`) — T1-T5 PRs all SHIPPED per #796; remaining IN-SCOPE work is #796 P2-1 soak script + #796 P3-1 schema-pin (closes #277), bucket holds these.
+`GH_TOKEN` SIGHUP / file-watcher hot-reload — current `internal/webhook` reads once at startup, rotation requires process restart. GPL-2 NOTICE + source-offer for `regatta-with-pass` container variant (`pass` Linux password-store backend in PR #592). Generalize intent/outbox primitive (`intent(key) -> effect(idempotent) -> executed(key)` riding substrate nonce) beyond W2 merge — approval-notify is currently class C (unsafe ordering, unguarded); first real Slack/email notifier will double-send on retry. Cost-governor design spec umbrella (`docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md`) — T1-T5 PRs all SHIPPED per #796; remaining IN-SCOPE work is #796 P2-1 soak script + #796 P3-1 schema-pin (closes #277), bucket holds these.
 
 **Reopen triggers:**
 - GH_TOKEN hot-reload: operator performs emergency token rotation OR scheduled-rotation policy adopted.

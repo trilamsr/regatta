@@ -22,6 +22,7 @@
 #   - archived
 #   - superseded
 #   - skeleton-prefetch (also an opt-in)
+#   - phase-x-deferred (#1238 sweep)
 #
 # Scanned statuses:
 #   - active
@@ -119,10 +120,11 @@ print(f"{status}|{phase}")
 PY
 }
 
-# Statuses that skip the gate (history or pre-fetch opt-in).
+# Statuses that skip the gate. `phase-x-deferred` pairs with the #1238 sweep
+# that moved active specs into docs/engineer/specs/phase-x/.
 is_skipped_status() {
   case "$1" in
-    shipped|archived|superseded|skeleton-prefetch) return 0 ;;
+    shipped|archived|superseded|skeleton-prefetch|phase-x-deferred) return 0 ;;
     *) return 1 ;;
   esac
 }
