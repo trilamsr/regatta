@@ -110,7 +110,7 @@ These slugs MUST be cited by `internal/orchestrator/spawner/claude.go::defaultPr
 - `feedback_no_implementer_automerge`
 - `feedback_keep_orchestrator_branch_name`
 - `feedback_pre_commit_make_check`
-- **Co-located test required**: every prod `.go` file added or modified in this PR MUST carry a co-located `*_test.go` in the SAME package with a test that exercises the changed symbol. Cross-package satisfaction works but is brittle (#1057); always prefer the same package. (`feedback_colocated_test_required`)
+- `feedback_colocated_test_required`
 
 Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mark a slug intentionally kept here but not pushed to the prompt.
 
