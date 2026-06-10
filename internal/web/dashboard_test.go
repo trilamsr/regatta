@@ -599,7 +599,7 @@ func TestLoadWorkItemsView_HintHidesBucketsWhenEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadTemplates: %v", err)
 	}
-	labels := []string{"Planned", "Running", statusLabelPROpen, "merged-bucket-sentinel"}
+	labels := []string{"Planned", bucketLabelRunning, statusLabelPROpen, "merged-bucket-sentinel"}
 	buckets := make([]dashboardBucket, len(labels))
 	for i, l := range labels {
 		buckets[i] = dashboardBucket{Label: l, Count: 0}
@@ -676,11 +676,17 @@ func TestLoadWorkItemsView_RunningReflectsAgents(t *testing.T) {
 	if !ok {
 		t.Fatalf("loadWorkItemsView returned %T, want dashboardWorkItemsView", view)
 	}
-	if len(v.Buckets) < 2 {
-		t.Fatalf("Buckets=%d, want ≥2", len(v.Buckets))
+	var running *dashboardBucket
+	for i := range v.Buckets {
+		if v.Buckets[i].Label == bucketLabelRunning {
+			running = &v.Buckets[i]
+			break
+		}
 	}
-	running := v.Buckets[1].Count
-	if running != 3 {
-		t.Fatalf("running bucket=%d, want 3 (agents alive while work_items.status stays planned)", running)
+	if running == nil {
+		t.Fatalf("Running bucket not found in %v", v.Buckets)
+	}
+	if running.Count != 3 {
+		t.Fatalf("Running bucket count=%d, want 3 (agents alive while work_items.status stays planned)", running.Count)
 	}
 }

@@ -156,6 +156,7 @@ const (
 	statusLabelDone    = "done"
 	statusLabelPending  = "pending"
 	statusLabelSpawning = "spawning"
+	bucketLabelRunning  = "Running"
 )
 
 const (
@@ -276,7 +277,7 @@ func loadWorkItemsView(ctx context.Context, deps Dependencies) any {
 		state.WorkStatusPROpen,
 		state.WorkStatusMerged,
 	}
-	labels := []string{"Planned", "Running", statusLabelPROpen, "Merged"}
+	labels := []string{"Planned", bucketLabelRunning, statusLabelPROpen, "Merged"}
 	summary, err := deps.DB.SummarizeWorkItemStatuses(ctx, statuses, dashboardWorkItemSampleCount)
 	if err != nil {
 		summary = map[state.WorkItemStatus]state.WorkItemStatusSummary{}
