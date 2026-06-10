@@ -23,6 +23,10 @@ func runBootPreflights(f serveFlags, logger *log.Logger) error {
 		logger.Printf("repo preflight: %v", err)
 		return err
 	}
+	if err := preflightSpawnerAuth(f.SpawnerName); err != nil {
+		logger.Printf("spawner auth preflight: %v", err)
+		return err
+	}
 	return nil
 }
 
