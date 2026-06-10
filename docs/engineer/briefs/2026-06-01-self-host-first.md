@@ -62,7 +62,7 @@ Effort total: ~5-7 days subagent-time.
 
 ### Phase S2 — trust-the-loop _(2-3 weeks)_
 
-**Acceptance gate**: operator leaves `regatta serve` running overnight against `[autonomous]` queue without watching every PR. Adversarial review catches the bad PRs; cost caps stop runaway spend; replay-diff lets the operator re-run a flaky decision deterministically the next morning.
+**Acceptance gate**: operator leaves `regatta serve` running overnight against `autonomous`-labeled queue without watching every PR. Adversarial review catches the bad PRs; cost caps stop runaway spend; replay-diff lets the operator re-run a flaky decision deterministically the next morning.
 
 | # | Task | Status | Effort |
 |---|---|---|---|
