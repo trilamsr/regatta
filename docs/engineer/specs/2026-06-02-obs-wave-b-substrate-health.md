@@ -9,7 +9,7 @@ summary: "OBS Wave-B substrate-health observability. 4 emitters (event-rate coun
 Status: ready for review
 Date: 2026-06-02
 Author: design subagent (OBS-WAVE-B)
-Parent spec: [`2026-06-02-observability-roadmap.md`](2026-06-02-observability-roadmap.md) (#432)
+Parent spec: [`phase-x/2026-06-02-observability-roadmap.md`](phase-x/2026-06-02-observability-roadmap.md) (#432)
 Item refs: `.regatta/items/obs-wave-b-b-t{1,2,3,4}-*.md`
 Wave-A foundation: A-T0a (`internal/obs/otel/meter.go`) + A-T0b (substrate + history `Config.Meter` fan-out)
 Depends on: #224 (substrate event log + HMAC chain), #369/#378 (divergence-audit table), W9 `DurableHistory` interface
