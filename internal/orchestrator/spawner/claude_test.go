@@ -395,6 +395,19 @@ func TestDefaultPromptBuilder_PreCommitMakeCheckMandatory(t *testing.T) {
 	}
 }
 
+// TestDefaultPromptBuilder_ColocatedTestRule asserts the prompt teaches the same-package test colocation rule (closes #1158, per feedback_colocated_test_required).
+func TestDefaultPromptBuilder_ColocatedTestRule(t *testing.T) {
+	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-COLOC", Lane: "server"})
+	for _, want := range []string{
+		"Co-located test required",
+		"feedback_colocated_test_required",
+	} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt missing colocated-test directive %q: %q", want, prompt)
+		}
+	}
+}
+
 // TestDefaultPromptBuilder_ReviewerRecommendationStrictTokenRule asserts the prompt teaches the strict single-token shape so subagents stop appending justification suffixes (recurring trap session 2026-06-08: #932/#1010/#1011/#1014, per feedback_trap_projection).
 func TestDefaultPromptBuilder_ReviewerRecommendationStrictTokenRule(t *testing.T) {
 	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-RR", Lane: "server"})
