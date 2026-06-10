@@ -135,13 +135,7 @@ func TestGHCLILister_HeadError_FailsFast(t *testing.T) {
 	}
 }
 
-// TestGHCLILister_Exit4EmptyStdout_NoPRFound is the regression for the
-// `prwatch.list_failed` warning storm. gh exits 4 with empty (or
-// `[]`) stdout when `--head <branch>` matches zero PRs — a NORMAL
-// state for agents whose branch was never pushed. The lister must
-// classify that case as (nil, nil) so the watcher does not emit a
-// per-tick WARN. Non-empty stdout under exit 4 indicates a real gh
-// error (auth, repo not found) and is still surfaced as an error.
+// TestGHCLILister_Exit4EmptyStdout_NoPRFound asserts gh exit-4 + empty/`[]` stdout returns (nil, nil) — silences prwatch.list_failed storm.
 func TestGHCLILister_Exit4EmptyStdout_NoPRFound(t *testing.T) {
 	t.Run("empty stdout returns nil, nil", func(t *testing.T) {
 		r := &fakeRunner{
