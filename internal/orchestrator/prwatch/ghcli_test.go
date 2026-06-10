@@ -225,12 +225,13 @@ func TestDefaultExec_TimesOutWhenGHHangs(t *testing.T) {
 	defaultGHTimeout = 200 * time.Millisecond
 	t.Cleanup(func() { defaultGHTimeout = prev })
 
-	// sh -c 'sleep 30' is POSIX-portable and reliably exceeds the
-	// shrunk timeout. Production code calls `gh`; the seam under test
-	// is the exec.CommandContext + per-call deadline, not the binary
-	// name. macOS + linux CI both ship /bin/sh + sleep.
+	// Invoke `sleep` directly. A `sh -c "sleep 30"` wrapper leaks the
+	// inherited stdout fd to the orphaned `sleep` child on linux when
+	// exec.CommandContext SIGKILLs sh, blocking cmd.Output() for the
+	// full 30s (linux CI repro; macOS unaffected). Production `gh` is
+	// a single binary, so direct-invocation mirrors prod fd topology.
 	start := time.Now()
-	_, err := defaultExec(context.Background(), "sh", "-c", "sleep 30")
+	_, err := defaultExec(context.Background(), "sleep", "30")
 	elapsed := time.Since(start)
 
 	if err == nil {
