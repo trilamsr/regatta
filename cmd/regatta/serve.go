@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
-	"github.com/trilamsr/regatta/internal/orchestrator"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
@@ -255,22 +254,15 @@ func runServe(args []string) int {
 		MergeCoordinator: mergeCoord,
 		MergeWorker:      mergeWorker,
 	})
-
-	o := orchestrator.New(orchestrator.Config{
-		AdapterSync:       syncer,
-		BriefLoader:       loader,
-		DB:                db,
-		Scheduler:         sched,
-		Spawner:           set.Spawner,
-		ItemBody:          buildItemBodyLoader(f.RepoRoot, slogger),
-		RepoRoot:          f.RepoRoot,
-		DBPath:            f.DBPath,
-		PollInterval:      f.PollDur,
-		TickInterval:      f.TickDur,
-		HeartbeatInterval: f.HeartDur,
-		LockTTL:           f.LockTTL,
-		Logger:            slogger,
-		Clock:             clock,
+	o, healthHB := newOrchestrator(orchestratorWiring{
+		Syncer:    syncer,
+		Loader:    loader,
+		DB:        db,
+		Scheduler: sched,
+		Spawner:   set.Spawner,
+		Flags:     f,
+		Logger:    slogger,
+		Clock:     clock,
 	})
 	if set.Worktrees != nil {
 		o.SetReaper(reaper.New(reaper.Config{
@@ -333,6 +325,7 @@ func runServe(args []string) int {
 		Clock:      clock,
 		Authorizer: authzr,
 		PublicHost: publicHost,
+		Heartbeat:  healthHB,
 	})
 	if err != nil {
 		logger.Printf("listener boot: %v", err)

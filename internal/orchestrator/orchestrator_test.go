@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -511,6 +512,44 @@ func TestRunStopsOnContextCancel(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return after context cancel")
+	}
+}
+
+// fakeHeartbeatToucher records every Touch call so tests can assert
+// the orchestrator Run loop refreshes the /healthz cell every tick (#1218).
+type fakeHeartbeatToucher struct {
+	mu     sync.Mutex
+	counts int
+}
+
+func (f *fakeHeartbeatToucher) Touch() {
+	f.mu.Lock()
+	f.counts++
+	f.mu.Unlock()
+}
+
+func (f *fakeHeartbeatToucher) Count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.counts
+}
+
+// TestRunTouchesHealthHeartbeat asserts Run touches HealthHeartbeat every tick so /healthz stays fresh (#1218).
+func TestRunTouchesHealthHeartbeat(t *testing.T) {
+	o, _, _, _ := newHarness(t, 0)
+	o.cfg.PollInterval = 5 * time.Millisecond
+	o.cfg.TickInterval = 5 * time.Millisecond
+	o.cfg.HeartbeatInterval = 5 * time.Millisecond
+	hb := &fakeHeartbeatToucher{}
+	o.heartbeat = hb
+
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- o.Run(ctx) }()
+	<-done
+	if hb.Count() < 2 {
+		t.Fatalf("HealthHeartbeat.Touch count=%d; want >=2 ticks observed", hb.Count())
 	}
 }
 

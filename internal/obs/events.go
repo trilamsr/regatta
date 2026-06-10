@@ -46,6 +46,15 @@ const (
 	// surfacing the stall.
 	EventSchedulerFileScopeCycleStalled EventName = "scheduler.file_scope_cycle_stalled"
 
+	// EventSchedulerTickStarved fires INFO once per tick when the
+	// L0 spawnable set is non-empty but reservation produces zero
+	// agents — lane caps or hotspot locks blocked every candidate.
+	// Closes the silent-stall window in #1218 where ticks fire every
+	// 5s but the operator log surface stays at DEBUG (zero reserved
+	// is masked by tickLogLevel) so the saturated phantom-agent
+	// deadlock is invisible.
+	EventSchedulerTickStarved EventName = "scheduler.tick_starved"
+
 	EventSpawnStarted   EventName = "spawn.started"
 	EventSpawnCompleted EventName = "spawn.completed"
 	EventSpawnFailed    EventName = "spawn.failed"
@@ -141,6 +150,11 @@ const (
 
 	KeyWorkItemsEvaluated AttrKey = "work_items_evaluated"
 
+	// KeyAgentsReserved pairs with KeyWorkItemsEvaluated on
+	// scheduler.tick_starved: evaluated>0 + reserved==0 means lane
+	// caps or hotspot locks blocked dispatch this tick (#1218).
+	KeyAgentsReserved AttrKey = "agents_reserved"
+
 	KeyApprovalID    AttrKey = "approval_id"
 	KeyReviewerCount AttrKey = "reviewer_count"
 
@@ -177,6 +191,7 @@ func AllEventNames() []EventName {
 		EventSchedulerMaterializeFailure,
 		EventSchedulerFileScopeCollisionDeferred,
 		EventSchedulerFileScopeCycleStalled,
+		EventSchedulerTickStarved,
 		EventSpawnStarted,
 		EventSpawnCompleted,
 		EventSpawnFailed,
@@ -231,6 +246,7 @@ func AllAttrKeys() []AttrKey {
 		KeyExitCode,
 		KeyLastTextFingerprint,
 		KeyWorkItemsEvaluated,
+		KeyAgentsReserved,
 		KeyApprovalID,
 		KeyReviewerCount,
 		KeyReviewerID,
