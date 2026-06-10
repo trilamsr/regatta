@@ -142,7 +142,7 @@ Every channel below produces a metric. Each session's metrics are written to `$B
 |---|---|---|
 | `build_green_rate_impl` | `$CI_QUERY_CMD` → count `statusCheckRollup=SUCCESS` / total per implementer agent | file `[AGENT][impl]` if rate drops ≥ 0.10 vs baseline (= 10% relative regression) |
 | `tdd_order_rate_impl` | per merged PR, first commit subject of `git log --reverse --format=%s <base>..<head>` matches POSIX-ERE `^(test\|red\|RED\|FAIL\|\[TEST\])` (parentheses group the alternation; only first commit subject is tested) | file `[AGENT][impl]` if rate drops ≥ 0.10 vs baseline |
-| `comment_density_impl` | regatta: `bash scripts/check-comment-density.sh`. Generic: `cloc --csv --quiet <PR-diff>` → comment / total | file `[AGENT][impl]` if density ≥ 0.05 on new files (= 5%) |
+| `comment_density_impl` | generic: `cloc --csv --quiet <PR-diff>` → comment / total | reviewer subagent comment-sweep catches WHAT-narration drift |
 | `mock_vs_real_ratio_impl` | regatta: `bash scripts/check-mock-vs-real.sh`. Generic: `grep -cE 'mock\|stub\|fake' *_test.go` / total test lines per merged PR | file `[AGENT][impl]` if ratio ≥ 0.70 |
 | `scope_creep_impl` | merged-PR LoC + file-count rolling avg | file `[AGENT][impl]` if either dimension ≥ 1.50× baseline (= 50% regression) |
 | `review_catch_rate_rev` | sample N merged PRs/session, dispatch independent reviewer-replay, diff findings | file `[AGENT][rev]` if catch rate drops ≥ 0.10 vs baseline |
