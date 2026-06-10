@@ -1,14 +1,17 @@
 # reviewer-verdict/path-classifier.sh — flag PR as load-bearing when any
 # changed path hits agent-rule / CI-gate / load-bearing-doc / operator-UX /
-# event-vocabulary surfaces. Sets LOAD_BEARING_BY_PATH (0/1) and upgrades
-# LOAD_BEARING when matched.
+# event-vocabulary / skill surfaces. Sets LOAD_BEARING_BY_PATH (0/1) and
+# upgrades LOAD_BEARING when matched.
 # Closes #985 #986 #991 (retro audit 2026-06-08).
-# Closes #1133 (audit 2026-06-09): internal/web/ (operator dashboard UX,
-# the primary live operator surface — XSS, broken polling, render bugs
-# affect every operator decision) and internal/obs/ (event vocabulary —
-# silent drift breaks dashboards + monitoring) added to the classifier.
-# Before this fix, #1110 + #1132 merged token-less because [FEAT]/[CHANGE]
-# release-notes auto-skipped review when no load-bearing path was touched.
+# Closes #1133 (audit 2026-06-09): internal/web/ + internal/obs/ added.
+# Closes #1189 + #1190 (audit 2026-06-10): .claude/skills/* added because
+# skill files encode operator-authority surfaces (delegated-merge auth,
+# bottleneck-loop rules, three-lens reviewer template citations,
+# session-handoff schema). Before this fix, PR #1163 merged with a
+# REVISE token (round-5 APPROVE never bumped into body) and PR #1186
+# merged with NO reviewer tokens at all (subagent self-graded via A+
+# rubric inline) — both because [CHORE] release-notes auto-skipped the
+# gate when only .claude/skills/ paths changed.
 
 rv_classify_paths() {
   LOAD_BEARING_BY_PATH=0
@@ -35,6 +38,10 @@ rv_classify_paths() {
         break
         ;;
       internal/web/*|internal/obs/*)
+        LOAD_BEARING_BY_PATH=1
+        break
+        ;;
+      .claude/skills/*)
         LOAD_BEARING_BY_PATH=1
         break
         ;;
