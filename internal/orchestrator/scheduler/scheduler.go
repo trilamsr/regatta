@@ -158,6 +158,11 @@ type Config struct {
 	RecheckBackoffK             int
 	RecheckBackoffSuppressTicks int
 	RecheckBackoffStaleTicks    int
+
+	// FileScopeExtractor projects a candidate's predicted file paths so
+	// the dispatcher can defer same-lane siblings that touch a shared
+	// file (#1065). nil keeps pre-#1065 behavior (lane-cap only).
+	FileScopeExtractor FileScopeExtractor
 }
 
 // ResolveMeter returns Meter or a lazily-resolved global fallback.
