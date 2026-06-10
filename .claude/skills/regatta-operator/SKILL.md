@@ -461,11 +461,17 @@ Bottleneck-resolution loop fix PRs follow the same gate. Skill-opened PRs only; 
 1. Check for ANY failure conclusion at each tick and break on first failure.
 2. Report the failure summary back to the operator within 1 tick.
 3. Cap total iterations to `MAX_TICKS=10` with explicit hand-back on cap (never poll indefinitely).
+4. Use REST `gh api repos/.../commits/<sha>/check-runs` for per-tick status reads — NOT GraphQL `gh pr view --json statusCheckRollup`. The GraphQL `statusCheckRollup` field nests deeply (check_runs + check_suites + statuses) and costs ~15+ rate-limit units per call; REST returns the same status data for ~3 units. A 4-PR sweep every 60s for 18 ticks via GraphQL burns ~1080 units; the same sweep via REST burns ~216 units — ~5× headroom. 2026-06-10 session depleted the 5000/hr GraphQL quota in one autonomous run, forcing a 26-min `ScheduleWakeup` pause. Reserve GraphQL `gh pr view --json mergeStateStatus,state` for the single-shot terminal merge-gate check (one call per PR, end of poll session).
 
 ```
-until [ "$(gh pr view <N> --json mergeStateStatus --jq .mergeStateStatus)" = "CLEAN" ]; do
-  fails=$(gh pr checks <N> 2>&1 | grep -cE '^[^[:space:]]+\s+fail')
-  [ "$fails" -gt 0 ] && { echo "FAIL detected on PR <N>"; break; }
+# Fetch headRefOid ONCE per poll session (not per tick) — it does not change unless the PR force-pushes.
+PR_HEAD_SHA=$(gh pr view <N> --json headRefOid --jq .headRefOid)
+
+until [ "$(gh api "repos/$REPO/commits/$PR_HEAD_SHA/check-runs" --jq '[.check_runs[]|select(.status=="completed")|select(.conclusion!="success")]|length')" = "0" ] \
+   && [ "$(gh api "repos/$REPO/commits/$PR_HEAD_SHA/check-runs" --jq '[.check_runs[]|select(.status!="completed")]|length')" = "0" ]; do
+  fails=$(gh api "repos/$REPO/commits/$PR_HEAD_SHA/check-runs" \
+    --jq '[.check_runs[]|select(.conclusion=="failure" or .conclusion=="cancelled" or .conclusion=="timed_out")|.name]|join(",")')
+  [ -n "$fails" ] && { echo "FAIL on PR <N>: $fails"; break; }
   sleep 60
 done
 ```
