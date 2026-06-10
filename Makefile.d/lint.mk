@@ -1,8 +1,11 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-phase-x-leak check-phase-x-leak-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test next-migration
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-phase-x-leak check-phase-x-leak-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, comment-noise, test-godoc length).
 	bash scripts/doc-check.sh
+
+doc-check-test:  ## Fixture-driven test for doc-check.sh comment-noise (reviewer-tag) gate.
+	bash scripts/doc-check_test.sh
 
 prose-dup:  ## Fail if a previously-deduped prose phrase reappears in 2+ markdown files.
 	bash scripts/check-prose-dup.sh
