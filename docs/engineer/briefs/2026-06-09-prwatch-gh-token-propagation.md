@@ -3,7 +3,7 @@ name: prwatch-gh-token-propagation
 slug: 2026-06-09-prwatch-gh-token-propagation
 status: draft
 phase: self-host-first
-owner: tri@maydow.com
+owner: trilamsr@gmail.com
 created: 2026-06-09
 ---
 

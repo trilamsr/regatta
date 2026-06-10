@@ -3,7 +3,7 @@ name: compose-container-name-strategy
 slug: 2026-06-09-compose-container-name-strategy
 status: draft
 phase: self-host-first
-owner: tri@maydow.com
+owner: trilamsr@gmail.com
 created: 2026-06-09
 ---
 

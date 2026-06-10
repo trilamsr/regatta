@@ -3,7 +3,7 @@ name: "Polling improvement ladder — ETag conditional GET → adaptive interval
 slug: 2026-06-09-polling-improvement-ladder
 status: draft
 phase: self-host-first
-owner: tri@maydow.com
+owner: trilamsr@gmail.com
 created: 2026-06-09
 summary: "Five-rung roadmap for reducing GitHub-poll rate-limit consumption and end-to-end change-detection latency. Rungs 1 + 2 (ETag conditional GET; per-resource adaptive backoff) land in the self-host-first phase — zero new infra, reversible, addresses #1164 + the adaptive-interval observation from the regatta-operator skill. Rungs 3-5 (GH events API stream; smee.io/`gh webhook forward` hybrid (#1165); full webhook + Cloudflare tunnel) are Phase-X forward-fit with explicit reopen triggers — they impose ingress / multi-tenant complexity that the single-operator self-host filter rejects today. Closes #1164 (rung 1) and #1165 (rung 4, deferred)."
 ---
@@ -12,7 +12,7 @@ summary: "Five-rung roadmap for reducing GitHub-poll rate-limit consumption and 
 
 Status: draft
 Date: 2026-06-09
-Author: tri@maydow.com
+Author: trilamsr@gmail.com
 Tracks: #1164 (rung 1, in-scope), #1165 (rung 4, Phase-X forward-fit)
 Cross-ref: `internal/ghclient/client.go` (current gh-CLI seam, no HTTP client yet — rungs 1/3/5 require one), `internal/orchestrator/adaptersync/adaptersync.go:122-134` (MinPollInterval gate — closest sibling primitive for rung 2), `internal/orchestrator/adapter/githubissues/adapter.go:281` (per-adapter MinPoll wiring), `internal/orchestrator/prwatch/ghcli.go:61-71` (PR-list poll surface — second consumer of any rate-budget win), `internal/orchestrator/prwatch/prwatch.go:44-50` (poll tick budget rationale).
 
@@ -186,3 +186,16 @@ Per the self-host filter in `CLAUDE.md`: "No `RBAC`, no billing, no `htmx` UI, n
   - `internal/orchestrator/prwatch/prwatch.go:44-50` — poll tick rationale ("12 ticks × 5s ≈ 1 minute — rides out a `gh pr list` blip"). Rung 2's backoff must not interfere with the 12-tick disagreement-tolerance budget.
 - **Memory rules**: `feedback_default_simpler` (rejects rungs 3-5 in self-host phase), `feedback_decision_priority` (UX > performance: rung 2's active-window snap-back over gradual decay), self-host filter from `CLAUDE.md` (rejects rung-5-class public-ingress wedges absent enterprise reopen trigger).
 - **Plan-master**: this spec is the artifact #1164 + #1165 cluster onto. Per `feedback_audit_main_before_implementing`, before dispatching the rung-1 implementer, confirm no in-flight PR already introduces an HTTP transport under `internal/ghclient/` (current main has gh-CLI subprocess only — confirmed via `internal/ghclient/client.go` read 2026-06-09).
+
+
+## §7 Adversarial
+
+Independent reviewer dispatched per CLAUDE.md `feedback_adversarial_review_every_step` on the parent spec PR. Round-1 and round-2 found scope-boundary + signature-precision gaps now closed.
+
+## §8 Implementer brief
+
+Stage / Rung scopes already enumerated above; each implementer PR carries: failing test (per `feedback_tdd_discipline`), measurement-before-after (per `feedback_validate_before_ship`), three-lens reviewer (per the new docs/engineer/dispatch-templates/reviewer.md §Three-lens prompt), A+ rubric scorecard. Independent reviewer enforces `feedback_no_self_tagged_approve`.
+
+## §9 Reopen trigger
+
+Reopen triggers are per-rung (see §5). For the spec as a whole: reopen when ≥2 rungs land and a new transport class (e.g. SSE, gRPC-streaming) surfaces in regatta or the wider GitHub API ecosystem.

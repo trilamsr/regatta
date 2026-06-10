@@ -3,7 +3,7 @@ name: Scheduler parallel-cap enforcement + shipped-status filter
 slug: 2026-06-09-scheduler-parallel-cap-enforcement
 status: draft
 phase: self-host-first
-owner: tri@maydow.com
+owner: trilamsr@gmail.com
 created: 2026-06-09
 ---
 
@@ -194,3 +194,16 @@ Explicit Phase-X items NOT addressed:
   - `internal/orchestrator/adaptersync/adaptersync.go:238-245` — `mapAdapterStatus` Stage 2 extends.
   - `internal/obs/events.go:23` — `EventTickSlow` declaration.
   - `internal/obs/events.go:155` — event registry Stage 2 appends `EventAdapterItemTerminal` to.
+
+
+## §7 Adversarial
+
+Independent reviewer dispatched per CLAUDE.md `feedback_adversarial_review_every_step` on the parent spec PR. Round-1 and round-2 found scope-boundary + signature-precision gaps now closed.
+
+## §8 Implementer brief
+
+Stage / Rung scopes already enumerated above; each implementer PR carries: failing test (per `feedback_tdd_discipline`), measurement-before-after (per `feedback_validate_before_ship`), three-lens reviewer (per the new docs/engineer/dispatch-templates/reviewer.md §Three-lens prompt), A+ rubric scorecard. Independent reviewer enforces `feedback_no_self_tagged_approve`.
+
+## §9 Reopen trigger
+
+Reopen on: multi-tenant phase fires (operator decision), OR external customer ask for per-tenant caps / billing-tier caps, OR autotuner spec (`2026-06-07-autotuner-closed-loop.md`) needs a per-lane Static cap as an input.
