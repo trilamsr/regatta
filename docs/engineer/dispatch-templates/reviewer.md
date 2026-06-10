@@ -108,6 +108,34 @@ addressed pre-merge but acceptable as a follow-up PR if scope is large.
 
 Skip lens (3) only when the diff is exclusively code-change (no markdown / docstring / spec / prompt template content). Even on code-only diffs, lens (1) + (2) remain mandatory.
 
+## A+ rubric scorecard template
+
+MANDATORY per CLAUDE.md `feedback_grade_rubric` on every `[FEAT]` / `[FIX]` / `[CHANGE]` / `[REFACTOR]` PR + every load-bearing-artifact `[DOCS]` PR. Reviewer re-scores all 10 rows via the three-lens prompt above. ⚠/❌ on any A or A+ row blocks merge until addressed OR waived via `<!-- rubric-waiver-row-<N>: <reason ≥4 chars> -->` in the PR body.
+
+Paste into the PR body, fill `Self-rate` column (✅ / ⚠ / ❌ + ≤1-line evidence each), set the headline:
+
+```markdown
+## A+ rubric (operator self-grade)
+
+| Tier | Criterion | Self-rate |
+|---|---|---|
+| B | Defect named + root cause traced (not just symptom) | [✅/❌ + 1-line evidence] |
+| B | Failing test landed first OR clear TDD-not-applicable justification | [✅/❌ + 1-line] |
+| B | `make check` green pre-merge | [✅/❌] |
+| A | Smallest fix that closes the root cause (no scope creep) | [✅/⚠/❌ + 1-line] |
+| A | Operator-helpful failure mode (loud, actionable) | [✅/⚠/❌ + 1-line] |
+| A | Cross-cuts called out — Phase-X / forward-fit references | [✅/⚠/❌ + 1-line] |
+| A | Adversarial review pass + revisions applied | [✅/❌ + round count] |
+| A+ | Eliminates a class of failures, not just one instance | [✅/⚠/❌ + 1-line] |
+| A+ | Generalises a missing primitive (export, shared utility, doc template) | [✅/⚠/❌ + 1-line] |
+| A+ | Carries forward into next PR's design surface | [✅/⚠/❌ + 1-line] |
+
+Self-rate: **[B / A / A+]** — [1-line headline justification].
+```
+
+Self-rate headline must reflect the WEAKEST tier carrying any ⚠/❌. All B + A green AND ≥1 A+ green → A+. All B + A green but no A+ → A. Any B ❌ → B.
+
+
 ## Per-dispatch payload
 - Target: `<TARGET>`
 - Spec: `<SPEC-PATH>`
