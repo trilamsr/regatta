@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 )
 
 // TestPreflightSpawnerAuth_StripDefaultRefusesWhenNoClaudeDir pins #1166-3: when REGATTA_SPAWNER_STRIP_API_KEY is unset or "1" (subscription path) AND no readable subscription credential is reachable, the orchestrator must refuse to boot loudly instead of letting the scheduler burn through the work-item queue with auth_precondition_failed (the failure mode that prompted #1166).
@@ -58,5 +60,12 @@ func TestPreflightSpawnerAuth_NonClaudeSpawnerSkipped(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	if err := preflightSpawnerAuth("stub"); err != nil {
 		t.Fatalf("preflightSpawnerAuth(stub) must skip regardless of env; got %v", err)
+	}
+}
+
+// TestPreflightSpawnerAuth_StripFlag_UsesSharedFalsyLexicon pins that the boundary gate classifies REGATTA_SPAWNER_STRIP_API_KEY via spawner.IsFalsyEnv (exported per #1166-fix3 reviewer round-1). If the export drifts back to unexported, this test fails compile.
+func TestPreflightSpawnerAuth_StripFlag_UsesSharedFalsyLexicon(t *testing.T) {
+	if spawner.IsFalsyEnv("0") != true || spawner.IsFalsyEnv("1") != false {
+		t.Fatalf("spawner.IsFalsyEnv lexicon drifted")
 	}
 }
