@@ -4,8 +4,7 @@
 # so PRs that don't touch go.mod/go.sum (e.g. doc-only changes) never trigger
 # the workflow and stay stuck at BLOCKED because the required check is "expected
 # but missing". Fire on every PR; the job is ~2min and continue-on-error: true
-# so it doesn't gate merges on findings, only on presence. Caught 2026-06-10 by
-# PR #1273 (doc-only) stuck at BLOCKED.
+# so it doesn't gate merges on findings, only on presence.
 name: govulncheck
 
 on:
