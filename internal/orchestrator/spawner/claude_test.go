@@ -381,6 +381,20 @@ func TestDefaultPromptBuilder_CommentsZeroByDefaultDirective(t *testing.T) {
 	}
 }
 
+// TestDefaultPromptBuilder_PreCommitMakeCheckMandatory asserts the prompt teaches the pre-commit make check rule so subagents stop pushing broken state (recurring trap session 2026-06-10: #1208/#1214, per feedback_pre_commit_make_check).
+func TestDefaultPromptBuilder_PreCommitMakeCheckMandatory(t *testing.T) {
+	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-PRECOMMIT", Lane: "server"})
+	for _, want := range []string{
+		"Pre-commit `make check` MANDATORY",
+		"feedback_pre_commit_make_check",
+		"BEFORE `git commit`",
+	} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt missing pre-commit directive %q: %q", want, prompt)
+		}
+	}
+}
+
 // TestDefaultPromptBuilder_ReviewerRecommendationStrictTokenRule asserts the prompt teaches the strict single-token shape so subagents stop appending justification suffixes (recurring trap session 2026-06-08: #932/#1010/#1011/#1014, per feedback_trap_projection).
 func TestDefaultPromptBuilder_ReviewerRecommendationStrictTokenRule(t *testing.T) {
 	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-RR", Lane: "server"})

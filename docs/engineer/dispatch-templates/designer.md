@@ -35,6 +35,9 @@ ADVERSARIAL REVIEW ON SPEC
 DOC-CHECK
 - No banned phrases (`scripts/doc-check.sh`, 11 tokens). Reword to falsifiable claims (version pin, benchmark, named reference). Pre-push grep mandatory. Per `CLAUDE.md` §CI gates "Banned-phrase gate".
 
+PRE-COMMIT `make check` MANDATORY
+- After editing brief/spec/template + before `git add`: run `bash scripts/doc-check.sh` AND `make check` (catches CUE schema + golden-byte-equal regressions + doc-link gate + Phase-X leak). Verify exit=0. Do NOT stage or commit on failure. Skipping → post-push gate failure → re-investigate + re-fix + re-push round-trip. Per `feedback_pre_commit_make_check`.
+
 DELETION DEFAULT
 - Spec answers "what got smaller?" Additions need A+ defense. Per `feedback_deletion_default`.
 
