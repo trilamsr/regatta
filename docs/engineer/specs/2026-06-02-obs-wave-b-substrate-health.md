@@ -495,3 +495,19 @@ none (internal)
 ```
 
 Memory citations: `feedback_research_design_principles` (§2 prior-art reuse), `feedback_decision_priority` (§1 priority ordering), `feedback_grade_rubric` (§13 scorecard), `feedback_adversarial_review` (§14), `feedback_pr_body_release_notes_mandatory` (release-notes fence above), `feedback_pr_body_file_only` (§17 dispatch summary), `feedback_test_godoc_one_line` (§11 test inventory), `feedback_spec_pattern_authority` (§9 meter-fan-out pattern), `feedback_design_iteration_local` (§6.3 baseline-lock at exit), `feedback_unaddressed_load_bearing` (§12 followups).
+
+## Acceptance
+
+See §13 A+ Scorecard rubric — `B` row is the merge floor; `A` is target.
+
+## Out of scope
+
+See §17 cross-wave seam — Wave-C agent-loop telemetry + Wave-D operator UX are sequenced after this wave.
+
+## Implementer brief
+
+See §17 Dispatch-ready summary — four parallel implementers (B-T1..B-T4) against `Config.Meter` fan-out from A-T0b.
+
+## Reopen trigger
+
+Substrate-health SLOs land green for 30 days OR an external customer ask reframes the Phase-X observability surface.
