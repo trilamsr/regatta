@@ -267,7 +267,7 @@ Post-split: the manifest's per-dispatch payload section is preserved as the over
 - ...
 
 ### Override (this dispatch only)
-- Skip COMMENT BUDGET density gate; file is auto-generated and ≥30% comment-density by design. Justify in PR body with `<!-- comment-density-justified: ... -->`.
+- Comment-density gate deleted #1266; reviewer lens 9 catches drift if needed.
 ```
 
 The override block is plain markdown; the resolver does not interpret it. Operators paste manifest + overrides verbatim into the subagent dispatch. No new mechanism, no new format.

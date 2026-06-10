@@ -286,7 +286,7 @@ WORKFLOW per item — use templates at `docs/engineer/dispatch-templates/`. Subs
 5. Adversarial reviewer per wave → fix → merge — `reviewer.md`
 6. Land / defer / reject decisions on issues + stale PRs — `triage.md`
 
-Templates encode load-bearing preamble: worktree-first, TDD failing-first, adversarial reviewer, optional self-grade, doc-check banned phrases, release-notes fence, no-signatures, memory cites, PHASE-S-RELAX conditions. Cite memory rules in dispatch prompts via the templates' `<MEMORY-RULES>` variable.
+Templates encode load-bearing preamble: worktree-first, TDD failing-first, adversarial reviewer, optional self-grade, doc-check comment-noise/test-godoc gates, release-notes fence, no-signatures, memory cites, PHASE-S-RELAX conditions. Cite memory rules in dispatch prompts via the templates' `<MEMORY-RULES>` variable.
 
 RULES (canonical — repo-tracked at CLAUDE.md; this section adds autonomous-loop-only rules)
 

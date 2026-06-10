@@ -298,7 +298,7 @@ func defaultPromptBuilder(req Request) string {
 	b.WriteString("- Default: write NO comments. A clear name + signature + types document the WHAT.\n")
 	b.WriteString("- Only add a comment if removing it would leave a future reader confused about WHY (not WHAT).\n")
 	b.WriteString("- Test godocs MUST be ≤ 1 line (`// TestX asserts O on I (#N).`).\n")
-	b.WriteString("- New prod .go files MUST be ≤ 5% comment-density (comment_lines / total_lines); `scripts/check-comment-density.sh` gates the PR diff.\n")
+	b.WriteString("- Keep comment-density low on new prod .go files; reviewer subagent comment-sweep catches WHAT-narration drift.\n")
 	b.WriteString("- DO NOT restate function names or signatures in godocs.\n")
 	b.WriteString("- DO NOT write section banner comments (`// ====`, `// ---`).\n")
 	b.WriteString("- DO NOT write multi-line test/fuzz/benchmark godocs.\n\n")
