@@ -48,6 +48,7 @@ Per `feedback_recognize_session_end`: this spec is bounded — it does NOT chase
 - Adaptive autotuner (#1166 fix proposal 1) is **scoped to Stage 3 as deferred**; not in v1.
 - Cross-lane fairness / weighted-round-robin. Stage 1 enforces aggregate ceiling only; existing per-lane caps still bind first.
 - UI surfacing of the cap. Operator reads the value out of `regatta.yaml` or scheduler logs.
+- Per-tenant cap matrices, RBAC, billing-tier caps. See §5 for the Phase-X reopen trigger.
 
 ## §3 Design
 
