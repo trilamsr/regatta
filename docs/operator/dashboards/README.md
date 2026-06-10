@@ -1,7 +1,7 @@
 # Grafana dashboards (obs roadmap §6.4)
 
 Seven dashboard JSON files realize the per-item dashboard tiles committed in
-`docs/engineer/specs/2026-06-02-observability-roadmap.md` §3. Metric names and
+`docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3. Metric names and
 label sets match §2.1 / §2.2 verbatim — drift between dashboard query and
 emitted metric is caught by the CI test `TestDashboardMetricNames_MatchEmitted`
 once Wave-A lands (§4 anti-pattern #6).

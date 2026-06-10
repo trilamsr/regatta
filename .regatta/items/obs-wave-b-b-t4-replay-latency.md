@@ -4,10 +4,10 @@ title: replay-latency histogram + SLO + dashboard tile (item #8)
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T0b
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-1 row item #8, §7 Wave-B table row B-T4, §5 SLO entry for replay latency.
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 Tier-1 row item #8, §7 Wave-B table row B-T4, §5 SLO entry for replay latency.
 
 ## Task
 

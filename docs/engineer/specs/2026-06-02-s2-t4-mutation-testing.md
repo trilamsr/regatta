@@ -10,7 +10,7 @@ summary: "Phase S2-T4 mutation testing on cost-governor + scheduler. References 
 
 _Author: design subagent, 2026-06-02. Scope: self-host-first brief Phase S2 task T4. Source-of-truth_:
 - `docs/engineer/briefs/2026-06-01-self-host-first.md` §3 Phase S2 row S2-T4 ("Mutation testing on cost-governor + scheduler — top 2 A+ rubric items from prior waves").
-- `docs/engineer/specs/2026-06-01-cost-governor-design.md` §7 A+ row ("Mutation-coverage ≥ 95% on `internal/cost/gate` via go-mutesting") — closed by this spec at the file-disjoint level.
+- `docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md` §7 A+ row ("Mutation-coverage ≥ 95% on `internal/cost/gate` via go-mutesting") — closed by this spec at the file-disjoint level.
 - `docs/engineer/specs/2026-06-01-w10-sigstore-design.md` §7 A+ ("Mutation-coverage ≥ 95% on `internal/sign/sigstore/` via `go-mutesting`") — sibling pattern; this spec generalises the tool choice across two packages.
 - Memory: `feedback_research_design_principles` (adoption-first; gremlins vs go-mutesting scored on maintenance + Go-compat), `feedback_grade_rubric` (B/A/A+ + verbatim scorecard in PR body), `feedback_pr_body_file_only` (`gh pr create --body-file`), `feedback_test_godoc_one_line` (one-line test godocs), `feedback_deletion_default`, `feedback_doc_check_banned_phrases`, `feedback_unaddressed_load_bearing`, `feedback_agent_pr_review`.
 
@@ -348,7 +348,7 @@ Per `feedback_unaddressed_load_bearing` — file as gh issues, cite by number in
 ## §11 References
 
 - Self-host-first brief: `docs/engineer/briefs/2026-06-01-self-host-first.md` §3 Phase S2 row S2-T4.
-- cost-governor spec (closes A+ row): `docs/engineer/specs/2026-06-01-cost-governor-design.md` §7 A+.
+- cost-governor spec (closes A+ row): `docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md` §7 A+.
 - W10 sigstore spec (sibling A+ pattern): `docs/engineer/specs/2026-06-01-w10-sigstore-design.md` §7 A+ (deferred to followup #13).
 - gremlins: https://github.com/go-gremlins/gremlins (MIT, 2025 active).
 - go-mutesting: https://github.com/zimmski/go-mutesting (MIT, 2014-).

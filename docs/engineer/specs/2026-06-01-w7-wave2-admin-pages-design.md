@@ -66,7 +66,7 @@ Both routes mount under the existing `internal/web` mux from W1 T4 (PR #307). No
 
 ### 3.2 `/runs/` query plan
 
-Top-50 newest DAG runs by `started_at` DESC. Pagination uses an opaque cursor; the substrate has the canonical encoding (per `docs/engineer/specs/2026-06-01-unified-substrate-design.md` §4 fold semantics on `(written_at, kind, work_item_id)` tuples). `internal/web/cursor.go` (T10 followup) wraps:
+Top-50 newest DAG runs by `started_at` DESC. Pagination uses an opaque cursor; the substrate has the canonical encoding (per `docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md` §4 fold semantics on `(written_at, kind, work_item_id)` tuples). `internal/web/cursor.go` (T10 followup) wraps:
 
 ```go
 // cursor encodes (started_at, run_id) for keyset pagination.

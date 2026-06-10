@@ -4,10 +4,10 @@ title: OTel MeterProvider + OTLP/Prometheus exporters + mutual-exclusion validat
 lane: observability
 status: planned
 dependencies:
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §2.4 (impl seam), §7 Wave-A table row A-T0a (post-amendment split), §10 dispatch brief A-T0, §11 cross-wedge contracts (W6 seam), §9 R4 (Prom-exporter wiring) + R8 (W8 hand-off).
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §2.4 (impl seam), §7 Wave-A table row A-T0a (post-amendment split), §10 dispatch brief A-T0, §11 cross-wedge contracts (W6 seam), §9 R4 (Prom-exporter wiring) + R8 (W8 hand-off).
 Amendment ref: review of PR #410 §3 (A-T0a/A-T0b split) + §7 RISK-A (file-ownership fence — retrofit lives in `config.go`, NOT `writer.go` or gate-decide path).
 
 ## Task

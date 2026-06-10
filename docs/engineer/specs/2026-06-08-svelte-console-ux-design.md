@@ -5,7 +5,7 @@ revision: v1
 author: design pass (frontend-design + ui-ux-pro-max skills, operator review)
 date: 2026-06-08
 companion:
-  - docs/engineer/specs/2026-06-02-operator-console-design.md
+  - docs/engineer/specs/phase-x/2026-06-02-operator-console-design.md
 scope_umbrella: "[#183](https://github.com/trilamsr/regatta/issues/183) operator web UI"
 framing: |
   Design system + scaffold for the v5.1 operator console SvelteKit build.
@@ -350,7 +350,7 @@ Audit gates land in the implementation PR (not this design):
 ## 10. Out of scope
 
 - Backend API changes — S0 substrate (events SSE, runs list, agent list)
-  lands in separate impl PRs per `docs/engineer/specs/2026-06-02-operator-console-design.md`.
+  lands in separate impl PRs per `docs/engineer/specs/phase-x/2026-06-02-operator-console-design.md`.
 - Authentication — `internal/web/auth.go` shipped session-cookie + CSRF
   already; SvelteKit bundle reuses the cookie when embedded.
 - Modifications to the Wave 1 htmx prototype at `internal/web/` — Wave 1

@@ -2,7 +2,7 @@
 // API under a service-account identity (regatta-reviewer-bot), so the
 // "≥1 approving review" branch-protection rule clicks over without an
 // operator click. PHASE-AUTONOMY W7. See
-// docs/engineer/specs/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md.
+// docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md.
 package review
 
 import (

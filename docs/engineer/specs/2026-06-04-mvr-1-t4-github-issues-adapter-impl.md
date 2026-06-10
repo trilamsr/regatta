@@ -729,7 +729,7 @@ Per `feedback_comments_discipline` + `feedback_comments_lint_reconcile`. This se
 - Substrate write seam (real surface; basis for §1.1 + §4.6 defer decision): `internal/orchestrator/state/substrate/event.go:137` (`AppendEvent(ctx, tx, e Event, key, keyID)`).
 - Config wiring: `internal/config/validate/load.go:75,108-142` (`SpecAdapter` typed view).
 - Init wizard (T2): `docs/engineer/specs/2026-06-02-mvr-1-t2-regatta-init-bundle.md`.
-- SCM adapter (T5): `docs/engineer/specs/2026-06-02-mvr-1-t3-p38-scm-adapter-gitea-first.md`.
+- SCM adapter (T5): `docs/engineer/specs/phase-x/2026-06-02-mvr-1-t3-p38-scm-adapter-gitea-first.md`.
 - Self-host filter: `docs/engineer/briefs/2026-06-01-self-host-first.md`.
 - Decision priority, deletion default, dispatch brief only, unaddressed load-bearing: `CLAUDE.md`.
 - Worker prompt enrichment (F9 cross-cut downstream sanitization owner): PR #834.

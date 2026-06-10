@@ -4,10 +4,10 @@ title: SLO-1 + SLO-2 OpenSLO YAML + Sloth compile + runbooks + slo dashboard
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T1, OBS-WAVE-A-T2, OBS-WAVE-A-T3
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §5 SLO-1 + SLO-2, §7 Wave-A table row A-T5, §9 R3 (Sloth version pin), §10 dispatch brief A-T5.
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §5 SLO-1 + SLO-2, §7 Wave-A table row A-T5, §9 R3 (Sloth version pin), §10 dispatch brief A-T5.
 Amendment ref: review of PR #410 §5 L4 — SLO-3 (PR-merge-rate) demoted to KPI tile; renumber treats this PR's two SLOs as SLO-1 + SLO-2 only. SLO-2 widen + quantile rewrite explicitly deferred as `[OBS-followup] #1` (trigger: 30 days of real burn-rate from Wave-B).
 
 ## Task

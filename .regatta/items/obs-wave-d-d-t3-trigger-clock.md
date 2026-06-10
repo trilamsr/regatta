@@ -4,10 +4,10 @@ title: trigger-clock gauge + regatta triggers subcommand + dashboard tile (item 
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T0a, OBS-WAVE-C-T2
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-2 row item #15, §7 Wave-D table row D-T3 (HARD dep on C-T2), §8 B6 (D-T3 PR body precondition).
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 Tier-2 row item #15, §7 Wave-D table row D-T3 (HARD dep on C-T2), §8 B6 (D-T3 PR body precondition).
 
 ## Task
 
