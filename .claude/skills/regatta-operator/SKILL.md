@@ -460,17 +460,27 @@ Bottleneck-resolution loop fix PRs follow the same gate. Skill-opened PRs only; 
 
 1. Check for ANY failure conclusion at each tick and break on first failure.
 2. Report the failure summary back to the operator within 1 tick.
-3. Cap total iterations to `MAX_TICKS=10` with explicit hand-back on cap (never poll indefinitely).
+3. Cap total iterations to `MAX_TICKS=10` with an explicit bounded counter (`i=0; while [ $i -lt 10 ]`) and hand-back message on cap (never poll indefinitely, never use bare `until ... done`).
+4. Use REST-backed `gh pr checks <N>` for per-tick status reads — NOT GraphQL `gh pr view --json statusCheckRollup`. `gh pr checks` is REST under the hood and unifies BOTH GitHub Actions check_runs AND legacy commit-status entries (e.g. `pr-lint`-style statuses) into one `bucket` field (`pass`/`fail`/`pending`/`skipping`/`cancel`) — matching what the operator visually sees in the PR UI. Avoid the raw `gh api repos/.../commits/<sha>/check-runs` endpoint: it returns ONLY check_runs and silently omits commit-status entries, so legacy statuses look "missing" and the poll declares CLEAN prematurely. The GraphQL `statusCheckRollup` field nests deeply and costs ~15+ rate-limit units per call; `gh pr checks` costs ~3 units in the REST core bucket. A 4-PR sweep every 60s for 18 ticks via GraphQL burns ~1080 units; the same sweep via `gh pr checks` burns ~216 units — ~5× headroom. 2026-06-10 session depleted the 5000/hr GraphQL quota in one autonomous run, forcing a 26-min `ScheduleWakeup` pause. Reserve GraphQL `gh pr view --json mergeStateStatus,state` for the single-shot terminal merge-gate check (one call per PR, end of poll session).
+5. Re-fetch `headRefOid` every 3 ticks (or check `gh pr view --json updatedAt`) — if the PR force-pushes mid-poll, a stale SHA polls forever against an abandoned commit and never observes the new CI runs. The bounded counter + `gh pr checks <N>` form below sidesteps this entirely (no SHA pinned client-side; `gh` resolves PR → current head on every call).
 
-```
-until [ "$(gh pr view <N> --json mergeStateStatus --jq .mergeStateStatus)" = "CLEAN" ]; do
-  fails=$(gh pr checks <N> 2>&1 | grep -cE '^[^[:space:]]+\s+fail')
-  [ "$fails" -gt 0 ] && { echo "FAIL detected on PR <N>"; break; }
+```bash
+# Bounded, fail-fast CI poll. Uses gh pr checks (REST-backed, unifies check_runs + statuses).
+# No client-side SHA pin — gh resolves <N> to the current head each tick, so force-pushes are seen.
+i=0
+while [ $i -lt 10 ]; do
+  i=$((i+1))
+  CHECKS=$(gh pr checks <N> --json name,state,bucket 2>/dev/null)
+  fails=$(echo "$CHECKS" | jq -r '[.[]|select(.bucket=="fail" or .bucket=="cancel")|.name]|join(",")')
+  if [ -n "$fails" ]; then echo "FAIL on PR <N>: $fails"; break; fi
+  pending=$(echo "$CHECKS" | jq -r '[.[]|select(.bucket=="pending")]|length')
+  if [ "$pending" = "0" ]; then echo "CLEAN on PR <N>"; break; fi
   sleep 60
 done
+[ $i -ge 10 ] && echo "MAX_TICKS=10 reached on PR <N>; handing back to operator"
 ```
 
-Wrap with an iteration counter that breaks at `MAX_TICKS=10` and hands back to the operator with the current PR state. Failure detection feeds the bottleneck-resolution loop.
+`gh pr checks --json` fields (verified against `gh` 2.x): `bucket`, `completedAt`, `description`, `event`, `link`, `name`, `startedAt`, `state`, `workflow`. `bucket` is the categorized signal (`pass`/`fail`/`pending`/`skipping`/`cancel`) — use it, not raw `state`/`conclusion`, because it normalizes check_runs `conclusion` and status `state` into one field. Failure detection feeds the bottleneck-resolution loop.
 
 ## Reviewer prompt shape
 
