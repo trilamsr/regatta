@@ -253,6 +253,7 @@ func runServe(args []string) int {
 		Clock:            clock,
 		MergeCoordinator: mergeCoord,
 		MergeWorker:      mergeWorker,
+		Logger:           slogger,
 	})
 	o, healthHB := newOrchestrator(orchestratorWiring{
 		Syncer:    syncer,

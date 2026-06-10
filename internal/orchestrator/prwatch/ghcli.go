@@ -235,6 +235,13 @@ func isBlankSlateExit(err error, stdout []byte) bool {
 //
 //nolint:gosec // gh CLI + literal-arg shell-out (issue #526)
 func defaultExec(ctx context.Context, name string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	// Per-call timeout (defaultGHTimeout). exec.CommandContext SIGKILLs
+	// the child when the derived ctx fires, so a wedged gh cannot
+	// outlive the tick budget. The caller's ctx still applies
+	// (cancellation propagates via the parent), so shutdown stays
+	// responsive. #1227.
+	tctx, cancel := context.WithTimeout(ctx, defaultGHTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(tctx, name, args...)
 	return cmd.Output()
 }

@@ -216,10 +216,7 @@ func TestGHCLILister_Exit4EmptyStdout_NoPRFound(t *testing.T) {
 	})
 }
 
-// TestDefaultExec_TimesOutWhenGHHangs pins the per-call timeout that
-// prevents a hung `gh` invocation from wedging the orchestrator's
-// tickT.C handler (#1227). A 30s sleep subprocess MUST surface a
-// deadline-exceeded error within ~defaultGHTimeout, not 30s.
+// TestDefaultExec_TimesOutWhenGHHangs asserts hung gh returns ≤2s under shrunk defaultGHTimeout (#1227).
 func TestDefaultExec_TimesOutWhenGHHangs(t *testing.T) {
 	t.Parallel()
 	// Shrink the package-level timeout so the test asserts the wiring,
