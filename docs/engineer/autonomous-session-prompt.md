@@ -22,7 +22,7 @@ Current direct path per 2026-06-08 operator reorder (operator feeds these to reg
 - When stuck: file `[followup]` issue + add to watch-triggers list + pick next priority. Pause only for genuinely irreversible action.
 
 **Operator vs regatta split:**
-- **Operator can fix directly** (own commit, own PR, own merge per `audit-session` delegated-merge clause): orchestrator-side defects regatta cannot self-discover (boot precondition, gate misclassification, env propagation, docker-compose config, dispatch-template prompt drift, CLAUDE.md rules, this prompt itself).
+- **Operator can fix directly** (own commit, own PR, own merge per `audit-session` delegated-merge clause): orchestrator-side defects regatta cannot self-discover (boot precondition, gate misclassification, env propagation, docker-compose config, dispatch-template prompt drift, CLAUDE.md rules, this prompt itself). Operator-opened PRs STILL require independent adversarial reviewer per `feedback_no_self_tagged_approve` + `feedback_adversarial_review_every_step` — the reviewer-verdict gate is the mechanical enforcer; "own PR, own merge" never means "self-tagged review".
 - **Operator must feed regatta** (file `autonomous`-issue, watch regatta open + merge a PR): feature work in regatta's roadmap (P0 console UI, P3 arbitrary-repo slices, P4 awareness integrations), bug fixes on regatta's product surfaces that regatta CAN self-discover via the self-improve detector.
 - When in doubt → feed regatta. Operator's job is to keep the queue useful, not to replace the worker.
 
