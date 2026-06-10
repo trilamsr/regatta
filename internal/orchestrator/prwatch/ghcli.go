@@ -8,7 +8,20 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 )
+
+// defaultGHTimeout caps the wall-clock duration of any single `gh`
+// invocation defaultExec wraps. Without it a hung gh (rate-limit,
+// network blip, GH 502) wedges the synchronous tickT.C body
+// (ScheduleOnce → RouteRejections → ReapTerminal → WatchPRs)
+// indefinitely; heartT.C lives on a separate goroutine so the
+// /healthz heartbeat keeps reporting `ok` while the scheduler dies
+// silently. Closes #1227.
+//
+// Package-level var (not const) so tests shrink it without adding a
+// Config seam to a private exec wrapper.
+var defaultGHTimeout = 10 * time.Second
 
 // ghJSONFields pins the fields the watcher consumes. Kept as a
 // constant so a future gh schema-drift case (issue R4 in the spec)

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeRunner is a hermetic os/exec replacement. Keyed by the joined
@@ -213,6 +214,36 @@ func TestGHCLILister_Exit4EmptyStdout_NoPRFound(t *testing.T) {
 			t.Fatalf("want err on non-exit-4, got nil")
 		}
 	})
+}
+
+// TestDefaultExec_TimesOutWhenGHHangs pins the per-call timeout that
+// prevents a hung `gh` invocation from wedging the orchestrator's
+// tickT.C handler (#1227). A 30s sleep subprocess MUST surface a
+// deadline-exceeded error within ~defaultGHTimeout, not 30s.
+func TestDefaultExec_TimesOutWhenGHHangs(t *testing.T) {
+	t.Parallel()
+	// Shrink the package-level timeout so the test asserts the wiring,
+	// not the production value. Restore on cleanup.
+	prev := defaultGHTimeout
+	defaultGHTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { defaultGHTimeout = prev })
+
+	// sh -c 'sleep 30' is POSIX-portable and reliably exceeds the
+	// shrunk timeout. Production code calls `gh`; the seam under test
+	// is the exec.CommandContext + per-call deadline, not the binary
+	// name. macOS + linux CI both ship /bin/sh + sleep.
+	start := time.Now()
+	_, err := defaultExec(context.Background(), "sh", "-c", "sleep 30")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatalf("want timeout error, got nil after %s", elapsed)
+	}
+	// Must return within ~10× the timeout to prove the wrap fired
+	// (10× covers slow CI; the bug under test wedges 30s+).
+	if elapsed > 2*time.Second {
+		t.Fatalf("defaultExec returned in %s; want ≤2s — per-call timeout did not fire (err=%v)", elapsed, err)
+	}
 }
 
 // TestGHCLIVersionProbe_ParsesFirstLine returns the trimmed first line.
