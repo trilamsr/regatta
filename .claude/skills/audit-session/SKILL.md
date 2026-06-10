@@ -1,6 +1,6 @@
 ---
 name: audit-session
-description: End-of-session audit + handoff for any agent operating in the regatta repo. Use when the user says "audit session", "end session", "wrap up", "before we stop", "what did we miss", "before signing off", or any phrasing that asks Claude to validate the session's work before exit. Runs 9 phases (PR audit, reviewer-comment audit, issue audit, doc audit, code audit, worktree cleanup, learning + memory, cost + budget, NEXT-SESSION HANDOFF) and writes a single consolidated handoff file the next session reads to pick up exactly where this one left off. Default = silent pass per phase; ONE operator hand-back at end. Auto-file ONLY mechanically-derivable trackers (parity, self-tag, REVISE-slip). Per `feedback_operator_minimal_input`.
+description: End-of-session audit + handoff for any agent operating in the regatta repo. Use when the user says "audit session", "end session", "wrap up", "before we stop", "what did we miss", "before signing off", or any phrasing that asks Claude to validate the session's work before exit. Runs 9 phases (PR audit, reviewer-comment audit, issue audit, doc audit, code audit, worktree cleanup, learning + memory, cost + budget, NEXT-SESSION HANDOFF) and writes a single consolidated handoff file the next session reads to pick up exactly where this one left off. Default = silent pass per phase; ONE operator hand-back at end. Auto-file ONLY mechanically-derivable trackers (parity, self-tag, REVISE-slip). Phase 7 cross-refs the learn-from-mistakes skill — surfaces unsaved learnings if pushback/rollback events fired without that skill activating. Per `feedback_operator_minimal_input`.
 ---
 
 # audit-session
@@ -121,6 +121,8 @@ Decision: hand back commands; NO auto-remove. Per `feedback_post_worktree_remova
 - **Twice-burned scan.** Transcript grep `same|again|twice|retry|second time|broken again`. Cluster by root cause. ≥2 + no `feedback_*` entry → new candidate.
 - **Repeated operator directive.** ≥2 user turns with same phrasing → queue codification PR per `feedback_meta_codify_repeat_directives`.
 - **Trap projection.** Trap operator hit ≥2 → propose worker-side fix at gate / prompt / knowledge boundary per `feedback_trap_projection`.
+
+**Cross-ref `learn-from-mistakes` skill (binding).** Scan transcript for friction triggers — user pushback (`no`, `don't`, `stop`, `revert`, `undo that`), in-session rollback, test failing twice for related reasons, rediscovered ruled-out answer. For each trigger, verify `learn-from-mistakes` skill activated (look for `/learn` invocation, AGENTS.md edit, `` write, `.claude/notes/<topic>.md` write in session). If trigger fired WITHOUT skill activation → surface the unsaved learning candidate in the consolidated hand-back so the operator can decide whether to capture or drop. Do NOT auto-invoke the skill (per Hard Nos); only surface the gap. Capture-in-the-moment remains preferred (fresher context); this cross-ref is the safety net.
 
 Write: `feedback_*.md` stubs under `~/.claude/projects/<hash>/memory/`; MEMORY.md index lines via Edit; CLAUDE.md candidate list into handoff file (NOT auto-edit).
 

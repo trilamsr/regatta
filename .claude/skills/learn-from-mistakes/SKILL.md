@@ -1,6 +1,6 @@
 ---
 name: learn-from-mistakes
-description: Capture and surface repo-resident lessons in regatta. Use when the user says "/learn this", "remember that", "add a lesson about X", or any phrasing that asks to record a lesson — and self-activate when a correction pattern appears (user pushback "no/don't/revert/stop", an in-session rollback, the same test failing twice for related reasons, or rediscovering an answer previously ruled out).
+description: Capture and surface repo-resident lessons in regatta. Use when the user says "/learn this", "remember that", "add a lesson about X", or any phrasing that asks to record a lesson — and self-activate when a correction pattern appears (user pushback "no/don't/revert/stop", an in-session rollback, the same test failing twice for related reasons, or rediscovering an answer previously ruled out). Cross-referenced by audit-session Phase 7 — if friction triggers fire without this skill activating, audit-session surfaces the unsaved learning at session end.
 ---
 
 # learn-from-mistakes
@@ -31,6 +31,11 @@ not write. The user accepts, edits, or rejects.
 
 False negatives are fine. False positives train the user to dismiss
 prompts — so be conservative.
+
+**Cross-ref with audit-session.** If this skill does NOT activate during
+a session despite friction triggers firing, `audit-session` Phase 7 will
+surface the unsaved learning at session end. The cross-ref is the safety
+net — capture-in-the-moment is still preferred (fresher context).
 
 ## Read flow (every session)
 
