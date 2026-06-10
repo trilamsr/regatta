@@ -75,6 +75,9 @@ CI-CHECK OUTPUT COMPRESSION
   ```
   If grep empty AND exit≠0 → fallback `tail -50 /tmp/cicheck.log`. Main thread re-runs full (~10% lie rate per `feedback_subagent_verification`).
 
+PRE-COMMIT `make check` MANDATORY
+- After implementing + before `git add`: run `make check` and verify exit=0. Do NOT stage or commit on failure. Fix root cause + re-run. Use the same compressed-report form as CI-CHECK above. Skipping → post-push gate failure → re-investigate + re-fix + re-push round-trip (~25min cost per offender, hit 2× session 2026-06-10 on #1208/#1214). Per `feedback_pre_commit_make_check`.
+
 SHARED-PRIMITIVE OWNERSHIP
 - Before edit, scan composition roots (`cmd/regatta/serve.go`, `internal/orchestrator/state/machine.go`, `Makefile`) for sibling-touch. Defer to named OWNER if assigned. `docs/engineer/specs/README.md` used to belong here but is now gitignored + regenerated locally. (`feedback_parallel_safety`, `feedback_conflict_anticipation`)
 
@@ -106,6 +109,7 @@ These slugs MUST be cited by `internal/orchestrator/spawner/claude.go::defaultPr
 - `feedback_review_proportional`
 - `feedback_no_implementer_automerge`
 - `feedback_keep_orchestrator_branch_name`
+- `feedback_pre_commit_make_check`
 
 Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mark a slug intentionally kept here but not pushed to the prompt.
 

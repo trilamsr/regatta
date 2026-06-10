@@ -293,6 +293,7 @@ func defaultPromptBuilder(req Request) string {
 	b.WriteString("- Deletion default: every PR answers \"what got smaller?\" per CLAUDE.md feedback_deletion_default.\n")
 	b.WriteString("- PR hygiene: --body-file always, release-notes fence required per CLAUDE.md feedback_pr_body_hygiene.\n")
 	b.WriteString("- NO automerge: never run `gh pr merge --auto`; end with `gh pr ready <N>`. Per CLAUDE.md feedback_no_implementer_automerge.\n")
+	b.WriteString("- Pre-commit `make check` MANDATORY: run `make check 2>&1 | tee /tmp/cicheck.log | grep -E '^(FAIL|ok|---|Error|error:|PASS)' | tail -40` BEFORE `git commit`. Verify exit=0. If fail, fix root cause + re-run. Per CLAUDE.md feedback_pre_commit_make_check.\n")
 	b.WriteString("- A+ scorecard required for [FIX]/[FEATURE]/[PERF] release-notes per CLAUDE.md per-criterion citation gate.\n\n")
 	b.WriteString("### Scorecard citation gate (mandatory for [FIX]/[FEATURE]/[PERF] PRs)\n\n")
 	b.WriteString("Every `[x]` in the A+ Scorecard table MUST cite ONE of these tokens ON THE SAME LINE — prose alone fails scripts/check-scorecard.sh:\n\n")
