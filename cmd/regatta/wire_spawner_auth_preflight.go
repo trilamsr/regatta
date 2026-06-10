@@ -10,13 +10,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 )
 
-// preflightSpawnerAuth refuses to boot the orchestrator when the configured spawner has no path to a credential. The check is strictly a boundary gate: it never tries to USE the credentials (no claude --version probe, no token decode), only confirms that ONE of the documented auth paths is reachable so the scheduler does not later burn the entire work-item queue producing exit_reason=auth_precondition_failed (#1166 fix proposal 3).
-//
-// Spawner=claude rules:
-//   - REGATTA_SPAWNER_STRIP_API_KEY ∈ {1, true, yes, on, ""} → subscription path. Require $HOME/.claude reachable + readable.
-//   - REGATTA_SPAWNER_STRIP_API_KEY ∈ {0, false, no, off} → pay-as-you-go path. Require ANTHROPIC_API_KEY non-empty.
-//
-// Any other spawner (stub, etc) is skipped — no claude CLI to authenticate. Closes the operator-loud-error surface for #1166 / #1177 / #1181.
+// preflightSpawnerAuth refuses to boot the orchestrator when the configured spawner has no reachable credential path — boundary presence check only, never probes the credential itself (#1166 fix 3).
 func preflightSpawnerAuth(spawnerName string) error {
 	if spawnerName != "claude" {
 		return nil
@@ -31,8 +25,8 @@ func preflightSpawnerAuth(spawnerName string) error {
 	if home == "" {
 		return errors.New("spawner auth precondition: subscription path requires $HOME to be set; the distroless image must export HOME=/home/nonroot (see #1180)")
 	}
-	claudeDir := filepath.Join(home, ".claude")
-	st, err := os.Stat(claudeDir)
+	claudeDir := filepath.Clean(filepath.Join(home, ".claude"))
+	st, err := os.Stat(claudeDir) //nolint:gosec // G304/G703: HOME is operator-controlled boundary input; boundary gate trusts it after Clean
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("spawner auth precondition: subscription path expects %s to exist + contain readable credentials (mount ~/.claude via docker-compose.override.yml, or flip REGATTA_SPAWNER_STRIP_API_KEY=0 + set ANTHROPIC_API_KEY for pay-as-you-go). Directory presence is necessary but NOT sufficient — on macOS Docker Desktop the mount completes empty because the token lives in Keychain; see docs/operator/docker-compose.md §Spawner billing mode for the platform matrix", claudeDir)

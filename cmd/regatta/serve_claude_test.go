@@ -31,6 +31,12 @@ func TestServeWithClaudeSpawnerEndToEnd(t *testing.T) {
 		t.Skip("git not on PATH")
 	}
 
+	// preflightSpawnerAuth (#1166-fix3) refuses to boot the orchestrator under spawner=claude
+	// unless one auth path is reachable. Test pins the pay-as-you-go path so the gate passes
+	// without needing a host ~/.claude mount.
+	t.Setenv("REGATTA_SPAWNER_STRIP_API_KEY", "0")
+	t.Setenv("ANTHROPIC_API_KEY", "sk-ant-test-fixture")
+
 	dir := t.TempDir()
 
 	bin := filepath.Join(dir, "regatta")
