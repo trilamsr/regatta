@@ -69,6 +69,9 @@ FROM gcr.io/distroless/base-debian12:nonroot
 COPY --from=regatta-builder /regatta /usr/local/bin/regatta
 COPY --from=tools-builder /rootfs /
 
+# HOME is required for spawned `claude` CLI children to resolve `~/.claude` against the operator's mounted subscription credentials. Distroless base does NOT set HOME by default — claude CLI then emits "Not logged in" even when the volume is mounted at /home/nonroot/.claude.
+ENV HOME=/home/nonroot
+
 VOLUME ["/repo", "/data"]
 WORKDIR /repo
 
