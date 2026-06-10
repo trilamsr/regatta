@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -12,6 +13,24 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
+
+// TestBuildScheduler_LoggerAccepted pins schedulerDeps.Logger forwarding through scheduler.Config (#1227).
+func TestBuildScheduler_LoggerAccepted(t *testing.T) {
+	db, err := state.Open(context.Background(), state.DSN(filepath.Join(t.TempDir(), "wire-scheduler-logger.db")))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	logger := slog.New(slog.DiscardHandler).With("sentinel", "wire-scheduler-logger-test")
+	sched := buildScheduler(db, serveFlags{}, schedulerDeps{Logger: logger})
+	if sched == nil {
+		t.Fatal("buildScheduler with Logger returned nil")
+	}
+	if _, err := sched.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick with forwarded Logger: %v", err)
+	}
+}
 
 // TestBuildScheduler_DefaultsPropagate pins buildScheduler threading of LaneCaps + LockTTL + Clock through scheduler.Config (#975 slice 1).
 func TestBuildScheduler_DefaultsPropagate(t *testing.T) {

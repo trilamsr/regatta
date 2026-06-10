@@ -151,7 +151,7 @@ Substrate query: `SELECT ts, json_extract(payload_json,'$.pr_number'), json_extr
 
 ### 4.5 `partials/cost.html`
 
-Calls the W5 cost reader (per `docs/engineer/specs/2026-06-02-phase-autonomy-w5-cost-cap-autonomic-enforcement.md` reader interface) for `sum(usd_micros) WHERE ts >= start_of_today_in_operator_tz`. Renders: today's spend in USD (2 decimals), cap if set, and a `<progress>` bar. Empty / W5 missing: `<p>cost subsystem unavailable</p>`. No reset button (Wave 2).
+Calls the W5 cost reader (per `docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w5-cost-cap-autonomic-enforcement.md` reader interface) for `sum(usd_micros) WHERE ts >= start_of_today_in_operator_tz`. Renders: today's spend in USD (2 decimals), cap if set, and a `<progress>` bar. Empty / W5 missing: `<p>cost subsystem unavailable</p>`. No reset button (Wave 2).
 
 ### 4.6 `partials/greenclock.html`
 
@@ -289,8 +289,8 @@ A plus:
 Wave 1 ships against:
 
 - **W3 service supervisor** (`docs/engineer/specs/2026-06-02-phase-autonomy-w3-service-supervisor.md`) — provides the read-only WAL connection pattern + the trigger-clock accessor for P5 (greenclock). If W3 has not landed when this implementer dispatches, P5 ships against an empty accessor and a tracking issue is filed.
-- **W5 cost-cap reader** (`docs/engineer/specs/2026-06-02-phase-autonomy-w5-cost-cap-autonomic-enforcement.md`) — provides the spend-reader interface for P4 (cost panel). Same fallback: missing W5 → P4 shows MISSING.
-- **Substrate v1** (`docs/engineer/specs/2026-06-01-unified-substrate-design.md`) — `events` table with `kind='pr_merged'` and `kind='token_spend'` rows. Already shipped per substrate cutover.
+- **W5 cost-cap reader** (`docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w5-cost-cap-autonomic-enforcement.md`) — provides the spend-reader interface for P4 (cost panel). Same fallback: missing W5 → P4 shows MISSING.
+- **Substrate v1** (`docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md`) — `events` table with `kind='pr_merged'` and `kind='token_spend'` rows. Already shipped per substrate cutover.
 - **`gh` CLI on PATH** — runtime dependency on the operator's machine for P2 (PRs). Documented as a soft dep; absent → EMPTY fragment.
 
 Order: W3 + W5 ideally land first; substrate is already in place. If either W3 or W5 slips, this wave still ships at A-tier (per §10 rubric m and the cost-panel fallback).

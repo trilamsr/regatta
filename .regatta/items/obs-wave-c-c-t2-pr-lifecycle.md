@@ -4,10 +4,10 @@ title: PR-lifecycle stage histogram + dashboard tile + A-T4 placeholder removal 
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T0b, OBS-WAVE-C-T1
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-2 row item #10, §7 Wave-C table row C-T2, §6.2 first-digest degraded contract (placeholder removal).
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 Tier-2 row item #10, §7 Wave-C table row C-T2, §6.2 first-digest degraded contract (placeholder removal).
 
 ## Task
 

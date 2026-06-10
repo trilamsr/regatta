@@ -20,7 +20,7 @@ import (
 const observabilityDoc = "observability.md"
 
 // observabilityEnvVars is the env-var contract from spec
-// docs/engineer/specs/2026-05-31-mvp-3-w6-otel-backbone.md §3.6. Every
+// docs/engineer/specs/phase-x/2026-05-31-mvp-3-w6-otel-backbone.md §3.6. Every
 // entry must appear verbatim in observability.md or operators reading
 // the doc will not know the knob exists. Adding a new env var to setup.go
 // requires adding it here AND to the doc; the test fails loudly when

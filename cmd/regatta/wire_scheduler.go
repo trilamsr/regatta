@@ -134,9 +134,12 @@ var verifyGhVersionFn = func(ctx context.Context, logger *slog.Logger) error {
 	return merge.VerifyGhVersion(ctx, nil, logger)
 }
 
-// schedulerDeps bundles the eight composition-root dependencies
+// schedulerDeps bundles the composition-root dependencies
 // buildScheduler threads into scheduler.Config so runServe stays
-// orchestration-only (#975 slice 1).
+// orchestration-only (#975 slice 1). Logger added #1227 so
+// scheduler.tick_starved (and every other scheduler INFO/WARN)
+// carries the configured time= / level= / source= envelope —
+// without it slog.Default() emits bare text lines.
 type schedulerDeps struct {
 	Evaluator        scheduler.EdgeEvaluator
 	OutputsSchemas   scheduler.OutputsSchemaResolver
@@ -147,6 +150,7 @@ type schedulerDeps struct {
 	MergeCoordinator *merge.Coordinator
 	MergeWorker      *merge.Worker
 	Meter            metric.Meter
+	Logger           *slog.Logger
 }
 
 // buildScheduler hoists the scheduler.New(...) composition out of runServe so each subsystem-touching PR stops dirtying serve.go (#975 slice 1).
@@ -164,6 +168,7 @@ func buildScheduler(db *state.DB, f serveFlags, deps schedulerDeps) *scheduler.S
 		MergeCoordinator:   deps.MergeCoordinator,
 		MergeWorker:        deps.MergeWorker,
 		Meter:              deps.Meter,
+		Logger:             deps.Logger,
 		FileScopeExtractor: scheduler.DefaultFileScopeExtractor,
 	})
 }

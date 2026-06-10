@@ -4,10 +4,10 @@ title: dispatch sub-agents counter + dashboard tile (item #9)
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T0b
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-2 row item #9, §7 Wave-C table row C-T1.
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 Tier-2 row item #9, §7 Wave-C table row C-T1.
 
 ## Task
 

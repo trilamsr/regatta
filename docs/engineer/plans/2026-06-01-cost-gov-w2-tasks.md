@@ -1,6 +1,6 @@
 # Cost Governor (P8) Wave 2 — Implementer Task Breakdown (2026-06-01)
 
-Source-of-truth spec: `docs/engineer/specs/2026-06-01-cost-governor-design.md`.
+Source-of-truth spec: `docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md`.
 Authority: `feedback_spec_pattern_authority` — implementer deviation from any spec-mandated pattern (T3 owns the typed payload structs + `RecordCall` + the validate-dispatch addition per spec §3.5 + §8 inter-task seam; T4 reconciler tick + Cost-API-preferred + Usage-API fallback + LWW reducer semantics per spec §3.4 + §3.5; one-line spawner edit ≤ 6 lines per spec §8 seam contract; Cost API endpoint + bucket window per spec §3.4 lines 199-218; backoff + 429 retry-after honour per spec §3.4 + R3) MUST re-spawn the design subagent. NO implementer-chosen alternatives.
 
 Design priority for every decision below (`feedback_decision_priority`): **UX → ease of use → best practices → execution speed → velocity**. Grade rubric (`feedback_grade_rubric`) inherited verbatim from spec §7 — each Wave 2 task carries the spec's B / A / A+ tool-checkable criteria.
@@ -212,7 +212,7 @@ none
 
 Cost-governor Wave 2 T3 ships the spawner-side `token_spend` emission +
 substrate validate-dispatch addition per
-docs/engineer/specs/2026-06-01-cost-governor-design.md §3.5.
+docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md §3.5.
 
 - internal/cost/spend/payload.go — TokenSpendPayload (10 fields) +
   BudgetReconciledPayload (8 fields) + ModelBreakdownRow + CallRecord
@@ -294,7 +294,7 @@ depends on PR-A's ParseStream signature change.
 
 # Spec authority
 
-Source-of-truth spec: docs/engineer/specs/2026-06-01-cost-governor-design.md.
+Source-of-truth spec: docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md.
 Read ALL of: §2 (scope, in/out), §3.4 (reconciler reads token_spend),
 §3.5 (typed payloads + writer + substrate hook + invocation point),
 §3.7 (OTel attrs), §6 T3 (named test list), §7 (B/A/A+ rubric), §8
@@ -551,7 +551,7 @@ Total T4: **12 named tests** (6 B + 4 A + 2 A+). PR body lists every test name +
 
 Cost-governor Wave 2 T4 ships the reconciler cron + Anthropic Cost API
 (preferred) + Usage API fallback + drift detector + alert-dedup + 429
-backoff per docs/engineer/specs/2026-06-01-cost-governor-design.md §3.4.
+backoff per docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md §3.4.
 
 - internal/cost/reconcile/tick.go — Reconciler.Tick() does one window
   reconciliation; Reconciler.Run() drives the long-loop; alert-dedup
@@ -638,7 +638,7 @@ merged when you start, this is a non-issue.
 
 # Spec authority
 
-Source-of-truth spec: docs/engineer/specs/2026-06-01-cost-governor-design.md.
+Source-of-truth spec: docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md.
 Read ALL of: §2 (scope, in/out), §3.4 (reconciliation: Cost API preferred,
 Usage API fallback, bucket window, failure-mode table — VERBATIM),
 §3.5 (BudgetReconciledPayload struct shape; T3-owned import), §3.6
@@ -886,7 +886,7 @@ Per `feedback_adversarial_review` + `feedback_simplify_reviewer` + `feedback_age
 
 16. **Spec citation completeness.**
     *Finding:* Some test items reference "spec §6 T3" without line numbers; readers can't quickly verify.
-    *Fix applied:* Test enumerations now include the spec §6 sub-section name + the line ranges where the test name + assertion appear in the spec. Implementers can `grep -n "TestRecordCall_AppendsTokenSpendEvent" docs/engineer/specs/2026-06-01-cost-governor-design.md` to find the source.
+    *Fix applied:* Test enumerations now include the spec §6 sub-section name + the line ranges where the test name + assertion appear in the spec. Implementers can `grep -n "TestRecordCall_AppendsTokenSpendEvent" docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md` to find the source.
 
 ---
 

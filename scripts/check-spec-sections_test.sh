@@ -8,6 +8,7 @@
 #   D. missing-acceptance, IS changed in PR    -> exit 1
 #   E. skeleton-prefetch frontmatter           -> exit 0 (skipped entirely)
 #   F. shipped status frontmatter              -> exit 0 (skipped entirely)
+#   G. phase-x-deferred status frontmatter     -> exit 0 (skipped entirely)
 set -uo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -64,6 +65,9 @@ run_case "E-skeleton-prefetch-passes" 0 \
 
 run_case "F-shipped-status-passes" 0 \
   "SPECS_DIR='$FIXTURES/shipped' STRICT=1 DIFF_FILES='' "
+
+run_case "G-phase-x-deferred-passes" 0 \
+  "SPECS_DIR='$FIXTURES/phase-x-deferred' STRICT=1 DIFF_FILES='' "
 
 echo "---"
 echo "passes=$passes fails=$fails"

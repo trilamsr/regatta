@@ -12,7 +12,7 @@ Status: ready for review
 Date: 2026-06-02
 Author: design subagent (Opus 4.7, pre-fetch wave per `feedback_roadmap_pre_fetch`)
 Binding brief: `docs/engineer/briefs/2026-06-01-self-host-first.md` §3 S2-T1 (Phase S2, rank #1).
-Parent design (already on main): `docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md`.
+Parent design (already on main): `docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md`.
 Locked red-team (already on main): `docs/engineer/specs/2026-06-01-w9-temporal-vs-bespoke-redteam.md` — Option C hybrid PICKED; substrate-default first; Temporal-backed Phase X per self-host brief §4.
 
 Memory in force: `feedback_research_design_principles`, `feedback_grade_rubric`, `feedback_decision_priority`, `feedback_adversarial_review`, `feedback_cross_doc_link_phasing`, `feedback_deletion_default`, `feedback_unaddressed_load_bearing`, `feedback_doc_check_banned_phrases`, `feedback_pr_body_release_notes_fence`.

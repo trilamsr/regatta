@@ -119,6 +119,7 @@ These slugs MUST be cited by `internal/orchestrator/spawner/claude.go::defaultPr
 - `feedback_keep_orchestrator_branch_name`
 - `feedback_no_self_tagged_approve`
 - `feedback_pre_commit_make_check`
+- `feedback_colocated_test_required`
 
 Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mark a slug intentionally kept here but not pushed to the prompt.
 

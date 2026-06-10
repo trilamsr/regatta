@@ -1,7 +1,7 @@
 # OBS-C T2 — PR-watch collector wedge
 
 Status: **design** (deferred T2 from #599; closes #633).
-Source spec: `docs/engineer/specs/2026-06-02-obs-wave-c-agent-loop-telemetry.md` §3.
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-obs-wave-c-agent-loop-telemetry.md` §3.
 
 ## §1 Problem
 

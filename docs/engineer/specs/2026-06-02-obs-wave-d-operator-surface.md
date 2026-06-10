@@ -376,7 +376,7 @@ All three in scope. No deferral.
 ## §13 References
 
 - Spec template: `docs/engineer/dispatch-templates/designer.md`.
-- Source roadmap: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 items #3 + #13 + #15, §6.1 panel budget, §6.2 first-digest degraded contract, §7 Wave-D table, §8 grade rubric, §10 risk table.
+- Source roadmap: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 items #3 + #13 + #15, §6.1 panel budget, §6.2 first-digest degraded contract, §7 Wave-D table, §8 grade rubric, §10 risk table.
 - Item briefs: `.regatta/items/obs-wave-d-d-t1-adversarial-findings.md`, `.regatta/items/obs-wave-d-d-t2-regatta-status-tui.md`, `.regatta/items/obs-wave-d-d-t3-trigger-clock.md`.
 - bubbletea: <https://github.com/charmbracelet/bubbletea> — Apache-2; `v1.x` line.
 - bubbles widgets: <https://github.com/charmbracelet/bubbles> — MIT.
