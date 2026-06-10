@@ -71,7 +71,7 @@ func TestReserveFromSpawnable_AllowsDisjointFileScope(t *testing.T) {
 	}
 }
 
-// TestFileScopeOverlap_TableDriven covers no-scope (allow), single-file overlap, prefix-dir overlap, shared package (#1065).
+// TestFileScopeOverlap_TableDriven covers no-scope (allow), single-file overlap, prefix-dir overlap, shared package, disjoint dirs (#1065).
 func TestFileScopeOverlap_TableDriven(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -79,12 +79,14 @@ func TestFileScopeOverlap_TableDriven(t *testing.T) {
 		incoming []string
 		want     bool
 	}{
-		{"empty_active_allows", nil, []string{"a.go"}, false},
-		{"empty_incoming_allows", []string{"a.go"}, nil, false},
-		{"single_file_collides", []string{"a.go"}, []string{"a.go"}, true},
-		{"disjoint_allows", []string{"a.go"}, []string{"b.go"}, false},
+		{"empty_active_allows", nil, []string{"internal/a/a.go"}, false},
+		{"empty_incoming_allows", []string{"internal/a/a.go"}, nil, false},
+		{"single_file_collides", []string{"internal/a/a.go"}, []string{"internal/a/a.go"}, true},
+		{"disjoint_allows", []string{"internal/a/x.go"}, []string{"internal/b/y.go"}, false},
 		{"shared_package_collides", []string{"internal/orchestrator/spawner/claude.go"}, []string{"internal/orchestrator/spawner/claude.go"}, true},
 		{"prefix_dir_collides", []string{"internal/orchestrator/spawner/"}, []string{"internal/orchestrator/spawner/claude.go"}, true},
+		{"shared_package_distinct_files_collides", []string{"internal/orchestrator/spawner/claude.go"}, []string{"internal/orchestrator/spawner/claude_test.go"}, true},
+		{"distinct_packages_allows", []string{"internal/orchestrator/spawner/claude.go"}, []string{"internal/orchestrator/state/machine.go"}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
