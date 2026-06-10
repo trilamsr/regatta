@@ -45,7 +45,7 @@ Adversarial framing: a single high-cadence consumer (`prwatch` at 5s) on a busy 
 ### Non-goals (explicit, with §5 reopen triggers)
 
 - **NG1.** Full webhook receiver with multi-tenant routing (HMAC + replay store + per-tenant secret rotation). Out of scope under `feedback_default_simpler` + the self-host filter; reopen on external-customer ask.
-- **NG2.** Sigstore-signed webhook delivery receipts. Phase-X enterprise wedge per `CLAUDE.md` self-host filter ("no Sigstore").
+- **NG2.** `Sigstore`-signed webhook delivery receipts. Phase-X enterprise wedge per `CLAUDE.md` self-host filter ("no `Sigstore`").
 - **NG3.** Cross-repo coalesced polling (one HTTP call mirrors N repos via a fan-out service). Reopen when the operator drives >5 target repos simultaneously.
 - **NG4.** Persisted ETag store. In-memory map is sufficient — restart re-warms in ≤1 poll tick; the storage primitive (sqlite + migration) is more expensive than the recovery cost it prevents (`feedback_default_simpler`).
 
@@ -167,11 +167,11 @@ Reopen when **any** of:
 
 Reopen only when **all** of:
 
-- Regatta is deployed in a multi-tenant configuration (multiple operators, multiple tenants), per the Phase-X tenant_id rollout (gated by `scripts/check-phase-x-leak.sh` today).
+- Regatta is deployed in a multi-tenant configuration (multiple operators, multiple tenants), per the Phase-X `tenant_id` rollout (gated by `scripts/check-phase-x-leak.sh` today).
 - An SRE team — not the regatta operator — owns the ingress, secret rotation, and replay-store operations.
 - HMAC-signed webhook delivery is a customer security requirement, not a regatta-internal preference.
 
-Per the self-host filter in `CLAUDE.md`: "No RBAC, no billing, no htmx UI, no Sigstore, no blackboard." Rung 5 is the polling-loop analog of these — rejected today, surfaced as forward-fit so future operators see the design history.
+Per the self-host filter in `CLAUDE.md`: "No `RBAC`, no billing, no `htmx` UI, no `Sigstore`, no `blackboard`." Rung 5 is the polling-loop analog of these — rejected today, surfaced as forward-fit so future operators see the design history.
 
 ---
 

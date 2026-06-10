@@ -11,9 +11,9 @@ created: 2026-06-09
 
 Memory rules in force: `feedback_parallel_safety`, `feedback_recognize_session_end`, `feedback_default_simpler`, `feedback_decision_priority` (UX > ease > performance > best-practices).
 
-```release-notes
+``release-notes
 [DOCS] specs: scheduler parallel-cap enforcement + shipped-status filter (#1169, #1172)
-```
+``
 
 ## §1 Problem
 
@@ -30,7 +30,7 @@ Live evidence from the 2026-06-09 autonomous loop:
 
 Per `feedback_decision_priority`: the user-visible failure is (a) blown API quota + 503s and (b) dispatch of already-shipped work — both UX failures. Performance (`tick.slow`) is the third-order cost. The fix order matches: cap → status filter → backoff.
 
-Per `feedback_recognize_session_end`: this spec is bounded — it does NOT chase Phase-X redesigns (Temporal, blackboard, multi-tenant). It closes the live failure mode with the smallest viable change at three discrete stages and stops.
+Per `feedback_recognize_session_end`: this spec is bounded — it does NOT chase Phase-X redesigns (`Temporal`, `blackboard`, multi-tenant). It closes the live failure mode with the smallest viable change at three discrete stages and stops.
 
 ## §2 Goals + non-goals
 
@@ -44,11 +44,11 @@ Per `feedback_recognize_session_end`: this spec is bounded — it does NOT chase
 **Non-goals**
 
 - New transports (gRPC, NATS, Kafka).
-- Temporal / blackboard / external workflow engine adoption.
+- `Temporal` / `blackboard` / external workflow engine adoption.
 - Adaptive autotuner (#1166 fix proposal 1) is **scoped to Stage 3 as deferred**; not in v1.
 - Cross-lane fairness / weighted-round-robin. Stage 1 enforces aggregate ceiling only; existing per-lane caps still bind first.
 - UI surfacing of the cap. Operator reads the value out of `regatta.yaml` or scheduler logs.
-- Per-tenant cap matrices, RBAC, billing-tier caps. See §5 for the Phase-X reopen trigger.
+- Per-tenant cap matrices, `RBAC`, billing-tier caps. See §5 for the Phase-X reopen trigger.
 
 ## §3 Design
 
@@ -58,13 +58,13 @@ Three discrete, independently-shippable stages. Each stage is a self-contained P
 
 Add one field to `scheduler.Config`:
 
-```go
+``go
 // ParallelCap is the aggregate ceiling across ALL lanes for one Tick.
 // Zero (default) preserves current behavior (unlimited; lane caps only).
 // When > 0, Tick short-circuits gate evaluation as soon as
 // runningAgents + len(reserved) == ParallelCap.
 ParallelCap int
-```
+``
 
 Wired into `Tick` (`internal/orchestrator/scheduler/scheduler.go:306`):
 
@@ -80,7 +80,7 @@ Decision priority check: UX (no quota blowup) > ease (one field + one branch) > 
 
 Extend `mapAdapterStatus` (`internal/orchestrator/adaptersync/adaptersync.go:238-245`) to recognize the terminal set as a discrete signal, not "unknown":
 
-```go
+``go
 func mapAdapterStatus(s schemas.Status) (state.WorkItemStatus, terminal bool, ok bool) {
     switch s {
     case schemas.StatusPlanned:
@@ -92,7 +92,7 @@ func mapAdapterStatus(s schemas.Status) (state.WorkItemStatus, terminal bool, ok
         return "", false, false                   // genuinely unknown
     }
 }
-```
+``
 
 Caller in `Sync` (line 164-167):
 
@@ -122,11 +122,11 @@ Per-stage failing test in `internal/orchestrator/scheduler/` lands FIRST (commit
 
 **`TestScheduler_TickHonorsParallelCap_WhenSpawnableLargerThanCap`** in `internal/orchestrator/scheduler/scheduler_test.go` (new file `scheduler_parallel_cap_test.go` if size warrants):
 
-```
+``
 // TestScheduler_TickHonorsParallelCap_WhenSpawnableLargerThanCap asserts
 // that with 43 spawnable items and ParallelCap=4, exactly 4 reservations
 // land in one Tick and the cost-gate sees at most 4 candidates (#1169).
-```
+``
 
 Setup:
 
@@ -159,13 +159,13 @@ Deferred. Reopen trigger documented in §3.3.
 
 Explicit Phase-X items NOT addressed:
 
-- **Temporal / Cadence / external workflow engine.** Self-host phase: single sqlite substrate, single binary. Re-evaluate per `feedback_decision_priority` long-term > short-term only after multi-tenant becomes a real ask.
+- **`Temporal` / Cadence / external workflow engine.** Self-host phase: single sqlite substrate, single binary. Re-evaluate per `feedback_decision_priority` long-term > short-term only after multi-tenant becomes a real ask.
 - **Single operator, single cap — multi-tenant cap matrices** (`tenant_id` → `ParallelCap`) are Phase-X; reopen trigger: external customer ask OR multi-tenant phase fires.
-- **RBAC over the cap knob.** Operator-only YAML key.
-- **Stripe / billing-tier caps.** No billing surface in self-host.
-- **Sigstore / Rekor attestations on dispatched agents.** Out of scope; tracked separately under `2026-06-01-w10-sigstore-design.md`.
+- **`RBAC` over the cap knob.** Operator-only YAML key.
+- **`Stripe` / billing-tier caps.** No billing surface in self-host.
+- **`Sigstore` / `Rekor` attestations on dispatched agents.** Out of scope; tracked separately under `2026-06-01-w10-sigstore-design.md`.
 - **Blackboard architecture** for cross-agent coordination. The `feedback_self_host_filter` rule rejects this surface.
-- **htmx / Svelte operator UI for cap tuning.** Single YAML key; operator edits the file.
+- **`htmx` / Svelte operator UI for cap tuning.** Single YAML key; operator edits the file.
 - **Lane-priority queues** (HIGH/MED/LOW). Existing `ListSpawnable` ordering is deterministic; reopen if starvation surfaces post-Stage-1.
 - **Autotuner closed-loop** (`2026-06-07-autotuner-closed-loop.md`). That spec adapts the cap from outcome data; this one enforces the static cap. Sequenced after.
 
