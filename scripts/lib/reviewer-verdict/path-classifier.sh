@@ -1,15 +1,16 @@
 # reviewer-verdict/path-classifier.sh — flag PR as load-bearing when any
-# changed path hits agent-rule / CI-gate / load-bearing-doc / operator-UX /
-# event-vocabulary / skill surfaces. Sets LOAD_BEARING_BY_PATH (0/1) and
-# upgrades LOAD_BEARING when matched.
+# changed path hits agent-rule / CI-gate / operator-UX / event-vocabulary /
+# skill surfaces. Sets LOAD_BEARING_BY_PATH (0/1) and upgrades LOAD_BEARING
+# when matched.
+#
 # Closes #985 #986 #991 (retro audit 2026-06-08).
 # Closes #1133 (audit 2026-06-09): internal/web/ + internal/obs/ added.
 # Closes #1189 + #1190 (audit 2026-06-10): .claude/skills/* added because
-# skill files encode operator-authority surfaces (delegated-merge auth,
-# bottleneck-loop rules, reviewer template citations, session-handoff
-# schema). Two prior skill PRs slipped through token-less because
-# [CHORE] release-notes auto-skipped the gate when only .claude/skills/
-# paths changed.
+# skill files encode operator-authority surfaces.
+# Closes #1264 (N1, audit 2026-06-10): docs/engineer/{specs,briefs,
+# dispatch-templates}/*.md + CLAUDE.md REMOVED from auto-flag. Solo
+# doc PRs auto-skip per feedback_review_proportional; operator may
+# spawn reviewer voluntarily.
 
 rv_classify_paths() {
   LOAD_BEARING_BY_PATH=0
@@ -23,15 +24,11 @@ rv_classify_paths() {
   while IFS= read -r changed_path; do
     [ -z "$changed_path" ] && continue
     case "$changed_path" in
-      CLAUDE.md|Makefile|Makefile.d/*|.github/workflows/*|docs/engineer/dispatch-templates/*)
+      Makefile|Makefile.d/*|.github/workflows/*)
         LOAD_BEARING_BY_PATH=1
         break
         ;;
       scripts/check-*.sh)
-        LOAD_BEARING_BY_PATH=1
-        break
-        ;;
-      docs/engineer/specs/*.md|docs/engineer/briefs/*.md)
         LOAD_BEARING_BY_PATH=1
         break
         ;;
