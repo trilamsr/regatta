@@ -97,6 +97,8 @@ RV_LIB_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/reviewer-ver
 . "$RV_LIB_DIR/token-extract.sh"
 # shellcheck source=lib/reviewer-verdict/verdict.sh
 . "$RV_LIB_DIR/verdict.sh"
+# shellcheck source=lib/reviewer-verdict/quality-sections.sh
+. "$RV_LIB_DIR/quality-sections.sh"
 
 rv_parse_args "$@"
 
@@ -108,4 +110,16 @@ rv_resolve_body
 rv_classify_paths
 rv_category_skip
 rv_extract_tokens
+# Quality-sections check runs only when the recommendation is APPROVE —
+# a missing/REVISE/BLOCK recommendation already fails the verdict gate
+# with a clearer error. The 3 required sections (## A+ delta,
+# ## Negative-space audit, ## Reviewer confidence) prove the reviewer
+# actually surfaced gaps before tagging APPROVE, per #1062.
+# INSUFFICIENT_EVIDENCE also requires the sections — it is a recognized
+# verdict (c3) that still needs the same shape of evidence.
+case "$RECOMMENDATION" in
+  APPROVE|INSUFFICIENT_EVIDENCE)
+    rv_check_quality_sections
+    ;;
+esac
 rv_decide_verdict

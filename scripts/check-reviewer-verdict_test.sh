@@ -54,6 +54,17 @@ run_case_load_bearing_approve_passes() {
 
 Changes internal/orchestrator/scheduler/scheduler.go
 
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: cavecrew-reviewer-abc123
 Reviewer-recommendation: APPROVE
 
@@ -170,6 +181,17 @@ Example of a stale draft kept for context:
 ```
 Reviewer-recommendation: REVISE
 ```
+
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
 
 Reviewer-agent-id: cavecrew-reviewer-abc123
 Reviewer-recommendation: APPROVE
@@ -316,6 +338,17 @@ run_case_docs_spec_with_token_passes() {
 ## Summary
 - new spec
 
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: cavecrew-reviewer-spec123
 Reviewer-recommendation: APPROVE
 
@@ -344,6 +377,17 @@ Initial pass:
 Reviewer-recommendation: REVISE
 
 After addressing findings:
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: cavecrew-reviewer-xyz789
 Reviewer-recommendation: APPROVE
 
@@ -414,6 +458,17 @@ EOF
 
 Touches CLAUDE.md.
 
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: cavecrew-reviewer-abc123
 Reviewer-recommendation: APPROVE
 
@@ -433,6 +488,17 @@ EOF
   body=$(mktemp); paths_file=$(mktemp)
   write_body "$body" <<'EOF'
 ## PR
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: main-thread-adversarial-self
 Reviewer-recommendation: APPROVE
 ```release-notes
@@ -451,6 +517,17 @@ EOF
   body=$(mktemp); paths_file=$(mktemp)
   write_body "$body" <<'EOF'
 ## PR
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: self-tagged-defer
 Reviewer-recommendation: APPROVE
 ```release-notes
@@ -469,6 +546,17 @@ EOF
   body=$(mktemp); paths_file=$(mktemp)
   write_body "$body" <<'EOF'
 ## PR
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: short
 Reviewer-recommendation: APPROVE
 ```release-notes
@@ -487,6 +575,17 @@ EOF
   body=$(mktemp); paths_file=$(mktemp)
   write_body "$body" <<'EOF'
 ## PR
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: a6614259e2388c0ee
 Reviewer-recommendation: APPROVE
 ```release-notes
@@ -555,6 +654,17 @@ run_case_self_tagged_author_equals_reviewer_fails() {
 
 Changes internal/orchestrator/scheduler/scheduler.go
 
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: trilamsr
 Reviewer-recommendation: APPROVE
 
@@ -577,6 +687,17 @@ run_case_distinct_reviewer_passes() {
 ## Summary
 
 Changes internal/orchestrator/scheduler/scheduler.go
+
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
 
 Reviewer-agent-id: cavecrew-reviewer-xyz789
 Reviewer-recommendation: APPROVE
@@ -602,6 +723,17 @@ run_case_missing_reviewer_agent_id_on_load_bearing_fails() {
 ## Summary
 
 Changes internal/orchestrator/scheduler/scheduler.go
+
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture.
+2. mitigated — fixture.
+3. accepted — fixture.
+
+## Reviewer confidence
+APPROVE — fixture.
 
 Reviewer-recommendation: APPROVE
 
@@ -629,6 +761,17 @@ Trivial typo fix in internal/orchestrator/scheduler/scheduler.go
 
 <!-- reviewer-skip-justified: typo fix, <1 LoC, no behavior change -->
 
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: trilamsr
 Reviewer-recommendation: APPROVE
 
@@ -655,6 +798,17 @@ run_case_operator_escape_too_short_rejected() {
 Changes internal/orchestrator/scheduler/scheduler.go
 
 <!-- reviewer-skip-justified: x -->
+
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
 
 Reviewer-agent-id: trilamsr
 Reviewer-recommendation: APPROVE
@@ -684,6 +838,17 @@ run_case_automerge_with_agent_id_on_load_bearing_fails() {
 
 Changes internal/orchestrator/scheduler/scheduler.go
 
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: a69bfa533ee180bb7
 Reviewer-recommendation: APPROVE
 
@@ -709,6 +874,17 @@ run_case_automerge_without_agent_id_uses_normal_path() {
 ## Summary
 
 Changes internal/orchestrator/scheduler/scheduler.go
+
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture.
+2. mitigated — fixture.
+3. accepted — fixture.
+
+## Reviewer confidence
+APPROVE — fixture.
 
 Reviewer-recommendation: APPROVE
 
@@ -755,6 +931,17 @@ run_case_no_author_flag_still_enforces_allowlist() {
 
 Changes internal/orchestrator/scheduler/scheduler.go
 
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: trilamsr
 Reviewer-recommendation: APPROVE
 
@@ -787,6 +974,17 @@ internal/orchestrator/state/agents.go
 
 <!-- operator-opened: force-push-denied-on-agent-1 -->
 
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: a7e408d8466d8c67b
 Reviewer-recommendation: APPROVE
 
@@ -816,6 +1014,17 @@ Operator impl.
 internal/orchestrator/scheduler/scheduler.go
 
 <!-- operator-opened: x -->
+
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
 
 Reviewer-agent-id: trilamsr
 Reviewer-recommendation: APPROVE
@@ -850,6 +1059,17 @@ internal/orchestrator/scheduler/scheduler.go
 
 <!-- operator-opened: force-push-denied-on-agent-1 -->
 
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture only.
+2. mitigated — fixture only.
+3. accepted — fixture only.
+
+## Reviewer confidence
+APPROVE — fixture.
+
 Reviewer-agent-id: trilamsr
 Reviewer-recommendation: APPROVE
 
@@ -877,6 +1097,17 @@ run_case_operator_opened_still_requires_reviewer_id() {
 Operator wrote impl.
 
 internal/orchestrator/scheduler/scheduler.go
+
+## A+ delta
+N/A — test fixture.
+
+## Negative-space audit
+1. mitigated — fixture.
+2. mitigated — fixture.
+3. accepted — fixture.
+
+## Reviewer confidence
+APPROVE — fixture.
 
 <!-- operator-opened: agent-3-died-mid-cycle -->
 

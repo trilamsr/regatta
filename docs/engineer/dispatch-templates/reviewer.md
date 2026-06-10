@@ -82,6 +82,15 @@ OUTPUT FORMAT
 - Optional final block: independent self-grade re-score (B/A/A+ per criterion) — must match or contradict author's claim explicitly. No format enforcement; for operator visibility only.
 - Verdict: `clear-to-merge` | `block-on-findings` | `re-spawn-design`.
 
+REVIEW-QUALITY SECTIONS (mandatory on load-bearing PRs per #1062)
+Reviewer subagent MUST author all three sections in the PR body before tagging `Reviewer-recommendation:`. `scripts/check-reviewer-verdict.sh` fails closed with `missing_a_plus_delta`, `missing_negative_space_audit`, or `missing_reviewer_confidence` when any are missing or empty on an `APPROVE` / `INSUFFICIENT_EVIDENCE` verdict.
+
+1. `## A+ delta` — one paragraph naming the specific evidence that would close the B→A→A+ gap (e.g. "live integration test against `regatta serve`"). Empty allowed only via `<!-- a-plus-not-applicable: <reason ≥4 chars> -->`.
+2. `## Negative-space audit` — list ≥3 bypass attempts considered + outcome for each (`mitigated` / `accepted as limitation` / `filed as tracker #N`). Empty allowed only via `<!-- negative-space-not-applicable: <reason ≥4 chars> -->`.
+3. `## Reviewer confidence` — closed-enum verdict: `APPROVE` / `INSUFFICIENT_EVIDENCE` / `REVISE` / `BLOCK`. **Default to `INSUFFICIENT_EVIDENCE`** whenever the reviewer cannot construct ≥3 negative-space bypasses, OR cannot point to ≥1 concrete A+ evidence gap. `INSUFFICIENT_EVIDENCE` pairs with a bare `Confidence-evidence-needed: <what would unblock>` line naming the missing artifact (tracker issue, soak run, hardware access). The verdict gate treats `INSUFFICIENT_EVIDENCE` as a recognized "not yet" signal — it does not fail closed, but blocks the operator from a quiet APPROVE-by-default.
+
+The verdict line in `## Reviewer confidence` is the human-readable form; the canonical footer token `Reviewer-recommendation: <verdict>` stays the gate's source of truth.
+
 NO SIGNATURES
 - Per `feedback_no_signatures`.
 

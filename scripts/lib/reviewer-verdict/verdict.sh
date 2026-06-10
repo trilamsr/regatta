@@ -92,6 +92,15 @@ rv_decide_verdict() {
       fi
       exit 0
       ;;
+    INSUFFICIENT_EVIDENCE)
+      # Accepted verdict per #1062 c3. Reviewer signals they cannot
+      # confidently APPROVE without further evidence; the gate does not
+      # fail closed because the operator gets a recognized "not yet"
+      # signal instead of a quiet APPROVE-by-default. The reviewer
+      # dispatch template pairs this verdict with a
+      # `Confidence-evidence-needed:` line naming what would unblock.
+      exit 0
+      ;;
     REVISE|BLOCK)
       echo "check-reviewer-verdict: Reviewer-recommendation is $RECOMMENDATION on a load-bearing PR." >&2
       echo "  Fix: address the findings, then update the body to Reviewer-recommendation: APPROVE." >&2
@@ -102,11 +111,11 @@ rv_decide_verdict() {
       echo "  Fix: dispatch an independent reviewer subagent per CLAUDE.md 'TDD + review'." >&2
       echo "  Add to PR body footer (bare, NOT in a code block):" >&2
       echo "    Reviewer-agent-id: <id>" >&2
-      echo "    Reviewer-recommendation: APPROVE|REVISE|BLOCK" >&2
+      echo "    Reviewer-recommendation: APPROVE|INSUFFICIENT_EVIDENCE|REVISE|BLOCK" >&2
       exit 1
       ;;
     *)
-      echo "check-reviewer-verdict: unrecognized Reviewer-recommendation value: $RECOMMENDATION (expected APPROVE / REVISE / BLOCK)." >&2
+      echo "check-reviewer-verdict: unrecognized Reviewer-recommendation value: $RECOMMENDATION (expected APPROVE / INSUFFICIENT_EVIDENCE / REVISE / BLOCK)." >&2
       exit 1
       ;;
   esac
