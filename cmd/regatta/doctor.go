@@ -188,7 +188,7 @@ func envVarHint(keys []string) string {
 func secretEnvVar(canonicalKey string) string {
 	switch canonicalKey {
 	case secrets.KeyAnthropic:
-		return "ANTHROPIC_API_KEY"
+		return envAnthropicAPIKey
 	case secrets.KeyGHToken:
 		return "GITHUB_TOKEN"
 	case secrets.KeyBriefHMACs:
@@ -323,7 +323,7 @@ func checkSpawnerAuth(env doctorEnv) doctorCheckResult {
 	stripFlag := strings.ToLower(strings.TrimSpace(env.getenv("REGATTA_SPAWNER_STRIP_API_KEY")))
 	payAsYouGo := stripFlag == "0" || stripFlag == "false" || stripFlag == "no" || stripFlag == "off"
 	if payAsYouGo {
-		if strings.TrimSpace(env.getenv("ANTHROPIC_API_KEY")) == "" {
+		if strings.TrimSpace(env.getenv(envAnthropicAPIKey)) == "" {
 			return doctorCheckResult{
 				Status: statusFail,
 				Hint:   "REGATTA_SPAWNER_STRIP_API_KEY=0 (pay-as-you-go) requires ANTHROPIC_API_KEY",
