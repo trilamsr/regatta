@@ -13,7 +13,7 @@
 # Pre-existing specs (unchanged vs $PR_BASE) are warn-only — the gate only
 # fails on specs the PR touches. Spec template (`_template.md`), the
 # generated `README.md`, anything under `archive/`, and specs carrying
-# `spec_type: skeleton-prefetch` / `status: skeleton-prefetch|shipped|archived|superseded`
+# `spec_type: skeleton-prefetch` / `status: skeleton-prefetch|shipped|archived|superseded|phase-x-deferred`
 # in frontmatter are skipped entirely.
 #
 # Heading matching is keyword-based, case-insensitive on the H2 line —
@@ -101,7 +101,7 @@ PY
 is_skipped_meta() {
   # $1 = status, $2 = spec_type
   case "$1" in
-    shipped|archived|superseded|skeleton-prefetch) return 0 ;;
+    shipped|archived|superseded|skeleton-prefetch|phase-x-deferred) return 0 ;;
   esac
   case "$2" in
     skeleton-prefetch) return 0 ;;
@@ -195,7 +195,7 @@ if [ "$fail" -gt 0 ]; then
   echo "Required H2 sections (see docs/engineer/specs/_template.md):" >&2
   for l in "${required_labels[@]}"; do echo "  - $l" >&2; done
   echo >&2
-  echo "Opt-out: frontmatter \`spec_type: skeleton-prefetch\` OR \`status: skeleton-prefetch|shipped|archived|superseded\`." >&2
+  echo "Opt-out: frontmatter \`spec_type: skeleton-prefetch\` OR \`status: skeleton-prefetch|shipped|archived|superseded|phase-x-deferred\`." >&2
   exit 1
 fi
 
