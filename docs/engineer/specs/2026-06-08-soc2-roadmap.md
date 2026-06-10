@@ -70,23 +70,23 @@ Status legend: `SHIPPED` on main; `SPECCED` design locked, Phase-X gated; `NEEDS
 | CC7.4 | Recovery from identified incidents | `regatta serve` restart-tolerant via substrate replay; per-spec `Phase-S3-T3 HMAC key-rotation drill` | SHIPPED (restart); SHIPPED (key-rotation drill spec) |
 | CC7.5 | Identify + remediate vulnerabilities | `make check` `govulncheck` + `lint` + `vet`; dependabot PRs through same L4 gate | SHIPPED |
 | CC8.1 | Authorize + design + develop + test + deploy changes | TDD-first discipline (CLAUDE.md); L4 reviewer gate; branch protection; squash-merge with PR linkage; `make pre-push-check`; `regatta merge` audit event | SHIPPED |
-| CC9.1 | Identify + mitigate business disruptions | Cost-cap autonomic enforcement (`docs/engineer/specs/2026-06-02-phase-autonomy-w5-cost-cap-autonomic-enforcement.md`); supervisor restart (`docs/engineer/specs/2026-06-02-phase-autonomy-w3-service-supervisor.md`) | SHIPPED |
+| CC9.1 | Identify + mitigate business disruptions | Cost-cap autonomic enforcement (`docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w5-cost-cap-autonomic-enforcement.md`); supervisor restart (`docs/engineer/specs/2026-06-02-phase-autonomy-w3-service-supervisor.md`) | SHIPPED |
 | CC9.2 | Vendor + sub-processor risk management | Today: GitHub, Anthropic. Documented in `docs/auditor/`?; no formal sub-processor list | NEEDS-DESIGN (sub-processor inventory + DPA tracker) |
 
 ### 3.2 Availability (A1)
 
 | TSC ID | Control intent | Regatta primitive | Status |
 |--------|----------------|-------------------|--------|
-| A1.1 | Capacity / performance planning | Cost governor pre-call caps + token estimation (`docs/engineer/specs/2026-06-01-cost-governor-design.md`); SLO compile test (`make check` → `slo-compile-test`) | SHIPPED |
+| A1.1 | Capacity / performance planning | Cost governor pre-call caps + token estimation (`docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md`); SLO compile test (`make check` → `slo-compile-test`) | SHIPPED |
 | A1.2 | Environmental threat mitigation | Single-operator workstation = N/A for hosted infra; reconsider at hosted deployment | N/A self-host |
-| A1.3 | Backup + recovery + BC/DR drills | Substrate event log = source of truth, sqlite file backup is operator-owned; replay-diff harness (`docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md`); HMAC key-rotation drill | SHIPPED (replay); NEEDS-DESIGN (backup-restore drill cadence + evidence) |
+| A1.3 | Backup + recovery + BC/DR drills | Substrate event log = source of truth, sqlite file backup is operator-owned; replay-diff harness (`docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md`); HMAC key-rotation drill | SHIPPED (replay); NEEDS-DESIGN (backup-restore drill cadence + evidence) |
 
 ### 3.3 Confidentiality (C1)
 
 | TSC ID | Control intent | Regatta primitive | Status |
 |--------|----------------|-------------------|--------|
 | C1.1 | Identify + maintain confidential information | Secret canonical key set (`internal/secrets/secrets.go::CanonicalKeys`); CUE-modeled secret routing; redaction wrapper (`secrets.Value`) | SHIPPED |
-| C1.2 | Dispose of confidential information per policy | Crypto-shredding design (`docs/engineer/specs/2026-06-02-crypto-shredding-design.md`); outbox primitive for downstream disposal signalling | SPECCED (Phase-X) |
+| C1.2 | Dispose of confidential information per policy | Crypto-shredding design (`docs/engineer/specs/phase-x/2026-06-02-crypto-shredding-design.md`); outbox primitive for downstream disposal signalling | SPECCED (Phase-X) |
 
 ## 4. Roadmap slices
 
@@ -118,7 +118,7 @@ Five slices, each = independent PR sequence. Default-simpler: pick the simplest 
 2. Add `incident` event kind to the substrate (reducer = LWW per `incident_id`). Auditor reads the timeline (declared → mitigated → root-caused → closed) as evidence.
 3. Add `regatta incident {open,update,close}` CLI; payload carries severity, blast-radius, services-affected.
 4. Re-classify existing alarm-webhook traffic as `incident` events when severity ≥ medium. Lower severity stays as a counter-only metric.
-5. Reject: 24/7 SOC tooling, PagerDuty integration, SIEM forwarder. Defer to operator's choice via outbox primitive (`docs/engineer/specs/2026-06-02-external-effect-outbox-primitive.md`).
+5. Reject: 24/7 SOC tooling, PagerDuty integration, SIEM forwarder. Defer to operator's choice via outbox primitive (`docs/engineer/specs/phase-x/2026-06-02-external-effect-outbox-primitive.md`).
 
 **Reuses**: substrate event log, alarm-webhook, outbox primitive. **What gets smaller**: alarm-webhook outputs converge with substrate events — one timeline replaces two.
 
@@ -130,14 +130,14 @@ Five slices, each = independent PR sequence. Default-simpler: pick the simplest 
 
 **Scope**:
 
-1. Document the existing change-management pipeline as the SOC 2 CC8.1 narrative. One markdown doc at `docs/auditor/change-management.md`. Cite: TDD-first discipline (CLAUDE.md), `make check` gate list, L4 reviewer-bot identity (`docs/engineer/specs/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md`), branch-protection state (`feedback_branch_protection_strict`), squash-merge with PR linkage.
+1. Document the existing change-management pipeline as the SOC 2 CC8.1 narrative. One markdown doc at `docs/auditor/change-management.md`. Cite: TDD-first discipline (CLAUDE.md), `make check` gate list, L4 reviewer-bot identity (`docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md`), branch-protection state (`feedback_branch_protection_strict`), squash-merge with PR linkage.
 2. Add `regatta change-evidence --window <duration>` CLI emitting per-PR rows: PR#, merge-SHA, reviewer-identity, approval-token-event-id, gates-passed. Output is the slice-4 evidence-collection consumer.
 3. Add `change_classification` substrate event written at `gh pr create` time tagging the release-notes prefix (`[FEAT]/[FIX]/[CHORE]/...`). Auditor reads classification distribution as control-coverage evidence.
 4. Reject: a separate change-advisory-board workflow. The L4 reviewer + operator-merge is the CAB equivalent and is already mandatory.
 
 **Reuses**: existing L4 gate, branch protection, substrate event log. **What gets smaller**: zero new gate — slice 3 is the audit narrative + read-side CLI.
 
-**Auditor-reject**: "Operator can approve their own PR — separation of duties fails." → Counter-control: L4 reviewer-bot (`docs/engineer/specs/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md`) runs under a dedicated service-account identity; the W7 spec already pre-handles GitHub's self-approval 422. Document this in the system description. **Weakest link**: same operator owns both the reviewer-bot service-account credentials AND the human merge button. Add a `regatta reviewer-identity attest` CLI emitting a daily substrate event proving the reviewer-bot token has not been swapped to the operator's PAT; until enterprise customers add per-tenant service-accounts, the operator-trust assumption is documented, not eliminated.
+**Auditor-reject**: "Operator can approve their own PR — separation of duties fails." → Counter-control: L4 reviewer-bot (`docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md`) runs under a dedicated service-account identity; the W7 spec already pre-handles GitHub's self-approval 422. Document this in the system description. **Weakest link**: same operator owns both the reviewer-bot service-account credentials AND the human merge button. Add a `regatta reviewer-identity attest` CLI emitting a daily substrate event proving the reviewer-bot token has not been swapped to the operator's PAT; until enterprise customers add per-tenant service-accounts, the operator-trust assumption is documented, not eliminated.
 
 ### 4.4 Slice 4 — audit-evidence-collection automation
 
@@ -218,7 +218,7 @@ Aggregate "what would an auditor reject" findings, deduped from per-slice sectio
 3. **Vendor management** (CC9.2): GitHub, Anthropic, OS keyring/pass (per `internal/secrets/`). Sub-processor list lands as `docs/auditor/sub-processors.md` at slice 1 dispatch time. DPAs are engagement-time legal work — out of engineering scope.
 4. **Change management** (CC8.1): L4 + branch-protection + `make pre-push-check` is sufficient for an A-tier control posture; A+ requires the slice 3 reviewer-identity-attest CLI to close the operator-self-trust gap.
 5. **Incident response** (CC7.3): operator notices via alarm-webhook today; runbook (slice 2) closes the documentation gap; the substrate `incident` event closes the timeline-of-record gap.
-6. **Crypto-shredding** (C1.2): SPECCED via `docs/engineer/specs/2026-06-02-crypto-shredding-design.md`; trigger to land before first regulated-customer pilot. Independent of SOC 2 trigger, but C1.2 evidence won't be claimable until crypto-shred lands.
+6. **Crypto-shredding** (C1.2): SPECCED via `docs/engineer/specs/phase-x/2026-06-02-crypto-shredding-design.md`; trigger to land before first regulated-customer pilot. Independent of SOC 2 trigger, but C1.2 evidence won't be claimable until crypto-shred lands.
 
 ## 7. Default-simpler defenses (per-slice why-not-more)
 
@@ -253,14 +253,14 @@ These are not engineering decisions. The roadmap does not pre-commit them.
 - `W8` multi-tenant authorization (Phase-X; soft trigger): `docs/engineer/specs/2026-06-01-w8-opa-rbac-design.md`; tracker `#492`, `#221`.
 - `W10` supply-chain signing (Phase-X; mitigation for slices 2, 4): `docs/engineer/specs/2026-06-01-w10-sigstore-design.md`; tracker `#617`.
 - `W12` metered billing (Phase-X; A1 SLA enablement): `docs/engineer/specs/2026-06-01-w12-billing-design.md`; tracker `#729`.
-- Crypto-shredding (Phase-X; C1.2 enablement): `docs/engineer/specs/2026-06-02-crypto-shredding-design.md`; tracker `#548`, `#606`, `#607`.
+- Crypto-shredding (Phase-X; C1.2 enablement): `docs/engineer/specs/phase-x/2026-06-02-crypto-shredding-design.md`; tracker `#548`, `#606`, `#607`.
 - GDPR Article 17 (Phase-X; intersects P4 if P-series re-enters scope): tracker `#606`.
-- Outbox primitive (slices 2, 4 dependency): `docs/engineer/specs/2026-06-02-external-effect-outbox-primitive.md`; tracker `#551`.
+- Outbox primitive (slices 2, 4 dependency): `docs/engineer/specs/phase-x/2026-06-02-external-effect-outbox-primitive.md`; tracker `#551`.
 - Audit chain (slice 4 substrate): `cmd/regatta/audit.go`.
 - Approval gates (slice 1 substrate): `internal/canon/approvaltoken/`.
 - Secret routing (slice 1 substrate): `internal/secrets/secrets.go`.
-- L4 reviewer identity (slice 3 substrate): `docs/engineer/specs/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md`.
+- L4 reviewer identity (slice 3 substrate): `docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md`.
 - HMAC key-rotation drill (slice 1 dependency): `docs/engineer/specs/2026-06-02-s3-t3-key-rotation-drill.md`.
-- Replay-diff harness (A1.3 substrate): `docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md`.
+- Replay-diff harness (A1.3 substrate): `docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md`.
 
 At trigger-fire time, the implementer dispatching slice 1 MUST file tracker issues for each `NEEDS-DESIGN` row in §3 that the slice does not absorb. Mirrors `feedback_unaddressed_load_bearing`.

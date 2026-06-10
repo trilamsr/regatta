@@ -7,7 +7,7 @@ Goal: set spend caps that fire BEFORE the next LLM call, read drift
 alerts when reconciliation finds a mismatch, refresh the pricing table
 on Anthropic's cadence.
 Expires when: the `safety.cost` CUE schema in
-`docs/engineer/specs/2026-06-01-cost-governor-design.md` §3.6 changes.
+`docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md` §3.6 changes.
 
 ## What you get
 
@@ -541,6 +541,6 @@ failure; the CLI exits non-zero and names the missing surface.
   `docs/operator/cost-governor-dashboards.md` (sibling cite, lands in
   #301; link restored in post-merge follow-up PR).
 - Design spec (engineers) —
-  [docs/engineer/specs/2026-06-01-cost-governor-design.md](../engineer/specs/2026-06-01-cost-governor-design.md).
+  [docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md](../engineer/specs/phase-x/2026-06-01-cost-governor-design.md).
 - OTel wiring + sampler customization —
   [docs/operator/observability.md](./observability.md).

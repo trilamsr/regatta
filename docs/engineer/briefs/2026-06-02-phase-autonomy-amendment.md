@@ -200,7 +200,7 @@ c0 closes both before c2 may ship:
 | Tier | Criteria |
 |---|---|
 | B (floor) | (a) c1+c2 ship. (b) Default-on once `cost.daily_cap_usd` set. (c) Release-notes fence. |
-| A (target) | B + (d) c3+c4+c5. (e) Adversarial reviewer posts. (f) Substrate event schema for `regatta_pause_all` documented in `docs/engineer/specs/2026-06-01-unified-substrate-design.md`. |
+| A (target) | B + (d) c3+c4+c5. (e) Adversarial reviewer posts. (f) Substrate event schema for `regatta_pause_all` documented in `docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md`. |
 | A+ (stretch) | A + (g) Per-DAG pause (some DAGs can keep running while others halt) via label-set. (h) Property test: 100 random scheduler ticks under random pause/resume sequences; assert no dispatch fires when paused. (i) W4 self-improvement detector wired to detect pause-cycling (≥3 daily-cap hits in 7 days = self-improvement issue suggesting cap raise). |
 
 ---

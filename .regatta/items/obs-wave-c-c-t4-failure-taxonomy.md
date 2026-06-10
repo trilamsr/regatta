@@ -4,10 +4,10 @@ title: spawner failure-taxonomy counter + dashboard tile (item #12)
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T0b, OBS-WAVE-C-T1
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-2 row item #12, §7 Wave-C table row C-T4, §7 Wave-C exit gate (≥ 8 mode buckets).
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 Tier-2 row item #12, §7 Wave-C table row C-T4, §7 Wave-C exit gate (≥ 8 mode buckets).
 
 ## Task
 

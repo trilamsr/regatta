@@ -43,7 +43,7 @@ Prior-art baseline: `docs/engineer/specs/2026-06-01-research-mode-extension-desi
 | Power-analysis gate | [G*Power 3.1](https://www.gpower.hhu.de/) + [statsmodels](https://www.statsmodels.org/stable/stats.html#power-and-sample-size-calculations) | n/a | docs ref | Power threshold (default 0.8) gated at prereg time |
 | Leakage gate | [scikit-learn `GroupKFold` docs](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GroupKFold.html) | n/a | BSD-3 docs ref | Train/test shard-overlap detector; sha256-on-dataset-rows comparison |
 | Reproducibility cron K=10 | [NeurIPS reproducibility checklist](https://neuripsconf.medium.com/designing-the-reproducibility-program-for-neurips-2020-7fcccaa5c6ad) + [ML Reproducibility Challenge](https://reproml.org/) | n/a | docs ref | K=10 fresh-seed sweep; epsilon-bounded drift verdict |
-| W9 replay primitive | `docs/engineer/specs/2026-06-01-w9-replay-diff-harness-design.md` | n/a | repo-internal | DurableHistory interface; substrate-default impl is the K=10 cron's replay engine |
+| W9 replay primitive | `docs/engineer/specs/phase-x/2026-06-01-w9-replay-diff-harness-design.md` | n/a | repo-internal | DurableHistory interface; substrate-default impl is the K=10 cron's replay engine |
 
 Rejected alternatives (per parent spec §11, 70% cut): bespoke prereg DSL (CUE already covers); custom causal-inference toolkit (out of scope for v1); LLM-authored gates (defer until methodology library matures); separate research-substrate (rides existing substrate per `feedback_deletion_default`).
 

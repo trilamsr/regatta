@@ -6,7 +6,7 @@ summary: "Pre-fetch skeleton for MVR-2 T2. Carries the W8-OPA design's `Principa
 
 # MVR-2 T2 — W8 multi-tenant `tenant_id` routing — skeleton spec
 
-_Pre-fetch skeleton, 2026-06-03. Material elaboration deferred to MVR-2 dispatch. Source-of-truth: `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §4 MVR-2-T2. Prior W8 design: `docs/engineer/specs/2026-06-01-w8-opa-rbac-design.md` (covers Authorizer + Principal type; this spec carries the `Tenant` field into storage). Cost-cap forward-fit reference: `docs/engineer/specs/2026-06-02-phase-autonomy-w5-cost-cap-autonomic-enforcement.md` (cost-cap already has per-tenant scope; verify forward-fit holds)._
+_Pre-fetch skeleton, 2026-06-03. Material elaboration deferred to MVR-2 dispatch. Source-of-truth: `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §4 MVR-2-T2. Prior W8 design: `docs/engineer/specs/2026-06-01-w8-opa-rbac-design.md` (covers Authorizer + Principal type; this spec carries the `Tenant` field into storage). Cost-cap forward-fit reference: `docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w5-cost-cap-autonomic-enforcement.md` (cost-cap already has per-tenant scope; verify forward-fit holds)._
 
 ## 1. Scope
 
@@ -26,7 +26,7 @@ Surfaces gaining tenant filtering:
 - Hosted IdP / SSO — covered by W8 spec deferral (no change).
 - Per-tenant rate-limit / quotas — followup wedge (post-MVR-2).
 - Cross-tenant read for admin (e.g., `regatta admin dump --all-tenants`) — followup CLI flag, not Wave-2 surface.
-- Tenant-bound encryption keys at rest (crypto-shred per-tenant) — `docs/engineer/specs/2026-06-02-crypto-shredding-design.md` owns that, defer.
+- Tenant-bound encryption keys at rest (crypto-shred per-tenant) — `docs/engineer/specs/phase-x/2026-06-02-crypto-shredding-design.md` owns that, defer.
 - UI per-tenant filter dropdown — Wave-3 (T5) polish item.
 
 ## 2. Architecture (high-level)

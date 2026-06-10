@@ -4,10 +4,10 @@ title: per-DAG-run cost counter + dashboard tile (item #1)
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T0a
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-1 row item #1, §7 Wave-A table row A-T1, §10 dispatch brief A-T1, §11 cross-wedge (shared-owner pin on `cost/spend/writer.go`).
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 Tier-1 row item #1, §7 Wave-A table row A-T1, §10 dispatch brief A-T1, §11 cross-wedge (shared-owner pin on `cost/spend/writer.go`).
 Amendment ref: review of PR #410 §7 RISK-A confirms A-T1 owns `internal/cost/spend/writer.go` across Wave A + Wave C.
 
 ## Task

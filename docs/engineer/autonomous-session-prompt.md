@@ -71,7 +71,7 @@ TIGHT FEEDBACK LOOP
 PRIORITY (top-down — 2026-06-08 reorder; current direct path: ship operator console UI v5.1 → unblock parallel velocity via cascade fixes → operator install DEPLOY → green-clock → arbitrary-repo generalization → first paying customer)
 
 P0 — Operator console v5.1 UI build [IN-FLIGHT]
-  UI roadmap v2 + S0 substrate prereqs + SvelteKit scaffold. SvelteKit promoted from MVR-1 to immediate priority per 2026-06-08 operator decision (prior SvelteKit prohibition explicitly flipped). Rationale: operator-facing surface is the dominant UX gap once autonomous loop is structurally closed; full-speed build authorized. References: spec #701 (docs/engineer/specs/2026-06-02-operator-console-design.md) · S0 substrate-prereqs plan (docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md).
+  UI roadmap v2 + S0 substrate prereqs + SvelteKit scaffold. SvelteKit promoted from MVR-1 to immediate priority per 2026-06-08 operator decision (prior SvelteKit prohibition explicitly flipped). Rationale: operator-facing surface is the dominant UX gap once autonomous loop is structurally closed; full-speed build authorized. References: spec #701 (docs/engineer/specs/phase-x/2026-06-02-operator-console-design.md) · S0 substrate-prereqs plan (docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md).
 
 P0.5 — Autonomy levers from skill session 5 [LANDED / DOCUMENTED]
   - Boot precondition probe — landed via #1183 (preflightSpawnerAuth + IsFalsyEnv exported).
@@ -135,7 +135,7 @@ PHASE GREEN-CLOCK — 30-day-green trigger [BLOCKED on DEPLOY]
 
 PHASE MVR-1 — First external-customer wedges [SPECS LANDED · IMPL BLOCKED on GREEN-CLOCK OR external-customer-ask]
   Per #433 unified next-horizon roadmap + §14 DW-superset integration. Specs landed 2026-06-03:
-    MVR-1 T1: operator-console v5.1 (SUPERSEDES htmx W7 Wave 1) — spec #701 (docs/engineer/specs/2026-06-02-operator-console-design.md) + S0 substrate-prereqs plan (docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md). Dual-principal (regatta-self + human) SvelteKit console; 5 slices, ~26 wk v1; S0 unblocks S1-S4 by adding runs registry + run_id columns + tool_call substrate kind + gh-checks poller + prwatch DIRTY. Original W7 htmx #601 retired (3-phase rip planned in S1).
+    MVR-1 T1: operator-console v5.1 (SUPERSEDES htmx W7 Wave 1) — spec #701 (docs/engineer/specs/phase-x/2026-06-02-operator-console-design.md) + S0 substrate-prereqs plan (docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md). Dual-principal (regatta-self + human) SvelteKit console; 5 slices, ~26 wk v1; S0 unblocks S1-S4 by adding runs registry + run_id columns + tool_call substrate kind + gh-checks poller + prwatch DIRTY. Original W7 htmx #601 retired (3-phase rip planned in S1).
     MVR-1 T2: regatta init bundle (GoReleaser + GH-issue adapter) — #590
     MVR-1 T3: P3.8 SCM adapter (Gitea first) — #603
     MVR-1 T5: CUE gate — #602

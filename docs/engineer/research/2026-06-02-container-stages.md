@@ -4,7 +4,7 @@ Status: research brief (informs Stage 1/2/3 implementation specs)
 Date: 2026-06-02
 Author: research subagent (web research + regatta-fit synthesis)
 Memory rules in force: `feedback_research_design_principles` (proven OSS > scratch-built; ≥2 candidates per primitive), `feedback_review_every_step`, `feedback_design_iteration_local`, `feedback_pr_body_file_only`, `feedback_pr_body_release_notes_mandatory`.
-Convergence note: Aligns with `docs/engineer/specs/2026-06-02-observability-roadmap.md` §1 (OTel SDK + Prom+Grafana + OpenSLO+Sloth + Grafana JSON dashboards) and `examples/observability/docker-compose.yml` (Jaeger all-in-one fixture).
+Convergence note: Aligns with `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §1 (OTel SDK + Prom+Grafana + OpenSLO+Sloth + Grafana JSON dashboards) and `examples/observability/docker-compose.yml` (Jaeger all-in-one fixture).
 Scope: bridges 13 open knowledge gaps that the containerization pipeline will hit. Each section: current state with two source citations, regatta-fit, recommendation. Final §14 distills per-stage picks.
 
 ---

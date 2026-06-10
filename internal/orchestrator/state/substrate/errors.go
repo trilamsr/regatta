@@ -2,7 +2,7 @@
 // that collapses MVP-2's bespoke history tables (approval_events,
 // work_item_outputs, per-agent events) into one canonical log. State
 // for any wedge is fold(events WHERE kind=X) — never a row mutation.
-// Spec: docs/engineer/specs/2026-06-01-unified-substrate-design.md.
+// Spec: docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md.
 package substrate
 
 import (

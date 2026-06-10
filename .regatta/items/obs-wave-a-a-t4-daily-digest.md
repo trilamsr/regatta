@@ -4,10 +4,10 @@ title: regatta digest subcommand + cron + first digest 2026-06-03 (item #14)
 lane: observability
 status: planned
 dependencies: OBS-WAVE-A-T1, OBS-WAVE-A-T2, OBS-WAVE-A-T3
-linked_artifact: docs/engineer/specs/2026-06-02-observability-roadmap.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md
 ---
 
-Source spec: `docs/engineer/specs/2026-06-02-observability-roadmap.md` §3 Tier-1 row item #14, §6.2 digest sections, §7 Wave-A table row A-T4, §9 R6 (zero-PR-day context), §10 dispatch brief A-T4.
+Source spec: `docs/engineer/specs/phase-x/2026-06-02-observability-roadmap.md` §3 Tier-1 row item #14, §6.2 digest sections, §7 Wave-A table row A-T4, §9 R6 (zero-PR-day context), §10 dispatch brief A-T4.
 Amendment ref: review of PR #410 §4 — first-digest degraded contract (verbatim placeholder lines + named removal owners) + §5 L8 (digest gains YAML front-matter).
 
 ## Task

@@ -229,7 +229,7 @@ The full `safety.cost` config surface lives at
 §"Config surface".
 
 Spec for engineer-level references:
-`docs/engineer/specs/2026-06-01-cost-governor-design.md`.
+`docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md`.
 
 ## What this incident affects
 

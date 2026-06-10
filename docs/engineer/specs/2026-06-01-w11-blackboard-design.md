@@ -6,7 +6,7 @@ summary: "W11 blackboard shared state — deferred to Phase X per docs/engineer/
 
 # Spec: MVP-4 W11 Blackboard — typed facts + reducers + CAS blobs
 
-_Author: design subagent, 2026-06-01. Source-of-truth dossier: `memory/wedge_blackboard.md`. Builds on `docs/engineer/specs/2026-06-01-unified-substrate-design.md` (substrate v2 events log shipped via T-S1 #224). Sequencing reference: `memory/wedge_roadmap_assessment.md` MVP-4 row #6._
+_Author: design subagent, 2026-06-01. Source-of-truth dossier: `memory/wedge_blackboard.md`. Builds on `docs/engineer/specs/phase-x/2026-06-01-unified-substrate-design.md` (substrate v2 events log shipped via T-S1 #224). Sequencing reference: `memory/wedge_roadmap_assessment.md` MVP-4 row #6._
 
 Blackboard is the shared-typed-fact store that lets parallel subagents publish + query state without prompt bloat. Per the wedge dossier, the primitive is **typed facts + reducers + CAS blobs**. Substrate v2 Wave 1 already shipped `kind=fact` events and the `RegisterPayloadValidator` dispatch — this spec adds three things the substrate deliberately deferred:
 

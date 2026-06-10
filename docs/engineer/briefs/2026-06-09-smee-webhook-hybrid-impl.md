@@ -5,13 +5,13 @@ status: draft
 phase: x-forward-fit
 owner: trilamsr@gmail.com
 created: 2026-06-09
-summary: "Phase-X forward-fit implementer brief for Rung 4 of the polling-improvement-ladder spec (`docs/engineer/specs/2026-06-09-polling-improvement-ladder.md`). Outbound-only webhook relay (`smee.io` / `gh webhook forward` / Cloudflare Tunnel) forwards GitHub webhooks to a `127.0.0.1`-bound listener under `internal/ghclient/webhook/`, validates HMAC against `WEBHOOK_SECRET`, deduplicates on `event_id` within a 30s window, and enqueues a targeted poll. Webhook payload is informational ONLY — never authoritative. Closes #1165 once reopen trigger fires."
+summary: "Phase-X forward-fit implementer brief for Rung 4 of the polling-improvement-ladder spec (`docs/engineer/specs/phase-x/2026-06-09-polling-improvement-ladder.md`). Outbound-only webhook relay (`smee.io` / `gh webhook forward` / Cloudflare Tunnel) forwards GitHub webhooks to a `127.0.0.1`-bound listener under `internal/ghclient/webhook/`, validates HMAC against `WEBHOOK_SECRET`, deduplicates on `event_id` within a 30s window, and enqueues a targeted poll. Webhook payload is informational ONLY — never authoritative. Closes #1165 once reopen trigger fires."
 ---
 
 # smee.io / `gh webhook forward` webhook hybrid — Implementer Brief (Rung 4)
 
 Tracks: #1165 (Phase-X forward-fit; closes once §Reopen trigger fires).
-Sibling spec: `docs/engineer/specs/2026-06-09-polling-improvement-ladder.md` (Rung 4, §3 + §5.4).
+Sibling spec: `docs/engineer/specs/phase-x/2026-06-09-polling-improvement-ladder.md` (Rung 4, §3 + §5.4).
 Sibling brief: `2026-06-09-etag-conditional-get-impl.md` (Rung 1 — the targeted GETs this brief enqueues benefit from the ETag cache).
 Cross-ref: `internal/ghclient/client.go` (the existing seam; this brief introduces a sibling `internal/ghclient/webhook/` package — does not modify the gh-CLI client).
 

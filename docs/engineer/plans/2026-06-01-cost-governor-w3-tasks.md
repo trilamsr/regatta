@@ -1,6 +1,6 @@
 # Cost Governor (P8) Wave 3 — Implementer Task Breakdown (2026-06-01)
 
-Source-of-truth spec: `docs/engineer/specs/2026-06-01-cost-governor-design.md` §10 Wave 3 (operator doc T5 spec-mandated; T6 ops playbook + T7 dashboard cite are file-disjoint extensions that surface spec §9 R3/R6/R13/R15 runbook content + spec §7 A+4 dashboard-query content into shippable docs).
+Source-of-truth spec: `docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md` §10 Wave 3 (operator doc T5 spec-mandated; T6 ops playbook + T7 dashboard cite are file-disjoint extensions that surface spec §9 R3/R6/R13/R15 runbook content + spec §7 A+4 dashboard-query content into shippable docs).
 
 Authority: `feedback_spec_pattern_authority` — implementer deviation from any spec-mandated pattern (T5 owns `docs/operator/cost-governor.md` + the `cost_governor_test.go` gate per spec §6 T5 verbatim; T6 owns the ops runbook for R3/R6/R13/R15 incidents only; T7 owns the dashboard-cite table mapping `regatta.cost.*` span attrs + `obs.EventCost*` slog events to operator-visible panels per spec §7 A+4; precedence rule "most-restrictive-wins" verbatim per spec §3.6 line 370; pricing-refresh quarterly cadence verbatim per spec §3.8 line 426) MUST re-spawn the design subagent. NO implementer-chosen alternatives.
 
@@ -131,7 +131,7 @@ Reference-system citations per `feedback_research_design_principles`:
 ## Summary
 
 Cost-governor Wave 3 T5 ships the operator runbook for the cost surface
-per docs/engineer/specs/2026-06-01-cost-governor-design.md §10 Wave 3.
+per docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md §10 Wave 3.
 
 - docs/operator/cost-governor.md — 300-line operator runbook covering
   env-var contract, most-restrictive-wins precedence, drift-alert
@@ -208,7 +208,7 @@ You MUST NOT write to any other path. Specifically:
 
 # Spec authority
 
-Source-of-truth: docs/engineer/specs/2026-06-01-cost-governor-design.md.
+Source-of-truth: docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md.
 Read ALL of: §2 in-scope item #8 (operator doc), §3.4 (Cost vs Usage API
 fallback), §3.5 (substrate hook BudgetReconciledPayload fields), §3.6
 (config surface verbatim — precedence rule line 370), §3.7 (OTel attrs +
@@ -470,7 +470,7 @@ You MUST NOT write to any other path. Specifically:
 
 # Spec authority
 
-Source-of-truth: docs/engineer/specs/2026-06-01-cost-governor-design.md.
+Source-of-truth: docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md.
 Read §3.4 (reconciliation failure-mode table verbatim), §3.5 (substrate
 LWW semantics), §9 R3 + R4 + R6 + R10 + R13 + R15. Every H2 in the
 runbook cites at least one of these sections.
@@ -674,7 +674,7 @@ You MUST NOT write to any other path. Specifically:
 
 # Spec authority
 
-Source-of-truth: docs/engineer/specs/2026-06-01-cost-governor-design.md.
+Source-of-truth: docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md.
 Read §3.4 (reconciler span attrs), §3.7 (OTel attr table verbatim), §7
 A+4 (this task IS the deliverable), §9 R14 (cardinality).
 

@@ -9,7 +9,7 @@ summary: "W10 attestation chain — deferred to Phase X per docs/engineer/briefs
 _Author: design subagent, 2026-06-01. Scope: roadmap wedge W10 (MVP-4 rank #5). Source-of-truth_:
 - `docs/engineer/briefs/2026-05-31-mvp-3-next-level.md` §"W10 — Sigstore / in-toto plan-and-artifact provenance" (MVP-4 rank #5, dependencies W6 + W2).
 - `docs/engineer/specs/2026-06-01-w8-opa-rbac-design.md` §3.3 + §10 followup #1 (policy bundle signing — W8 deferred to W10).
-- `docs/engineer/specs/2026-06-01-cost-governor-design.md` §9 R1 (pricing drift) + §9 R-A4 caveat (pricing-applied-twice — closes the integrity vector that table tampering can hide behind).
+- `docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md` §9 R1 (pricing drift) + §9 R-A4 caveat (pricing-applied-twice — closes the integrity vector that table tampering can hide behind).
 - Memory: `feedback_research_design_principles` (sigstore-go > custom signer), `feedback_grade_rubric`, `feedback_migration_number_lock`, `feedback_deletion_default`, `feedback_doc_check_banned_phrases`.
 
 ---
@@ -501,9 +501,9 @@ Per `feedback_unaddressed_load_bearing` — file as gh issues, cite by number in
 ## §11 References
 
 - W8 OPA RBAC spec: `docs/engineer/specs/2026-06-01-w8-opa-rbac-design.md` §3.3 (policy bundle loader) + §10 followup #1 (policy bundle signing, closed by W10).
-- cost-governor spec: `docs/engineer/specs/2026-06-01-cost-governor-design.md` §9 R1 (pricing drift) + §9 R-A4 caveat (pricing-applied-twice — narrowed by W10).
+- cost-governor spec: `docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md` §9 R1 (pricing drift) + §9 R-A4 caveat (pricing-applied-twice — narrowed by W10).
 - MVP-3 brief: `docs/engineer/briefs/2026-05-31-mvp-3-next-level.md` §"W10 — Sigstore / in-toto plan-and-artifact provenance" + §"HMAC stays internal, Sigstore goes external".
-- W6 OTel backbone: `docs/engineer/specs/2026-05-31-mvp-3-w6-otel-backbone.md` §3 (attribute set + tracer factory; reused for `sign.verify` span).
+- W6 OTel backbone: `docs/engineer/specs/phase-x/2026-05-31-mvp-3-w6-otel-backbone.md` §3 (attribute set + tracer factory; reused for `sign.verify` span).
 - sigstore-go SDK: https://github.com/sigstore/sigstore-go (Apache-2.0, CNCF graduated).
 - cosign sign-blob: https://docs.sigstore.dev/cosign/signing/signing_with_blobs/.
 - Rekor public-good instance: https://docs.sigstore.dev/logging/overview/.
