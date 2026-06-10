@@ -23,6 +23,7 @@ import "list"
 	pr_template?:  #PRTemplate
 	gates:         [...#Gate] & list.MinItems(1)
 	lanes?:        [...#Lane]
+	scheduler?:    #Scheduler
 	hotspots?:     [...string]
 	safety:        #Safety
 	context?:      #Context
@@ -182,6 +183,17 @@ import "list"
 	id:               string & =~ "^[a-z0-9_-]+$"
 	paths:            [...string] & list.MinItems(1)
 	max_concurrency:  *1 | int & >=1 & <=8
+}
+
+// #Scheduler is the optional tunables block (spec
+// 2026-06-09-scheduler-parallel-cap-enforcement §3.1; closes #1169).
+// Absent block ⇒ pre-#1169 behavior byte-equal (lane-cap only).
+#Scheduler: {
+	// parallel_cap is the aggregate ceiling across ALL lanes per Tick.
+	// Default 4 matches `CLAUDE.md` "Dispatch" §"Cap parallel implementers
+	// at 3-4". Zero disables; upper bound 16 protects shared Anthropic-API
+	// quota from operator typo.
+	parallel_cap?: *4 | int & >=0 & <=16
 }
 
 #Safety: {

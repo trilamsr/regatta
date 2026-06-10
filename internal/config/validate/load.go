@@ -81,8 +81,18 @@ type Config struct {
 	Repo         *Repo         `yaml:"repo,omitempty" json:"repo,omitempty"`
 	SpecAdapter  *SpecAdapter  `yaml:"spec_adapter,omitempty" json:"spec_adapter,omitempty"`
 	Safety       *Safety       `yaml:"safety,omitempty" json:"safety,omitempty"`
+	Scheduler    *Scheduler    `yaml:"scheduler,omitempty" json:"scheduler,omitempty"`
 	AlarmWebhook *AlarmWebhook `yaml:"alarm_webhook,omitempty" json:"alarm_webhook,omitempty"`
 	Secrets      *Secrets      `yaml:"secrets,omitempty" json:"secrets,omitempty"`
+}
+
+// Scheduler mirrors `regatta.yaml::scheduler` (spec
+// 2026-06-09-scheduler-parallel-cap-enforcement §3.1, closes #1169).
+// Absent block ⇒ ParallelCap=0 (disabled, lane-cap-only).
+type Scheduler struct {
+	// ParallelCap is the aggregate ceiling across ALL lanes per Tick.
+	// CUE default 4 surfaces here when the block is present-but-key-omitted.
+	ParallelCap int `yaml:"parallel_cap,omitempty" json:"parallel_cap,omitempty"`
 }
 
 // Secret mirrors `regatta.yaml::secrets.<key>` per #911; absent block surfaces as a nil parent — back-compat preserved.
@@ -187,6 +197,15 @@ func (c *Config) MarkdownCatalogRoot() string {
 		return ""
 	}
 	return c.SpecAdapter.Root
+}
+
+// SchedulerParallelCap returns the resolved `scheduler.parallel_cap` value
+// (0 = disabled when block absent or zero). Nil-safe at every level.
+func (c *Config) SchedulerParallelCap() int {
+	if c == nil || c.Scheduler == nil {
+		return 0
+	}
+	return c.Scheduler.ParallelCap
 }
 
 // LoadConfig CUE-validates yaml bytes (same gate as LoadBytes) then decodes the unified value into a typed Config — unified value carries CUE defaults concretely (omitted `spec_adapter.root: .` surfaces as ".", not "").
