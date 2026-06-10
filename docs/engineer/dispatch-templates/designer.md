@@ -2,6 +2,14 @@
 
 Design-doc subagent. Output: spec under `docs/engineer/specs/YYYY-MM-DD-<slug>.md`.
 
+## Anti-patterns (block-list)
+
+NEVER (apply to YOU as designer, AND propagate to any implementer you dispatch downstream):
+1. Put `Reviewer-recommendation:` or `Reviewer-agent-id:` in commit messages. The gate (`scripts/check-reviewer-verdict.sh`) reads PR body only — commit-message tokens are invisible. Per `feedback_no_self_tagged_approve`.
+2. Enable `gh pr merge --auto` on load-bearing PRs carrying agent-id tokens. The gate fails closed with `automerge_with_agent_id_on_load_bearing`. End with `gh pr ready <N>` + operator-merge handoff. Per `feedback_no_implementer_automerge`.
+3. Operate in `.claude/worktrees/operator-docker-soak/` or any shared-named worktree when ≥1 other agent uses it concurrently. HEAD clobber + lost work. Use orchestrator-pinned `regatta/agent-<N>` branch in the pre-created worktree. Per `feedback_keep_orchestrator_branch_name`.
+4. Self-tag `Reviewer-recommendation: APPROVE` as the author. Independent reviewer subagent dispatches in a separate slot — author ends with `gh pr ready <N>` only. Per `feedback_no_self_tagged_approve`.
+
 ## Variables
 - `<TOPIC>` — one-line problem statement.
 - `<SPEC-SLUG>` — `YYYY-MM-DD-<short-slug>` (date locked at dispatch).

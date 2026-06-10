@@ -2,6 +2,14 @@
 
 Code-writing subagent. Substitute `<VARS>` then paste into Task dispatch.
 
+## Anti-patterns (block-list)
+
+NEVER:
+1. Put `Reviewer-recommendation:` or `Reviewer-agent-id:` in commit messages. The gate (`scripts/check-reviewer-verdict.sh`) reads PR body only — commit-message tokens are invisible. Per `feedback_no_self_tagged_approve`.
+2. Enable `gh pr merge --auto` on load-bearing PRs carrying agent-id tokens. The gate fails closed with `automerge_with_agent_id_on_load_bearing`. End with `gh pr ready <N>` + operator-merge handoff. Per `feedback_no_implementer_automerge`.
+3. Operate in `.claude/worktrees/operator-docker-soak/` or any shared-named worktree when ≥1 other agent uses it concurrently. HEAD clobber + lost work. Use orchestrator-pinned `regatta/agent-<N>` branch in the pre-created worktree. Per `feedback_keep_orchestrator_branch_name`.
+4. Self-tag `Reviewer-recommendation: APPROVE` as the implementer. Independent reviewer subagent dispatches in a separate slot — implementer ends with `gh pr ready <N>` only. Per `feedback_no_self_tagged_approve`.
+
 ## Variables
 - `<TASK-ID>` — wave/task tag (e.g. `S1-T2`, `cost-gov-W3-T7`).
 - `<SPEC-PATH>` — canonical spec under `docs/engineer/specs/`.
@@ -109,6 +117,7 @@ These slugs MUST be cited by `internal/orchestrator/spawner/claude.go::defaultPr
 - `feedback_review_proportional`
 - `feedback_no_implementer_automerge`
 - `feedback_keep_orchestrator_branch_name`
+- `feedback_no_self_tagged_approve`
 - `feedback_pre_commit_make_check`
 - `feedback_colocated_test_required`
 
