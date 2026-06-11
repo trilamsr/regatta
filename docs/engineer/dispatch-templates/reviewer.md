@@ -88,10 +88,15 @@ LOAD-BEARING LEFTOVERS → ONE AGGREGATE TRACKING ISSUE PER PR
   - `severity:critical` | `severity:high` | `severity:medium` matching the highest-tier row in the aggregate.
   - Filing snippet: `gh issue create --title '[REVIEWER #<PR>] aggregate findings (<count>)' --body-file <path> --label 'kind:reviewer-finding' --label 'severity:<tier>'`.
 
+NEGATIVE-SPACE AUDIT (mandatory on every load-bearing PR)
+- Enumerate ≥3 PR-specific bypass attempts citing `path:line` of the surface under test. Each attempt: (a) describe the bypass, (b) state outcome — `mitigated` (gate/test covers it), `accepted` (risk acknowledged), or `filed #NNN` (new tracking issue). Bypass attempt without a diff citation cannot pass.
+- If you cannot enumerate ≥3 PR-specific bypass attempts, use `Reviewer-recommendation: INSUFFICIENT_EVIDENCE` with a `Confidence-evidence-needed: #NNN` tracker issue naming what evidence is required. Do NOT default APPROVE under uncertainty.
+
 OUTPUT FORMAT
 - Inline GH PR review comments OR markdown report. Each finding: `[Tier] file:line — observation — proposed fix`.
 - Optional final block: independent self-grade re-score (B/A/A+ per criterion) — must match or contradict author's claim explicitly. No format enforcement; for operator visibility only.
 - Verdict: `clear-to-merge` | `block-on-findings` | `re-spawn-design`.
+- `Reviewer-recommendation:` MUST be one of `APPROVE` | `REVISE` | `BLOCK` | `INSUFFICIENT_EVIDENCE`.
 
 NO SIGNATURES
 - Per `feedback_no_signatures`.
@@ -172,11 +177,12 @@ Self-rate headline must reflect the WEAKEST tier carrying any ⚠/❌. All B + A
 - [ ] auto-skip evaluated explicitly (skip or proceed, document choice)
 - [ ] all 9 lenses applied (or skip documented per lens)
 - [ ] verdict line present
+- [ ] negative-space audit: ≥3 PR-specific bypass attempts with disposition OR `INSUFFICIENT_EVIDENCE` + `Confidence-evidence-needed: #NNN`
 - [ ] Risk-tier+ findings have a disposition (inline-fix OR aggregate-tracking-issue row)
 - [ ] AT MOST ONE aggregate tracking issue filed for this PR review (with `kind:reviewer-finding` + matching `severity:*` label); LOW findings posted as PR comments only
 - [ ] `## Comment sweep` section emitted (offenders or `clean`)
 - [ ] memory rules cited
-- [ ] Reviewer-* tokens absent OR valid (APPROVE/REVISE/BLOCK + subagent id). NEVER `<pending>`.
+- [ ] Reviewer-* tokens absent OR valid (APPROVE/REVISE/BLOCK/INSUFFICIENT_EVIDENCE + subagent id). NEVER `<pending>`.
 
 ## RECURRING-FAILURE TRAPS
 

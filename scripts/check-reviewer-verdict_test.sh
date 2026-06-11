@@ -903,6 +903,53 @@ BODY_EOF
   rm -f "$body"
 }
 
+run_case_insufficient_evidence_acts_as_revise() {
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+Reviewer-agent-id: cavecrew-reviewer-abc123
+Reviewer-recommendation: INSUFFICIENT_EVIDENCE
+Confidence-evidence-needed: #1063
+
+```release-notes
+[FIX] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing 2>&1 | grep -qE "INSUFFICIENT_EVIDENCE|REVISE|BLOCK|evidence"; then
+    pass "INSUFFICIENT_EVIDENCE recommendation fails and prompts resolution"
+  else
+    fail "INSUFFICIENT_EVIDENCE recommendation should fail and prompt resolution"
+  fi
+  rm -f "$body"
+}
+
+run_case_insufficient_evidence_without_tracker_fails() {
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+## Summary
+
+Changes internal/orchestrator/scheduler/scheduler.go
+
+Reviewer-agent-id: cavecrew-reviewer-abc123
+Reviewer-recommendation: INSUFFICIENT_EVIDENCE
+
+```release-notes
+[FIX] thing
+```
+EOF
+  if "$GATE" --body-file "$body" --load-bearing 2>&1 | grep -qE "Confidence-evidence-needed|evidence|tracker"; then
+    pass "INSUFFICIENT_EVIDENCE without Confidence-evidence-needed token fails"
+  else
+    fail "INSUFFICIENT_EVIDENCE without Confidence-evidence-needed token should fail with hint"
+  fi
+  rm -f "$body"
+}
+
 run_case_load_bearing_missing_token
 run_case_load_bearing_approve_passes
 run_case_load_bearing_approve_without_agent_id_fails
@@ -934,6 +981,8 @@ run_case_operator_opened_marker_bypasses_self_tag
 run_case_operator_opened_marker_too_short_rejected
 run_case_operator_opened_still_requires_reviewer_id
 run_case_operator_opened_does_not_bypass_allowlist
+run_case_insufficient_evidence_acts_as_revise
+run_case_insufficient_evidence_without_tracker_fails
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"

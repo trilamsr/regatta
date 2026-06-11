@@ -1,6 +1,7 @@
 .claude/*.local.md
 .claude/settings.local.json
 .claude/worktrees/
+.regatta/worktrees/
 .claude/scheduled_tasks.lock
 
 # Local planning artifacts (specs, plans, design notes). Each
@@ -53,3 +54,6 @@ tools/sloth/bin/
 regatta.yaml.operator-runtime
 regatta.yaml.operator-runtime.bak
 docker-compose.override.yml
+
+# Operator-local audit-session output (per audit-session skill)
+.claude/session-handoffs/

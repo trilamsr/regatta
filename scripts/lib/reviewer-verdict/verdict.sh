@@ -97,16 +97,29 @@ rv_decide_verdict() {
       echo "  Fix: address the findings, then update the body to Reviewer-recommendation: APPROVE." >&2
       exit 2
       ;;
+    INSUFFICIENT_EVIDENCE)
+      if [ -z "$CONFIDENCE_EVIDENCE_NEEDED" ]; then
+        echo "check-reviewer-verdict: Reviewer-recommendation is INSUFFICIENT_EVIDENCE but Confidence-evidence-needed: token is missing." >&2
+        echo "  Add to PR body footer (bare, NOT in a code block):" >&2
+        echo "    Confidence-evidence-needed: #NNN  (tracker issue capturing what evidence is required)" >&2
+        exit 1
+      fi
+      echo "check-reviewer-verdict: Reviewer-recommendation is INSUFFICIENT_EVIDENCE on a load-bearing PR." >&2
+      echo "  Reviewer could not enumerate ≥3 bypass attempts or lacked evidence to assess the change." >&2
+      echo "  Confidence-evidence-needed: $CONFIDENCE_EVIDENCE_NEEDED" >&2
+      echo "  Fix: provide the evidence named in $CONFIDENCE_EVIDENCE_NEEDED, then update to Reviewer-recommendation: APPROVE." >&2
+      exit 2
+      ;;
     '')
       echo "check-reviewer-verdict: load-bearing PR is missing Reviewer-recommendation token in body." >&2
       echo "  Fix: dispatch an independent reviewer subagent per CLAUDE.md 'TDD + review'." >&2
       echo "  Add to PR body footer (bare, NOT in a code block):" >&2
       echo "    Reviewer-agent-id: <id>" >&2
-      echo "    Reviewer-recommendation: APPROVE|REVISE|BLOCK" >&2
+      echo "    Reviewer-recommendation: APPROVE|REVISE|BLOCK|INSUFFICIENT_EVIDENCE" >&2
       exit 1
       ;;
     *)
-      echo "check-reviewer-verdict: unrecognized Reviewer-recommendation value: $RECOMMENDATION (expected APPROVE / REVISE / BLOCK)." >&2
+      echo "check-reviewer-verdict: unrecognized Reviewer-recommendation value: $RECOMMENDATION (expected APPROVE / REVISE / BLOCK / INSUFFICIENT_EVIDENCE)." >&2
       exit 1
       ;;
   esac

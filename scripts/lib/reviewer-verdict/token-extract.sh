@@ -22,4 +22,13 @@ rv_extract_tokens() {
     | tail -1 \
     | sed -E 's/^[[:space:]]*Reviewer-agent-id:[[:space:]]*//I' \
     | tr -d '[:space:]')
+
+  CONFIDENCE_EVIDENCE_NEEDED=$(awk '
+    /^```/ { in_fence = !in_fence; next }
+    !in_fence { print }
+  ' "$BODY_FILE" \
+    | grep -iE '^[[:space:]]*Confidence-evidence-needed:' \
+    | tail -1 \
+    | sed -E 's/^[[:space:]]*Confidence-evidence-needed:[[:space:]]*//I' \
+    | tr -d '[:space:]')
 }
