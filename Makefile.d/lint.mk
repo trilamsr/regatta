@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-phase-x-leak check-phase-x-leak-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test next-migration
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-phase-x-leak check-phase-x-leak-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-stale-refs check-stale-refs-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, comment-noise, test-godoc length).
 	bash scripts/doc-check.sh
@@ -21,6 +21,12 @@ check-doc-links:  ## Fail when a markdown-link `](path)` body under docs/ or CLA
 
 check-doc-links-test:  ## Smoke test for check-doc-links.sh (broken / existing / external / testdata / anchor-suffix).
 	bash scripts/check-doc-links_test.sh
+
+check-stale-refs:  ## Fail when PR deletes files but tracked files still reference them. Escape: `<!-- stale-refs-justified: <reason> -->`.
+	bash scripts/check-stale-refs.sh
+
+check-stale-refs-test:  ## Fixture-driven test for check-stale-refs.sh.
+	bash scripts/check-stale-refs_test.sh
 
 check-no-bare-sleep:  ## Fail when a *_test.go file carries `time.Sleep` lexically nested inside a `for` block without `// allow-sleep:` directive (#760 migration target: testutil.Eventually).
 	bash scripts/check-no-bare-sleep.sh

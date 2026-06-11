@@ -45,7 +45,7 @@ AUTO-SKIP CHECK (decide first)
 
 LENSES (apply in order)
 1. Edge cases — boundary inputs, empty/nil, concurrency, partial failure.
-2. Refactor — simplification ≥1 candidate; deletion ≥1 candidate per `feedback_deletion_default`.
+2. Refactor — simplification ≥1 candidate; deletion ≥1 candidate per `feedback_deletion_default`. For PRs deleting files/symbols, run `git diff --diff-filter=D --name-only origin/main...HEAD` + `git grep` each basename across the worktree. APPROVE only when grep empty OR `<!-- stale-refs-justified: <reason> -->` present. Closes 8-round-reviewer trap (PR #1275). Per `feedback_deletion_sweep_full_repo`.
 3. Risk — classify each finding `Low | Med | High | Critical`; floor = `<RISK-TIER-FLOOR>`. Routing: LOW → PR comment only; MED → comment + aggregate row if not inline-fixed; HIGH/CRITICAL → aggregate row required.
 4. Spec fidelity — measure target against `<SPEC-PATH>` rubric; flag implementer deviations (re-spawn design subagent per `feedback_spec_pattern_authority`).
 5. TDD trace — verify failing-test-first commit ordering per `feedback_tdd_discipline`.

@@ -8,7 +8,7 @@ rv_category_skip() {
     /^```release-notes/ { in_block = 1; next }
     in_block && /^```/ { exit }
     in_block { print; exit }
-  ' "$BODY_FILE" | grep -oE '^\[[A-Z]+\]' | head -1)
+  ' "$BODY_FILE" | grep -oEi '^\[[A-Z]+\]' | head -1 | tr '[:lower:]' '[:upper:]')
 
   if [ "$LOAD_BEARING_BY_PATH" -ne 1 ]; then
     case "$CATEGORY" in

@@ -58,12 +58,13 @@ if [ -z "$base" ]; then
 fi
 
 # Category opt-out via release-notes block.
+category=""
 if [ -n "${BODY:-}" ]; then
   category=$(printf '%s\n' "$BODY" | awk '
     /^```release-notes/ { capture=1; next }
     capture && /^```/    { exit }
     capture              { print }
-  ' | grep -oE '\[[A-Z]+\]' | head -1 || true)
+  ' | grep -oEi '\[[A-Z]+\]' | head -1 | tr '[:lower:]' '[:upper:]' || true)
   case "$category" in
     "[DOCS]"|"[CHORE]"|"[CI]"|"[NONE]"|"[CHANGE]")
       # [CHANGE] covers structural reshape (moves, renames, contract
@@ -74,6 +75,53 @@ if [ -n "${BODY:-}" ]; then
       ;;
   esac
 fi
+
+# TDD-order check. For [FEAT]/[FIX]/[CHANGE]/[REFACTOR] release-notes
+# categories, the FIRST commit on the branch MUST be a test commit. Test
+# commit = adds/modifies a *_test.go OR commit subject matches RED/FAIL/
+# test/fixture marker. Catches impl-first ordering that the co-located
+# test check accepts (test landing in commit N after impl in commit 1 is
+# not TDD per feedback_tdd_discipline "Order matters; commit log must
+# show the failing test landed first").
+#
+# Skip when:
+#   - no category match (FEAT|FIX|CHANGE|REFACTOR not in body)
+#   - branch has only 1 commit (single-commit PRs can't be reordered)
+#   - escape via `<!-- tdd-order-justified: <reason ≥4 chars> -->` in body
+case "$category" in
+  "[FEAT]"|"[FIX]"|"[CHANGE]"|"[REFACTOR]")
+    if [ -n "${BODY:-}" ] && printf '%s' "$BODY" | grep -qE '<!--\s*tdd-order-justified:\s*.{4,}\s*-->'; then
+      echo "check-tdd: tdd-order-justified escape present; skipping order check"
+    else
+      commit_count=$(git rev-list --count "$base..$head" 2>/dev/null || echo 0)
+      if [ "$commit_count" -gt 1 ]; then
+        first_commit=$(git rev-list --reverse "$base..$head" | head -1)
+        first_subject=$(git log -1 --format=%s "$first_commit")
+        first_files=$(git show --name-only --format="" "$first_commit")
+        is_test_commit=0
+        if echo "$first_files" | grep -qE '_test\.go$|/testdata/|test/' ; then
+          is_test_commit=1
+        fi
+        # Subject prefix patterns: `test:`, `RED:`, `fail:`, `tdd:`, `[TEST]`,
+        # `[RED]` etc. Anchored to subject-prefix to avoid false-positive on
+        # arbitrary words like `Testify` matching `\btest\b`.
+        if echo "$first_subject" | grep -qiE '^(\[)?(RED|FAIL|TEST|TDD|FIXTURE)(\])?[: ]|^(test|red|tdd|fail|fixture):' ; then
+          is_test_commit=1
+        fi
+        if [ "$is_test_commit" -ne 1 ]; then
+          echo "check-tdd: TDD-order violation per feedback_tdd_discipline." >&2
+          echo "  category=$category, commits=$commit_count" >&2
+          echo "  first commit: $first_commit" >&2
+          echo "  subject: $first_subject" >&2
+          echo "  files: $(echo "$first_files" | tr '\n' ' ')" >&2
+          echo "  Failing test must land FIRST. Fix: rebase test-commit to top of branch" >&2
+          echo "  OR add <!-- tdd-order-justified: <reason ≥4 chars> --> to PR body." >&2
+          exit 1
+        fi
+      fi
+    fi
+    ;;
+esac
 
 # Collect every non-test *.go file that gained lines in this PR.
 prod_added=""
