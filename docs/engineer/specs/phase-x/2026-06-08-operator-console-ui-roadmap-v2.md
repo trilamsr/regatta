@@ -9,7 +9,7 @@ supersedes:
 companion:
   - docs/engineer/specs/2026-06-02-operator-console-design.md
   - docs/engineer/specs/2026-06-02-operator-console-v2-backlog.md
-  - docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md
+  - operator-console S0 substrate prereqs (shipped in #996)
 scope_umbrella: "[#183](https://github.com/trilamsr/regatta/issues/183) operator web UI"
 framing: |
   v5.1 design (`docs/engineer/specs/2026-06-02-operator-console-design.md`)
@@ -95,9 +95,7 @@ Per CLAUDE.md §Decision priority: UX > ease > performance > best-practices
 - `internal/web/static/` — `htmx.min.js` + `htmx-config.js` +
   `tailwind.min.css` vendored (Wave-1 stop-gap; scheduled for deletion
   in S1 phase-3 per v5.1 §3.1).
-- S0 substrate prereqs (migrations 0018-0021 per
-  `docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md`
-  §1-8): `runs` registry, `work_items.run_id`, `approval_events.run_id`,
+- S0 substrate prereqs (migrations 0018-0021, shipped in #996): `runs` registry, `work_items.run_id`, `approval_events.run_id`,
   `tool_call` substrate kind, scheduler dispatch boundary populates.
 
 ### 2.2 Functionality footprint that v2 must surface
@@ -142,8 +140,7 @@ Each slice is ≤ 6 child PRs. Implementer dispatch briefs MUST cite §5a
 
 ### 3.0 S0 — Substrate prereqs (unchanged)
 
-Already specced at `docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md`.
-v2 does not re-author S0. S0 acceptance gates the start of S1.
+Shipped in #996; v2 does not re-author S0. S0 acceptance gates the start of S1.
 
 ### 3.1 S1 — SvelteKit scaffold + 3-phase htmx rip (5-6 child PRs)
 
@@ -384,7 +381,7 @@ Implementer dispatch briefs MUST cite §5a on every S1/S2/S3 child PR.
 - `docs/engineer/specs/2026-06-04-operator-console-ui-roadmap.md` (v1; superseded by this doc)
 - `docs/engineer/specs/2026-06-02-operator-console-design.md` (v5.1 design ledger)
 - `docs/engineer/specs/2026-06-02-operator-console-v2-backlog.md` (deferred items)
-- `docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md` (S0 substrate)
+- S0 substrate shipped in #996
 - `docs/engineer/briefs/2026-06-01-self-host-first.md` (Phase-S filter; Phase-X gate)
 - `internal/web/server.go` (asset embed; existing handler entry; target for S1-2 swap)
 - `internal/web/render.go` (html/template path; target for S1-5 deletion)

@@ -8,7 +8,7 @@ deferred_on: 2026-06-10
 
 # MVR-2 T6 — Substrate bridge for script-runs — skeleton spec
 
-_Pre-fetch skeleton, 2026-06-03. Material elaboration deferred to MVR-2 dispatch. Source-of-truth: `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §4 MVR-2-T6 (DW-superset Wave B piece 4) + §14. Prior DW-superset architecture: MVR-1-T7 spec (filename `mvr-1-t7-dw-superset-strategy-iface.md` to-be-filed at MVR-1-T1 dispatch). Substrate `kind=fact` primitive: `docs/engineer/plans/2026-06-01-substrate-w1-tasks.md` (T-S1)._
+_Pre-fetch skeleton, 2026-06-03. Material elaboration deferred to MVR-2 dispatch. Source-of-truth: `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §4 MVR-2-T6 (DW-superset Wave B piece 4) + §14. Prior DW-superset architecture: MVR-1-T7 spec (filename `mvr-1-t7-dw-superset-strategy-iface.md` to-be-filed at MVR-1-T1 dispatch). Substrate `kind=fact` primitive: T-S1 shipped in #224._
 
 ## 1. Scope
 
