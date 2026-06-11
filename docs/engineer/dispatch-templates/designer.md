@@ -59,7 +59,7 @@ MEMORY CITES
 - Cite `<MEMORY-RULES>` in PR body footer + inline in spec where load-bearing.
 
 OUTPUT-PATH SLUG MUST BE EXACT
-- Dispatch prompt MUST specify exact `<SPEC-SLUG>` (date + canonical short slug). Plan-subagent picking own slug produces dup files (`2026-06-01-cost-gov-w1-tasks.md` vs `2026-06-01-cost-governor-w1-tasks.md`). (`feedback_plan_subagent_dup_files`)
+- Dispatch prompt MUST specify exact `<SPEC-SLUG>` (date + canonical short slug). Plan-subagent picking own slug produces dup files (e.g. two near-identical date-stamped files differing only in punctuation of the short slug). (`feedback_plan_subagent_dup_files`)
 
 CROSS-DOC LINK PHASING
 - Sibling docs that cross-link each other (e.g. `docs/operator/foo.md` ↔ `docs/engineer/runbooks/foo.md`) fail doc-check per-PR because each PR sees only its own added file. Co-locate in ONE PR OR phase-land with strip-then-restore. (`feedback_cross_doc_link_phasing`)
