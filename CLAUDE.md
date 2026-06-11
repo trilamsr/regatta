@@ -116,6 +116,15 @@ Every wedge filtered by: "does the sole internal operator need this to dispatch 
 
 `main` has `required_status_checks.strict: false` (turned off 2026-06-01 during autonomous batch-merge). Only DIRTY merge-state blocks merge — automerge fires as soon as PR's own CI passes. (`feedback_branch_protection_strict`)
 
+## Tracker (Linear is source of truth)
+
+Per-task tracking lives in Linear: https://linear.app/themaydow/project/regatta-ac48ea99ac5d/overview (workspace `themaydow`, project `regatta`, team `MAY`). GH Issues deprecated 2026-06-10 (83 issues #1024–#1278 closed w/ redirect comments → `MAY-20` through `MAY-103`). Open WBS from former `docs/engineer/plans/*.md` → `MAY-116` through `MAY-159`.
+
+- File new wedges, slices, reviewer findings, REVISE slips, plan-master items in Linear. Do NOT `gh issue create`.
+- Every Linear ticket MUST carry a milestone (M1-M12). No orphans. Catch-all priority: theme milestone (M1-M9) → type milestone (M11 bugs / M12 improvements) → M10 (mixed/unclassified, last resort).
+- PR bodies continue using GH `closes #N` for the 83 closed historical GH issues; cite Linear ticket IDs (`MAY-N`) alongside for new work.
+- Design source of truth lives at `docs/engineer/specs/` + `docs/engineer/briefs/`. The former `docs/engineer/plans/` task-breakdown directory was removed in this migration — Linear holds per-task state.
+
 ## Pointers
 
 See `docs/engineer/pointers.md` for the canonical cross-ref index.

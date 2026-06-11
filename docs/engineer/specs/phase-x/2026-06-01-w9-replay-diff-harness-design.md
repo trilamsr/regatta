@@ -17,7 +17,7 @@ Depends on (must be merged to main before W9 dispatches):
   - W6 OTel T1–T5 — shipped (substrate inherits trace_id / span_id seam from PR #209)
   - W7 operator web UI Wave 7.0 — #268 plan pending; T1 HTTP listener shipped (#263)
   - W8 OPA RBAC — spec shipped (#266); impl pending
-  - Substrate Wave 1 (`docs/engineer/plans/2026-06-01-substrate-w1-tasks.md`) — T-S1 + T-S2 + T-S3 merged
+  - Substrate Wave 1 — T-S1 + T-S2 + T-S3 shipped (#224, #232, #233)
 
 Memory rules in force: `feedback_research_design_principles`, `feedback_grade_rubric`, `feedback_deletion_default`, `feedback_migration_number_lock`, `feedback_spec_pattern_authority`, `feedback_doc_check_banned_phrases`, `feedback_pr_body_release_notes_fence`, `feedback_unaddressed_load_bearing`.
 
@@ -589,7 +589,7 @@ Per the locked red-team §9 + substrate spec §11:
 **Pre-conditions for W9 dispatch:**
 
 1. W6 T1–T5 merged to main — DONE (PRs cited above).
-2. Substrate Wave 1 (T-S1 + T-S2 + T-S3) merged to main — substrate spec is locked; plan in `docs/engineer/plans/2026-06-01-substrate-w1-tasks.md`; dispatch pending.
+2. Substrate Wave 1 (T-S1 + T-S2 + T-S3) shipped (#224, #232, #233).
 3. W7 Wave 7.0 PRs (#263 listener + #268 plan execution) merged to main.
 4. W8 impl shipped — Authorizer middleware available for W9's T3 handler.
 

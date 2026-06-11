@@ -137,7 +137,7 @@ hours, returns the following weekend.
 
 | # | Task | Effort | Adopt | Dep |
 |---|---|---|---|---|
-| MVR-1-T1 | operator-console v5.1 (SUPERSEDES W7 htmx) — SvelteKit dual-principal console + S0 substrate prereqs | XL (~26 wks v1 across 5 slices; S5 mobile +2 wk after) | SvelteKit 2 + Svelte 5 + Tailwind v4 + Go embed.FS + S3 audit-anchor | spec PR #701 (`docs/engineer/specs/phase-x/2026-06-02-operator-console-design.md`) + plan PR (operator-console-s0) (`docs/engineer/plans/2026-06-03-operator-console-s0-substrate-prereqs.md`); W7 htmx specs `2026-06-01-w7-operator-web-ui-design.md` + `2026-06-01-w7-wave2-admin-pages-design.md` retired (3-phase rip planned in S1). |
+| MVR-1-T1 | operator-console v5.1 (SUPERSEDES W7 htmx) — SvelteKit dual-principal console + S0 substrate prereqs | XL (~26 wks v1 across 5 slices; S5 mobile +2 wk after) | SvelteKit 2 + Svelte 5 + Tailwind v4 + Go embed.FS + S3 audit-anchor | spec PR #701 (`docs/engineer/specs/phase-x/2026-06-02-operator-console-design.md`) + S0 substrate prereqs shipped in #996; W7 htmx specs `2026-06-01-w7-operator-web-ui-design.md` + `2026-06-01-w7-wave2-admin-pages-design.md` retired (3-phase rip planned in S1). |
 | MVR-1-T2 | `regatta init` wizard | S (3-5d) | AlecAivazis/survey | none |
 | MVR-1-T3 | GoReleaser release pipeline | XS (1-2d) | GoReleaser | none |
 | MVR-1-T4 | GH-issue adapter (`[autonomous]` label) | S (3-5d) | go-github | substrate Wave 1 (shipped) |
