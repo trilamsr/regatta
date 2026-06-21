@@ -78,6 +78,9 @@ NO SIGNATURES
 NO AUTOMERGE FROM IMPLEMENTER
 - NEVER run `gh pr merge --auto` (or any automerge-enabling form). End with `gh pr ready <N>` + operator-merge handoff. The reviewer-verdict gate fails closed when `autoMergeRequest != null` AND `Reviewer-agent-id:` is present on a load-bearing PR — agent-written APPROVE + agent-enabled automerge leaves zero operator window between APPROVE-token landing and merge. Per `feedback_no_implementer_automerge` (closes #1046).
 
+STOP AT `gh pr ready` (no self-revise)
+- After pushing + opening PR + running `gh pr ready <N>`, the implementer MUST STOP. Do NOT self-revise. Do NOT pre-emptively address potential reviewer findings. Do NOT push fixup commits. Wait for explicit feedback from operator-dispatched independent reviewer OR operator. If you draft a self-critique alongside, that is fine — but do NOT commit/push it. Self-revising creates stale-PR races with reviewer dispatch (operator wastes a reviewer slot reviewing already-changed code; wave D session 2026-06-21 hit this multiple times). Per `feedback_stop_at_pr_ready`.
+
 MEMORY CITES
 - Cite `<MEMORY-RULES>` in PR body footer (path-relative, e.g. `memory/feedback_root_cause`). Reviewer checks citations resolve.
 
@@ -132,6 +135,7 @@ These slugs MUST be cited by `internal/orchestrator/spawner/claude.go::defaultPr
 - `feedback_validate_before_ship`
 - `feedback_subagent_output_verify`
 - `feedback_honest_tdd_claims`
+- `feedback_stop_at_pr_ready`
 
 Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mark a slug intentionally kept here but not pushed to the prompt.
 
