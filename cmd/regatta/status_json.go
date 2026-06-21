@@ -23,7 +23,8 @@ type StatusJSON struct {
 	Agents       AgentsStatus        `json:"agents"`
 	PRs          PRsStatus           `json:"prs"`
 	Events       EventsStatus        `json:"events"`
-	Errors       []string            `json:"errors,omitempty"`
+	// Errors holds free-form operator logs only — not structured for jq routing.
+	Errors []string `json:"errors,omitempty"`
 }
 
 // OrchestratorStatus reports liveness derived from /healthz when the
@@ -265,8 +266,11 @@ func loadLastEvents(ctx context.Context, db *sql.DB, env *StatusJSON) {
 // enum the operator skill can branch on without parsing the rest of
 // the envelope. Rules (simplest viable per feedback_default_simpler):
 //   - red   = DB unreachable, OR orchestrator probe failed AND no
-//             event has fired in the last 60 s.
-//   - yellow = any non-fatal error in errors[], OR last-event age > 5 min.
+//             event has fired in the last 60 s (60 s = ~2 spawn ticks;
+//             shorter races healthy boot, longer hides wedged daemon).
+//   - yellow = any non-fatal error in errors[], OR last-event age > 5 min
+//             (5 min = operator-glance interval per regatta-operator skill;
+//             beyond this the loop is suspect, below this it is in motion).
 //   - green = orchestrator alive AND event activity within 5 min AND
 //             no errors recorded.
 func deriveTrafficLight(env StatusJSON, dbReachable bool, now time.Time) string {
