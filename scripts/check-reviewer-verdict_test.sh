@@ -390,6 +390,9 @@ run_case_load_bearing_path_classifier() {
     "internal/web/static/dashboard.css" \
     "internal/web/templates/_agents.tmpl" \
     "internal/obs/events.go" \
+    "internal/cost/cap/cap.go" \
+    "internal/canon/canon.go" \
+    "contracts/prompts/planner.md" \
     ".claude/skills/regatta-operator/SKILL.md" \
     ".claude/skills/audit-session/SKILL.md"; do
     local body paths_file

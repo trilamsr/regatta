@@ -16,15 +16,17 @@
 #     --load-bearing      treat the PR as load-bearing (CI passes when
 #                         the changed-paths heuristic matches)
 #     --changed-paths-file <path>  newline-delimited file of changed paths.
-#                         Any path matching the agent-rule / CI-gate
-#                         load-bearing list (CLAUDE.md, Makefile,
-#                         Makefile.d/*, .github/workflows/*,
-#                         docs/engineer/dispatch-templates/*,
-#                         scripts/check-*.sh) OR the load-bearing-doc
-#                         list (docs/engineer/specs/*.md,
-#                         docs/engineer/briefs/*.md) sets load-bearing=1
-#                         AND BYPASSES the release-notes category auto-skip
-#                         (closes #985 #986 retro audit).
+#                         Any path matching the agent-rule / CI-gate /
+#                         money / safety / event-vocab load-bearing list
+#                         (Makefile, Makefile.d/*, .github/workflows/*,
+#                         scripts/check-*.sh, internal/web/*,
+#                         internal/obs/*, internal/cost/*,
+#                         internal/canon/*, contracts/*, .claude/skills/*)
+#                         sets load-bearing=1 AND BYPASSES the
+#                         release-notes category auto-skip (closes #985
+#                         #986 retro audit + MAY-71). The authoritative
+#                         path set lives in
+#                         scripts/lib/reviewer-verdict/path-classifier.sh.
 #     --skip              short-circuit pass (operator-discretion escape)
 #     --pr-author <login> PR author login (e.g. from `gh api .../pulls/N
 #                         --jq .user.login`). When provided AND the PR
