@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-stale-refs check-stale-refs-test check-tdd-redfirst check-tdd-redfirst-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test check-release-notes-local-test check-go-shard-coverage check-go-shard-coverage-test next-migration
+.PHONY: doc-check doc-check-test prose-dup check-prose-dup-test stale-todo verify-vendored-assets lint tidy-check mod-verify check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-stale-refs check-stale-refs-test check-tdd-redfirst check-tdd-redfirst-test check-tdd-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test check-release-notes-local-test check-go-shard-coverage check-go-shard-coverage-test check-meta-coverage-test next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, comment-noise, test-godoc length).
 	bash scripts/doc-check.sh
@@ -9,6 +9,9 @@ doc-check-test:  ## Fixture-driven test for doc-check.sh comment-noise (reviewer
 
 prose-dup:  ## Fail if a previously-deduped prose phrase reappears in 2+ markdown files.
 	bash scripts/check-prose-dup.sh
+
+check-prose-dup-test:  ## Fixture-driven test for check-prose-dup.sh (gate self-test; runs in check-meta nightly).
+	bash scripts/check-prose-dup_test.sh
 
 check-doc-links:  ## Fail when a markdown-link `](path)` body under docs/ or CLAUDE.md references a non-existent intra-repo file.
 	bash scripts/check-doc-links.sh
@@ -27,6 +30,9 @@ check-tdd-redfirst:  ## Fail when a PR adds a new prod .go + co-located _test.go
 
 check-tdd-redfirst-test:  ## Fixture-driven test for check-tdd-redfirst.sh (one-commit→fail, test-first→pass, escape→pass, out-of-scope→pass).
 	bash scripts/check-tdd-redfirst_test.sh
+
+check-tdd-test:  ## Fixture-driven test for check-tdd.sh (gate self-test; runs in check-meta nightly).
+	bash scripts/check-tdd_test.sh
 
 check-no-bare-sleep:  ## Fail when a *_test.go file carries `time.Sleep` lexically nested inside a `for` block without `// allow-sleep:` directive (#760 migration target: testutil.Eventually).
 	bash scripts/check-no-bare-sleep.sh
@@ -84,6 +90,9 @@ check-go-shard-coverage:  ## Fail when union of scripts/go-shards/shard-*.txt !=
 
 check-go-shard-coverage-test:  ## Fixture-driven test for check-go-shard-coverage.sh.
 	bash scripts/check-go-shard-coverage_test.sh
+
+check-meta-coverage-test:  ## Assert `make check-meta` enumerates every gate self-test on disk + none leak into `make check` (MAY-30).
+	bash scripts/check-meta-coverage_test.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh

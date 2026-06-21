@@ -393,7 +393,6 @@ run_case_load_bearing_path_classifier() {
     "internal/cost/cap/cap.go" \
     "internal/canon/canon.go" \
     "contracts/prompts/planner.md" \
-    ".claude/skills/regatta-operator/SKILL.md" \
     ".claude/skills/audit-session/SKILL.md"; do
     local body paths_file
     body=$(mktemp)

@@ -8,4 +8,4 @@ Canonical cross-ref index for agent rule surfaces. Extracted from `CLAUDE.md` to
 - Self-host brief: `docs/engineer/briefs/2026-06-01-self-host-first.md`
 - Testing conventions (build-tag namespaces `e2e` / `integration_gh` / `e2e_otel`): `docs/engineer/testing-conventions.md`
 - Per-operator memory (citation-only; NEVER `Read` from agents): `~/.claude/projects/<project-hash>/memory/MEMORY.md`
-- GH rate-limit discipline (cross-ref): `feedback_gh_minimal_fields` (CLAUDE.md §Token economy) ↔ `feedback_bounded_ci_poll` (CLAUDE.md §CI gates) ↔ `regatta-operator` skill §Bounded CI poll — high-frequency polling uses REST `gh api repos/.../commits/<sha>/check-runs`, not GraphQL `gh pr view --json statusCheckRollup`. 2026-06-10 session burned 5000/hr GraphQL quota via the GraphQL pattern (#1222).
+- GH rate-limit discipline (cross-ref): `feedback_gh_minimal_fields` (CLAUDE.md §Token economy) ↔ `feedback_bounded_ci_poll` (CLAUDE.md §CI gates) — high-frequency polling uses REST `gh api repos/.../commits/<sha>/check-runs`, not GraphQL `gh pr view --json statusCheckRollup`. 2026-06-10 session burned 5000/hr GraphQL quota via the GraphQL pattern (#1222).

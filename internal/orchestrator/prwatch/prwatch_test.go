@@ -748,3 +748,40 @@ func TestWatcher_BranchDiverged_AbsentLocalSkipsWarn(t *testing.T) {
 		t.Fatalf("WARN fired despite absent local probe; got:\n%s", buf.String())
 	}
 }
+
+// forgetterStub wraps stubLister with a Forget hook so Sweep's
+// PRListerForgetter type-assert fires + records the evicted branch.
+type forgetterStub struct {
+	*stubLister
+	forgotten []string
+}
+
+func (f *forgetterStub) Forget(branch string) { f.forgotten = append(f.forgotten, branch) }
+
+// TestWatcher_Sweep_EvictsCacheForDeadBranches drops per-branch lister state when agents leave the live set (MAY-52).
+func TestWatcher_Sweep_EvictsCacheForDeadBranches(t *testing.T) {
+	stub := &stubLister{byBranch: map[string][]PullRequest{
+		"regatta/agent-1": {{Number: 42, HeadRefOid: "x", State: "OPEN"}},
+	}}
+	lister := &forgetterStub{stubLister: stub}
+	w, db := newTestWatcher(t, lister)
+	a := driveToRunning(t, db, "WORK-1")
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("sweep 1: %v", err)
+	}
+	if len(lister.forgotten) != 0 {
+		t.Fatalf("agent still live; want no Forget, got %v", lister.forgotten)
+	}
+	// Transition the agent out of {running, pr_open} → its branch
+	// drops from the live set on the next Sweep. running→crashed is
+	// the FSM edge available without first opening a PR.
+	if _, err := db.TransitionAgent(context.Background(), a.ID, state.AgentCrashed, state.AgentMutation{}); err != nil {
+		t.Fatalf("transition: %v", err)
+	}
+	if err := w.Sweep(context.Background()); err != nil {
+		t.Fatalf("sweep 2: %v", err)
+	}
+	if len(lister.forgotten) != 1 || lister.forgotten[0] != "regatta/agent-1" {
+		t.Fatalf("want Forget('regatta/agent-1'), got %v", lister.forgotten)
+	}
+}

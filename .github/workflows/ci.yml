@@ -40,6 +40,8 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: make check-docs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: make check-docs
 
   verify-go-1:
