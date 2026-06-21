@@ -68,11 +68,7 @@ func reviewerTokenContractTaught(prompt string) bool {
 		strings.Contains(prompt, "NEVER append justification")
 }
 
-// TestReviewerVerdictGateMatchesPromptBuilderContract runs the real prompt
-// builder and the real reviewer-verdict gate against the same PR body: a body
-// that follows the taught single-token shape must pass, and a body that violates
-// it (justification appended) must fail. Unit tests assert each half alone; this
-// asserts the two halves of the contract still agree end-to-end (MAY-95 / BUG-1064).
+// TestReviewerVerdictGateMatchesPromptBuilderContract asserts the real prompt builder and real verdict gate agree end-to-end on token shape (MAY-95).
 func TestReviewerVerdictGateMatchesPromptBuilderContract(t *testing.T) {
 	root := moduleRoot(t)
 	prompt := defaultPromptBuilder(Request{AgentID: 9, WorkItemID: "WORK-GATE", Lane: "server"})
