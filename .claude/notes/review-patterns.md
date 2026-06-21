@@ -6,6 +6,26 @@ via the Agent tool. Directly relevant to how regatta's L3 / L4 /
 L5 review gates and the human L6 reviewer should operate.
 Newest-first.
 
+### Pin review to the pushed commit, not the dirty worktree
+
+When dispatching a review of a PR, the prompt must name the exact
+pushed sha and instruct reading via `gh pr diff <N>` /
+`git show <sha>:<path>` — never the working tree. A worktree raced
+by a second writer can hold another change's uncommitted scratch, or
+a fix not yet in the reviewed commit, so a review that reads files
+instead of the commit reviews a phantom and reports findings that
+don't match what actually merges. A returned reviewer id that does
+not match the real dispatched id is a fabricated attestation: void
+the verdict and re-review — same integrity class as a self-tagged
+approval.
+
+Anchor: `scripts/check-reviewer-verdict.sh` checks id *shape*, not
+authenticity. Regression proof — PR #1301 commit `0a80f2f`: a review
+approved the stale `6aa57e0` against a dirty worktree and returned a
+fabricated id `a4f8e2c7d9a1b3f6`; the real fix (an empty-paths
+fail-open in the auto-merge classifier) only landed because the
+implementer ran its own independent pass.
+
 ### Self-rate work, then write criteria for the next grade up
 
 Before declaring your own work done, rate it (B+, A-, A) and
