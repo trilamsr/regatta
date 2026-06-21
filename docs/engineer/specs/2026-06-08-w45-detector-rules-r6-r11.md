@@ -163,7 +163,7 @@ Mitigation: R9 is **gated on MVR-3-T4 landing**. Until then, R9 emits LLM-nightl
 **Threshold computation (NO baseline needed).** Count-based — N>3 picks, 14d window. Operator-overridable.
 
 **False-positive guards.**
-- **G10a Progress definition** — see §6 open question. v1 progress definition (deferred-via-default): a `pr_opened` event tagged to the same `work_item.id` between picks counts as progress. If the item was picked → PR opened → PR closed-without-merge → re-picked, the close-without-merge IS the signal R10 is hunting; do NOT count `pr_opened` if the subsequent `pr_closed` is `merged=false`.
+- **G10a Progress definition** — see §6 open question. v1 progress definition (deferred-via-default): an item is *resolved* (NOT thrash) when a `pr_merged` event OR an operator-actor `pr_closed` event (`merged=false`, `closed_by_actor=operator`) lands for the same `work_item.id`. An operator closing a PR pre-merge — work pivoted, approach wrong, issue reclassified — is a legitimate terminal state, not churn. Only an *agent-* or *auto-*closed `pr_closed(merged=false)` followed by a re-pick IS the signal R10 is hunting; count THAT toward N. A bare `pr_opened` between picks does NOT count as progress on its own (a PR can open then agent-close then re-pick).
 - **G10b Operator-pin exclusion**: if the work_item is operator-pinned (frontmatter `pin: true`), skip — operator chose to keep it on deck.
 - **G10c Cold-start**: skip if `work_item.created_at` is within the prior 24h (legitimate retry burst).
 
@@ -253,11 +253,13 @@ Per #832 body and the brief's pattern (`feedback_unaddressed_load_bearing`): eac
 
 ### 6.1 What counts as "progress" for R10?
 
-**Issue.** R10 fires when an item is picked N>3 times without progress. The naive definition (`pr_opened` event lands between picks) over-counts — a PR can be opened, closed without merge, re-picked. The under-counting definition (`pr_merged` only) misses legitimate item-stuck-in-review patterns.
+**Issue.** R10 fires when an item is picked N>3 times without progress. The naive definition (`pr_opened` event lands between picks) over-counts — a PR can be opened, closed without merge, re-picked. A `pr_merged`-only definition *under-counts the inverse way*: it miscounts an operator-legitimate pre-merge close (work pivoted, approach wrong, issue reclassified) as thrash, even though the operator deliberately resolved the item. Both terminal states — merge AND operator-close — are progress.
 
-**v1 default (carried by §3.5 G10a):** progress = `pr_merged` for the same `work_item.id`. A pick → pr_opened → pr_closed(merged=false) → pick sequence DOES count toward N (close-without-merge is the thrash signal R10 is hunting).
+**v1 default (carried by §3.5 G10a):** an item is *resolved* (NOT thrash) when EITHER a `pr_merged` event OR an operator-actor `pr_closed(merged=false, closed_by_actor=operator)` event lands for the same `work_item.id`. Distinguishing the closer's actor is the load-bearing field: an operator closing a PR pre-merge is a valid decision, whereas an *agent-* or *auto-*closed `pr_closed(merged=false)` followed by a re-pick is the thrash signal R10 is hunting and DOES count toward N. A bare `pr_opened` between picks does not count as progress on its own.
 
-**Reopen-trigger:** if R10 fires repeatedly on items where the operator manually closed the PR for legitimate reasons (rejecting the proposed approach mid-stream), this default over-counts and needs refinement. File tracking issue on first such observation. Possible refinement: count `pr_merged | spec_status:shipped | item_archived` as progress.
+**Actor source.** `closed_by_actor` derives from the `pr_closed` substrate event's GitHub `closed_by` login vs. the orchestrator's known agent-bot identities: a close by the operator login (not a regatta agent bot, not GitHub automation) is `operator`. If the substrate `pr_closed` event lacks a closer identity at wedge-unblock, default `closed_by_actor=agent` (fail toward counting — preserves the original thrash-hunting posture) and file a follow-up to add closer-identity capture to the `pr_closed` emitter.
+
+**Reopen-trigger:** if R10 still fires on items the operator legitimately resolved through some terminal state OTHER than merge-or-operator-close (e.g. the item was reclassified into another work_item and the original spec was marked `shipped`/`archived` without ever opening a closing PR), this default needs broadening. File tracking issue on first such observation. Possible refinement: also count `spec_status:shipped | item_archived` as progress.
 
 ### 6.2 R6 / R7 baseline calibration window
 
@@ -387,7 +389,7 @@ Per `feedback_adversarial_review` + `feedback_adversarial_review_every_step`:
 | Med | R6 vs SLOs — risk of paging fatigue if R6 files issues during a partial-SLO-burn window | Fixed inline: §2.2 + §3.1 G6b suppressor; R6 only fires when SLO is GREEN. |
 | Med | R9 carries methodology risk before MVR-3-T4 — false success pattern poisons templates via #926 K4 | Fixed inline: §3.4 G9a hard-block R9 → issue until MVR-3-T4 lands; LLM proposals only. |
 | Med | R8 G8a operator-author exclusion may misclassify a legitimate operator hand-fix mid-cycle as "not rework" | Accepted residual: operator hand-fixes ARE NOT a quality-feedback gap in the brief — the rework signal is agent-side. Documented; revisit at first false-negative report. |
-| Low | R10 G10a "progress = pr_merged only" definition is the operator-decided default | Documented §6.1 as decision-required; default + reopen-trigger in place. |
+| Low | R10 G10a progress definition (resolved = `pr_merged` OR operator-actor `pr_closed`) is the operator-decided default | Fixed inline: §6.1 counts an operator-legitimate pre-merge close as progress, not thrash, via `closed_by_actor`; default + reopen-trigger in place. |
 | Low | R11 daily-bucket UTC vs operator timezone may split incidents | Documented §6.4 as decision-required; default + reopen-trigger in place. |
 | Low | R7 G7d "at least 1 distinct repeat" — one-shot 5σ outlier won't fire until second occurrence | Defensible: single 5σ event may be legitimate task complexity; pattern detection requires N>1. |
 
