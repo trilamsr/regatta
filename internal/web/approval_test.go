@@ -137,6 +137,86 @@ func TestApprovalDecideHandler_HappyRendersDecided(t *testing.T) {
 	}
 }
 
+// TestApprovalDecideHandler_RejectsMismatchedCSRF asserts a POST whose csrf form field differs from the CSRF cookie is rejected 403 by CSRFMiddleware (MAY-116).
+func TestApprovalDecideHandler_RejectsMismatchedCSRF(t *testing.T) {
+	deps, mint, aid, _ := newApprovalDBHarness(t, "")
+	h := newApprovalTestHandler(t, deps)
+
+	form := url.Values{"decision": {"allow"}, "csrf": {"wrong"}}
+	r := httptest.NewRequest(http.MethodPost, "/approve/"+aid+"/decide", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Origin", "https://regatta.host")
+	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: mint("alice")}) //nolint:gosec // test fixture
+	r.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: "tok"})                  //nolint:gosec // test fixture
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status=%d want 403; body=%q", w.Code, w.Body.String())
+	}
+}
+
+// TestApprovalDecideHandler_RejectsForeignOrigin asserts a POST with a foreign Origin header is rejected 403 by OriginCheck (MAY-116).
+func TestApprovalDecideHandler_RejectsForeignOrigin(t *testing.T) {
+	deps, mint, aid, _ := newApprovalDBHarness(t, "")
+	h := newApprovalTestHandler(t, deps)
+
+	form := url.Values{"decision": {"allow"}, "csrf": {"tok"}}
+	r := httptest.NewRequest(http.MethodPost, "/approve/"+aid+"/decide", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Origin", "https://evil.example")
+	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: mint("alice")}) //nolint:gosec // test fixture
+	r.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: "tok"})                  //nolint:gosec // test fixture
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status=%d want 403; body=%q", w.Code, w.Body.String())
+	}
+}
+
+// TestApprovalPageHandler_RejectsAIDMismatch asserts GET /approve/{aid} with a token minted for a different aid returns 400 (MAY-116).
+func TestApprovalPageHandler_RejectsAIDMismatch(t *testing.T) {
+	deps, _, _, wiID := newApprovalDBHarness(t, "")
+	kr, kid, _, _ := testKeyring(t)
+	deps.Keyring = kr
+	h := newApprovalTestHandler(t, deps)
+
+	now := time.Unix(1_700_000_000, 0).UTC()
+	foreign := mintWire(t, kr, kid, "alice", "a-other00000002", wiID, now.Add(time.Hour))
+	r := httptest.NewRequest(http.MethodGet, "/approve/a-ui000000001", nil)
+	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: foreign}) //nolint:gosec // test fixture
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d want 400; body=%q", w.Code, w.Body.String())
+	}
+}
+
+// TestApprovalDecideHandler_RejectsAIDMismatch asserts POST /decide with a token minted for a different aid returns 400 (MAY-116).
+func TestApprovalDecideHandler_RejectsAIDMismatch(t *testing.T) {
+	deps, _, _, wiID := newApprovalDBHarness(t, "")
+	kr, kid, _, _ := testKeyring(t)
+	deps.Keyring = kr
+	h := newApprovalTestHandler(t, deps)
+
+	now := time.Unix(1_700_000_000, 0).UTC()
+	foreign := mintWire(t, kr, kid, "alice", "a-other00000002", wiID, now.Add(time.Hour))
+	form := url.Values{"decision": {"allow"}, "csrf": {"tok"}}
+	r := httptest.NewRequest(http.MethodPost, "/approve/a-ui000000001/decide", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Origin", "https://regatta.host")
+	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: foreign}) //nolint:gosec // test fixture
+	r.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: "tok"})            //nolint:gosec // test fixture
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d want 400; body=%q", w.Code, w.Body.String())
+	}
+}
+
 // TestApprovalDiffOverflowHandler_StreamsCapped asserts the full-diff route serves at most MaxFullDiffBytes (MAY-116).
 func TestApprovalDiffOverflowHandler_StreamsCapped(t *testing.T) {
 	huge := strings.Repeat("z", 2*1024*1024)
