@@ -91,7 +91,7 @@ Zero overlap. NO rule is REDUNDANT. The R12-friction *plumbing* (dedup, throttle
 
 1. Spec lands at `docs/engineer/specs/2026-06-09-w45-detector-rules-actionable.md`.
 2. `bash scripts/check-spec-sections.sh` clean for this file (canonical seven H2 sections present).
-3. `bash scripts/check-phase-x-leak.sh` clean (`phase: self-host-s2`, no Phase-X tokens without `phase: x-forward-fit`).
+3. `make pre-push-check` Phase-X hint clean (no unwrapped Phase-X tokens in active specs — post-MAY-31 the hint is informational only).
 4. `bash scripts/check-doc-links.sh` clean (every markdown link of form `[text]` then `(path)` to `docs/…`, `internal/…`, or `scripts/…` resolves at HEAD).
 5. PR body declares `[DOCS]` release-notes block per CLAUDE.md release-notes-fence rule.
 6. PR body does NOT carry `Reviewer-recommendation:` token (per the dispatch brief — independent reviewer pass to follow).

@@ -17,7 +17,7 @@ Cross-ref: `internal/ghclient/client.go` (the existing seam; this brief introduc
 
 Memory rules in force: `feedback_default_simpler`, `feedback_tdd_discipline`, `feedback_validate_before_ship`, `feedback_adversarial_review_every_step`, `feedback_no_signatures`, `feedback_root_cause`, `feedback_no_self_tagged_approve`, `feedback_no_implementer_automerge`.
 
-**Phase context.** This brief is `phase: x-forward-fit` per the sibling spec §3 Rung 4 — DO NOT dispatch an implementer today. The brief exists so that when the §Reopen trigger fires, the design surface is legible and an implementer wave can land without a re-design cycle. Per `CLAUDE.md` §"Self-host filter (Phase context)" + `scripts/check-phase-x-leak.sh`: the `phase: x-forward-fit` frontmatter is the gate's explicit opt-in for Phase-X-named tokens (`tenant_id`, `RBAC`, `Stripe`, `Sigstore`, `Rekor`, `blackboard`, `Temporal`) — this brief uses none of them in unwrapped form.
+**Phase context.** This brief is Phase-X (forward-fit) per the sibling spec §3 Rung 4 — DO NOT dispatch an implementer today. The brief exists so that when the §Reopen trigger fires, the design surface is legible and an implementer wave can land without a re-design cycle. Per `CLAUDE.md` §"Self-host filter (Phase context)": Phase-X tokens (`tenant_id`, `RBAC`, `Stripe`, `Sigstore`, `Rekor`, `blackboard`, `Temporal`, `htmx`) are an operator-glance hint surfaced by `make pre-push-check` post-MAY-31 — this brief uses none of them in unwrapped form.
 
 ---
 
@@ -191,14 +191,14 @@ Test `TestListener_RejectsOversizedBody`. `POST` a 2 MiB body → status `413`, 
 - `make pre-push-check` passes.
 - `bash scripts/doc-check.sh` passes (this brief inclusive).
 - `bash scripts/check-tdd.sh` satisfied (failing-test-first ordering).
-- `bash scripts/check-phase-x-leak.sh` passes — this brief's `phase: x-forward-fit` opt-in covers the Phase-X token mentions; the spec under `docs/engineer/specs/` (where the gate runs) is unchanged by this brief.
+- `make pre-push-check` Phase-X hint (post-MAY-31) — informational only; this brief lives in `docs/engineer/briefs/` outside the spec scan scope, so Phase-X token mentions here do not surface in the hint.
 - `bash scripts/check-reviewer-verdict.sh` — implementer PR touches `internal/obs/events.go` AND introduces a network-listening primitive; both are load-bearing. Independent reviewer dispatch mandatory. NO self-tagged APPROVE per `feedback_no_self_tagged_approve`.
 
 ---
 
 ## Out of scope
 
-- **OS1.** Public-ingress webhook receiver (direct GitHub → public URL). Rung 5 territory; sibling spec §5.5. The §Reopen trigger for Rung 5 includes multi-operator deployment (`tenant_id`-shaped, gated today by `scripts/check-phase-x-leak.sh`) and dedicated SRE ownership — neither applies to the self-host operator.
+- **OS1.** Public-ingress webhook receiver (direct GitHub → public URL). Rung 5 territory; sibling spec §5.5. The §Reopen trigger for Rung 5 includes multi-operator deployment (`tenant_id`-shaped, surfaced by the MAY-31 pre-push Phase-X hint) and dedicated SRE ownership — neither applies to the self-host operator.
 - **OS2.** Persisted dedup store (sqlite-backed `event_id` log). In-memory + lazy eviction is sufficient at 30s window; a restart-survival dedup primitive is `feedback_default_simpler`-rejected. If the reopen trigger reveals dedup correctness gaps, file a follow-up brief.
 - **OS3.** Per-tenant secret rotation primitives. `WEBHOOK_SECRET` is a single env var; multi-tenant rotation (`RBAC`-shaped) is Phase-X.
 - **OS4.** Signed delivery receipts (`Sigstore`-anchored webhook attestation). Phase-X enterprise wedge per `CLAUDE.md` self-host filter — explicitly rejected today.

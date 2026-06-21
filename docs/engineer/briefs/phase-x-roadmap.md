@@ -17,7 +17,7 @@ The §6 ledger preserves the issue-number → bucket map so closed-issue search 
 
 Per `CLAUDE.md` "Self-host filter" + `docs/engineer/briefs/2026-06-01-self-host-first.md` §1: self-host = single-tenant, single-operator, single-repo, deterministic CI, human-merge via GitHub branch protection. Phase-X = work that fails the filter — not needed for the sole internal operator to dispatch `regatta`-the-binary against this repo unattended.
 
-Mechanical gate (`scripts/check-phase-x-leak.sh`) blocks these tokens in active specs without `phase: x-forward-fit` frontmatter: `tenant_id`, `RBAC`, `Stripe`, `Sigstore`, `Rekor`, `blackboard`, `Temporal`. This brief carries the opt-in.
+Token convention (informational, post-MAY-31 demote): Phase-X tokens include `tenant_id`, `RBAC`, `Stripe`, `Sigstore`, `Rekor`, `blackboard`, `Temporal`, `htmx`. Specs that intentionally explore these live under `docs/engineer/specs/phase-x/`; `make pre-push-check` greps for them as an operator-glance hint.
 
 ## 3. Per-bucket roadmap
 

@@ -168,7 +168,7 @@ Reopen when **any** of:
 
 Reopen only when **all** of:
 
-- Regatta is deployed in a multi-tenant configuration (multiple operators, multiple tenants), per the Phase-X `tenant_id` rollout (gated by `scripts/check-phase-x-leak.sh` today).
+- Regatta is deployed in a multi-tenant configuration (multiple operators, multiple tenants), per the Phase-X `tenant_id` rollout (surfaced by the `make pre-push-check` Phase-X hint post-MAY-31).
 - An SRE team — not the regatta operator — owns the ingress, secret rotation, and replay-store operations.
 - HMAC-signed webhook delivery is a customer security requirement, not a regatta-internal preference.
 

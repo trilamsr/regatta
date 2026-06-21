@@ -354,7 +354,7 @@ Sources, highest → lowest:
 
 **Audit main before filing** (per CLAUDE.md `feedback_audit_main_before_implementing`). Before filing ANY wedge: `git ls-tree -r origin/main --name-only | grep -E '<expected-path>'` AND `gh pr list -R "$ORCH_SOURCE_REPO" --search "in:title <wedge-keyword>" --state all -L 5 --json number,state,mergedAt`. If shipped → skip wedge + close source item w/ "shipped in #<PR>". Wastes orchestrator dispatch otherwise.
 
-**Self-host filter applies.** Mechanism: skip a candidate iff `gh issue view <N> --json labels --jq '.labels[].name'` returns ANY label appearing in `$defer_labels` (target YAML, default `[phase-x, phase-x-forward-fit, wontfix, deferred]`). Distinct from `check-phase-x-leak.sh` which gates spec frontmatter in source files — that gate runs in CI on the orchestrator-source repo; this filter runs on issue / spec / roadmap CANDIDATES before they become wedges.
+**Self-host filter applies.** Mechanism: skip a candidate iff `gh issue view <N> --json labels --jq '.labels[].name'` returns ANY label appearing in `$defer_labels` (target YAML, default `[phase-x, phase-x-forward-fit, wontfix, deferred]`). This is the operator-side filter on issue / spec / roadmap CANDIDATES before they become wedges. The orchestrator-source repo carries a complementary `make pre-push-check` Phase-X hint that scans spec frontmatter (post-MAY-31 demote; informational only).
 
 **Roadmap-empty ≠ ship anything.** If sources 1–4 are all empty AND source 5 is empty, do NOT manufacture work. Mark the queue exhausted; exit predicate fires after N quiet ticks.
 
