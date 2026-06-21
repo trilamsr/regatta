@@ -11,6 +11,12 @@
 # dispatch-templates}/*.md + CLAUDE.md REMOVED from auto-flag. Solo
 # doc PRs auto-skip per feedback_review_proportional; operator may
 # spawn reviewer voluntarily.
+# MAY-71 (audit 2026-06-20): internal/cost/* (money — daily cap +
+# pre-call cost gate gate spawns), internal/canon/* (replay-determinism
+# + approval-token HMAC security) and contracts/* (agent-authority
+# prompts; sibling of contracts/schemas already in the workflow list)
+# added — same #1133 gap class: silent [CHORE]/[DOCS] changes there
+# break operator-decision / safety / money / event-vocab surfaces.
 
 rv_classify_paths() {
   LOAD_BEARING_BY_PATH=0
@@ -33,6 +39,10 @@ rv_classify_paths() {
         break
         ;;
       internal/web/*|internal/obs/*)
+        LOAD_BEARING_BY_PATH=1
+        break
+        ;;
+      internal/cost/*|internal/canon/*|contracts/*)
         LOAD_BEARING_BY_PATH=1
         break
         ;;
