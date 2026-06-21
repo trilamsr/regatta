@@ -27,9 +27,7 @@ func (f *fallbackStub) ListOpenByHead(_ context.Context, branch, _ string) ([]Pu
 	return append([]PullRequest(nil), f.byBranch[branch]...), nil
 }
 
-// TestETagLister_200_RefreshesCache asserts the first call returns the
-// REST body decoded into []PullRequest AND stores etag + snapshot so a
-// follow-up 304 can serve cache-only. AC4.
+// TestETagLister_200_RefreshesCache decodes REST body + seeds cache (AC4).
 func TestETagLister_200_RefreshesCache(t *testing.T) {
 	hits := int32(0)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -68,9 +66,7 @@ func TestETagLister_200_RefreshesCache(t *testing.T) {
 	}
 }
 
-// TestETagLister_304_UsesCache asserts a follow-up call with the same
-// branch sends If-None-Match and serves cached snapshot on 304 without
-// decoding a new body. AC3.
+// TestETagLister_304_UsesCache sends If-None-Match + serves cache on 304 (AC3).
 func TestETagLister_304_UsesCache(t *testing.T) {
 	var ifNoneMatch atomic.Value
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -119,10 +115,7 @@ func TestETagLister_304_UsesCache(t *testing.T) {
 	}
 }
 
-// TestETagLister_SecondaryRateLimit_FallsBack asserts a 403/429 + GH
-// secondary-rate-limit signal routes the call to the gh-CLI fallback
-// lister (defensive — keeps the watcher running when the REST core
-// bucket pinches). AC5.
+// TestETagLister_SecondaryRateLimit_FallsBack routes 403+rate-limit to fallback (AC5).
 func TestETagLister_SecondaryRateLimit_FallsBack(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Mimic GH's secondary-rate-limit response shape.
@@ -158,9 +151,7 @@ func TestETagLister_SecondaryRateLimit_FallsBack(t *testing.T) {
 	}
 }
 
-// TestETagLister_TitlePrefixDelegated asserts the title-prefix probe
-// path delegates entirely to the fallback (CLI) — the brief keeps the
-// `gh pr list --search` route as the rename-grace rescue. AC2.
+// TestETagLister_TitlePrefixDelegated routes title-prefix probe to fallback (AC2).
 func TestETagLister_TitlePrefixDelegated(t *testing.T) {
 	httpHits := int32(0)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -202,9 +193,7 @@ func TestETagLister_TitlePrefixDelegated(t *testing.T) {
 	}
 }
 
-// TestETagLister_500_FallsBack asserts transient 5xx routes to the
-// fallback lister rather than surfacing as a sweep-aborting error. AC5
-// defensive path — keeps the watcher resilient to API blips.
+// TestETagLister_500_FallsBack routes transient 5xx to fallback (AC5 defensive).
 func TestETagLister_500_FallsBack(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -237,8 +226,7 @@ func TestETagLister_500_FallsBack(t *testing.T) {
 	}
 }
 
-// TestETagLister_FallbackError_Surfaces asserts a fallback error from
-// a forced HTTP failure surfaces (no infinite-retry, no silent swallow).
+// TestETagLister_FallbackError_Surfaces propagates fallback error (no silent swallow).
 func TestETagLister_FallbackError_Surfaces(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
