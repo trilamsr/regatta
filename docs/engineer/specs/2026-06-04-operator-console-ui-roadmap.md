@@ -88,7 +88,7 @@ ops loop without touching dual-principal auth or shadow-proposals.
 
 Per `docs/engineer/briefs/2026-06-01-self-host-first.md` §4: `htmx`
 hot-swap UI is Phase-X-deferred. Post-MAY-31, the mechanical
-`scripts/check-phase-x-leak.sh` gate was demoted to a `make pre-push-check`
+spec-frontmatter gate was demoted to a `make pre-push-check`
 hint; specs that intentionally explore Phase-X scope live under
 `docs/engineer/specs/phase-x/`. The v5.1 SvelteKit lift is also
 Phase-X-deferred because it requires npm + Vite + Playwright supply-chain

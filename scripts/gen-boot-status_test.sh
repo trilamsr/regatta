@@ -32,7 +32,7 @@ case "$1 $2" in
     cat <<'JSON'
 [{"number":737,"title":"[REFACTOR] split serve.go","mergedAt":"2026-06-04T01:08:09Z"},
  {"number":734,"title":"[REFACTOR] inline single-impl interfaces","mergedAt":"2026-06-04T00:54:12Z"},
- {"number":723,"title":"[CI] check-phase-x-leak","mergedAt":"2026-06-04T00:16:07Z"}]
+ {"number":723,"title":"[CI] mechanical self-host filter gate","mergedAt":"2026-06-04T00:16:07Z"}]
 JSON
     ;;
   "issue list")

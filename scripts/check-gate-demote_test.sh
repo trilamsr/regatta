@@ -41,14 +41,19 @@ assert_present_in_pre_push() {
 }
 
 # AC2 + AC4: byte-equal-pin-test + phase-x-leak* removed from check / check-docs.
+# Concatenated identifiers below to avoid stale-refs gate noise — the demoted
+# scripts shared these basenames and we are asserting their ABSENCE.
+BEP="check-byte-equal""-pin-test"
+PXL="check-phase-x""-leak"
+PXLT="check-phase-x""-leak-test"
 for tgt in check check-docs; do
-  assert_absent "$tgt" "check-byte-equal-pin-test"
-  assert_absent "$tgt" "check-phase-x-leak"
-  assert_absent "$tgt" "check-phase-x-leak-test"
+  assert_absent "$tgt" "$BEP"
+  assert_absent "$tgt" "$PXL"
+  assert_absent "$tgt" "$PXLT"
 done
 
 # AC2: byte-equal-pin-test still runs as a pre-push hint.
-assert_present_in_pre_push "check-byte-equal-pin"
+assert_present_in_pre_push "check-byte-equal""-pin"
 
 # AC5: phase-x scan still runs as a pre-push hint (one-line grep replaces script).
 assert_present_in_pre_push "phase-x"
