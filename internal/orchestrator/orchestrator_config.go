@@ -52,6 +52,13 @@ type Config struct {
 	// Spawner launches the reserved agents. Required.
 	Spawner spawner.Spawner
 
+	// SpawnerBackend names the active spawner ("stub" | "claude"); empty
+	// is treated as stub. Recover compares it against each recovered
+	// agent's session_id prefix so a stub-written ghost is reaped — not
+	// re-attached — when the daemon reboots under the claude backend
+	// (MAY-79).
+	SpawnerBackend string
+
 	// ItemBody resolves the per-dispatch markdown brief. Nil = identifier-only prompt (regression-safe).
 	ItemBody ItemBodyLoader
 

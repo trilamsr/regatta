@@ -73,7 +73,7 @@ type spawnerSet struct {
 // currently has no slog callsites — its observability lands when real
 // stdout/stderr-stream capture ships (#27, #45), at which point the
 // logger will thread through ClaudeSpawnerConfig the same way.
-func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger, db *state.DB, costKey []byte, costKeyID string) (spawnerSet, error) {
+func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger, db *state.DB, costKey []byte, costKeyID string, haltOnCredit func()) (spawnerSet, error) {
 	switch name {
 	case "", spawnerNameStub:
 		return spawnerSet{Spawner: spawner.New(spawner.Config{Logger: logger}), Cleanup: func() {}}, nil
@@ -93,7 +93,7 @@ func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger
 			Logger:  logger,
 		}
 		if db != nil {
-			cfg.OnAgentExited = newAgentExitedCascade(db, logger)
+			cfg.OnAgentExited = newAgentExitedCascade(db, logger, haltOnCredit)
 		}
 		if db != nil && len(costKey) > 0 {
 			cfg.OnResultEventFor = spend.SpawnerCallback(db.SQL(),
@@ -115,10 +115,15 @@ func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger
 // spawner fires after cmd.Wait observes child termination. The callback
 // drives the running→crashed FSM transition + records the agent.exited
 // audit row so the agents table never leaks phantoms with dead PIDs
-// (#1218 stall root cause). Best-effort: state-load failures and
-// FSM-rejected transitions (already terminal) are logged at WARN; the
-// reaper sweeps the surviving cases via PID-liveness checks.
-func newAgentExitedCascade(db *state.DB, logger *slog.Logger) spawner.AgentExitedCallback {
+// (#1218 stall root cause). When the exit reason is the terminal,
+// account-level provider_credit_exhausted fault, it additionally emits
+// the LOUD credit_exhausted signal and invokes haltOnCredit so dispatch
+// stops rather than silently burning further invocations against a dead
+// account (MAY-78). haltOnCredit is nil-safe. Best-effort otherwise:
+// state-load failures and FSM-rejected transitions (already terminal)
+// are logged at WARN; the reaper sweeps the surviving cases via
+// PID-liveness checks.
+func newAgentExitedCascade(db *state.DB, logger *slog.Logger, haltOnCredit func()) spawner.AgentExitedCallback {
 	return func(agentID int64, workItemID string, exitCode int, reason spawner.ExitReason, durationMs int64) {
 		ctx := context.Background()
 		a, err := db.GetAgent(ctx, agentID)
@@ -151,6 +156,9 @@ func newAgentExitedCascade(db *state.DB, logger *slog.Logger) spawner.AgentExite
 			logger.Warn("orchestrator.agent_exited_record_failed",
 				string(obs.KeyAgentID), agentID,
 				string(obs.KeyErr), err.Error())
+		}
+		if reason == spawner.ExitReasonProviderCreditExhausted {
+			recordCreditExhausted(ctx, db, logger, agentID, workItemID, haltOnCredit)
 		}
 	}
 }

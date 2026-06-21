@@ -75,11 +75,14 @@ func TestScheduleOnceRollsBackOnSpawnerFailure(t *testing.T) {
 		t.Fatal("spawn_failed event not recorded")
 	}
 
+	// MAY-80: the immediately-following tick must NOT re-attempt — the
+	// failed item is in its exponential backoff window, so the spawner
+	// call count stays at 1 (no 5s-tick retry hammer).
 	if err := o.ScheduleOnce(ctx); err != nil {
 		t.Fatalf("schedule 2: %v", err)
 	}
-	if got := bad.calls.Load(); got != 2 {
-		t.Fatalf("spawner called %d times after retry, want 2", got)
+	if got := bad.calls.Load(); got != 1 {
+		t.Fatalf("spawner called %d times after backoff-suppressed tick, want 1", got)
 	}
 }
 

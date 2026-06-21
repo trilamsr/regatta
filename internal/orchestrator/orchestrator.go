@@ -45,20 +45,21 @@ import (
 // ScheduleOnce so a flock-protected PollOnce stays bounded to "update
 // the queue" while ScheduleOnce stays bounded to "drain the queue".
 type Orchestrator struct {
-	adapterSync *adaptersync.Syncer
-	briefLoader BriefLoader
-	db          *state.DB
-	sched       *scheduler.Scheduler
-	spawner     spawner.Spawner
-	reaper      *reaper.Reaper
-	rejection   *rejectionrouter.Router
-	mergeCoord  *merge.Coordinator
-	prWatcher   *prwatch.Watcher
-	dbPath      string
-	cfg         Config
-	log         *slog.Logger
-	tracer      trace.Tracer
-	heartbeat   HeartbeatToucher
+	adapterSync  *adaptersync.Syncer
+	briefLoader  BriefLoader
+	db           *state.DB
+	sched        *scheduler.Scheduler
+	spawner      spawner.Spawner
+	reaper       *reaper.Reaper
+	rejection    *rejectionrouter.Router
+	mergeCoord   *merge.Coordinator
+	prWatcher    *prwatch.Watcher
+	dbPath       string
+	cfg          Config
+	log          *slog.Logger
+	tracer       trace.Tracer
+	heartbeat    HeartbeatToucher
+	spawnBackoff *spawnBackoff
 }
 
 // New constructs an Orchestrator from a Config. All deps are wired
@@ -88,16 +89,17 @@ func New(cfg Config) *Orchestrator {
 		tracer = otel.Tracer("orchestrator")
 	}
 	return &Orchestrator{
-		adapterSync: cfg.AdapterSync,
-		briefLoader: cfg.BriefLoader,
-		db:          cfg.DB,
-		sched:       cfg.Scheduler,
-		spawner:     cfg.Spawner,
-		dbPath:      cfg.DBPath,
-		cfg:         cfg,
-		log:         log,
-		tracer:      tracer,
-		heartbeat:   cfg.HealthHeartbeat,
+		adapterSync:  cfg.AdapterSync,
+		briefLoader:  cfg.BriefLoader,
+		db:           cfg.DB,
+		sched:        cfg.Scheduler,
+		spawner:      cfg.Spawner,
+		dbPath:       cfg.DBPath,
+		cfg:          cfg,
+		log:          log,
+		tracer:       tracer,
+		heartbeat:    cfg.HealthHeartbeat,
+		spawnBackoff: newSpawnBackoff(),
 	}
 }
 

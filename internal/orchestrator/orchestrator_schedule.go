@@ -70,6 +70,19 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("orchestrator: load agent %d: %w", id, err)
 		}
+		// MAY-80: a work_item that recently failed to spawn is still in
+		// its exponential cooldown — release the reservation back to
+		// pending so a later tick can re-attempt, rather than re-spawning
+		// blindly every 5s tick (the prior infinite-retry hammer).
+		if !o.spawnBackoff.Admit(a.WorkItemID) {
+			o.rollbackReservation(ctx, a)
+			_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnBackoffSkipped), "{}")
+			o.log.Info(string(obs.EventSpawnBackoffSkipped),
+				string(obs.KeyAgentID), a.ID,
+				string(obs.KeyWorkItemID), a.WorkItemID,
+			)
+			continue
+		}
 		// #295: DAGID = parent program id when the work_item belongs to a
 		// multi-feature program; otherwise the work_item is its own DAG
 		// root and DAGID falls back to the work_item id. RunID = agent id
@@ -83,14 +96,22 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 		}
 		var itemBody string
 		if o.cfg.ItemBody != nil {
-			if body, ok := o.cfg.ItemBody(ctx, a.WorkItemID); ok {
-				itemBody = body
-			} else {
-				o.log.Warn("orchestrator.item_body_missing",
+			body, ok := o.cfg.ItemBody(ctx, a.WorkItemID)
+			if !ok {
+				// MAY-81: a configured loader that cannot resolve the brief
+				// means the body is genuinely missing — spawning would burn
+				// a real agent invocation on a context-less prompt. Hold the
+				// item (release back to pending) so a later tick re-attempts
+				// once the brief lands, instead of spawning blind.
+				o.rollbackReservation(ctx, a)
+				_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnHeldNoBody), "{}")
+				o.log.Warn(string(obs.EventSpawnHeldNoBody),
 					string(obs.KeyWorkItemID), a.WorkItemID,
 					string(obs.KeyAgentID), a.ID,
 				)
+				continue
 			}
+			itemBody = body
 		}
 		result, err := o.spawner.Spawn(ctx, spawner.Request{
 			AgentID:    a.ID,
@@ -103,9 +124,8 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 			RepoRoot:   o.cfg.RepoRoot,
 		})
 		if err != nil {
-			_, _ = o.db.TransitionAgent(ctx, a.ID, state.AgentCrashed, state.AgentMutation{})
-			_, _ = o.db.ReleaseAgentLocks(ctx, a.ID)
-			_, _ = o.db.TransitionAgent(ctx, a.ID, state.AgentPending, state.AgentMutation{})
+			o.rollbackReservation(ctx, a)
+			o.spawnBackoff.RecordFailure(a.WorkItemID)
 			_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnFailed), fmt.Sprintf(`{"error":%q}`, err.Error()))
 			o.log.Warn(string(obs.EventSpawnFailed),
 				string(obs.KeyAgentID), a.ID,
@@ -114,6 +134,7 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 			)
 			continue
 		}
+		o.spawnBackoff.RecordSuccess(a.WorkItemID)
 		pid := result.PID
 		sess := result.SessionID
 		if _, err := o.db.TransitionAgent(ctx, a.ID, state.AgentRunning, state.AgentMutation{
@@ -132,8 +153,23 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 			"session_id", sess,
 		)
 	}
+	// Advance the spawn-backoff clock once per tick so suppression
+	// windows opened by this tick's failures elapse on later ticks
+	// (MAY-80).
+	o.spawnBackoff.Tick()
 	if tickErr != nil {
 		return fmt.Errorf("orchestrator: scheduler tick: %w", tickErr)
 	}
 	return nil
+}
+
+// rollbackReservation releases a reserved agent back to pending with its
+// lane lock freed, the shared crashed→pending→release path used when a
+// spawn fails, is suppressed by backoff (MAY-80), or is held for a
+// missing brief body (MAY-81). Best-effort: each transition error is
+// swallowed because the recovery sweep reaps any agent left mid-rollback.
+func (o *Orchestrator) rollbackReservation(ctx context.Context, a *state.Agent) {
+	_, _ = o.db.TransitionAgent(ctx, a.ID, state.AgentCrashed, state.AgentMutation{})
+	_, _ = o.db.ReleaseAgentLocks(ctx, a.ID)
+	_, _ = o.db.TransitionAgent(ctx, a.ID, state.AgentPending, state.AgentMutation{})
 }

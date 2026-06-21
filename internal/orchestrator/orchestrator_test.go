@@ -590,23 +590,7 @@ func TestScheduleOnceThreadsItemBodyAndRepoRootIntoSpawnRequest(t *testing.T) {
 	}
 }
 
-// TestScheduleOnceMissingItemBodyStillSpawns asserts a (",false") loader return logs a warn and proceeds without ItemBody.
-func TestScheduleOnceMissingItemBodyStillSpawns(t *testing.T) {
-	ctx := context.Background()
-	o, stub, _, _ := newHarness(t, 1)
-	o.cfg.ItemBody = func(context.Context, string) (string, bool) { return "", false }
-
-	if err := o.PollOnce(ctx); err != nil {
-		t.Fatalf("poll: %v", err)
-	}
-	if err := o.ScheduleOnce(ctx); err != nil {
-		t.Fatalf("schedule: %v", err)
-	}
-	calls := stub.Calls()
-	if len(calls) != 1 {
-		t.Fatalf("spawner calls=%d, want 1", len(calls))
-	}
-	if calls[0].ItemBody != "" {
-		t.Fatalf("ItemBody=%q, want empty on miss", calls[0].ItemBody)
-	}
-}
+// MAY-81 changed the missing-item-body contract from "spawn blind" to
+// "hold the item": the prior TestScheduleOnceMissingItemBodyStillSpawns
+// is superseded by TestScheduleOnce_MissingItemBodyHoldsItem in
+// orchestrator_schedule_test.go.
