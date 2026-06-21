@@ -1,0 +1,64 @@
+# regatta.yaml — self-host config for this repo.
+#
+# Phase-S1 brief: docs/engineer/briefs/2026-06-01-self-host-first.md.
+# Spec authority: docs/engineer/specs/2026-06-02-s1-t1-self-host-regatta-yaml.md.
+# Schema authority: contracts/schemas/regatta.v1.cue.
+#
+# Single-tenant, single-operator, single-repo. Adversarial reviewer
+# lives in the dispatch prompt today (Phase S2 promotes it to a
+# first-class gate). Approval-gate `human-merge` enforces the
+# operator-clicks-merge contract on every PR.
+
+version: 1
+
+repo:
+  host: github
+  owner: trilamsr
+  name: regatta
+  default_branch: main
+
+spec_adapter:
+  type: github_issues
+  selector: 'label:autonomous'
+  default_lane: server
+
+ci:
+  command: make check
+  timeout_minutes: 30
+
+pr_template:
+  citation_section_required: true
+  release_notes_required: true
+
+gates:
+  # G1 — banned-phrase + comment-noise + dead-link lint. The same
+  # script the operator runs pre-push; bakes it into the gate stack so
+  # an agent-spawned PR cannot bypass.
+  - id: doc_check
+    type: deterministic
+    command: bash scripts/doc-check.sh
+
+  # G2 — operator clicks merge. Self-host phase requires human merge
+  # per brief §1 (deterministic CI, human-merge via branch protection).
+  # `prevent_self_review` set so an agent ID cannot self-approve even
+  # if the orchestrator ever runs under the operator's GH credentials.
+  - id: human_merge
+    type: approval_gate
+    name: human-merge
+    risk_class: low
+    reviewers: [trilamsr]
+    quorum: 1
+    prevent_self_review: true
+    timeout: 24h
+    decision_window: 12h
+    on_timeout: fail
+
+safety:
+  destructive_ops_deny:
+    - 'rm -rf /'
+    - 'git push --force'
+  agent_creds_scope: dev_only
+  iteration_cap: 50
+  spend_cap_usd: 50
+  spend_cap_usd_per_day: 200
+  canary_rate: 0.05
