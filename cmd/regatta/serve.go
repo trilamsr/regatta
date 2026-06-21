@@ -287,7 +287,7 @@ func runServe(args []string) int {
 	// shows up.
 	o.SetRejectionRouter(buildRejectionRouter(db, rejectionrouter.GHLabeler{}, slogger))
 
-	if err := startPRWatcher(ctx, o, db, set, f.NoPRWatch, slogger); err != nil {
+	if err := startPRWatcher(ctx, o, db, set, f.RepoRoot, f.NoPRWatch, slogger); err != nil {
 		logger.Printf("%v", err)
 		return 2
 	}
