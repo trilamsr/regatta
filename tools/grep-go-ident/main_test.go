@@ -2,8 +2,7 @@ package main
 
 import "testing"
 
-// TestFirstIdentMatch asserts only real IDENT references count, while
-// comment, string, char, and raw-string mentions are rejected (#1058).
+// TestFirstIdentMatch asserts only real IDENT refs count; comment/string/char/raw mentions are rejected (#1058).
 func TestFirstIdentMatch(t *testing.T) {
 	cases := []struct {
 		name string
