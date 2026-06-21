@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>regatta · decided {{ .AID }}</title>
+<link rel="stylesheet" href="/ui/static/tailwind.min.css">
+</head>
+<body class="bg-slate-950 text-slate-200 p-6">
+<main class="max-w-3xl mx-auto">
+  <h1 class="text-lg font-semibold mb-2">approval · {{ .AID }}</h1>
+  <p class="text-sm mb-2">{{ .Reviewer }} — your vote: <strong>{{ .Decision }}</strong>. Recorded at {{ .DecidedAt | formatTime }}.</p>
+  {{ if .Terminal }}
+  <p class="text-sm text-emerald-400">This approval is now terminal.</p>
+  {{ else if .Pending }}
+  <p class="text-sm">Awaiting {{ len .Pending }} more vote(s) from:</p>
+  <ul class="text-sm list-disc pl-5">
+    {{ range .Pending }}<li>{{ . }}</li>{{ end }}
+  </ul>
+  {{ else }}
+  <p class="text-sm">Awaiting further votes.</p>
+  {{ end }}
+</main>
+</body>
+</html>

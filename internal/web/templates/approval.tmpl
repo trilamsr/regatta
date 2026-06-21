@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>regatta · approve {{ .AID }}</title>
+<link rel="stylesheet" href="/ui/static/tailwind.min.css">
+</head>
+<body class="bg-slate-950 text-slate-200 p-6">
+<main class="max-w-3xl mx-auto">
+  <h1 class="text-lg font-semibold mb-1">approval · {{ .AID }}</h1>
+  <dl class="grid grid-cols-[8rem_1fr] gap-1 text-sm mb-4">
+    <dt class="text-slate-500">work item</dt><dd>{{ .WorkItemID }}</dd>
+    <dt class="text-slate-500">gate</dt><dd>{{ .GateName }}</dd>
+    <dt class="text-slate-500">requested by</dt><dd>{{ .RequestedBy }}</dd>
+    <dt class="text-slate-500">reviewer</dt><dd>{{ .Reviewer }}</dd>
+    <dt class="text-slate-500">status</dt><dd>{{ .Status }}</dd>
+  </dl>
+
+  <section class="mb-4">
+    <div class="text-slate-500 text-sm mb-1">output diff</div>
+    <pre class="panel p-3 text-xs overflow-x-auto whitespace-pre-wrap">{{ .Diff }}</pre>
+    {{ if .Overflowed }}
+    <p class="text-xs mt-1">… (8 KiB cap reached) <a href="/approve/{{ .AID }}/diff">Show full diff →</a></p>
+    {{ end }}
+  </section>
+
+  <form method="POST" action="/approve/{{ .AID }}/decide" class="space-y-3">
+    <input type="hidden" name="csrf" value="{{ .CSRFToken }}">
+    <textarea name="reason" rows="3" placeholder="reason (optional)"
+      class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm"></textarea>
+    <div class="flex gap-3">
+      <button type="submit" name="decision" value="allow"
+        class="px-4 py-2 rounded bg-emerald-700 text-white text-sm">Approve</button>
+      <button type="submit" name="decision" value="deny"
+        class="px-4 py-2 rounded bg-rose-700 text-white text-sm">Reject</button>
+    </div>
+  </form>
+</main>
+</body>
+</html>

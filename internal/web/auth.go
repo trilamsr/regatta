@@ -149,7 +149,9 @@ func RedeemHandler(deps Dependencies) http.Handler {
 func writeSentinelError(w http.ResponseWriter, slug string, code int) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(code)
-	_, _ = w.Write([]byte(slug + "\n"))
+	// G705: slug is a closed sentinel set (sentinelSlug / approvalAuthSentinel
+	// returns string literals), written as text/plain — not user-tainted HTML.
+	_, _ = w.Write([]byte(slug + "\n")) //nolint:gosec // closed sentinel set, text/plain
 }
 
 // sentinelSlug maps a wrapped sentinel error to its operator-facing slug.

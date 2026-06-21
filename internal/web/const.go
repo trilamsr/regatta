@@ -14,6 +14,9 @@ const MaxDiffBytes = 8 * 1024
 // MaxFullDiffBytes caps the streamed overflow diff at 1 MiB (spec §3.3 row 4).
 const MaxFullDiffBytes = 1 << 20
 
+// fullDiffChunkBytes is the per-write chunk for the streamed overflow diff; keeps a 1 MiB diff off a single buffer (spec §3.3 row 4).
+const fullDiffChunkBytes = 32 * 1024
+
 // StaticCacheMaxAgeSeconds is the spec §3.3 row 8 `/ui/static/*` cache window.
 const StaticCacheMaxAgeSeconds = 86400
 
