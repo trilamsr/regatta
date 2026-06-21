@@ -35,11 +35,10 @@ gh run view "$RUN_ID" --log --job="$JOB_ID" 2>&1 \
 
 # Race classification: scan ALL .go files (prod + _test.go) for concurrency
 # primitives. A package whose prod code is single-threaded but whose tests
-# fan out goroutines against test fakes still needs -race coverage. The
-# prwatch case (PR #1315 reviewer REVISE) belongs in this set: prod code is
-# tick-driven single-threaded but the tests use sync.Mutex on fakes.
-# Nightly `go-check-full` in cross-platform-nightly.yml is the catch-all
-# backstop for anything this regex misses.
+# fan out goroutines against test fakes still needs -race coverage — e.g.
+# prwatch runs tick-driven single-threaded in prod but its tests use
+# sync.Mutex on fakes. Nightly `go-check-full` in cross-platform-nightly.yml
+# is the catch-all backstop for anything this regex misses.
 RACE_LIST=$(mktemp)
 trap 'rm -f "$LOG" "$RACE_LIST"' EXIT
 for p in $(go list ./...); do
