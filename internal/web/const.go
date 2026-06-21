@@ -104,3 +104,18 @@ const workItemFlowLabelCrashed = "crashed"
 
 // pipelineDrawerLimit caps pipeline drawer rows so a many-thousand-agent backlog cannot wedge an htmx swap.
 const pipelineDrawerLimit = 50
+
+// defaultTickIntervalSec mirrors the orchestrator default TickInterval (5s)
+// so the dashboard tick-stale banner never paints red on every poll when
+// Dependencies.TickInterval is zero (composition root wiring miss).
+const defaultTickIntervalSec = 5
+
+// exitReasonUnknown labels the histogram bucket for agent.exited events
+// whose payload lacks an exit_reason — drift signal the operator should
+// see, not silently drop.
+const exitReasonUnknown = "unknown"
+
+// exitReasonHistogramWindowSec is the 1h lookback the health panel
+// histogram reports — long enough to absorb the soak panel's 60s rolling
+// window, short enough to surface a current incident.
+const exitReasonHistogramWindowSec = 3600

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
+	"github.com/trilamsr/regatta/internal/health"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -33,6 +34,15 @@ type Dependencies struct {
 	BootedAt       time.Time
 	Config         Config
 	RouteRegistrar func(mux *http.ServeMux, deps Dependencies)
+	// Heartbeat is the orchestrator's live liveness cell. Web reads Age()
+	// to drive the tick-stale red banner (MAY-48); nil disables the banner
+	// so test harnesses that skip orchestrator wiring still render.
+	Heartbeat *health.HeartbeatCell
+	// TickInterval is the orchestrator scheduler cadence. The tick-stale
+	// banner fires when Heartbeat.Age() > 2× this value (MAY-48 §AC4).
+	// Zero falls back to the orchestrator default so a wiring miss does
+	// not paint the banner red on every poll.
+	TickInterval time.Duration
 }
 
 // Config holds the boot-time knobs the handler reads. Kept narrow on
