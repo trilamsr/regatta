@@ -218,7 +218,8 @@ Each rule lands as a single-file PR + a single Go test file extending `internal/
 
 - **T_R10_a** `TestR10_RuleFiresOnFourPicksWithoutProgress` — 4 `scheduler_picked` events same `work_item.id`, no `pr_opened`+`pr_merged` between picks ⇒ Finding. RED first.
 - **T_R10_b** `TestR10_FalsePositiveOperatorPinExcluded` — work_item with `pin: true` frontmatter ⇒ no Finding. RED first.
-- **T_R10_c** `TestR10_ProgressDefinitionMergedPROnly` — pick → pr_opened → pr_closed(merged=false) → pick × 4 ⇒ Finding (close-without-merge IS the thrash signal).
+- **T_R10_c** `TestR10_AgentClosePreMergeIsThrash` — pick → pr_opened → pr_closed(merged=false, closed_by_actor=agent) → pick × 4 ⇒ Finding (an agent/auto close-without-merge followed by re-pick IS the thrash signal).
+- **T_R10_d** `TestR10_OperatorClosePreMergeResolves` — pick → pr_opened → pr_closed(merged=false, closed_by_actor=operator) → pick × 4 ⇒ no Finding (an operator pre-merge close is a legitimate terminal state per §6.1 G10a — resolved, not churn). RED first.
 
 ### 5.3 R11 acceptance (third)
 
