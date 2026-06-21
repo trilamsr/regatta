@@ -269,8 +269,8 @@ func loadLastEvents(ctx context.Context, db *sql.DB, env *StatusJSON) {
 //             event has fired in the last 60 s (60 s = ~2 spawn ticks;
 //             shorter races healthy boot, longer hides wedged daemon).
 //   - yellow = any non-fatal error in errors[], OR last-event age > 5 min
-//             (5 min = operator-glance interval per regatta-operator skill;
-//             beyond this the loop is suspect, below this it is in motion).
+//             (5 min = operator-glance interval; beyond this the loop is
+//             suspect, below this it is in motion).
 //   - green = orchestrator alive AND event activity within 5 min AND
 //             no errors recorded.
 func deriveTrafficLight(env StatusJSON, dbReachable bool, now time.Time) string {

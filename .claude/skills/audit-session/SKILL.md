@@ -246,7 +246,7 @@ cat .claude/session-handoffs/<this-file>
 1. <lesson> — <prevention>
 ```
 
-Update `docs/engineer/autonomous-session-prompt.md` BOOT section to add `cat .claude/session-handoffs/$(ls -t .claude/session-handoffs/ | head -1)` after step 1 (pull main). regatta-operator skill pre-flight gains the same line.
+Update `docs/engineer/autonomous-session-prompt.md` BOOT section to add `cat .claude/session-handoffs/$(ls -t .claude/session-handoffs/ | head -1)` after step 1 (pull main).
 
 ## Phase A1: autonomy-prompt audit (MANDATORY when session touched roadmap)
 
@@ -327,4 +327,4 @@ NEXT-SESSION FIRST ACTION: <from frontmatter>
 | A | Adversarial pass | Pending — five-lens reviewer |
 | A+ | Eliminates a class of failures | Every session-end forgotten leftover gets mechanical sweep |
 | A+ | Generalises a primitive | `$HANDOFF_DIR` schema + next-session-read pattern reusable |
-| A+ | Carries forward | regatta-operator + autonomous-session-prompt gain handoff-read line; future skills inherit the handoff schema |
+| A+ | Carries forward | autonomous-session-prompt gains handoff-read line; future skills inherit the handoff schema |

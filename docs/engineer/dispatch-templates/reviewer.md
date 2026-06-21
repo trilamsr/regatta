@@ -134,7 +134,7 @@ When the dispatcher supports schema-output, prefer schema-enforced verdict (`{ve
 
 ## Five-lens prompt (mandatory)
 
-Defect-only reviews are forbidden as default — they reliably miss prose redundancy + structural drift that ship into long-lived files (per the 134 LOC of bloat caught only by a separate simplification audit on `.claude/skills/regatta-operator/SKILL.md` round 7+1). Every reviewer dispatch includes all five lenses unless explicitly opted out for a code-only diff (still keep lenses 1+2+4).
+Defect-only reviews are forbidden as default — they reliably miss prose redundancy + structural drift that ship into long-lived files (per the 134 LOC of bloat caught only by a separate simplification audit on a long-lived operator-skill markdown file round 7+1). Every reviewer dispatch includes all five lenses unless explicitly opted out for a code-only diff (still keep lenses 1+2+4).
 
 ```
 Adversarial review of <diff>. Five lenses (in this order):
