@@ -1,13 +1,18 @@
-# Go packages whose PROD code uses concurrency primitives (sync.{Mutex,RWMutex,
-# Once,WaitGroup,Map,Pool,Cond,Locker}, channels, `go func`, named-goroutine
-# launches, atomic.{Add,Store,Load,Swap,CompareAnd,Bool,Int,Uint,Pointer}).
-# These packages run `go test -short -race`; everything else runs without
-# `-race` to halve test-binary build + run time.
+# Go packages whose code (PROD or TEST) uses concurrency primitives
+# (sync.{Mutex,RWMutex,Once,WaitGroup,Map,Pool,Cond,Locker}, channels,
+# `go func`, named-goroutine launches, atomic.{Add,Store,Load,Swap,
+# CompareAnd,Bool,Int,Uint,Pointer}). These packages run `go test -short
+# -race`; everything else runs without `-race` to halve test-binary build
+# + run time.
 #
-# Nightly cross-platform-nightly.yml still runs `go test -short -race ./...`
-# across the whole tree on ubuntu / macos to catch any race that slipped past
-# this hand-curated list (e.g. a test-only race in a package whose prod code
-# is single-threaded but whose tests fan out goroutines).
+# Why include _test.go in the scan: even when a package's PROD code is
+# single-threaded by design (e.g. internal/orchestrator/prwatch runs on
+# the orchestrator tick driver, no goroutine of its own), tests routinely
+# fan out goroutines against test fakes — those races must be caught too.
+#
+# Nightly cross-platform-nightly.yml ALSO runs `go test -short -race ./...`
+# across the full tree on ubuntu / macos as a backstop, catching any race
+# in a package whose code hides concurrency from the scan regex.
 #
 # Regenerate via scripts/regen-go-shards.sh (see docs/engineer/pointers.md).
 github.com/trilamsr/regatta/cmd/regatta
@@ -26,8 +31,13 @@ github.com/trilamsr/regatta/internal/obstest
 github.com/trilamsr/regatta/internal/orchestrator
 github.com/trilamsr/regatta/internal/orchestrator/adapter
 github.com/trilamsr/regatta/internal/orchestrator/adapter/githubissues
+github.com/trilamsr/regatta/internal/orchestrator/adaptersync
 github.com/trilamsr/regatta/internal/orchestrator/checks
+github.com/trilamsr/regatta/internal/orchestrator/lockfile
 github.com/trilamsr/regatta/internal/orchestrator/merge
+github.com/trilamsr/regatta/internal/orchestrator/prwatch
+github.com/trilamsr/regatta/internal/orchestrator/reaper
+github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter
 github.com/trilamsr/regatta/internal/orchestrator/review
 github.com/trilamsr/regatta/internal/orchestrator/scheduler
 github.com/trilamsr/regatta/internal/orchestrator/spawner

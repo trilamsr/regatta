@@ -33,7 +33,13 @@ trap 'rm -f "$LOG"' EXIT
 gh run view "$RUN_ID" --log --job="$JOB_ID" 2>&1 \
   | grep -E "ok\s+github.com" > "$LOG"
 
-# Race classification: scan prod-only go files for concurrency primitives.
+# Race classification: scan ALL .go files (prod + _test.go) for concurrency
+# primitives. A package whose prod code is single-threaded but whose tests
+# fan out goroutines against test fakes still needs -race coverage. The
+# prwatch case (PR #1315 reviewer REVISE) belongs in this set: prod code is
+# tick-driven single-threaded but the tests use sync.Mutex on fakes.
+# Nightly `go-check-full` in cross-platform-nightly.yml is the catch-all
+# backstop for anything this regex misses.
 RACE_LIST=$(mktemp)
 trap 'rm -f "$LOG" "$RACE_LIST"' EXIT
 for p in $(go list ./...); do
@@ -41,7 +47,6 @@ for p in $(go list ./...); do
   has=0
   for f in "$dir"/*.go; do
     [ -f "$f" ] || continue
-    case "$f" in *_test.go) continue;; esac
     if grep -qE 'sync\.(Mutex|RWMutex|Once|WaitGroup|Map|Pool|Cond|Locker)|make\(chan|<-chan|chan<-| chan |^chan |go func|^[[:space:]]+go [a-zA-Z_]|atomic\.(Add|Store|Load|Swap|CompareAnd|Bool|Int|Uint|Pointer)' "$f" 2>/dev/null; then
       has=1
       break
