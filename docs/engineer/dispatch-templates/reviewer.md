@@ -91,9 +91,16 @@ LOAD-BEARING LEFTOVERS → ONE AGGREGATE TRACKING ISSUE PER PR
 NEGATIVE-SPACE AUDIT (mandatory on every load-bearing PR)
 - Enumerate ≥3 PR-specific bypass attempts citing `path:line` of the surface under test. Each attempt: (a) describe the bypass, (b) state outcome — `mitigated` (gate/test covers it), `accepted` (risk acknowledged), or `filed #NNN` (new tracking issue). Bypass attempt without a diff citation cannot pass.
 - If you cannot enumerate ≥3 PR-specific bypass attempts, use `Reviewer-recommendation: INSUFFICIENT_EVIDENCE` with a `Confidence-evidence-needed: #NNN` tracker issue naming what evidence is required. Do NOT default APPROVE under uncertainty.
+- **APPROVE forcing-function (no bare APPROVE)** — `Reviewer-recommendation: APPROVE` is REJECTED unless the review body carries a `## Negative space` section that EITHER (a) names ≥1 concrete unhandled edge case / untested path / bypass with `path:line` and its disposition, OR (b) explicitly asserts `audited, none found` AND still shows the ≥3 enumerated bypass attempts above (the assertion alone, without the attempts, fails). A bare APPROVE with zero negative-space engagement is exactly the #1056→#1057 miss (a symbol-match string-literal bypass shipped because the reviewer gated review PRESENCE, not QUALITY). When unsure whether the audit is sufficient, downgrade to `INSUFFICIENT_EVIDENCE`, never default APPROVE. Per MAY-96 (BUG-1062).
+
+A+ DELTA (mandatory on every load-bearing PR carrying an A+ rubric scorecard)
+- The A+ rubric scorecard below grades the PR's CURRENT tier. That is necessary but not sufficient: a reviewer who only re-scores rows measures presence, not the gap to excellence. After re-scoring, the reviewer MUST name the **A+ delta** — the single most load-bearing concrete change that would lift this PR from its current grade to A+ (or, if already A+, the one change that would most harden it against the next failure class). Cite `path:line` or the specific missing primitive (export / shared utility / test / gate / doc-template). One sentence, falsifiable.
+- If the delta is "ship a tracking issue for X" → file it and cite `#NNN`; do not leave the delta as unactioned prose. If the PR is genuinely at the ceiling for its scope, state `A+ delta: none — at ceiling for scope` with a one-line reason. Per MAY-96 (BUG-1062).
 
 OUTPUT FORMAT
 - Inline GH PR review comments OR markdown report. Each finding: `[Tier] file:line — observation — proposed fix`.
+- `## Negative space` section REQUIRED on load-bearing PRs (gates the APPROVE forcing-function above): the ≥3 enumerated bypass attempts plus either ≥1 concrete unhandled-path finding OR `audited, none found`.
+- `A+ delta:` line REQUIRED on load-bearing PRs carrying an A+ rubric scorecard: the single concrete change that lifts the PR to A+, or `none — at ceiling for scope`.
 - Optional final block: independent self-grade re-score (B/A/A+ per criterion) — must match or contradict author's claim explicitly. No format enforcement; for operator visibility only.
 - Verdict: `clear-to-merge` | `block-on-findings` | `re-spawn-design`.
 - `Reviewer-recommendation:` MUST be one of `APPROVE` | `REVISE` | `BLOCK` | `INSUFFICIENT_EVIDENCE`.
@@ -166,6 +173,8 @@ Self-rate: **[B / A / A+]** — [1-line headline justification].
 
 Self-rate headline must reflect the WEAKEST tier carrying any ⚠/❌. All B + A green AND ≥1 A+ green → A+. All B + A green but no A+ → A. Any B ❌ → B.
 
+The reviewer re-score is necessary but not sufficient — re-scoring measures the CURRENT grade, not the gap to excellence. After re-scoring, emit the `A+ delta:` line (see §A+ DELTA): the single concrete change that would lift this PR to A+, or `none — at ceiling for scope`. Per MAY-96 (BUG-1062).
+
 
 ## Per-dispatch payload
 - Target: `<TARGET>`
@@ -178,6 +187,8 @@ Self-rate headline must reflect the WEAKEST tier carrying any ⚠/❌. All B + A
 - [ ] all 9 lenses applied (or skip documented per lens)
 - [ ] verdict line present
 - [ ] negative-space audit: ≥3 PR-specific bypass attempts with disposition OR `INSUFFICIENT_EVIDENCE` + `Confidence-evidence-needed: #NNN`
+- [ ] APPROVE gated: no bare APPROVE — `## Negative space` section names ≥1 unhandled path OR `audited, none found` + the enumerated attempts (per MAY-96)
+- [ ] A+ delta named: single concrete change to reach A+ (cite `path:line` / primitive / `#NNN`) OR `none — at ceiling for scope` (per MAY-96)
 - [ ] Risk-tier+ findings have a disposition (inline-fix OR aggregate-tracking-issue row)
 - [ ] AT MOST ONE aggregate tracking issue filed for this PR review (with `kind:reviewer-finding` + matching `severity:*` label); LOW findings posted as PR comments only
 - [ ] `## Comment sweep` section emitted (offenders or `clean`)
