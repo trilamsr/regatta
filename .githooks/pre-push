@@ -1,7 +1,22 @@
 #!/usr/bin/env bash
-# pre-push hook: run `make ci` so the moment of truth is `git push`, not the
-# wait for GitHub Actions. Catches what `make check` (the pre-commit gate)
-# deliberately skips: license-check, full build, govulncheck-adjacent checks.
+# pre-push hook: catch PR-body hygiene locally, then run `make ci` so the
+# moment of truth is `git push`, not the wait for GitHub Actions.
+#
+# 1. PR-body hygiene (MAY-73 / MAY-100): warn if a Reviewer-recommendation:
+#    token is misplaced into a commit message (it belongs in the PR body —
+#    check-reviewer-verdict reads the body only). A real fence check needs the
+#    intended body text; run `make pr-body-check FILE=<body.md>` before
+#    `gh pr create` for that.
+# 2. `make ci`: the full gate (license-check, build, govulncheck-adjacent)
+#    that `make check` (pre-commit) deliberately skips.
+#
 # Bypass with `git push --no-verify` if you must - CI will still catch you.
 set -euo pipefail
+
+repo_root=$(git rev-parse --show-toplevel)
+range="origin/main..HEAD"
+if git rev-parse --verify -q origin/main >/dev/null; then
+  bash "$repo_root/scripts/check-release-notes-local.sh" --scan-commits "$range"
+fi
+
 exec make ci
