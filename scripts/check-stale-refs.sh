@@ -49,7 +49,7 @@ elif [ -n "${BODY:-}" ]; then
   body="$BODY"
 fi
 
-if printf '%s' "$body" | grep -qE '<!--[[:space:]]*stale-refs-justified:[[:space:]]*[^[:space:]-][^-]{3,}-->'; then
+if printf '%s' "$body" | grep -qE '<!--[[:space:]]*stale-refs-justified:[[:space:]]*[^[:space:]-].{3,}-->'; then
   echo "check-stale-refs: stale-refs-justified escape present; skipping"
   exit 0
 fi
