@@ -17,8 +17,14 @@
 # prompts; sibling of contracts/schemas already in the workflow list)
 # added — same #1133 gap class: silent [CHORE]/[DOCS] changes there
 # break operator-decision / safety / money / event-vocab surfaces.
+#
+# REQUIRES: PATHS_FILE LOAD_BEARING  (set by rv_parse_args)
+# SETS:     LOAD_BEARING_BY_PATH, LOAD_BEARING (upgraded on match)
+# ORDER:    must run after rv_parse_args. Guard fails fast if not.
 
 rv_classify_paths() {
+  : "${PATHS_FILE?rv_classify_paths requires PATHS_FILE — call rv_parse_args first}"
+  : "${LOAD_BEARING?rv_classify_paths requires LOAD_BEARING — call rv_parse_args first}"
   LOAD_BEARING_BY_PATH=0
   if [ -z "$PATHS_FILE" ]; then
     return 0

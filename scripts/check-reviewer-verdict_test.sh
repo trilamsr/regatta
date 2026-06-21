@@ -953,6 +953,63 @@ EOF
   rm -f "$body"
 }
 
+# Out-of-order guard cases (MAY-98): each snippet asserts its REQUIRES
+# vars are set, failing fast when called before a predecessor that SETS
+# them. We source one snippet in isolation (no predecessors run) and
+# confirm the guard message fires.
+LIB_DIR="$SCRIPT_DIR/lib/reviewer-verdict"
+
+assert_guard_fires() {
+  # $1 snippet basename, $2 function, $3 expected stderr substring, $4 case label
+  local out
+  out=$(bash -c "set -uo pipefail; . '$LIB_DIR/$1'; $2" 2>&1)
+  if echo "$out" | grep -qF "$3"; then
+    pass "$4"
+  else
+    fail "$4 (got: $out)"
+  fi
+}
+
+run_case_body_source_requires_args() {
+  assert_guard_fires body-source.sh rv_resolve_body \
+    "rv_resolve_body requires PR_NUM" \
+    "body-source out-of-order (no args) fails fast"
+}
+
+run_case_path_classifier_requires_args() {
+  assert_guard_fires path-classifier.sh rv_classify_paths \
+    "rv_classify_paths requires PATHS_FILE" \
+    "path-classifier out-of-order (no args) fails fast"
+}
+
+run_case_category_skip_requires_path_classifier() {
+  # LOAD_BEARING_BY_PATH is set ONLY by rv_classify_paths — calling
+  # category-skip before it must fail fast, not silently mis-skip.
+  assert_guard_fires category-skip.sh \
+    "BODY_FILE=x; LOAD_BEARING=0; rv_category_skip" \
+    "rv_category_skip requires LOAD_BEARING_BY_PATH" \
+    "category-skip before path-classifier fails fast"
+}
+
+run_case_token_extract_requires_body_source() {
+  assert_guard_fires token-extract.sh rv_extract_tokens \
+    "rv_extract_tokens requires BODY_FILE" \
+    "token-extract out-of-order (no body) fails fast"
+}
+
+run_case_verdict_requires_token_extract() {
+  # RECOMMENDATION is set ONLY by rv_extract_tokens — verdict before it
+  # must fail fast, not branch on an unset/garbage recommendation.
+  assert_guard_fires verdict.sh rv_decide_verdict \
+    "rv_decide_verdict requires RECOMMENDATION" \
+    "verdict before token-extract fails fast"
+}
+
+run_case_body_source_requires_args
+run_case_path_classifier_requires_args
+run_case_category_skip_requires_path_classifier
+run_case_token_extract_requires_body_source
+run_case_verdict_requires_token_extract
 run_case_load_bearing_missing_token
 run_case_load_bearing_approve_passes
 run_case_load_bearing_approve_without_agent_id_fails
