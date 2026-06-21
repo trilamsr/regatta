@@ -95,7 +95,7 @@ func TestClassifyExitReason_CaseInsensitive(t *testing.T) {
 	}
 }
 
-// TestClassifyExitReason_AuthPreconditionFailed_NotLoggedIn pins #1166: claude CLI emits "Not logged in · Please run /login" when the spawned child cannot reach subscription creds AND no ANTHROPIC_API_KEY was passed through. The scheduler must treat this as a precondition violation, NOT a transient retry (which loops forever; observed 104 spawns in 80s on first live activation of the regatta-operator skill).
+// TestClassifyExitReason_AuthPreconditionFailed_NotLoggedIn pins #1166: claude CLI emits "Not logged in · Please run /login" when the spawned child cannot reach subscription creds AND no ANTHROPIC_API_KEY was passed through. The scheduler must treat this as a precondition violation, NOT a transient retry (which loops forever; observed 104 spawns in 80s on first live activation of an autonomous operator loop).
 func TestClassifyExitReason_AuthPreconditionFailed_NotLoggedIn(t *testing.T) {
 	got := ClassifyExitReason([]byte("Not logged in · Please run /login"), 1)
 	if got != ExitReasonAuthPreconditionFailed {
