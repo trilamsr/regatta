@@ -118,6 +118,8 @@ NO SIGNATURES
 
 ## Verdict format (MANDATORY)
 
+**Verdict scope: CODE QUALITY ONLY.** The verdict (APPROVE / REVISE) reflects the diff's correctness, design, and adherence to repo lenses (defects / simplification / refactor / comments / organization). PR-body authoring concerns — release-notes fence presence, `Reviewer-agent-id:` token placement, scorecard formatting, `closes #` syntax — are author/orchestrator responsibilities surfaced by `scripts/check-*.sh` gates and the dispatch-template anti-pattern block-list. Surface body/token issues as a comment line in the review (e.g. `## PR-body note: missing release-notes fence`), NOT as a REVISE/BLOCK verdict. Do NOT vote BLOCK because the body lacks the very verdict token you are about to write. Code green + body issues → APPROVE + body note; code red → REVISE/BLOCK regardless of body state.
+
 EVERY review MUST end with exactly ONE of these lines, on its own line, as the LITERAL last line of output:
 
 `APPROVE: cavecrew-reviewer-<slug>`

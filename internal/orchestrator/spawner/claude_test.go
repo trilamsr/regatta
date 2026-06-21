@@ -387,16 +387,16 @@ func TestDefaultPromptBuilder_CommentsZeroByDefaultDirective(t *testing.T) {
 	}
 }
 
-// TestDefaultPromptBuilder_PreCommitMakeCheckMandatory asserts the prompt teaches the pre-commit make check rule so subagents stop pushing broken state (recurring trap session 2026-06-10: #1208/#1214, per feedback_pre_commit_make_check).
-func TestDefaultPromptBuilder_PreCommitMakeCheckMandatory(t *testing.T) {
-	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-PRECOMMIT", Lane: "server"})
+// TestDefaultPromptBuilder_PrePushMakeCheckMandatory asserts the prompt teaches the pre-push make check rule (relaxed from per-commit in MAY-276) so subagents stop pushing broken state (recurring trap session 2026-06-10: #1208/#1214, per feedback_pre_commit_make_check).
+func TestDefaultPromptBuilder_PrePushMakeCheckMandatory(t *testing.T) {
+	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-PREPUSH", Lane: "server"})
 	for _, want := range []string{
-		"Pre-commit `make check` MANDATORY",
+		"Pre-push `make check` MANDATORY",
 		"feedback_pre_commit_make_check",
-		"BEFORE `git commit`",
+		"before `git push`",
 	} {
 		if !contains(prompt, want) {
-			t.Fatalf("prompt missing pre-commit directive %q: %q", want, prompt)
+			t.Fatalf("prompt missing pre-push directive %q: %q", want, prompt)
 		}
 	}
 }
@@ -428,6 +428,49 @@ func TestDefaultPromptBuilder_ReviewerRecommendationStrictTokenRule(t *testing.T
 	} {
 		if !contains(prompt, want) {
 			t.Fatalf("prompt missing reviewer-token directive %q: %q", want, prompt)
+		}
+	}
+}
+
+// TestDefaultPromptBuilder_CompilePrecheckRule asserts the prompt teaches the fast precheck rule so iteration uses go build/vet (~5s) before `make check` (~60s) (MAY-276, per feedback_compile_precheck).
+func TestDefaultPromptBuilder_CompilePrecheckRule(t *testing.T) {
+	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-PRECHECK", Lane: "server"})
+	for _, want := range []string{
+		"Fast precheck",
+		"go build ./... && go vet",
+		"feedback_compile_precheck",
+	} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt missing compile-precheck directive %q: %q", want, prompt)
+		}
+	}
+}
+
+// TestDefaultPromptBuilder_NoPgrepSleepBabysitRule asserts the prompt forbids `while pgrep / sleep` idle loops on long-running commands (MAY-276, per feedback_no_pgrep_sleep_babysit).
+func TestDefaultPromptBuilder_NoPgrepSleepBabysitRule(t *testing.T) {
+	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-PGREP", Lane: "server"})
+	for _, want := range []string{
+		"while pgrep",
+		"sleep",
+		"FOREGROUND",
+		"feedback_no_pgrep_sleep_babysit",
+	} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt missing no-pgrep-sleep-babysit directive %q: %q", want, prompt)
+		}
+	}
+}
+
+// TestDefaultPromptBuilder_GrepFirstReadTargetedRule asserts the prompt teaches Grep + offset+limit Read default to avoid full-file pulls on 800-1500 LOC files (MAY-276, per feedback_grep_first_read_targeted).
+func TestDefaultPromptBuilder_GrepFirstReadTargetedRule(t *testing.T) {
+	prompt := defaultPromptBuilder(Request{AgentID: 1, WorkItemID: "WORK-GREP", Lane: "server"})
+	for _, want := range []string{
+		"Grep first",
+		"offset + limit",
+		"feedback_grep_first_read_targeted",
+	} {
+		if !contains(prompt, want) {
+			t.Fatalf("prompt missing grep-first-read-targeted directive %q: %q", want, prompt)
 		}
 	}
 }
