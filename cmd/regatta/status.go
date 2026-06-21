@@ -156,10 +156,19 @@ func runStatus(args []string) int {
 	width := fs.Int("width", 80, "render width (cols)")
 	height := fs.Int("height", 24, "render height (rows)")
 	dbPath := fs.String("db", "", "sqlite path (default: read-only, WAL)")
+	jsonOut := fs.Bool("json", false, "emit a single JSON observation envelope and exit (MAY-47)")
+	socketURL := fs.String("socket", "", "orchestrator socket base URL (default: http://127.0.0.1"+defaultListenerAddr+")")
 
 	if err := fs.Parse(args); err != nil {
 		fmt.Fprintln(os.Stderr, "regatta status: flag parse:", err)
 		return 2
+	}
+
+	if *jsonOut {
+		return runStatusJSON(context.Background(), os.Stdout, statusJSONOpts{
+			DBPath:    *dbPath,
+			SocketURL: *socketURL,
+		})
 	}
 
 	src, err := newDefaultSource(*dbPath)
