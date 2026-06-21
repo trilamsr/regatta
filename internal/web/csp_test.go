@@ -46,16 +46,14 @@ func TestCSPMiddleware_NoThirdPartyOrigins(t *testing.T) {
 	}
 }
 
-// TestCSPHeader_AllowsHtmxInlineStyleHash asserts the htmx 2.0.4 boot-injected
-// `<style>` hash is allowlisted so the 88-per-page console violations close (MAY-57).
+// TestCSPHeader_AllowsHtmxInlineStyleHash asserts the htmx 2.0.4 boot `<style>` sha256 is allowlisted (MAY-57).
 func TestCSPHeader_AllowsHtmxInlineStyleHash(t *testing.T) {
 	if !strings.Contains(CSPHeader, htmxInlineStyleHash) {
 		t.Errorf("CSPHeader missing htmx inline-style hash %s; got %q", htmxInlineStyleHash, CSPHeader)
 	}
 }
 
-// TestCSPHeader_NoUnsafeInline confirms the relaxation path stays hash-pinned —
-// `'unsafe-inline'` would let any inline style render, defeating the gate.
+// TestCSPHeader_NoUnsafeInline pins style-src to hash-only (no 'unsafe-inline' / 'unsafe-eval') per MAY-57.
 func TestCSPHeader_NoUnsafeInline(t *testing.T) {
 	if strings.Contains(CSPHeader, "'unsafe-inline'") {
 		t.Errorf("CSPHeader leaked 'unsafe-inline'; got %q", CSPHeader)

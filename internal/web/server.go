@@ -53,6 +53,14 @@ type Config struct {
 func NewHandler(deps Dependencies) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle(uiStaticPrefix, staticHandler())
+	// /favicon.ico is requested by every browser on every page load; without
+	// this route the catch-all returns 404, which surfaces as a console error
+	// (MAY-57). Layout.tmpl additionally emits `<link rel="icon">` pointing at
+	// the SVG; the 204 here is the bare-URL fallback for clients that ignore
+	// the link element.
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", noStoreCacheControl)
 		// Narrow the catch-all to literal root so /foo surfaces as 404

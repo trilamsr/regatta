@@ -1,7 +1,7 @@
 {{define "_agents"}}
 {{- if .Rows}}
 <div class="panel">
-  <div class="row text-xs font-mono text-slate-500 uppercase tracking-widest" style="grid-template-columns: 7rem 1fr 6rem 4rem 5rem;">
+  <div class="row row-grid-agents text-xs font-mono text-slate-500 uppercase tracking-widest">
     <span>status</span>
     <span>what it's doing</span>
     <span>lane</span>
@@ -9,7 +9,7 @@
     <span class="text-right">spend</span>
   </div>
   {{- range .Rows}}
-  <div class="row click-row" style="grid-template-columns: 7rem 1fr 6rem 4rem 5rem;"
+  <div class="row row-grid-agents click-row"
        hx-get="/ui/drawer/agent/{{.ID}}" hx-target="#drawer-mount" hx-swap="innerHTML">
     <span><span class="pill pill-{{statusClass .State}}">{{statusLabel .State}}</span></span>
     <span class="title truncate" title="{{.Title}}">{{.Title}}</span>

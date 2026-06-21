@@ -150,8 +150,7 @@ func TestNewHandler_NilRouteRegistrar(t *testing.T) {
 	}
 }
 
-// TestNewHandler_FaviconServedNotFound — /favicon.ico must not 404; browsers
-// request it on every page load (MAY-57). 204 No Content is acceptable.
+// TestNewHandler_FaviconServedNotFound asserts /favicon.ico does not 404 (MAY-57).
 func TestNewHandler_FaviconServedNotFound(t *testing.T) {
 	h := newTestHandler(t)
 	rec := httptest.NewRecorder()
@@ -162,9 +161,7 @@ func TestNewHandler_FaviconServedNotFound(t *testing.T) {
 	}
 }
 
-// TestNewHandler_FaviconSVGServed — the <link rel="icon"> in layout.tmpl points
-// at /ui/static/favicon.svg; the asset must exist on disk so modern browsers
-// (which prefer the link element over /favicon.ico) render the icon.
+// TestNewHandler_FaviconSVGServed asserts /ui/static/favicon.svg serves the icon (MAY-57).
 func TestNewHandler_FaviconSVGServed(t *testing.T) {
 	h := newTestHandler(t)
 	rec := httptest.NewRecorder()
@@ -178,10 +175,7 @@ func TestNewHandler_FaviconSVGServed(t *testing.T) {
 	}
 }
 
-// TestLayout_LinksFavicon — the rendered root layout must include the
-// `<link rel="icon">` element so modern browsers do not fall back to
-// /favicon.ico (covers the cleaner code path even though /favicon.ico
-// also serves a 204).
+// TestLayout_LinksFavicon asserts layout.tmpl emits <link rel="icon"> (MAY-57).
 func TestLayout_LinksFavicon(t *testing.T) {
 	h := newTestHandler(t)
 	rec := httptest.NewRecorder()
@@ -191,10 +185,7 @@ func TestLayout_LinksFavicon(t *testing.T) {
 	}
 }
 
-// TestTemplates_NoInlineStyleAttrs scans the embedded templates for
-// `style="..."` attribute occurrences; every hit re-opens the CSP relaxation
-// chase (MAY-57). Production code must move per-element styling to dashboard.css
-// classes; sha256 hashes only match `<style>` elements, not attributes.
+// TestTemplates_NoInlineStyleAttrs forbids `style="..."` in templates — CSP style-src hashes do not match attrs (MAY-57).
 func TestTemplates_NoInlineStyleAttrs(t *testing.T) {
 	entries, err := assetsFS.ReadDir("templates")
 	if err != nil {
@@ -214,10 +205,7 @@ func TestTemplates_NoInlineStyleAttrs(t *testing.T) {
 	}
 }
 
-// TestTemplates_NoHxOnHandlers asserts no `hx-on:*` attributes remain in
-// templates; htmx parses them via `new Function()`, which the page CSP +
-// allowEval=false config blocks with `htmx:evalDisallowedError` (MAY-57).
-// Substitute event handlers wired via dashboard JS file.
+// TestTemplates_NoHxOnHandlers forbids hx-on:* attrs — htmx new Function() fires evalDisallowedError under CSP (MAY-57).
 func TestTemplates_NoHxOnHandlers(t *testing.T) {
 	entries, err := assetsFS.ReadDir("templates")
 	if err != nil {
