@@ -107,7 +107,7 @@ func bootListener(cfg listenerConfig) (*http.Server, error) {
 // newWebHandler constructs the W7.1 T4 operator UI handler with templates
 // loaded from the package's embed.FS at boot. Template parse failure surfaces
 // as a bootListener error (spec §3.4 fail-loud) rather than a render-time lie.
-// RouteRegistrar is nil pre-T6; cmd/regatta passes the field unchanged.
+// RouteRegistrar mounts the /approve/* approval flow onto the sub-mux (MAY-116).
 func newWebHandler(cfg listenerConfig) (http.Handler, error) {
 	tmpls, err := web.LoadTemplates(web.AssetsFS())
 	if err != nil {
@@ -120,7 +120,7 @@ func newWebHandler(cfg listenerConfig) (http.Handler, error) {
 		Clock:          cfg.Clock,
 		BootedAt:       cfg.Clock(),
 		Config:         web.Config{PublicHost: cfg.PublicHost},
-		RouteRegistrar: nil,
+		RouteRegistrar: web.RegisterApprovalRoutes,
 	}), nil
 }
 

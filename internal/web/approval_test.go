@@ -1,11 +1,16 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
 // newApprovalTestHandler mounts RegisterApprovalRoutes on a bare mux with a
@@ -40,5 +45,128 @@ func TestApprovalPageHandler_NoCookieReturnsErrorPage(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "token_invalid") {
 		t.Fatalf("body missing token_invalid sentinel: %q", w.Body.String())
+	}
+}
+
+// newApprovalDBHarness seeds a real sqlite DB with one work item + pending
+// approval + journaled output so handler tests exercise the live read/write
+// paths, and returns deps plus a token-minting helper bound to the keyring.
+func newApprovalDBHarness(t *testing.T, output string) (Dependencies, func(reviewer string) string, string, string) {
+	t.Helper()
+	now := time.Unix(1_700_000_000, 0).UTC()
+	clock := func() time.Time { return now }
+	dbPath := filepath.Join(t.TempDir(), "approval.db")
+	db, err := state.OpenWithClock(context.Background(), state.DSN(dbPath), clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	const wiID, aid = "F-1", "a-ui000000001"
+	if err := db.UpsertWorkItem(context.Background(), state.WorkItem{
+		ID: wiID, Kind: state.KindFeature, Title: "F-1", Lane: "server", Status: state.WorkStatusPlanned,
+	}, state.SourceBrief, now); err != nil {
+		t.Fatalf("UpsertWorkItem: %v", err)
+	}
+	if err := db.CreateApproval(context.Background(), state.Approval{
+		ID: aid, WorkItemID: wiID, GateName: "ship-gate", RequestedAt: now, RequestedBy: "system",
+		ReviewerSetSnapshot: state.ReviewerSet{Reviewers: []string{"alice", "bob"}, Quorum: 2},
+		Quorum:              2, Status: state.ApprovalStatusPending, TimeoutAt: now.Add(time.Hour), OnTimeout: "fail",
+	}); err != nil {
+		t.Fatalf("CreateApproval: %v", err)
+	}
+	if output != "" {
+		if _, err := db.AppendOutput(context.Background(), wiID, []byte(output)); err != nil {
+			t.Fatalf("AppendOutput: %v", err)
+		}
+	}
+
+	kr, kid, _, _ := testKeyring(t)
+	tmpls, err := LoadTemplates(AssetsFS())
+	if err != nil {
+		t.Fatalf("LoadTemplates: %v", err)
+	}
+	deps := Dependencies{
+		DB: db, Keyring: kr, Templates: tmpls, Clock: clock,
+		Config: Config{PublicHost: "regatta.host"},
+	}
+	mint := func(reviewer string) string {
+		return mintWire(t, kr, kid, reviewer, aid, wiID, now.Add(time.Hour))
+	}
+	return deps, mint, aid, wiID
+}
+
+// TestApprovalPageHandler_RendersDiffAndOverflow asserts the page renders the clamped diff body + a full-diff link when output exceeds MaxDiffBytes (MAY-116).
+func TestApprovalPageHandler_RendersDiffAndOverflow(t *testing.T) {
+	big := `{"d":"` + strings.Repeat("x", 12*1024) + `"}`
+	deps, mint, aid, _ := newApprovalDBHarness(t, big)
+	h := newApprovalTestHandler(t, deps)
+
+	r := httptest.NewRequest(http.MethodGet, "/approve/"+aid, nil)
+	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: mint("alice")}) //nolint:gosec // test fixture replays server-set cookie
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d want 200; body=%q", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "/approve/"+aid+"/diff") {
+		t.Fatalf("overflow link missing for >8KiB diff")
+	}
+}
+
+// TestApprovalDecideHandler_HappyRendersDecided asserts a CSRF+Origin-valid allow vote calls DecideTx and renders the decided page echoing the reviewer (MAY-116).
+func TestApprovalDecideHandler_HappyRendersDecided(t *testing.T) {
+	deps, mint, aid, _ := newApprovalDBHarness(t, "")
+	h := newApprovalTestHandler(t, deps)
+
+	form := url.Values{"decision": {"allow"}, "reason": {"lgtm"}, "csrf": {"tok"}}
+	r := httptest.NewRequest(http.MethodPost, "/approve/"+aid+"/decide", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("Origin", "https://regatta.host")
+	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: mint("alice")}) //nolint:gosec // test fixture
+	r.AddCookie(&http.Cookie{Name: CSRFCookieName, Value: "tok"})                     //nolint:gosec // test fixture
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d want 200; body=%q", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "alice") {
+		t.Fatalf("decided page does not echo reviewer: %q", w.Body.String())
+	}
+}
+
+// TestApprovalDiffOverflowHandler_StreamsCapped asserts the full-diff route serves at most MaxFullDiffBytes (MAY-116).
+func TestApprovalDiffOverflowHandler_StreamsCapped(t *testing.T) {
+	huge := strings.Repeat("z", 2*1024*1024)
+	deps, mint, aid, _ := newApprovalDBHarness(t, `{"d":"`+huge+`"}`)
+	h := newApprovalTestHandler(t, deps)
+
+	r := httptest.NewRequest(http.MethodGet, "/approve/"+aid+"/diff", nil)
+	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: mint("alice")}) //nolint:gosec // test fixture
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d want 200", w.Code)
+	}
+	if w.Body.Len() > MaxFullDiffBytes {
+		t.Fatalf("streamed %d bytes want <= %d", w.Body.Len(), MaxFullDiffBytes)
+	}
+}
+
+// TestApprovalPageHandler_EscapesDiffXSS asserts operator-controlled diff bytes are HTML-escaped in the rendered page (MAY-116, spec §8).
+func TestApprovalPageHandler_EscapesDiffXSS(t *testing.T) {
+	deps, mint, aid, _ := newApprovalDBHarness(t, `{"x":"<script>alert(1)</script>"}`)
+	h := newApprovalTestHandler(t, deps)
+
+	r := httptest.NewRequest(http.MethodGet, "/approve/"+aid, nil)
+	r.AddCookie(&http.Cookie{Name: ApprovalTokenCookieName, Value: mint("alice")}) //nolint:gosec // test fixture
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if strings.Contains(w.Body.String(), "<script>alert(1)</script>") {
+		t.Fatalf("raw <script> survived into rendered page: XSS gate breached")
 	}
 }
