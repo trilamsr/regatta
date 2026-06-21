@@ -93,6 +93,13 @@ func TestSubstrate_KindPayloadValidation(t *testing.T) {
 			malformed:    `{"actor":"","reason":"operator","until":"2026-06-03T00:00:00Z"}`,
 			wantStrategy: substrate.StrategyAppend,
 		},
+		{
+			name:         "merge_low_risk_decision",
+			kind:         substrate.KindMergeLowRiskDecision,
+			wellFormed:   `{"pr":42,"eligible":true,"reason":"eligible","loc_delta":3,"soak_remaining_sec":0}`,
+			malformed:    `{"pr":0,"eligible":true,"reason":"eligible","loc_delta":0,"soak_remaining_sec":0}`,
+			wantStrategy: substrate.StrategyAppend,
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
