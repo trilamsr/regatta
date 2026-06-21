@@ -109,6 +109,9 @@ type dashboardPipelineDrawer struct {
 	Label string
 	Owner string
 	Items []dashboardPipelineItem
+	// Err mirrors dashboardSpendView.Err: a non-empty value flips the drawer to a
+	// degraded block so a DB-unavailable stage reads distinct from a genuinely-empty one.
+	Err string
 }
 
 const (
@@ -405,14 +408,19 @@ func servePipelineDrawer(w http.ResponseWriter, r *http.Request, deps Dependenci
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), dashboardPanelTimeoutSeconds*time.Second)
 	defer cancel()
-	items := loadPipelineStageItems(ctx, deps, slug)
-	view := dashboardPipelineDrawer{Slug: meta.Slug, Label: meta.Label, Owner: meta.Owner, Items: items}
+	view := dashboardPipelineDrawer{Slug: meta.Slug, Label: meta.Label, Owner: meta.Owner}
+	items, err := loadPipelineStageItems(ctx, deps, slug)
+	if err != nil {
+		view.Err = err.Error()
+	} else {
+		view.Items = items
+	}
 	if err := deps.Templates.Render(w, "_drawer_pipeline_stage", view); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-func loadPipelineStageItems(ctx context.Context, deps Dependencies, slug string) []dashboardPipelineItem {
+func loadPipelineStageItems(ctx context.Context, deps Dependencies, slug string) ([]dashboardPipelineItem, error) {
 	now := deps.Clock()
 	if slug == pipelineStageQueued {
 		rows, err := deps.DB.SQL().QueryContext(ctx,
@@ -421,7 +429,7 @@ func loadPipelineStageItems(ctx context.Context, deps Dependencies, slug string)
 			 ORDER BY w.updated_at DESC LIMIT ?`,
 			string(state.WorkStatusPlanned), pipelineDrawerLimit)
 		if err != nil {
-			return nil
+			return nil, err
 		}
 		defer func() { _ = rows.Close() }()
 		var out []dashboardPipelineItem
@@ -429,16 +437,22 @@ func loadPipelineStageItems(ctx context.Context, deps Dependencies, slug string)
 			var id, lane string
 			var updated int64
 			if err := rows.Scan(&id, &lane, &updated); err != nil {
-				return nil
+				return nil, err
 			}
 			out = append(out, dashboardPipelineItem{
 				WorkItemID: id, Lane: lane,
 				Age: humanRelativeShort(now, time.Unix(updated, 0).UTC()),
 			})
 		}
-		return out
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return out, nil
 	}
-	agents := agentsForPipelineSlug(ctx, deps.DB, slug)
+	agents, err := agentsForPipelineSlug(ctx, deps.DB, slug)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]dashboardPipelineItem, 0, len(agents))
 	for _, a := range agents {
 		out = append(out, dashboardPipelineItem{
@@ -446,10 +460,10 @@ func loadPipelineStageItems(ctx context.Context, deps Dependencies, slug string)
 			Age: humanRelativeShort(now, a.CreatedAt),
 		})
 	}
-	return out
+	return out, nil
 }
 
-func agentsForPipelineSlug(ctx context.Context, db *state.DB, slug string) []state.Agent {
+func agentsForPipelineSlug(ctx context.Context, db *state.DB, slug string) ([]state.Agent, error) {
 	var states []state.AgentState
 	switch slug {
 	case pipelineStageReady:
@@ -463,16 +477,16 @@ func agentsForPipelineSlug(ctx context.Context, db *state.DB, slug string) []sta
 	case pipelineStageDone:
 		states = []state.AgentState{state.AgentDone, state.AgentWithdrawn}
 	default:
-		return nil
+		return nil, nil
 	}
 	rows, err := db.ListAgentsByState(ctx, states...)
-	if err != nil || len(rows) == 0 {
-		return nil
+	if err != nil {
+		return nil, err
 	}
 	if len(rows) > pipelineDrawerLimit {
 		rows = rows[:pipelineDrawerLimit]
 	}
-	return rows
+	return rows, nil
 }
 
 func loadEventsView(ctx context.Context, deps Dependencies) any {

@@ -7,7 +7,9 @@
             hx-on:click="document.getElementById('drawer-mount').innerHTML=''">close ×</button>
   </div>
   <div class="ident text-xs mt-1">stage: {{.Slug}} · {{len .Items}} item(s)</div>
-  {{- if .Items}}
+  {{- if .Err}}
+  <div class="empty-state mt-4" data-degraded>stage unavailable — {{.Err}}</div>
+  {{- else if .Items}}
   <div class="mt-4">
     <div class="row text-xs font-mono text-slate-500 uppercase tracking-widest" style="grid-template-columns: 1fr 5rem 4rem 4rem;">
       <span>work item</span>
