@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -19,4 +21,24 @@ func TestNewWebHandler_PopulatesBootedAt(t *testing.T) {
 		t.Fatalf("newWebHandler did not invoke cfg.Clock() to stamp BootedAt — composition root regression")
 	}
 	_ = web.Dependencies{}
+}
+
+// TestNewWebHandlerWiresApprovalRoutes asserts the RouteRegistrar seam mounts /approve/{aid} (MAY-116).
+func TestNewWebHandlerWiresApprovalRoutes(t *testing.T) {
+	h, err := newWebHandler(listenerConfig{Clock: func() time.Time { return time.Unix(0, 0) }})
+	if err != nil {
+		t.Fatalf("newWebHandler: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/approve/test-aid", nil))
+
+	// Wired RouteRegistrar routes the approve page (401 no-cookie). Reverting
+	// RouteRegistrar to nil drops the route to the "/" catch-all → 404.
+	if rec.Code == http.StatusNotFound {
+		t.Fatalf("GET /approve/{aid} returned 404: RouteRegistrar seam not wired")
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /approve/{aid} status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
 }
