@@ -48,6 +48,7 @@ WORKTREE (harness-managed — do NOT create your own)
 - NEVER write code under `/tmp/`. `/tmp/` is for ephemeral logs ONLY (`/tmp/cicheck.log`, `/tmp/pr-<branch>.md`). Code, tests, specs, edits → harness worktree only.
 - Negative example (DO NOT DO THIS): `git clone git@github.com:trilamsr/regatta.git /tmp/regatta-<slug>/ && cd /tmp/regatta-<slug>/` — leaves main worktree with stray edits, no remote, no pushable branch (#188).
 - Never push from the primary checkout.
+- One writer per worktree (MAY-271): if `pwd` lands you in a worktree that already shows uncommitted changes from another author or a divergent branch, STOP and report — main thread must confirm the prior owner is terminal before re-dispatch. Stale file mtime ≠ dead. Re-dispatching into a still-live worktree clobbers HEAD + loses work. Per `feedback_agent_liveness_not_timestamp` (canonical operator memory slug).
 - gopls cross-worktree noise: repo root ships `go.work` with `use ./` only, so gopls scopes the active module to the primary checkout. Sibling worktrees (`.claude/worktrees/agent-*/`) are out-of-workspace and may surface "file is within module …" warnings in tool results when an editor session straddles trees. Ignore those — they are diagnostic noise, not build errors. Verify with `go env GOWORK` (non-empty) and `go build ./...` (clean) before treating any cross-tree warning as load-bearing. (closes #777)
 
 VERIFY BEFORE ACTING (cheap-check-first; subagent/reviewer output is a LEAD, not ground truth)
