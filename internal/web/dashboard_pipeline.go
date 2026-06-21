@@ -28,7 +28,7 @@ func loadPipelineView(ctx context.Context, deps Dependencies) any {
 	if deps.DB == nil {
 		return view
 	}
-	counts := pipelineCounts(ctx, deps.DB)
+	counts := pipelineCountsFromSnapshot(ctx, deps)
 	for _, s := range pipelineStageOrder {
 		view.Stages = append(view.Stages, dashboardPipelineStage{
 			Slug: s.Slug, Label: s.Label, Owner: s.Owner, Count: counts[s.Slug],
@@ -37,21 +37,28 @@ func loadPipelineView(ctx context.Context, deps Dependencies) any {
 	return view
 }
 
-// pipelineCounts issues one SQL per stage. Six small SELECTs hit the agents.state index in O(rowset/stage); a UNION ALL would shave round-trips but couples the queued stage (work_items LEFT JOIN) to the agent-state shape, blocking the next stage addition.
-func pipelineCounts(ctx context.Context, db *state.DB) map[string]int {
-	out := map[string]int{}
-	sqlDB := db.SQL()
-	out[pipelineStageQueued] = scanInt(ctx, sqlDB,
+// pipelineCountsFromSnapshot derives per-stage counts from the consolidated
+// health snapshot (#MAY-48 AC1) so the pipeline panel + work-items Running
+// bucket + future health cells all source from one GROUP BY — eliminating
+// the cross-panel drift of #1217. The queued stage still issues its own
+// LEFT-JOIN-shaped SELECT because it counts work_items without agents,
+// not agents in a state — different cardinality.
+func pipelineCountsFromSnapshot(ctx context.Context, deps Dependencies) map[string]int {
+	snap, ok := loadHealthSnapshotView(ctx, deps).(dashboardHealthSnapshot)
+	if !ok {
+		return map[string]int{}
+	}
+	out := map[string]int{
+		pipelineStageReady:    snap.AgentStateCounts[state.AgentPending],
+		pipelineStageSpawning: snap.AgentStateCounts[state.AgentSpawning],
+		pipelineStageRunning:  snap.AgentStateCounts[state.AgentRunning],
+		pipelineStagePROpen:   snap.AgentStateCounts[state.AgentPROpen],
+		pipelineStageDone:     snap.AgentStateCounts[state.AgentDone] + snap.AgentStateCounts[state.AgentWithdrawn],
+	}
+	out[pipelineStageQueued] = scanInt(ctx, deps.DB.SQL(),
 		`SELECT COUNT(*) FROM work_items w
 		 WHERE w.status = ? AND NOT EXISTS (SELECT 1 FROM agents a WHERE a.work_item_id = w.id)`,
 		string(state.WorkStatusPlanned))
-	out[pipelineStageReady] = scanInt(ctx, sqlDB, `SELECT COUNT(*) FROM agents WHERE state = ?`, string(state.AgentPending))
-	out[pipelineStageSpawning] = scanInt(ctx, sqlDB, `SELECT COUNT(*) FROM agents WHERE state = ?`, string(state.AgentSpawning))
-	out[pipelineStageRunning] = scanInt(ctx, sqlDB, `SELECT COUNT(*) FROM agents WHERE state = ?`, string(state.AgentRunning))
-	out[pipelineStagePROpen] = scanInt(ctx, sqlDB, `SELECT COUNT(*) FROM agents WHERE state = ?`, string(state.AgentPROpen))
-	out[pipelineStageDone] = scanInt(ctx, sqlDB,
-		`SELECT COUNT(*) FROM agents WHERE state IN (?, ?)`,
-		string(state.AgentDone), string(state.AgentWithdrawn))
 	return out
 }
 

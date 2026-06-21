@@ -38,6 +38,25 @@ type listenerConfig struct {
 	// falls back to a fresh never-touched cell — preserved for backward
 	// compatibility with the W3 unit harness.
 	Heartbeat *health.HeartbeatCell
+	// TickInterval mirrors the orchestrator scheduler cadence so the web
+	// dashboard's tick-stale red banner fires when Heartbeat.Age() exceeds
+	// 2x this value (MAY-48 §AC4). Zero falls back to the web-side default.
+	TickInterval time.Duration
+}
+
+// buildListenerConfig collapses the bootListener call site so cmd/regatta/serve.go stays under the god-file threshold (TestServeFileSize). Wiring fields stay local to wire_web.go where the matching struct definition already lives.
+func buildListenerConfig(f serveFlags, db *state.DB, clock func() time.Time, authzr *authz.OPAAuthorizer, publicHost string, hb *health.HeartbeatCell) listenerConfig {
+	return listenerConfig{
+		UI:           f.UI,
+		Addr:         f.Addr,
+		DB:           db,
+		Keyring:      approvaltoken.MapKeyring(loadBriefKeyring()),
+		Clock:        clock,
+		Authorizer:   authzr,
+		PublicHost:   publicHost,
+		Heartbeat:    hb,
+		TickInterval: f.TickDur,
+	}
 }
 
 // preflightUIBoot fires BEFORE state.Open so the operator sees the HMAC misconfig at the loud-at-boot moment (spec §1.3 open-q 9.8) rather than as a render-time lie.
@@ -121,6 +140,8 @@ func newWebHandler(cfg listenerConfig) (http.Handler, error) {
 		BootedAt:       cfg.Clock(),
 		Config:         web.Config{PublicHost: cfg.PublicHost},
 		RouteRegistrar: web.RegisterApprovalRoutes,
+		Heartbeat:      cfg.Heartbeat,
+		TickInterval:   cfg.TickInterval,
 	}), nil
 }
 

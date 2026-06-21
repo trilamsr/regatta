@@ -119,3 +119,9 @@ const exitReasonUnknown = "unknown"
 // histogram reports — long enough to absorb the soak panel's 60s rolling
 // window, short enough to surface a current incident.
 const exitReasonHistogramWindowSec = 3600
+
+// tickStaleBannerMultiplier is the multiple of TickInterval at which the
+// dashboard tick-stale red banner fires (MAY-48 §AC4). 2× gives one
+// missed tick of slack so a single slow SQLite write does not paint the
+// banner red on every healthy poll.
+const tickStaleBannerMultiplier = 2

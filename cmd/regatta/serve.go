@@ -20,7 +20,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
 	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
@@ -325,16 +324,7 @@ func runServe(args []string) int {
 		return 2
 	}
 
-	httpSrv, err := bootListener(listenerConfig{
-		UI:         f.UI,
-		Addr:       f.Addr,
-		DB:         db,
-		Keyring:    approvaltoken.MapKeyring(loadBriefKeyring()),
-		Clock:      clock,
-		Authorizer: authzr,
-		PublicHost: publicHost,
-		Heartbeat:  healthHB,
-	})
+	httpSrv, err := bootListener(buildListenerConfig(f, db, clock, authzr, publicHost, healthHB))
 	if err != nil {
 		logger.Printf("listener boot: %v", err)
 		return 2

@@ -124,7 +124,10 @@ func TestLoadHealthSnapshot_TickStaleBannerQuietBelowThreshold(t *testing.T) {
 		Heartbeat:    hb,
 	}
 	view := loadHealthSnapshotView(context.Background(), deps)
-	snap := view.(dashboardHealthSnapshot)
+	snap, ok := view.(dashboardHealthSnapshot)
+	if !ok {
+		t.Fatalf("loadHealthSnapshotView returned %T, want dashboardHealthSnapshot", view)
+	}
 	if snap.TickStaleBannerVisible {
 		t.Fatalf("TickStaleBannerVisible=true at age=3s with TickInterval=5s; banner MUST stay quiet")
 	}
@@ -159,7 +162,10 @@ func TestLoadHealthSnapshot_ExitReasonHistogram(t *testing.T) {
 	}
 	deps := Dependencies{DB: db, Clock: clock, TickInterval: 5 * time.Second}
 	view := loadHealthSnapshotView(ctx, deps)
-	snap := view.(dashboardHealthSnapshot)
+	snap, ok := view.(dashboardHealthSnapshot)
+	if !ok {
+		t.Fatalf("loadHealthSnapshotView returned %T, want dashboardHealthSnapshot", view)
+	}
 	if len(snap.LastExitReasonHistogram) != 3 {
 		t.Fatalf("histogram rows=%d, want 3 (completed, provider_credit_exhausted, unknown); got %+v",
 			len(snap.LastExitReasonHistogram), snap.LastExitReasonHistogram)
@@ -198,11 +204,17 @@ func TestLoadHealthSnapshot_RunningConsistentWithPipeline(t *testing.T) {
 		transitionToRunning(t, db, a.ID)
 	}
 	deps := Dependencies{DB: db, Clock: clock, TickInterval: 5 * time.Second}
-	snap := loadHealthSnapshotView(ctx, deps).(dashboardHealthSnapshot)
+	snap, ok := loadHealthSnapshotView(ctx, deps).(dashboardHealthSnapshot)
+	if !ok {
+		t.Fatalf("loadHealthSnapshotView returned non-snapshot")
+	}
 	if snap.AgentStateCounts[state.AgentRunning] != 3 {
 		t.Fatalf("snapshot Running=%d, want 3", snap.AgentStateCounts[state.AgentRunning])
 	}
-	pipeline := loadPipelineView(ctx, deps).(dashboardPipelineView)
+	pipeline, ok := loadPipelineView(ctx, deps).(dashboardPipelineView)
+	if !ok {
+		t.Fatalf("loadPipelineView returned non-pipeline")
+	}
 	var pipelineRunning int
 	for _, s := range pipeline.Stages {
 		if s.Slug == pipelineStageRunning {
@@ -213,7 +225,10 @@ func TestLoadHealthSnapshot_RunningConsistentWithPipeline(t *testing.T) {
 		t.Fatalf("pipeline Running=%d != snapshot Running=%d (cross-panel drift, #1217)",
 			pipelineRunning, snap.AgentStateCounts[state.AgentRunning])
 	}
-	workItems := loadWorkItemsView(ctx, deps).(dashboardWorkItemsView)
+	workItems, ok := loadWorkItemsView(ctx, deps).(dashboardWorkItemsView)
+	if !ok {
+		t.Fatalf("loadWorkItemsView returned non-work-items")
+	}
 	var wiRunning int
 	for _, b := range workItems.Buckets {
 		if b.Label == bucketLabelRunning {
