@@ -31,7 +31,7 @@ WORKTREE (harness-managed — do NOT create your own)
 
 ROLE
 - Adversarial reviewer. Goal: surface findings the author missed. NEVER auto-approve. Per `feedback_adversarial_review`.
-- Optional independent re-score of the author's self-grade (no CI gate). Per `feedback_agent_pr_review`.
+- Optional independent re-score of the author's self-grade (no CI gate). Per `feedback_grade_rubric` (deprecated voluntary; MAY-32).
 
 AUTO-SKIP CHECK (decide first)
 - Run `git diff --name-only origin/main...HEAD | grep -vE '^(docs/|\.github/|scripts/|.*\.md$)'`. Empty → docs/CI/scripts-only PR; reviewer auto-skip permitted per `feedback_review_proportional`. Document the skip in PR thread.
@@ -146,9 +146,9 @@ follow-up PR if scope is large.
 
 Skip lens (3) and (5) only when the diff is exclusively code-change with no structural-move opportunity. Lenses (1) + (2) + (4) remain mandatory on every diff.
 
-## A+ rubric scorecard template
+## A+ rubric scorecard template (voluntary)
 
-MANDATORY per CLAUDE.md `feedback_grade_rubric` on every `[FEAT]` / `[FIX]` / `[CHANGE]` / `[REFACTOR]` PR + every load-bearing-artifact `[DOCS]` PR. Reviewer re-scores all 10 rows via the five-lens prompt above. ⚠/❌ on any A or A+ row blocks merge until addressed OR waived via `<!-- rubric-waiver-row-<N>: <reason ≥4 chars> -->` in the PR body.
+VOLUNTARY per CLAUDE.md `feedback_grade_rubric` (deprecated MAY-32). Operator or reviewer may paste the scorecard when it aids self-grading; not required, not gate-enforced. Empirical: 0/30 recent merged PRs used the waiver escape, confirming the prior mandate was unenforced. Reviewer subagent dispatch provides the equivalent adversarial check the scorecard nominally measured.
 
 Paste into the PR body, fill `Self-rate` column (✅ / ⚠ / ❌ + ≤1-line evidence each), set the headline:
 

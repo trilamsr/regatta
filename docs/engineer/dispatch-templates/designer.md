@@ -31,7 +31,7 @@ RESEARCH + DESIGN
 - Prefer adopting proven OSS over reimplementation. Study `<REFERENCES>` first; cite version + commit-sha + license. Priority: UX > quality bar matching reference systems > ecosystem conventions > long-term repo+user benefit. Per `feedback_research_design_principles`.
 
 GRADE RUBRIC (optional, no CI gate)
-- Spec MAY end with a B/A/A+ rubric — each tier names falsifiable acceptance criteria (test names, metric thresholds, named artifacts). Implementer self-grades against this for operator visibility; no format enforcement. Per `feedback_grade_rubric` (downgraded: self-host phase, no CI gate).
+- Spec MAY end with a B/A/A+ rubric — each tier names falsifiable acceptance criteria (test names, metric thresholds, named artifacts). Implementer self-grades against this for operator visibility; no format enforcement. Per `feedback_grade_rubric` (deprecated MAY-32 — voluntary, no CI gate; reviewer subagent provides equivalent adversarial check).
 
 SELF-HOST FILTER
 - Every claim filtered by "does the sole internal operator need this to dispatch regatta-the-binary at this repo unattended?". Keep → in scope. Defer → Phase X with explicit reopen-trigger (external customer ask OR 30-day-green). Per `docs/engineer/briefs/2026-06-01-self-host-first.md` §1.

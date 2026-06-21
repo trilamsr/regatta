@@ -63,8 +63,8 @@ ADVERSARIAL REVIEW
 - After green, spawn reviewer subagent against this template's sibling `reviewer.md`. Address Risk-tier+ findings (inline-fix OR file `[followup]` issue + cite #).
 - PHASE-S-RELAX: auto-skip reviewer when `git diff --name-only origin/main...HEAD | grep -vE '^(docs/|\.github/|scripts/|.*\.md$)'` returns empty. Per `feedback_review_proportional`.
 
-SELF-GRADE (optional, no CI gate)
-- Operator self-rates against the spec's B/A/A+ rubric for own visibility. No required format. No token shape enforced. No `## A+ Rubric Scorecard` section required. Per `feedback_grade_rubric` (downgraded: self-host phase, solo operator + solo reviewer, no vibes-grader to catch). Reopen-trigger: external contributor lands.
+SELF-GRADE (voluntary, no CI gate)
+- Operator may self-rate against the spec's B/A/A+ rubric for own visibility. No required format. No token shape enforced. No `## A+ Rubric Scorecard` section required. Per `feedback_grade_rubric` (deprecated MAY-32 — scorecard voluntary; reviewer subagent provides equivalent adversarial check).
 
 DOC-CHECK
 - Reword vague marketing language to falsifiable claims (version pin, benchmark, named reference). Reviewer subagent catches drift.
@@ -109,8 +109,8 @@ REVIEWER-SKIP CONDITIONS (proportional)
 LOAD-BEARING LEFTOVERS → ISSUES
 - Any finding NOT fixed inline → file tracking issue + cite # in PR body. Never leave load-bearing items in PR-body prose only. (`feedback_unaddressed_load_bearing`, `feedback_agent_load_bearing_to_issues`)
 
-INDEPENDENT REVIEW MEASURES vs A+ RUBRIC
-- Solo implementers ship at B-tier by default. Spawn reviewer to pull up to A. (`feedback_agent_pr_review`)
+INDEPENDENT REVIEW
+- Solo implementers ship at B-tier by default. Spawn reviewer to pull up to A. (`feedback_adversarial_review`)
 
 ## Anchored rules (worker-prompt parity)
 

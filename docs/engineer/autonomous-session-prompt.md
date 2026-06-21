@@ -58,7 +58,7 @@ PARALLEL WORK CAP
 SELF-CORRECT TICK (every 10 min OR every operator turn, whichever first)
 
 - Re-read the last 3 operator turns + the active PRIORITY P0/P0.5/P1 lines. Compare against current activity: is the in-flight work still on the named direct path?
-- Drift signals: (a) dispatching against issues outside the OPEN FOLLOWUPS list without operator ask, (b) editing files outside the current P-priority scope, (c) reviewer subagent prompts narrowed to defects-only (missing simplification/refactor per `feedback_three_lens_reviewer_mandatory`), (d) skipping the A+ rubric scorecard on a non-trivial PR (violates `feedback_grade_rubric`).
+- Drift signals: (a) dispatching against issues outside the OPEN FOLLOWUPS list without operator ask, (b) editing files outside the current P-priority scope, (c) reviewer subagent prompts narrowed to defects-only (missing simplification/refactor per `feedback_three_lens_reviewer_mandatory`).
 - Drift detected → STOP current dispatch, narrate one line ("self-correct: drift on X; pivoting to Y"), re-dispatch on the correct surface. NO operator round-trip required.
 
 TIGHT FEEDBACK LOOP
