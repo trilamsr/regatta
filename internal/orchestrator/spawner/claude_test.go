@@ -220,6 +220,11 @@ func TestDefaultPromptBuilderInjectsItemBodyAndDisciplineAnchors(t *testing.T) {
 		"feedback_deletion_default",
 		"feedback_pr_body_hygiene",
 		"feedback_no_implementer_automerge",
+		"feedback_audit_main_before_implementing",
+		"feedback_premise_before_deletion",
+		"feedback_validate_before_ship",
+		"feedback_subagent_output_verify",
+		"feedback_honest_tdd_claims",
 		"per-criterion citation gate",
 	} {
 		if !contains(prompt, slug) {

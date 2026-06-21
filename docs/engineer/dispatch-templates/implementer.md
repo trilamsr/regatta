@@ -50,8 +50,14 @@ WORKTREE (harness-managed — do NOT create your own)
 - Never push from the primary checkout.
 - gopls cross-worktree noise: repo root ships `go.work` with `use ./` only, so gopls scopes the active module to the primary checkout. Sibling worktrees (`.claude/worktrees/agent-*/`) are out-of-workspace and may surface "file is within module …" warnings in tool results when an editor session straddles trees. Ignore those — they are diagnostic noise, not build errors. Verify with `go env GOWORK` (non-empty) and `go build ./...` (clean) before treating any cross-tree warning as load-bearing. (closes #777)
 
+VERIFY BEFORE ACTING (cheap-check-first; subagent/reviewer output is a LEAD, not ground truth)
+- Audit main before building: BEFORE writing any code, verify the target isn't already shipped — `git ls-tree -r origin/main --name-only | grep <expected-path>` OR `git log --oneline origin/main | grep '(#<issue>)'`. Self-abort + report "already on main" if it is. Per `feedback_audit_main_before_implementing` (MAY-92 + MAY-70 dispatched but already shipped → wasted invocations).
+- Verify premise before deletion: BEFORE any deletion / untracking PR, grep for what CONSUMES the target — `git grep <basename> -- . ':!.gitignore'` PLUS check `docker-compose*` / `Dockerfile*` / `*.yaml` volume mounts + CI configs. A file that is gitignored BUT tracked (`git ls-files <path>` non-empty AND path matches `.gitignore`) is deliberately-committed infra, NOT junk — do not delete it as cruft. Per `feedback_premise_before_deletion` (#1290 deleted a docker-mounted file judged "junk").
+- Spot-check subagent claims: investigator / reviewer output is a LEAD, not GROUND TRUTH (~10% wrong file:line, false "already shipped"). Open 2-3 cited file:line refs before acting; run a 1-min local measurement before recommending CI/perf/memory changes. Per `feedback_validate_before_ship`, `feedback_subagent_output_verify`.
+
 TDD
 - Failing test FIRST. Capture failing output in PR body. Then impl. Then green. Order matters per `feedback_tdd_discipline`.
+- Red-first ORDERING is load-bearing: the failing test MUST land in a SEPARATE commit BEFORE the impl commit so `git log --reverse` shows red→green. Do NOT claim "red-first" / "TDD" when test + impl are one commit. If a single commit is unavoidable, state that truthfully in the PR body + justify — do not over-claim. Per `feedback_honest_tdd_claims`.
 
 ADVERSARIAL REVIEW
 - After green, spawn reviewer subagent against this template's sibling `reviewer.md`. Address Risk-tier+ findings (inline-fix OR file `[followup]` issue + cite #).
@@ -121,6 +127,11 @@ These slugs MUST be cited by `internal/orchestrator/spawner/claude.go::defaultPr
 - `feedback_no_self_tagged_approve`
 - `feedback_pre_commit_make_check`
 - `feedback_colocated_test_required`
+- `feedback_audit_main_before_implementing`
+- `feedback_premise_before_deletion`
+- `feedback_validate_before_ship`
+- `feedback_subagent_output_verify`
+- `feedback_honest_tdd_claims`
 
 Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mark a slug intentionally kept here but not pushed to the prompt.
 
