@@ -8,8 +8,22 @@ import (
 	"log/slog"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/prwatch"
+)
+
+// defaultGhVersionTimeout caps wall-clock for the boot-time
+// `gh --version` probe. Without it a hung gh wedges VerifyGhVersion
+// indefinitely; the operator sees no exit and the merge worker
+// never boots. Mirrors prwatch.defaultGHTimeout (#1227, MAY-50).
+var defaultGhVersionTimeout = 10 * time.Second
+
+// ghVersionBinary + ghVersionArg are package-level so internal tests
+// can substitute a hung sleep without a Config seam.
+var (
+	ghVersionBinary = "gh"
+	ghVersionArg    = "--version"
 )
 
 // MinGHVersion — gh CLI floor for the merge worker. 2.40 is the
@@ -72,7 +86,7 @@ type defaultGhVersionProbe struct{}
 
 // Version executes gh --version and returns the trimmed first line.
 func (defaultGhVersionProbe) Version(ctx context.Context) (string, error) {
-	cmd := exec.CommandContext(ctx, "gh", "--version") //nolint:gosec // G204: literal binary, no operator input
+	cmd := exec.CommandContext(ctx, ghVersionBinary, ghVersionArg) //nolint:gosec // G204: literal binary, no operator input
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {

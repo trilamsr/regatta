@@ -8,6 +8,21 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
+)
+
+// defaultGHLabelerTimeout caps wall-clock for each `gh` shell-out the
+// labeler issues. Without it a hung gh wedges the rejection-router tick
+// indefinitely; the daemon log shows no progress + escalations queue.
+// Mirrors prwatch.defaultGHTimeout (#1227, MAY-50).
+var defaultGHLabelerTimeout = 10 * time.Second
+
+// ghLabelerBinary + ghHangArgs are package-level so internal tests can
+// substitute a hung sleep without a Config seam. ghHangArgs replaces
+// the production gh argv when non-nil.
+var (
+	ghLabelerBinary = "gh"
+	ghHangArgs      []string
 )
 
 // GHLabeler labels PRs via the `gh` CLI. The router knows the agent ID;
@@ -128,7 +143,10 @@ type ghPRListEntry struct {
 // a `labeled` audit row so the next Tick retries.
 func (g GHLabeler) resolvePRViaGH(ctx context.Context, branch string) (int, error) {
 	args := GHListArgs(g.Repo, branch)
-	cmd := exec.CommandContext(ctx, "gh", args...) //nolint:gosec // G204: literal binary; branch is derived from BranchFn(agentID)
+	if ghHangArgs != nil {
+		args = ghHangArgs
+	}
+	cmd := exec.CommandContext(ctx, ghLabelerBinary, args...) //nolint:gosec // G204: literal binary; branch is derived from BranchFn(agentID)
 	out, err := cmd.Output()
 	if err != nil {
 		stderr := ""
@@ -151,7 +169,10 @@ func (g GHLabeler) resolvePRViaGH(ctx context.Context, branch string) (int, erro
 // editPRViaGH runs `gh pr edit -- <prNum> --add-label <label>`.
 func (g GHLabeler) editPRViaGH(ctx context.Context, prNum int, label string) error {
 	args := GHEditArgs(g.Repo, prNum, label)
-	cmd := exec.CommandContext(ctx, "gh", args...) //nolint:gosec // G204: literal binary; prNum is an int, label comes from typed config
+	if ghHangArgs != nil {
+		args = ghHangArgs
+	}
+	cmd := exec.CommandContext(ctx, ghLabelerBinary, args...) //nolint:gosec // G204: literal binary; prNum is an int, label comes from typed config
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%w (%s)", err, strings.TrimSpace(string(out)))
