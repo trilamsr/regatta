@@ -1,24 +1,23 @@
 {{define "_drawer_pipeline_stage"}}
-<div class="drawer-bg" hx-on:click="document.getElementById('drawer-mount').innerHTML=''"></div>
+<div class="drawer-bg"></div>
 <aside class="drawer">
   <div class="flex items-baseline justify-between">
     <h3>{{.Owner}} · {{.Label}}</h3>
-    <button class="ident text-slate-500 hover:text-slate-900"
-            hx-on:click="document.getElementById('drawer-mount').innerHTML=''">close ×</button>
+    <button class="ident text-slate-500 hover:text-slate-900 drawer-close">close ×</button>
   </div>
   <div class="ident text-xs mt-1">stage: {{.Slug}} · {{len .Items}} item(s)</div>
   {{- if .Err}}
   <div class="empty-state mt-4" data-degraded>stage unavailable — {{.Err}}</div>
   {{- else if .Items}}
   <div class="mt-4">
-    <div class="row text-xs font-mono text-slate-500 uppercase tracking-widest" style="grid-template-columns: 1fr 5rem 4rem 4rem;">
+    <div class="row row-grid-pipeline-drawer text-xs font-mono text-slate-500 uppercase tracking-widest">
       <span>work item</span>
       <span>lane</span>
       <span class="text-right">agent</span>
       <span class="text-right">age</span>
     </div>
     {{- range .Items}}
-    <div class="row" style="grid-template-columns: 1fr 5rem 4rem 4rem;">
+    <div class="row row-grid-pipeline-drawer">
       <span class="ident truncate" title="{{.WorkItemID}}">{{.WorkItemID}}</span>
       <span class="ident">{{.Lane}}</span>
       <span class="ident text-right">{{if .AgentID}}#{{.AgentID}}{{else}}—{{end}}</span>

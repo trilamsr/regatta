@@ -114,6 +114,11 @@ body { font-feature-settings: "ss01", "cv11"; }
 .row.click-row { cursor: pointer; }
 .row.click-row:hover { background: var(--paper-2); }
 
+/* Row-grid templates — promoted out of template `style="..."` attrs so the
+   CSP style-src can stay attribute-free (MAY-57). */
+.row-grid-agents { grid-template-columns: 7rem 1fr 6rem 4rem 5rem; }
+.row-grid-pipeline-drawer { grid-template-columns: 1fr 5rem 4rem 4rem; }
+
 /* Status pill — flat, not rounded; uses signal palette. */
 .pill {
   display: inline-block;
