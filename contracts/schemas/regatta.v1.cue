@@ -205,6 +205,8 @@ import "list"
 	// .regatta/worktrees/* paths) so force-with-lease on an agent's own
 	// branch stops stalling mid-run (MAY-97; force-push trap #1049 #1052).
 	// Default permits force-with-lease on agent-owned branches out of the box.
+	// Enforcement is brief-level (AGENT_BRIEF rule #5); injecting these resolved
+	// values into the agent brief so they bind at runtime is tracked in MAY-258.
 	agent_destructive_ops_allow: *["git push --force-with-lease origin regatta/agent-"] | [...string]
 	agent_creds_scope:       *"dev_only" | "test" | "scoped"
 	iteration_cap:           *50 | int & >=1 & <=500

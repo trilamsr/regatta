@@ -140,7 +140,7 @@ type Safety struct {
 	AgentDestructiveOpsAllow []string `yaml:"agent_destructive_ops_allow,omitempty" json:"agent_destructive_ops_allow,omitempty"`
 }
 
-// IsDestructiveOpAllowed reports whether op may run: a deny-list substring match blocks it unless an allow-list substring also matches, scoping the override to the agent's own refs. Nil receiver and empty deny list both permit (config-absent default-permit).
+// IsDestructiveOpAllowed reports whether op may run: a deny-list substring match blocks it unless an allow-list substring also matches, scoping the override to the agent's own refs. Nil receiver and empty deny list both permit (config-absent default-permit). Enforcement is brief-level (AGENT_BRIEF rule #5); wiring the resolved lists into agent-brief injection so this decision binds at runtime is tracked in MAY-258.
 func (s *Safety) IsDestructiveOpAllowed(op string) bool {
 	if s == nil {
 		return true

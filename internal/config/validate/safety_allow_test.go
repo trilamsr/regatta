@@ -2,8 +2,7 @@ package validate
 
 import "testing"
 
-// TestSafetyAllowOverridesDenyForAgentBranch asserts force-with-lease on an
-// agent-owned branch is permitted while force-push on main stays denied (MAY-97).
+// TestSafetyAllowOverridesDenyForAgentBranch asserts agent-branch force-with-lease is allowed while force-push on main stays denied (MAY-97).
 func TestSafetyAllowOverridesDenyForAgentBranch(t *testing.T) {
 	s := &Safety{
 		DestructiveOpsDeny:       []string{"rm -rf /", "git push --force"},
@@ -29,8 +28,7 @@ func TestSafetyAllowOverridesDenyForAgentBranch(t *testing.T) {
 	}
 }
 
-// TestSafetyAllowDefaultsFromSchema asserts the CUE default allowlist surfaces
-// in the decoded Config so force-with-lease on agent branches works out of the box.
+// TestSafetyAllowDefaultsFromSchema asserts the CUE default allowlist surfaces in the decoded Config so agent-branch force-with-lease works out of the box (MAY-97).
 func TestSafetyAllowDefaultsFromSchema(t *testing.T) {
 	cfg, err := LoadConfig([]byte(minimalValid))
 	if err != nil {
