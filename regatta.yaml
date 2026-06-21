@@ -61,6 +61,11 @@ safety:
   destructive_ops_deny:
     - 'rm -rf /'
     - 'git push --force'
+  # Allow-override for self-managed agent refs: re-permits an op that matches
+  # destructive_ops_deny when it also matches an entry here. Default permits
+  # force-with-lease on agent-owned regatta/agent-* branches (MAY-97).
+  agent_destructive_ops_allow:
+    - 'git push --force-with-lease origin regatta/agent-'
   agent_creds_scope: dev_only
   iteration_cap: 50
   spend_cap_usd: 50

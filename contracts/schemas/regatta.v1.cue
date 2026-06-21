@@ -198,6 +198,14 @@ import "list"
 
 #Safety: {
 	destructive_ops_deny:    *[] | [...string]
+	// agent_destructive_ops_allow is the narrow allow-override for the
+	// auto-mode classifier: an op that substring-matches destructive_ops_deny
+	// is still permitted when it ALSO matches an entry here. Scoped to
+	// self-managed refs each agent owns (regatta/agent-* branches,
+	// .regatta/worktrees/* paths) so force-with-lease on an agent's own
+	// branch stops stalling mid-run (MAY-97; force-push trap #1049 #1052).
+	// Default permits force-with-lease on agent-owned branches out of the box.
+	agent_destructive_ops_allow: *["git push --force-with-lease origin regatta/agent-"] | [...string]
 	agent_creds_scope:       *"dev_only" | "test" | "scoped"
 	iteration_cap:           *50 | int & >=1 & <=500
 	spend_cap_usd:           *50 | int & >=0
