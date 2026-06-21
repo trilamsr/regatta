@@ -203,6 +203,9 @@ func registerDashboardRoutes(mux *http.ServeMux, deps Dependencies) {
 	mux.HandleFunc("/ui/panels/pipeline", func(w http.ResponseWriter, r *http.Request) {
 		serveDashboardPanel(w, r, deps, "_pipeline", loadPipelineView)
 	})
+	mux.HandleFunc("/ui/panels/health", func(w http.ResponseWriter, r *http.Request) {
+		serveHealthPanel(w, r, deps)
+	})
 	mux.HandleFunc("/ui/drawer/pipeline/", func(w http.ResponseWriter, r *http.Request) {
 		servePipelineDrawer(w, r, deps)
 	})

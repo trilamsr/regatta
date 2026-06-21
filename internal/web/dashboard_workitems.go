@@ -27,6 +27,13 @@ func loadWorkItemsView(ctx context.Context, deps Dependencies) any {
 	if err != nil {
 		summary = map[state.WorkItemStatus]state.WorkItemStatusSummary{}
 	}
+	// #1217 / #MAY-48: Running bucket tracks live agents — work_items.status
+	// lags spawning. Sourced from the consolidated snapshot so this panel + the
+	// pipeline panel + future health cells all read the same number.
+	var runningAgents int
+	if snap, ok := loadHealthSnapshotView(ctx, deps).(dashboardHealthSnapshot); ok {
+		runningAgents = snap.AgentStateCounts[state.AgentRunning]
+	}
 	buckets := make([]dashboardBucket, len(statuses))
 	for i, s := range statuses {
 		sum := summary[s]
@@ -37,9 +44,8 @@ func loadWorkItemsView(ctx context.Context, deps Dependencies) any {
 			})
 		}
 		count := sum.Count
-		// #1217: Running bucket tracks live agents — work_items.status lags spawning, so the panel reported 0 while 3 agents were alive.
 		if s == state.WorkStatusRunning {
-			count = scanInt(ctx, deps.DB.SQL(), `SELECT COUNT(*) FROM agents WHERE state = ?`, string(state.AgentRunning))
+			count = runningAgents
 		}
 		buckets[i] = dashboardBucket{Label: labels[i], Count: count, Top: top}
 	}

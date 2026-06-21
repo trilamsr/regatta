@@ -1,0 +1,34 @@
+{{define "_health"}}
+<div class="panel p-4 text-sm">
+{{- if .TickStaleBannerVisible}}
+  <div class="tick-stale mb-3 rounded border border-red-600 bg-red-50 px-3 py-2 text-red-800 font-mono">
+    SCHEDULER STALE: last tick {{.TickLastSuccessAgeSec}}s ago (threshold = 2x {{.TickIntervalSec}}s)
+  </div>
+{{- end}}
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+  <div>
+    <div class="lbl text-xs uppercase tracking-widest text-slate-500">tick last success</div>
+    <div class="val font-mono text-base">{{.TickLastSuccessAgeSec}}s</div>
+  </div>
+  <div>
+    <div class="lbl text-xs uppercase tracking-widest text-slate-500">tick interval</div>
+    <div class="val font-mono text-base">{{.TickIntervalSec}}s</div>
+  </div>
+</div>
+<div class="mt-4">
+  <div class="lbl text-xs uppercase tracking-widest text-slate-500">last 1h exit reasons</div>
+  {{- if .LastExitReasonHistogram}}
+  <ul class="mt-2 font-mono">
+    {{- range .LastExitReasonHistogram}}
+    <li class="flex justify-between border-b border-slate-200 py-1">
+      <span>{{.Reason}}</span>
+      <span class="text-slate-700">{{.Count}}</span>
+    </li>
+    {{- end}}
+  </ul>
+  {{- else}}
+  <div class="text-slate-500">no exits in last hour</div>
+  {{- end}}
+</div>
+</div>
+{{end}}
