@@ -35,6 +35,16 @@ const pageSize = 50
 // hang List indefinitely (adversarial §9 traversal bound).
 const maxPages = 200
 
+// Linear's default workflow state names (spec §4.1); operators with custom
+// state names extend mapState's switch.
+const (
+	stateBacklog    = "Backlog"
+	stateTodo       = "Todo"
+	stateInProgress = "In Progress"
+	stateDone       = "Done"
+	stateCanceled   = "Canceled"
+)
+
 // LinearCatalogConfig configures a Linear-backed schemas.SpecAdapter;
 // APIKey + Team are required, the rest default-fill in NewLinearCatalog.
 type LinearCatalogConfig struct {
@@ -217,13 +227,13 @@ func (a *adapterImpl) project(n issueNode) (schemas.WorkItem, error) {
 // than silently defaulting to planned.
 func mapState(name string) (schemas.Status, error) {
 	switch name {
-	case "Backlog", "Todo":
+	case stateBacklog, stateTodo:
 		return schemas.StatusPlanned, nil
-	case "In Progress":
+	case stateInProgress:
 		return schemas.StatusInProgress, nil
-	case "Done":
+	case stateDone:
 		return schemas.StatusDone, nil
-	case "Canceled":
+	case stateCanceled:
 		return schemas.StatusClosedResolved, nil
 	default:
 		return "", fmt.Errorf("%w: unmapped linear state %q", schemas.ErrInvalidStatus, name)
@@ -255,7 +265,7 @@ func (a *adapterImpl) queryPage(ctx context.Context, cursor string) (*listRespon
 
 	res, err := a.cfg.HTTPClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("linear transport: %w: %v", schemas.ErrTransient, err)
+		return nil, fmt.Errorf("linear transport: %w", errors.Join(schemas.ErrTransient, err))
 	}
 	defer func() { _ = res.Body.Close() }()
 
@@ -268,7 +278,7 @@ func (a *adapterImpl) queryPage(ctx context.Context, cursor string) (*listRespon
 
 	var decoded listResponse
 	if err := json.NewDecoder(res.Body).Decode(&decoded); err != nil {
-		return nil, fmt.Errorf("linear decode: %w: %v", schemas.ErrPermanent, err)
+		return nil, fmt.Errorf("linear decode: %w", errors.Join(schemas.ErrPermanent, err))
 	}
 	if rlErr := rateLimitFromErrors(decoded.Errors, res.Header.Get("x-ratelimit-requests-reset")); rlErr != nil {
 		return nil, fmt.Errorf("linear list: %w", rlErr)
