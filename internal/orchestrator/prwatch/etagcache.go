@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -68,6 +69,26 @@ func NewETagLister(cfg ETagListerConfig) *ETagLister {
 	return &ETagLister{cfg: cfg, cache: make(map[string]etagEntry)}
 }
 
+// Forget evicts the cached {etag, snapshot} for branch. Sweep calls
+// this on every terminal-state agent so the cache stays bounded by
+// the live `{running, pr_open}` working set instead of growing
+// monotonically across session lifetime. Branches the lister never
+// observed are a silent no-op — the GHCLILister fallback path doesn't
+// populate the cache either.
+func (e *ETagLister) Forget(branch string) {
+	e.mu.Lock()
+	delete(e.cache, branch)
+	e.mu.Unlock()
+}
+
+// CacheLen returns the current cache entry count. Test-only seam — the
+// production path never inspects cache size.
+func (e *ETagLister) CacheLen() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return len(e.cache)
+}
+
 // ListOpenByHead implements PRLister. The head query goes through the
 // ETag/304 fast path; a non-empty titlePrefix additionally invokes
 // Fallback so the fork-PR rescue continues to fire.
@@ -98,11 +119,19 @@ func (e *ETagLister) ListOpenByHead(ctx context.Context, branch, titlePrefix str
 // for any non-200/304 response (5xx, 403 secondary-rate-limit, 429,
 // network failure).
 func (e *ETagLister) fetchHead(ctx context.Context, branch string) ([]PullRequest, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/pulls?state=open&head=%s:%s",
+	// Branch names carry `/` (the orchestrator-pinned `regatta/agent-N`
+	// shape); the `head=owner:branch` value MUST percent-encode the
+	// branch per RFC 3986 so a future stricter parser cannot mis-route
+	// the request. GitHub today is lenient, but the encoded form is
+	// universally correct.
+	q := url.Values{}
+	q.Set("state", "open")
+	q.Set("head", e.cfg.Owner+":"+branch)
+	reqURL := fmt.Sprintf("%s/repos/%s/%s/pulls?%s",
 		strings.TrimRight(e.cfg.BaseURL, "/"),
-		e.cfg.Owner, e.cfg.Repo, e.cfg.Owner, branch,
+		e.cfg.Owner, e.cfg.Repo, q.Encode(),
 	)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, err
 	}

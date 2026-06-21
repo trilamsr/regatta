@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"sync/atomic"
 	"testing"
 )
@@ -223,6 +225,84 @@ func TestETagLister_500_FallsBack(t *testing.T) {
 	}
 	if len(prs) != 1 || prs[0].HeadRefOid != "x" {
 		t.Fatalf("fallback PR not returned: %+v", prs)
+	}
+}
+
+// TestETagLister_BranchNameEncoded percent-encodes the `/` in `regatta/agent-N` (RFC 3986).
+func TestETagLister_BranchNameEncoded(t *testing.T) {
+	var capturedRawQuery atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedRawQuery.Store(r.URL.RawQuery)
+		// Echo back the branch the server PARSED out of the head
+		// param so the test asserts upstream sees the expected value.
+		head := r.URL.Query().Get("head")
+		_ = head // captured via RawQuery; URL.Query parses correctly either encoded or raw
+		w.Header().Set("ETag", `W/"v1"`)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(srv.Close)
+
+	el := NewETagLister(ETagListerConfig{
+		Owner:    "trilamsr",
+		Repo:     "regatta",
+		Token:    "tok",
+		BaseURL:  srv.URL,
+		Fallback: &fallbackStub{},
+		Client:   srv.Client(),
+	})
+	if _, err := el.ListOpenByHead(context.Background(), "regatta/agent-7", ""); err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	got, _ := capturedRawQuery.Load().(string)
+	// `/` in the branch must be %2F; `:` in `owner:branch` must be %3A.
+	// url.Values.Encode produces both per RFC 3986.
+	if !strings.Contains(got, "head=trilamsr%3Aregatta%2Fagent-7") {
+		t.Fatalf("query missing percent-encoded head; got %q", got)
+	}
+	// And the parsed value MUST equal the original literal so GitHub
+	// receives the byte sequence the orchestrator pinned.
+	parsed, err := url.ParseQuery(got)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if h := parsed.Get("head"); h != "trilamsr:regatta/agent-7" {
+		t.Fatalf("parsed head=%q, want trilamsr:regatta/agent-7", h)
+	}
+}
+
+// TestETagLister_ForgetEvictsCache drops cached {etag, snapshot} for branch.
+func TestETagLister_ForgetEvictsCache(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("ETag", `W/"v1"`)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[{"number":1,"head":{"sha":"x","ref":"regatta/agent-7"},"state":"open"}]`))
+	}))
+	t.Cleanup(srv.Close)
+
+	el := NewETagLister(ETagListerConfig{
+		Owner:    "trilamsr",
+		Repo:     "regatta",
+		Token:    "tok",
+		BaseURL:  srv.URL,
+		Fallback: &fallbackStub{},
+		Client:   srv.Client(),
+	})
+	if _, err := el.ListOpenByHead(context.Background(), "regatta/agent-7", ""); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if el.CacheLen() != 1 {
+		t.Fatalf("want cache=1 after seed, got %d", el.CacheLen())
+	}
+	el.Forget("regatta/agent-7")
+	if el.CacheLen() != 0 {
+		t.Fatalf("want cache=0 after Forget, got %d", el.CacheLen())
+	}
+	// Forget on a never-cached branch is a silent no-op.
+	el.Forget("never-seen")
+	if el.CacheLen() != 0 {
+		t.Fatalf("want cache=0 after no-op Forget, got %d", el.CacheLen())
 	}
 }
 
