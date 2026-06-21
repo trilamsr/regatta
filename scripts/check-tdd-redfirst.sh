@@ -49,7 +49,7 @@ if [ -z "$base" ]; then
   exit 0
 fi
 
-if [ -n "${BODY:-}" ] && printf '%s' "$BODY" | grep -qE '<!--[[:space:]]*tdd-single-commit-justified:[[:space:]]*[^[:space:]-][^-]{3,}-->'; then
+if [ -n "${BODY:-}" ] && printf '%s' "$BODY" | grep -qE '<!--[[:space:]]*tdd-single-commit-justified:[[:space:]]*[^[:space:]-].{3,}-->'; then
   echo "check-tdd-redfirst: tdd-single-commit-justified escape present; skipping"
   exit 0
 fi

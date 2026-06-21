@@ -70,6 +70,16 @@ type PRLister interface {
 	ListOpenByHead(ctx context.Context, branch, titlePrefix string) ([]PullRequest, error)
 }
 
+// PRListerForgetter is the optional eviction hook implemented by the
+// ETagLister (MAY-52). Sweep calls Forget on every branch absent from
+// the live `{running, pr_open}` set so the per-branch cache stays
+// bounded by the working set instead of growing across session
+// lifetime. Listers without per-branch state (the gh-CLI lister)
+// don't implement this.
+type PRListerForgetter interface {
+	Forget(branch string)
+}
+
 // GHVersionProbe reports the gh CLI version string ("2.55.0").
 type GHVersionProbe interface {
 	Version(ctx context.Context) (string, error)
@@ -149,6 +159,11 @@ type Watcher struct {
 	// sha re-arms — matches the BUG-1051 acceptance criterion "once per
 	// (agent_id, divergence_sha) tuple".
 	divergedEmitted map[int64]string
+
+	// lastLiveBranches: branches queried in the previous Sweep.
+	// Compared against the current sweep's set to drive per-branch
+	// cache eviction on the lister (MAY-52). nil until first Sweep.
+	lastLiveBranches map[string]struct{}
 }
 
 // New constructs a Watcher. Returns an error when required deps are
@@ -250,10 +265,32 @@ func (w *Watcher) Sweep(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("prwatch: list agents: %w", err)
 	}
+	live := make(map[string]struct{}, len(agents))
 	for _, a := range agents {
+		live[w.branchFn(a.ID)] = struct{}{}
 		w.sweepOne(ctx, a)
 	}
+	w.evictDeadBranches(live)
 	return nil
+}
+
+// evictDeadBranches drops per-branch lister state for branches whose
+// agent is no longer in the live `{running, pr_open}` set. Bounds the
+// ETagLister cache by the working set instead of session lifetime
+// (MAY-52). No-op when the lister doesn't implement PRListerForgetter
+// — the gh-CLI path carries no per-branch state.
+func (w *Watcher) evictDeadBranches(live map[string]struct{}) {
+	forgetter, ok := w.lister.(PRListerForgetter)
+	if !ok {
+		w.lastLiveBranches = live
+		return
+	}
+	for prev := range w.lastLiveBranches {
+		if _, stillLive := live[prev]; !stillLive {
+			forgetter.Forget(prev)
+		}
+	}
+	w.lastLiveBranches = live
 }
 
 // sweepOne reconciles a single agent. Errors are logged + swallowed

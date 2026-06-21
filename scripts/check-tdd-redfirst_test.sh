@@ -219,6 +219,15 @@ run_case single_commit_empty_escape_fails      1 "ONE commit" setup_single_commi
 run_case test_only_passes               0 "out of scope"      setup_test_only
 run_case prod_only_passes               0 "out of scope"      setup_prod_only
 run_case prod_readded_anchors_first_add 0 "test-first"        setup_prod_readded_after_test
+# Hyphen-in-body cases (MAY-273): regex accepts dashes after the first char.
+run_case single_commit_hyphen_in_reason_passes 0 "escape present" setup_single_commit_justified \
+  '<!-- tdd-single-commit-justified: ships fix-with-dash in foo-bar.go -->'
+run_case single_commit_pkg_path_reason_passes  0 "escape present" setup_single_commit_justified \
+  '<!-- tdd-single-commit-justified: html/template stub w/ multi-word reason -->'
+run_case single_commit_leading_dash_fails      1 "ONE commit"     setup_single_commit_no_justify \
+  '<!-- tdd-single-commit-justified: -bad reason -->'
+run_case single_commit_double_dash_fails       1 "ONE commit"     setup_single_commit_no_justify \
+  '<!-- tdd-single-commit-justified: --bad reason -->'
 run_edit_existing_case
 
 echo
