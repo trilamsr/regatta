@@ -30,7 +30,7 @@ if [ "${1:-}" = "--scan-commits" ]; then
       done) || true
   if [ -n "$hits" ]; then
     echo "check-release-notes: Reviewer-recommendation/agent-id token found in commit message(s):" >&2
-    printf '  %s\n' $hits >&2
+    while IFS= read -r sha; do printf '  %s\n' "$sha" >&2; done <<<"$hits"
     echo "  -> that token belongs in the PR BODY (check-reviewer-verdict reads the body only)." >&2
     echo "  -> move it to the PR body before push; bypass with 'git push --no-verify' if intentional." >&2
     exit 1
