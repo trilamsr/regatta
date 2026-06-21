@@ -2,6 +2,7 @@ package lowrisk
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 )
@@ -138,6 +139,24 @@ var errFakeFetch = fakeFetchErr("gh down")
 type fakeFetchErr string
 
 func (f fakeFetchErr) Error() string { return string(f) }
+
+// TestGate_SetAuditSinkRaceSafeUnderConcurrentEligible exercises mid-flight rebinds against parallel Eligible() callers; clean under `go test -race` (MAY-270 reviewer-MED).
+func TestGate_SetAuditSinkRaceSafeUnderConcurrentEligible(t *testing.T) {
+	now := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
+	c := New(Config{LOCCap: 50, HoldWindow: 15 * time.Minute, Clock: fixedClock(now)})
+	g := NewGate(c, func(context.Context, int, string) (PR, error) {
+		return PR{ChangedPaths: []string{"docs/x.md"}, DiffLOC: 1, OpenedAt: now.Add(-time.Hour)}, nil
+	})
+	noop := func(context.Context, AuditDecision) {}
+	var wg sync.WaitGroup
+	const N = 32
+	wg.Add(N * 2)
+	for i := 0; i < N; i++ {
+		go func() { defer wg.Done(); _, _ = g.Eligible(context.Background(), 1, "sha") }()
+		go func() { defer wg.Done(); g.SetAuditSink(noop) }()
+	}
+	wg.Wait()
+}
 
 // TestGate_NoAuditSinkIsByteEquivalent asserts a nil sink keeps the pre-MAY-270 path: Eligible returns the same (verdict, reason) tuple (MAY-270).
 func TestGate_NoAuditSinkIsByteEquivalent(t *testing.T) {

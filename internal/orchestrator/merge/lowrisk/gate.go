@@ -1,6 +1,9 @@
 package lowrisk
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 // PRFetcher resolves the PR value-object the classifier needs from a PR
 // number + head SHA. It is the single coupling point to GitHub; keeping
@@ -38,7 +41,12 @@ const reasonFetchFailed = "fetch_failed"
 type Gate struct {
 	classifier *Classifier
 	fetch      PRFetcher
-	sink       AuditSink
+	// sinkMu guards mid-flight rebinds: OnGatesPass may dispatch Eligible
+	// across multiple agent goroutines while an operator reconfigure path
+	// swaps the sink — without the lock, the `-race` detector flags it and
+	// a torn pointer read is theoretically possible on weak memory models.
+	sinkMu sync.RWMutex
+	sink   AuditSink
 }
 
 // NewGate wires a Gate from a Classifier and a PRFetcher.
@@ -50,7 +58,13 @@ func NewGate(c *Classifier, fetch PRFetcher) *Gate {
 // Eligible() calls invoke sink exactly once with the decision row.
 // Replacing the sink is allowed (callers MAY rebind during reconfigure);
 // passing nil clears emission and restores byte-equivalent behavior.
-func (g *Gate) SetAuditSink(sink AuditSink) { g.sink = sink }
+// Safe to call concurrently with Eligible() — sinkMu serializes the
+// rebind against the in-flight emit().
+func (g *Gate) SetAuditSink(sink AuditSink) {
+	g.sinkMu.Lock()
+	g.sink = sink
+	g.sinkMu.Unlock()
+}
 
 // Eligible fetches the PR then runs the classifier. Fetch failure holds
 // the PR (fail-closed) so a transient GitHub error never widens the
@@ -75,10 +89,13 @@ func (g *Gate) Eligible(ctx context.Context, prNumber int, headSHA string) (bool
 }
 
 func (g *Gate) emit(ctx context.Context, d AuditDecision) {
-	if g.sink == nil {
+	g.sinkMu.RLock()
+	sink := g.sink
+	g.sinkMu.RUnlock()
+	if sink == nil {
 		return
 	}
-	g.sink(ctx, d)
+	sink(ctx, d)
 }
 
 // HoldAll is the conservative-default gate: it HOLDS every PR with
