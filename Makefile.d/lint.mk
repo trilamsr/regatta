@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup check-prose-dup-test stale-todo verify-vendored-assets lint tidy-check mod-verify check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-stale-refs check-stale-refs-test check-tdd-redfirst check-tdd-redfirst-test check-tdd-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test check-release-notes-local-test check-meta-coverage-test next-migration
+.PHONY: doc-check doc-check-test prose-dup check-prose-dup-test stale-todo verify-vendored-assets lint tidy-check mod-verify check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-stale-refs check-stale-refs-test check-tdd-redfirst check-tdd-redfirst-test check-tdd-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test check-release-notes-local-test check-go-shard-coverage check-go-shard-coverage-test check-meta-coverage-test next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, comment-noise, test-godoc length).
 	bash scripts/doc-check.sh
@@ -84,6 +84,12 @@ check-mock-vs-real-test:  ## Fixture-driven test for check-mock-vs-real.sh (clea
 
 check-release-notes-local-test:  ## Fixture-driven test for check-release-notes-local.sh (MAY-100 fence/[CATEGORY] + MAY-73 misplaced Reviewer-recommendation in commit msg).
 	bash scripts/check-release-notes-local_test.sh
+
+check-go-shard-coverage:  ## Fail when union of scripts/go-shards/shard-*.txt != `go list ./...`, or any package appears in 2+ shards. Mechanical drift gate per feedback_byte_equal_pin.
+	bash scripts/check-go-shard-coverage.sh
+
+check-go-shard-coverage-test:  ## Fixture-driven test for check-go-shard-coverage.sh.
+	bash scripts/check-go-shard-coverage_test.sh
 
 check-meta-coverage-test:  ## Assert `make check-meta` enumerates every gate self-test on disk + none leak into `make check` (MAY-30).
 	bash scripts/check-meta-coverage_test.sh

@@ -1,0 +1,52 @@
+# Go packages whose code (PROD or TEST) uses concurrency primitives
+# (sync.{Mutex,RWMutex,Once,WaitGroup,Map,Pool,Cond,Locker}, channels,
+# `go func`, named-goroutine launches, atomic.{Add,Store,Load,Swap,
+# CompareAnd,Bool,Int,Uint,Pointer}). These packages run `go test -short
+# -race`; everything else runs without `-race` to halve test-binary build
+# + run time.
+#
+# Why include _test.go in the scan: even when a package's PROD code is
+# single-threaded by design (e.g. internal/orchestrator/prwatch runs on
+# the orchestrator tick driver, no goroutine of its own), tests routinely
+# fan out goroutines against test fakes — those races must be caught too.
+#
+# Nightly cross-platform-nightly.yml ALSO runs `go test -short -race ./...`
+# across the full tree on ubuntu / macos as a backstop, catching any race
+# in a package whose code hides concurrency from the scan regex.
+#
+# Regenerate via scripts/regen-go-shards.sh (see docs/engineer/pointers.md).
+github.com/trilamsr/regatta/cmd/regatta
+github.com/trilamsr/regatta/internal/alarmwebhook
+github.com/trilamsr/regatta/internal/authz
+github.com/trilamsr/regatta/internal/authz/policies/reload
+github.com/trilamsr/regatta/internal/cost/cap
+github.com/trilamsr/regatta/internal/cost/reconcile
+github.com/trilamsr/regatta/internal/gates/approval
+github.com/trilamsr/regatta/internal/gates/l4
+github.com/trilamsr/regatta/internal/health
+github.com/trilamsr/regatta/internal/history
+github.com/trilamsr/regatta/internal/obs/adversarial
+github.com/trilamsr/regatta/internal/obs/otel
+github.com/trilamsr/regatta/internal/obstest
+github.com/trilamsr/regatta/internal/orchestrator
+github.com/trilamsr/regatta/internal/orchestrator/adapter
+github.com/trilamsr/regatta/internal/orchestrator/adapter/githubissues
+github.com/trilamsr/regatta/internal/orchestrator/adaptersync
+github.com/trilamsr/regatta/internal/orchestrator/checks
+github.com/trilamsr/regatta/internal/orchestrator/lockfile
+github.com/trilamsr/regatta/internal/orchestrator/merge
+github.com/trilamsr/regatta/internal/orchestrator/prwatch
+github.com/trilamsr/regatta/internal/orchestrator/reaper
+github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter
+github.com/trilamsr/regatta/internal/orchestrator/review
+github.com/trilamsr/regatta/internal/orchestrator/scheduler
+github.com/trilamsr/regatta/internal/orchestrator/spawner
+github.com/trilamsr/regatta/internal/orchestrator/state
+github.com/trilamsr/regatta/internal/orchestrator/state/dbtest
+github.com/trilamsr/regatta/internal/orchestrator/state/substrate
+github.com/trilamsr/regatta/internal/program
+github.com/trilamsr/regatta/internal/secrets
+github.com/trilamsr/regatta/internal/testutil/statetest
+github.com/trilamsr/regatta/internal/triggers
+github.com/trilamsr/regatta/internal/watchdog
+github.com/trilamsr/regatta/internal/web
