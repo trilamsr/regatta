@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-phase-x-leak check-phase-x-leak-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-stale-refs check-stale-refs-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test next-migration
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-phase-x-leak check-phase-x-leak-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-stale-refs check-stale-refs-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test check-release-notes-local-test next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, comment-noise, test-godoc length).
 	bash scripts/doc-check.sh
@@ -75,6 +75,9 @@ check-mock-vs-real:  ## WARN-only ratio gate on NEW *_test.go files; >70% mock t
 
 check-mock-vs-real-test:  ## Fixture-driven test for check-mock-vs-real.sh (clean / high-mock / allowlisted / no-test-files).
 	bash scripts/check-mock-vs-real_test.sh
+
+check-release-notes-local-test:  ## Fixture-driven test for check-release-notes-local.sh (MAY-100 fence/[CATEGORY] + MAY-73 misplaced Reviewer-recommendation in commit msg).
+	bash scripts/check-release-notes-local_test.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh
