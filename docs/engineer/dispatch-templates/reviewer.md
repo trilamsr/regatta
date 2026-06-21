@@ -116,6 +116,22 @@ OUTPUT FORMAT
 NO SIGNATURES
 - Per `feedback_no_signatures`.
 
+## Verdict format (MANDATORY)
+
+EVERY review MUST end with exactly ONE of these lines, on its own line, as the LITERAL last line of output:
+
+`APPROVE: cavecrew-reviewer-<slug>`
+
+OR
+
+`REVISE: <count> findings`
+
+Narrative summaries ("looks good", "no issues found") are NOT acceptable substitutes. The operator's main thread programmatically extracts this token via `grep -E '^(APPROVE|REVISE):' <transcript>`. Missing the line forces the operator to read the full transcript manually (50KB+ per reviewer — wasted context, 1-2 extra round trips per review; this session 2026-06-21 hit it twice).
+
+If you cannot decide between APPROVE / REVISE, write `REVISE: 0 findings` and explain in the body above — never silently omit.
+
+When the dispatcher supports schema-output, prefer schema-enforced verdict (`{verdict: {enum: ["APPROVE", "REVISE"]}, agentId: string, findings: array}`). Without schema support, mirror the format manually as the literal last line.
+
 ## Five-lens prompt (mandatory)
 
 Defect-only reviews are forbidden as default — they reliably miss prose redundancy + structural drift that ship into long-lived files (per the 134 LOC of bloat caught only by a separate simplification audit on `.claude/skills/regatta-operator/SKILL.md` round 7+1). Every reviewer dispatch includes all five lenses unless explicitly opted out for a code-only diff (still keep lenses 1+2+4).

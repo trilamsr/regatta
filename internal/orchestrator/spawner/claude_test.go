@@ -225,6 +225,7 @@ func TestDefaultPromptBuilderInjectsItemBodyAndDisciplineAnchors(t *testing.T) {
 		"feedback_validate_before_ship",
 		"feedback_subagent_output_verify",
 		"feedback_honest_tdd_claims",
+		"feedback_stop_at_pr_ready",
 		"per-criterion citation gate",
 	} {
 		if !contains(prompt, slug) {

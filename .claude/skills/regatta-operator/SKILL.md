@@ -500,6 +500,8 @@ done
 
 Every reviewer subagent the skill dispatches uses the five-lens prompt at `docs/engineer/dispatch-templates/reviewer.md` (defects + simplification + refactor + comments + organization). Defect-only reviews are forbidden as default — they missed 134 LOC of redundancy on this skill's own development. Template is authoritative; this skill defers.
 
+Verdict MUST be the literal last line: `APPROVE: cavecrew-reviewer-<slug>` OR `REVISE: <count> findings`. Operator extracts via `grep -E '^(APPROVE|REVISE):'` — narrative-only verdicts force manual transcript reads (50KB+ per reviewer). Prefer schema-enforced output (`{verdict: enum, agentId: string, findings: array}`) when the dispatch surface supports it.
+
 ## Hand-off
 
 When ending a session (operator interrupt or natural stop): produce ONE summary block with:
