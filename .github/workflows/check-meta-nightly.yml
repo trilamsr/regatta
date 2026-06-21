@@ -1,11 +1,13 @@
-# check-meta runs the GATE SELF-TESTS (fixtures that prove scripts/check-*.sh
-# work). These are META — they test the gate scripts themselves, not the
-# code-under-review — so running them on every PR wastes ~14s of pre-push
-# budget. Demoted from `make check` to nightly + path-filter trigger in MAY-30.
+# check-meta runs the GATE + GENERATOR SELF-TESTS (fixtures that prove
+# scripts/check-*.sh, scripts/doc-check.sh, scripts/gen-*.sh work). These are
+# META — they test the scripts themselves, not the code-under-review — so
+# running them on every PR wastes ~14s of pre-push budget. Demoted from
+# `make check` to nightly + path-filter trigger in MAY-30.
 #
 # Triggers:
 #   - schedule: 06:00 UTC daily (catches drift between PRs)
-#   - push:     only when the diff touches a gate script or its self-test
+#   - push:     only when the diff touches a gate/generator script, its
+#               self-test, or the wiring Makefile.d/*.mk file
 #               (path-filter ensures gate edits still get exercised pre-merge)
 #   - workflow_dispatch: manual rerun
 name: check-meta
@@ -20,8 +22,12 @@ on:
       - 'scripts/check_state_tier_order_test.sh'
       - 'scripts/doc-check.sh'
       - 'scripts/doc-check_test.sh'
+      - 'scripts/gen-*.sh'
+      - 'scripts/gen-*_test.sh'
       - 'Makefile.d/ci.mk'
       - 'Makefile.d/lint.mk'
+      - 'Makefile.d/specs.mk'
+      - 'Makefile.d/boot-status.mk'
       - '.github/workflows/check-meta-nightly.yml'
   pull_request:
     paths:
@@ -30,8 +36,12 @@ on:
       - 'scripts/check_state_tier_order_test.sh'
       - 'scripts/doc-check.sh'
       - 'scripts/doc-check_test.sh'
+      - 'scripts/gen-*.sh'
+      - 'scripts/gen-*_test.sh'
       - 'Makefile.d/ci.mk'
       - 'Makefile.d/lint.mk'
+      - 'Makefile.d/specs.mk'
+      - 'Makefile.d/boot-status.mk'
       - '.github/workflows/check-meta-nightly.yml'
   workflow_dispatch:
 
@@ -44,7 +54,7 @@ permissions:
 
 jobs:
   check-meta:
-    name: gate-self-tests
+    name: gate-and-generator-self-tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -55,5 +65,5 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: run gate self-tests
+      - name: run gate + generator self-tests
         run: make check-meta

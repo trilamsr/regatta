@@ -7,11 +7,12 @@
 help:  ## Show this help.
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-# `check` runs the GATES against the codebase. Edit code? `make check`.
-# `check-meta` runs the GATE SELF-TESTS (fixtures that prove scripts/check-*.sh
-# works) — wasted cycles on every pre-push. Demoted to nightly + path-filter
-# in MAY-30 (.github/workflows/check-meta-nightly.yml). Edit a gate?
-# `make check-meta` validates the gate logic.
+# `check` runs the GATES + GENERATORS against the codebase. Edit code? `make check`.
+# `check-meta` runs the SELF-TESTS (fixtures that prove the gate / generator
+# scripts work) — wasted cycles on every pre-push because the fixtures don't
+# depend on the PR diff. Demoted to nightly + path-filter in MAY-30
+# (.github/workflows/check-meta-nightly.yml). Edit a gate or generator?
+# `make check-meta` validates the gate/generator logic.
 check: doc-check prose-dup check-no-bare-sleep check-state-tier-order check-prompt-parity check-stale-refs check-no-repo-specific-slugs check-migration-numbers check-spec-sections check-doc-links lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test  ## Local gate; <60s. `vet` dropped — golangci-lint enables govet (.golangci.yml).
 
 # CI parallelization shards. Together cover the same gate set as `make check`
@@ -21,10 +22,14 @@ check: doc-check prose-dup check-no-bare-sleep check-state-tier-order check-prom
 # duplicating the target list per shard.
 check-docs: doc-check prose-dup check-no-bare-sleep check-state-tier-order check-prompt-parity check-stale-refs check-migration-numbers check-spec-sections  ## CI shard: bash-script doc/citation gates. Fast (~30s).
 
-# MAY-30: gate self-tests (fixtures for scripts/check-*.sh). Run nightly in
+# MAY-30: gate + generator self-tests (fixtures for scripts/check-*.sh,
+# scripts/doc-check.sh, scripts/gen-*.sh). Run nightly in
 # .github/workflows/check-meta-nightly.yml; also fires on push when the diff
-# touches scripts/check-*.sh / scripts/check-*_test.sh / Makefile.d/ci.mk.
-check-meta: doc-check-test specs-index-test check-no-bare-sleep-test check-state-tier-order-test check-prompt-parity-test check-reviewer-verdict-test check-release-notes-local-test check-stale-refs-test check-tdd-redfirst-test check-migration-numbers-test check-spec-sections-test check-doc-links-test check-byte-equal-pin-test check-mock-vs-real-test check-prose-dup-test check-tdd-test check-meta-coverage-test  ## Nightly: gate self-tests (fixtures that prove scripts/check-*.sh works). Edit a gate? Run this locally before push.
+# touches a gate / generator script, its self-test, or a wiring Makefile.
+# 18 targets total: 14 scripts/check-*_test.sh fixtures + doc-check-test
+# + specs-index-test (gen-specs-readme) + gen-boot-status-test
+# + check-meta-coverage-test (drift watchdog asserting this list stays complete).
+check-meta: doc-check-test specs-index-test gen-boot-status-test check-no-bare-sleep-test check-state-tier-order-test check-prompt-parity-test check-reviewer-verdict-test check-release-notes-local-test check-stale-refs-test check-tdd-redfirst-test check-migration-numbers-test check-spec-sections-test check-doc-links-test check-byte-equal-pin-test check-mock-vs-real-test check-prose-dup-test check-tdd-test check-meta-coverage-test  ## Nightly: gate + generator self-tests. Edit a gate or generator? Run this locally before push.
 
 check-go: tidy-check mod-verify verify-vendored-assets go-check  ## CI shard: Go module + race-test sweep. `lint` runs in its own job. Slow (~3-5min, setup-go cached).
 

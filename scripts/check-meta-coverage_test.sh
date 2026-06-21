@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # check-meta-coverage_test.sh - assert `make check-meta` enumerates every
-# gate self-test script on disk and that none of them remain in `make check`
-# / `make check-docs` (MAY-30: gate self-tests are META, run nightly).
+# META self-test script on disk and that none of them remain in `make check`
+# / `make check-docs` (MAY-30: gate + generator self-tests are META, run nightly).
+#
+# META scope = fixtures that prove a gate/generator script works; they do
+# NOT depend on the PR diff. Four name conventions on disk:
+#   scripts/check-<name>_test.sh           (gate self-tests, dash form)
+#   scripts/check_state_tier_order_test.sh (gate self-test, underscore form)
+#   scripts/doc-check_test.sh              (gate self-test, not a `check-` script)
+#   scripts/gen-<name>_test.sh             (generator self-tests)
 #
 # Cases:
-#   A. every scripts/check-*_test.sh + scripts/check_state_tier_order_test.sh
-#      is reachable via `make -n check-meta` (as a `bash scripts/...` invocation)
+#   A. every META self-test on disk is reachable via `make -n check-meta`
 #   B. NONE of those scripts is reachable via `make -n check`
 #   C. NONE of those scripts is reachable via `make -n check-docs`
 #   D. `make -n check-meta` succeeds (target exists)
@@ -20,17 +26,23 @@ passes=0
 fails=0
 failed_names=()
 
-# Enumerate every gate self-test script on disk. Two naming conventions:
-#   scripts/check-<name>_test.sh   (dash form, 13 files)
-#   scripts/check_state_tier_order_test.sh  (underscore form, 1 file)
-# Portable across macOS bash 3.2 (no mapfile).
+# Enumerate every META self-test on disk. Portable across macOS bash 3.2
+# (no mapfile). All four naming conventions glob-merged + de-duped.
 META_SCRIPTS=()
 while IFS= read -r line; do
   META_SCRIPTS+=("$line")
-done < <(ls scripts/check-*_test.sh scripts/check_state_tier_order_test.sh 2>/dev/null | sort -u)
+done < <(ls \
+  scripts/check-*_test.sh \
+  scripts/check_state_tier_order_test.sh \
+  scripts/doc-check_test.sh \
+  scripts/gen-*_test.sh \
+  2>/dev/null | sort -u)
 
-if [ "${#META_SCRIPTS[@]}" -lt 14 ]; then
-  echo "FAIL setup: expected >=14 gate self-test scripts on disk, found ${#META_SCRIPTS[@]}"
+# 13 dash-form + 1 underscore-form + doc-check + 2 generators = 17 floor.
+# Raise the floor when new META scripts land; mismatch = drift.
+if [ "${#META_SCRIPTS[@]}" -lt 17 ]; then
+  echo "FAIL setup: expected >=17 META self-test scripts on disk, found ${#META_SCRIPTS[@]}"
+  printf '  - %s\n' "${META_SCRIPTS[@]}"
   exit 1
 fi
 
