@@ -477,11 +477,6 @@ run_case cross_pkg_comment_bypass_rejected      1 "without a matching" case_cros
 run_case cross_pkg_real_symbol_usage_passes     0 "every production"   case_cross_pkg_symbol_in_real_call_passes
 run_stale_base_case
 
-echo
-
-echo "summary: $pass passed, $failed failed"
-exit $failed
-
 # c1 negative: test mentions the prod
 # symbol ONLY inside a Go string literal with escaped quotes. Pre-fix the
 # strip pattern stopped at the first internal escape, leaving the rest
@@ -508,7 +503,43 @@ case_cross_pkg_symbol_in_call_plus_comment_passes() {
   printf 'package main\n\nfunc Wire() int { return 1 }\n' > cmd/regatta/wire.go
   printf 'package foo\n\nimport (\n  "testing"\n\n  main "github.com/example/main"\n)\n\n// TestWire calls Wire from prod (#1057 reopen audit).\nfunc TestWire(t *testing.T) {\n  if main.Wire() != 1 {\n    t.Fatal("want 1")\n  }\n}\n' > internal/foo/foo_test.go
 }
+
+# c1 negative (BUG-1058 / MAY-99): symbol appears ONLY inside a single-line
+# block comment. The pre-fix per-line awk strip never removed block
+# comments, so the symbol leaked to grep -qw and the bypass passed.
+# A real token-level scan must classify it as a comment, not an IDENT.
+case_cross_pkg_symbol_in_block_comment_only_fails() {
+  mkdir -p cmd/regatta internal/foo
+  printf 'package main\n\nfunc Wire() int { return 1 }\n' > cmd/regatta/wire.go
+  printf 'package foo\n\nimport "testing"\n\nfunc TestNothing(t *testing.T) {\n  /* Wire is only mentioned in this block comment */\n  _ = 1\n}\n' > internal/foo/foo_test.go
+}
+
+# c1 negative (BUG-1058 / MAY-99): symbol appears ONLY inside a
+# multi-line block comment. The per-line strip cannot span lines at all;
+# the scanner must treat the whole /* ... */ span as one comment token.
+case_cross_pkg_symbol_in_multiline_block_comment_only_fails() {
+  mkdir -p cmd/regatta internal/foo
+  printf 'package main\n\nfunc Wire() int { return 1 }\n' > cmd/regatta/wire.go
+  printf 'package foo\n\nimport "testing"\n\nfunc TestNothing(t *testing.T) {\n  /*\n    Wire\n    lives here only\n  */\n  _ = 1\n}\n' > internal/foo/foo_test.go
+}
+
+# c1 positive: test USES the symbol in a real call AND also mentions it
+# in a block comment. The token-level scan must keep this case green.
+case_cross_pkg_symbol_in_call_plus_block_comment_passes() {
+  mkdir -p cmd/regatta internal/foo
+  printf 'package main\n\nfunc Wire() int { return 1 }\n' > cmd/regatta/wire.go
+  printf 'package foo\n\nimport (\n  "testing"\n\n  main "github.com/example/main"\n)\n\nfunc TestWire(t *testing.T) {\n  /* exercises Wire end to end */\n  if main.Wire() != 1 {\n    t.Fatal("want 1")\n  }\n}\n' > internal/foo/foo_test.go
+}
+
 run_case cross_pkg_escaped_string_bypass_rejected 1 "without a matching" case_cross_pkg_symbol_in_escaped_string_only_fails
 run_case cross_pkg_raw_string_bypass_rejected     1 "without a matching" case_cross_pkg_symbol_in_raw_string_only_fails
 run_case cross_pkg_call_plus_comment_passes       0 "every production"   case_cross_pkg_symbol_in_call_plus_comment_passes
+run_case cross_pkg_block_comment_bypass_rejected  1 "without a matching" case_cross_pkg_symbol_in_block_comment_only_fails
+run_case cross_pkg_multiline_block_comment_bypass_rejected 1 "without a matching" case_cross_pkg_symbol_in_multiline_block_comment_only_fails
+run_case cross_pkg_call_plus_block_comment_passes 0 "every production"   case_cross_pkg_symbol_in_call_plus_block_comment_passes
+
+echo
+
+echo "summary: $pass passed, $failed failed"
+exit $failed
 

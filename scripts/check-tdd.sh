@@ -40,6 +40,13 @@
 
 set -euo pipefail
 
+# Resolve this script's own directory so the cross-package symbol-match
+# can invoke the grep-go-ident helper from regatta's module tree even
+# while git operations run against an unrelated checked-out repo (the
+# black-box test harness builds throwaway repos with a different module).
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ident_helper_dir="$script_dir/../tools/grep-go-ident"
+
 head="${HEAD_SHA:-HEAD}"
 base=""
 if git rev-parse --verify origin/main >/dev/null 2>&1; then
@@ -229,31 +236,19 @@ while IFS= read -r pf; do
         ' \
       | sort -u)
     if [ -n "$symbols" ]; then
+      # A test file satisfies the gate only when one of the prod symbols
+      # appears as a real Go identifier token in it. grep-go-ident scans
+      # via go/scanner, so comments (`//`, `/* ... */` incl. multi-line)
+      # and string/char/raw-string literals are non-IDENT tokens and can
+      # never game the gate. Closes the awk-strip block-comment bypass
+      # (BUG-1058 / #1058, reopen of #1057).
       while IFS= read -r tf; do
         [ -z "$tf" ] && continue
-        # Strip Go string literals (handling escaped quotes), raw-string
-        # backticks, and line comments before symbol search so a test file
-        # that mentions the prod symbol ONLY inside `"..."`, `` `...` ``, or
-        # after `//` cannot game the gate. Block `/* ... */` comments
-        # are NOT stripped; reopen #1057 if a real bypass surfaces (escalate
-        # to a go/scanner helper at that point).
-        tf_stripped=$(git show "$head:$tf" 2>/dev/null | awk '
-          {
-            # 1. Strip line comments first so any // in code drops symbol mentions.
-            sub(/\/\/.*/, "")
-            # 2. Strip double-quoted Go strings, honoring \" escape sequences.
-            gsub(/"([^"\\]|\\.)*"/, "")
-            # 3. Strip raw-string backticks (no escape semantics inside).
-            gsub(/`[^`]*`/, "")
-            print
-          }
-        ')
-        for sym in $symbols; do
-          if printf '%s\n' "$tf_stripped" | grep -qw "$sym"; then
-            found=1
-            break 2
-          fi
-        done
+        if git show "$head:$tf" 2>/dev/null \
+          | (cd "$ident_helper_dir" && go run . $symbols) >/dev/null; then
+          found=1
+          break
+        fi
       done <<< "$test_added"
     fi
   fi
