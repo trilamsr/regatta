@@ -37,8 +37,7 @@ pre-push-check: check  ## Local pre-push gate. Runs `make check` + PR-body relea
 	@# Reviewer subagent + adversarial-review-every-step cover these now;
 	@# hints are operator-glance only — never fail the push.
 	@bash scripts/check-byte-equal-pin_test.sh || echo "pre-push hint: byte-equal-pin test regressed (non-fatal; MAY-31)"
-	@hits=$$(grep -REn '\b(tenant_id|RBAC|Stripe|Sigstore|Rekor|blackboard|Temporal|htmx)\b' docs/engineer/specs/ --include='*.md' | grep -vE '^(.*phase-x/|.*:[[:space:]]*phase:[[:space:]]*x-)' || true); \
-	if [ -n "$$hits" ]; then echo "pre-push hint: Phase-X tokens in active specs (non-fatal; MAY-31; review for self-host filter):"; echo "$$hits" | head -5; fi
+	@bash scripts/check-phase-x-leak.sh || echo "pre-push hint: phase-x-leak detected in active spec (non-fatal; MAY-31; review for self-host filter)"
 
 check-gate-demote-test:  ## Assert MAY-31 demote: byte-equal-pin + phase-x-leak removed from check / check-docs; pre-push-check invokes both as hints.
 	bash scripts/check-gate-demote_test.sh
