@@ -150,5 +150,92 @@ func TestNewHandler_NilRouteRegistrar(t *testing.T) {
 	}
 }
 
+// TestNewHandler_FaviconServedNotFound — /favicon.ico must not 404; browsers
+// request it on every page load (MAY-57). 204 No Content is acceptable.
+func TestNewHandler_FaviconServedNotFound(t *testing.T) {
+	h := newTestHandler(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code == http.StatusNotFound {
+		t.Errorf("/favicon.ico returned 404; want 200 or 204 (got body=%q)", rec.Body.String())
+	}
+}
+
+// TestNewHandler_FaviconSVGServed — the <link rel="icon"> in layout.tmpl points
+// at /ui/static/favicon.svg; the asset must exist on disk so modern browsers
+// (which prefer the link element over /favicon.ico) render the icon.
+func TestNewHandler_FaviconSVGServed(t *testing.T) {
+	h := newTestHandler(t)
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/ui/static/favicon.svg", nil)
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d want 200 (body=%q)", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "<svg") {
+		t.Errorf("favicon.svg missing <svg root; got %q", rec.Body.String())
+	}
+}
+
+// TestLayout_LinksFavicon — the rendered root layout must include the
+// `<link rel="icon">` element so modern browsers do not fall back to
+// /favicon.ico (covers the cleaner code path even though /favicon.ico
+// also serves a 204).
+func TestLayout_LinksFavicon(t *testing.T) {
+	h := newTestHandler(t)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	if !strings.Contains(rec.Body.String(), `rel="icon"`) {
+		t.Errorf("layout missing <link rel=\"icon\"> element; got %q", rec.Body.String())
+	}
+}
+
+// TestTemplates_NoInlineStyleAttrs scans the embedded templates for
+// `style="..."` attribute occurrences; every hit re-opens the CSP relaxation
+// chase (MAY-57). Production code must move per-element styling to dashboard.css
+// classes; sha256 hashes only match `<style>` elements, not attributes.
+func TestTemplates_NoInlineStyleAttrs(t *testing.T) {
+	entries, err := assetsFS.ReadDir("templates")
+	if err != nil {
+		t.Fatalf("read templates dir: %v", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		b, err := assetsFS.ReadFile("templates/" + e.Name())
+		if err != nil {
+			t.Fatalf("read %s: %v", e.Name(), err)
+		}
+		if strings.Contains(string(b), `style="`) {
+			t.Errorf("templates/%s: inline style=\"...\" attribute violates CSP style-src; promote to dashboard.css class", e.Name())
+		}
+	}
+}
+
+// TestTemplates_NoHxOnHandlers asserts no `hx-on:*` attributes remain in
+// templates; htmx parses them via `new Function()`, which the page CSP +
+// allowEval=false config blocks with `htmx:evalDisallowedError` (MAY-57).
+// Substitute event handlers wired via dashboard JS file.
+func TestTemplates_NoHxOnHandlers(t *testing.T) {
+	entries, err := assetsFS.ReadDir("templates")
+	if err != nil {
+		t.Fatalf("read templates dir: %v", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		b, err := assetsFS.ReadFile("templates/" + e.Name())
+		if err != nil {
+			t.Fatalf("read %s: %v", e.Name(), err)
+		}
+		if strings.Contains(string(b), "hx-on:") {
+			t.Errorf("templates/%s: hx-on:* handler triggers htmx:evalDisallowedError under CSP; wire via dashboard JS", e.Name())
+		}
+	}
+}
+
 // helper to drain bodies during table-driven asserts.
 var _ = io.Discard

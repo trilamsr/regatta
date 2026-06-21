@@ -7,8 +7,12 @@ import (
 	"testing"
 )
 
-// cspExpected pins spec §3.7 byte-for-byte; drift between this literal and the production CSPHeader trips test 3.
-const cspExpected = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+// htmxInlineStyleHash is the sha256 (base64) of the inline `<style>` block htmx
+// 2.0.4 injects at boot (indicatorClass + requestClass rules); CSP `style-src`
+// must allowlist it or every page load logs a violation per `feedback_root_cause`.
+const htmxInlineStyleHash = "'sha256-bsV5JivYxvGywDAZ22EZJKBFip65Ng9xoJVLbBg7bdo='"
+
+const cspExpected = "default-src 'self'; script-src 'self'; style-src 'self' " + htmxInlineStyleHash + "; img-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
 // B-tier #3.
 func TestCSPMiddleware_SetsAllSpecHeadersByteEqual(t *testing.T) {
@@ -39,5 +43,24 @@ func TestCSPMiddleware_SetsAllSpecHeadersByteEqual(t *testing.T) {
 func TestCSPMiddleware_NoThirdPartyOrigins(t *testing.T) {
 	if strings.Contains(CSPHeader, "://") {
 		t.Errorf("CSPHeader contains a URL (third-party origin); got %q", CSPHeader)
+	}
+}
+
+// TestCSPHeader_AllowsHtmxInlineStyleHash asserts the htmx 2.0.4 boot-injected
+// `<style>` hash is allowlisted so the 88-per-page console violations close (MAY-57).
+func TestCSPHeader_AllowsHtmxInlineStyleHash(t *testing.T) {
+	if !strings.Contains(CSPHeader, htmxInlineStyleHash) {
+		t.Errorf("CSPHeader missing htmx inline-style hash %s; got %q", htmxInlineStyleHash, CSPHeader)
+	}
+}
+
+// TestCSPHeader_NoUnsafeInline confirms the relaxation path stays hash-pinned —
+// `'unsafe-inline'` would let any inline style render, defeating the gate.
+func TestCSPHeader_NoUnsafeInline(t *testing.T) {
+	if strings.Contains(CSPHeader, "'unsafe-inline'") {
+		t.Errorf("CSPHeader leaked 'unsafe-inline'; got %q", CSPHeader)
+	}
+	if strings.Contains(CSPHeader, "'unsafe-eval'") {
+		t.Errorf("CSPHeader leaked 'unsafe-eval'; got %q", CSPHeader)
 	}
 }
