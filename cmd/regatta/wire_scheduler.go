@@ -107,7 +107,7 @@ func buildRejectionRouter(db *state.DB, labeler rejectionrouter.PRLabeler, logge
 // SHA-pin guard, so the wiring refuses to fire when gh is too old.
 // The Coordinator's Reconcile path still wires so the recovery sweep
 // stays live.
-func buildMergeWiring(db *state.DB, repoRoot string, autoMergeEnabled bool, logger *slog.Logger) (*merge.Coordinator, *merge.Worker, scheduler.LowRiskGate, error) {
+func buildMergeWiring(db *state.DB, repoRoot string, autoMergeEnabled bool, logger *slog.Logger, hmacKey []byte, hmacKeyID string) (*merge.Coordinator, *merge.Worker, scheduler.LowRiskGate, error) {
 	coord, err := merge.New(merge.Config{
 		DB:     db,
 		Prober: merge.NewGhProber(nil),
@@ -124,7 +124,7 @@ func buildMergeWiring(db *state.DB, repoRoot string, autoMergeEnabled bool, logg
 	}
 	coord.SetExecutor(merge.GhExecutor{})
 	w := merge.NewWorker(coord, 32, logger)
-	return coord, w, buildLowRiskGate(repoRoot, autoMergeEnabled, logger), nil
+	return coord, w, buildLowRiskGate(repoRoot, autoMergeEnabled, logger, db, hmacKey, hmacKeyID), nil
 }
 
 // verifyGhVersionFn is the test seam for the boot-time gh-version

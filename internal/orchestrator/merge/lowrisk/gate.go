@@ -1,11 +1,38 @@
 package lowrisk
 
-import "context"
+import (
+	"context"
+	"sync"
+)
 
 // PRFetcher resolves the PR value-object the classifier needs from a PR
 // number + head SHA. It is the single coupling point to GitHub; keeping
 // it an injected func keeps the classifier pure and testable.
 type PRFetcher func(ctx context.Context, prNumber int, headSHA string) (PR, error)
+
+// AuditDecision is the immutable record one Eligible() call produces.
+// Carries enough operator-debuggable context (which PR, why held, how
+// far from the soak / LOC line) that substrate_events readers can
+// reconstruct the decision without re-fetching from GitHub. Payload
+// shape is the contract substrate's KindMergeLowRiskDecision validator
+// pins (MAY-270).
+type AuditDecision struct {
+	PRNumber         int
+	Eligible         bool
+	Reason           string
+	LOCDelta         int
+	SoakRemainingSec int64
+}
+
+// AuditSink receives one AuditDecision per Eligible() call. The default
+// nil sink keeps the pre-MAY-270 path byte-equivalent — emission is
+// opt-in so a deployment that never enables --auto-merge pays nothing.
+type AuditSink func(ctx context.Context, d AuditDecision)
+
+// reasonFetchFailed names the fail-closed verdict the Gate uses when
+// the injected PRFetcher errors. Shared by the audit-emit path and the
+// return value so the operator-visible token stays a single literal.
+const reasonFetchFailed = "fetch_failed"
 
 // Gate adapts a Classifier to the scheduler's LowRiskGate interface:
 // fetch the PR metadata, then classify. It fails CLOSED — a fetch error
@@ -14,6 +41,12 @@ type PRFetcher func(ctx context.Context, prNumber int, headSHA string) (PR, erro
 type Gate struct {
 	classifier *Classifier
 	fetch      PRFetcher
+	// sinkMu guards mid-flight rebinds: OnGatesPass may dispatch Eligible
+	// across multiple agent goroutines while an operator reconfigure path
+	// swaps the sink — without the lock, the `-race` detector flags it and
+	// a torn pointer read is theoretically possible on weak memory models.
+	sinkMu sync.RWMutex
+	sink   AuditSink
 }
 
 // NewGate wires a Gate from a Classifier and a PRFetcher.
@@ -21,15 +54,48 @@ func NewGate(c *Classifier, fetch PRFetcher) *Gate {
 	return &Gate{classifier: c, fetch: fetch}
 }
 
+// SetAuditSink installs sink as the audit-emission target. Subsequent
+// Eligible() calls invoke sink exactly once with the decision row.
+// Replacing the sink is allowed (callers MAY rebind during reconfigure);
+// passing nil clears emission and restores byte-equivalent behavior.
+// Safe to call concurrently with Eligible() — sinkMu serializes the
+// rebind against the in-flight emit().
+func (g *Gate) SetAuditSink(sink AuditSink) {
+	g.sinkMu.Lock()
+	g.sink = sink
+	g.sinkMu.Unlock()
+}
+
 // Eligible fetches the PR then runs the classifier. Fetch failure holds
 // the PR (fail-closed) so a transient GitHub error never widens the
-// auto-merge surface.
+// auto-merge surface. The audit sink fires on EVERY decision path —
+// hold, pass, fetch-failure — so substrate_events carries the complete
+// classify history regardless of outcome.
 func (g *Gate) Eligible(ctx context.Context, prNumber int, headSHA string) (bool, string) {
 	pr, err := g.fetch(ctx, prNumber, headSHA)
 	if err != nil {
-		return false, "fetch_failed"
+		g.emit(ctx, AuditDecision{PRNumber: prNumber, Eligible: false, Reason: reasonFetchFailed})
+		return false, reasonFetchFailed
 	}
-	return g.classifier.Classify(pr)
+	eligible, reason := g.classifier.Classify(pr)
+	g.emit(ctx, AuditDecision{
+		PRNumber:         prNumber,
+		Eligible:         eligible,
+		Reason:           reason,
+		LOCDelta:         pr.DiffLOC,
+		SoakRemainingSec: g.classifier.soakRemainingSec(pr),
+	})
+	return eligible, reason
+}
+
+func (g *Gate) emit(ctx context.Context, d AuditDecision) {
+	g.sinkMu.RLock()
+	sink := g.sink
+	g.sinkMu.RUnlock()
+	if sink == nil {
+		return
+	}
+	sink(ctx, d)
 }
 
 // HoldAll is the conservative-default gate: it HOLDS every PR with

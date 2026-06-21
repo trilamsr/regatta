@@ -25,7 +25,7 @@ func TestBuildMergeWiring_GhVersionTooOld_RefusesInit(t *testing.T) {
 		return merge.ErrGhVersionUnsupported
 	}
 
-	coord, worker, _, err := buildMergeWiring(db, t.TempDir(), true, slog.Default())
+	coord, worker, _, err := buildMergeWiring(db, t.TempDir(), true, slog.Default(), nil, "")
 	if err == nil {
 		t.Fatalf("buildMergeWiring returned nil err for gh 2.39, want refusal")
 	}
@@ -48,7 +48,7 @@ func TestBuildMergeWiring_AutoMergeDisabled_SkipsVersionCheck(t *testing.T) {
 		return merge.ErrGhVersionUnsupported
 	}
 
-	coord, worker, gate, err := buildMergeWiring(db, t.TempDir(), false, slog.Default())
+	coord, worker, gate, err := buildMergeWiring(db, t.TempDir(), false, slog.Default(), nil, "")
 	if err != nil {
 		t.Fatalf("buildMergeWiring err=%v with auto-merge off; version gate should not fire", err)
 	}
@@ -73,7 +73,7 @@ func TestBuildMergeWiring_GhVersionOk_BuildsWorker(t *testing.T) {
 	t.Cleanup(func() { verifyGhVersionFn = prev })
 	verifyGhVersionFn = func(_ context.Context, _ *slog.Logger) error { return nil }
 
-	coord, worker, gate, err := buildMergeWiring(db, t.TempDir(), true, slog.Default())
+	coord, worker, gate, err := buildMergeWiring(db, t.TempDir(), true, slog.Default(), nil, "")
 	if err != nil {
 		t.Fatalf("buildMergeWiring: %v", err)
 	}

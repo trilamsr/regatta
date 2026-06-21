@@ -243,7 +243,7 @@ func runServe(args []string) int {
 	// Built BEFORE the scheduler so OnGatesPass (#612) picks up
 	// Coordinator+Worker+LowRiskGate from Config. Worker is nil when
 	// --auto-merge=false, keeping OnGatesPass a no-op by default.
-	mergeCoord, mergeWorker, lowRiskGate, err := buildMergeWiring(db, f.RepoRoot, f.AutoMerge, slogger)
+	mergeCoord, mergeWorker, lowRiskGate, err := buildMergeWiring(db, f.RepoRoot, f.AutoMerge, slogger, costKey, costKeyID)
 	if err != nil {
 		logger.Printf("merge wiring: %v", err)
 		return 2

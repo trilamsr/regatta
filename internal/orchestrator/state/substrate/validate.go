@@ -435,6 +435,34 @@ func validateToolCall(raw json.RawMessage) error {
 	return nil
 }
 
+// mergeLowRiskDecisionPayload mirrors the MAY-270 audit-row shape the
+// low-risk gate emits per Eligible() call. PR is the GitHub PR number;
+// Eligible + Reason are the verdict tuple; LOCDelta + SoakRemainingSec
+// carry the secondary-signal context the operator reads when diagnosing
+// a held PR.
+type mergeLowRiskDecisionPayload struct {
+	PR               int    `json:"pr"`
+	Eligible         bool   `json:"eligible"`
+	Reason           string `json:"reason"`
+	LOCDelta         int    `json:"loc_delta"`
+	SoakRemainingSec int64  `json:"soak_remaining_sec"`
+}
+
+func validateMergeLowRiskDecision(raw json.RawMessage) error {
+	if len(raw) == 0 {
+		return fmt.Errorf("%w: merge_low_risk_decision payload empty", ErrInvalidPayload)
+	}
+	var p mergeLowRiskDecisionPayload
+	if err := strictUnmarshal(raw, &p); err != nil {
+		return fmt.Errorf("%w: merge_low_risk_decision: %w", ErrInvalidPayload, err)
+	}
+	if p.PR <= 0 || p.Reason == "" {
+		return fmt.Errorf("%w: merge_low_risk_decision missing pr|reason",
+			ErrInvalidPayload)
+	}
+	return nil
+}
+
 func init() {
 	RegisterPayloadValidator(KindNodeOutput, validateNodeOutput)
 	RegisterPayloadValidator(KindFact, validateFact)
@@ -449,5 +477,6 @@ func init() {
 	RegisterPayloadValidator(KindCostCapThrottled, validateCostCapThrottled)
 	RegisterPayloadValidator(KindCostCapResumed, validateCostCapResumed)
 	RegisterPayloadValidator(KindToolCall, validateToolCall)
+	RegisterPayloadValidator(KindMergeLowRiskDecision, validateMergeLowRiskDecision)
 	// KindGateVerdict: registered by T-S2 in gate_verdict_payload.go init().
 }
