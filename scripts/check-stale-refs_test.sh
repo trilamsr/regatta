@@ -76,6 +76,14 @@ run_case "stale-refs-justified bypasses" "old-gate.sh" "Mentions old-gate.sh his
 # Case 4: no deletions in PR → pass.
 run_case "no deletions passes" "" "" "" 0
 
+# Case 7 (MAY-269): whitespace-only escape must NOT bypass — gate fails.
+run_case "whitespace-only justified rejected" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
+  $'## Summary\n<!-- stale-refs-justified:     -->\n```release-notes\n[CHORE] x\n```' 1
+
+# Case 8 (MAY-269): empty justification must NOT bypass — gate fails.
+run_case "empty justified rejected" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
+  $'## Summary\n<!-- stale-refs-justified: -->\n```release-notes\n[CHORE] x\n```' 1
+
 # Like run_case but also seeds a tracked file that SURVIVES into head, plus a
 # reference file citing that surviving file's name. Exercises the stem-match
 # branch: deleting a suffixed variant (kept_file + suffix) must not flag the
