@@ -8,6 +8,7 @@ import (
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
 	"github.com/trilamsr/regatta/internal/orchestrator/merge/lowrisk"
 	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
 // loadMarkdownCatalogRoot reads regatta.yaml at repoRoot and returns
@@ -73,7 +74,7 @@ func loadDestructiveOpLists(repoRoot string) (deny, allow []string) {
 // An unparseable hold_window also falls back to HoldAll (fail-closed) and
 // logs a WARN so the operator learns their config was rejected rather than
 // silently reverting to "hold everything".
-func buildLowRiskGate(repoRoot string, autoMergeEnabled bool, logger *slog.Logger) scheduler.LowRiskGate {
+func buildLowRiskGate(repoRoot string, autoMergeEnabled bool, logger *slog.Logger, db *state.DB, hmacKey []byte, hmacKeyID string) scheduler.LowRiskGate {
 	if !autoMergeEnabled {
 		return nil
 	}
@@ -97,5 +98,9 @@ func buildLowRiskGate(repoRoot string, autoMergeEnabled bool, logger *slog.Logge
 		locCap = 50
 	}
 	c := lowrisk.New(lowrisk.Config{LOCCap: locCap, HoldWindow: hold})
-	return lowrisk.NewGate(c, lowrisk.NewGhFetcher())
+	g := lowrisk.NewGate(c, lowrisk.NewGhFetcher())
+	if sink := newLowRiskAuditSink(db, hmacKey, hmacKeyID, logger); sink != nil {
+		g.SetAuditSink(sink)
+	}
+	return g
 }

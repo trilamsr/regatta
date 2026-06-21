@@ -65,6 +65,12 @@ const (
 	// observed_effect}. Surprise detector folds these against the run's
 	// declared envelope (spec §3.2 + §3.7).
 	KindToolCall EventKind = "tool_call"
+	// KindMergeLowRiskDecision — one row per low-risk auto-merge
+	// classify decision (MAY-270). Carries {pr, eligible, reason,
+	// loc_delta, soak_remaining_sec} so the substrate audit trail
+	// reconstructs the gate's verdict without re-fetching from GitHub.
+	// Append; emitted on hold, pass, AND fetch-failure paths.
+	KindMergeLowRiskDecision EventKind = "merge_low_risk_decision"
 )
 
 // AllKinds returns the canonical kind list in declaration order —
@@ -77,6 +83,7 @@ func AllKinds() []EventKind {
 		KindManualMerge, KindOperatorIntervention,
 		KindCostCapThrottled, KindCostCapResumed,
 		KindToolCall,
+		KindMergeLowRiskDecision,
 	}
 }
 

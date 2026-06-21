@@ -22,7 +22,8 @@ func defaultReducer(kind EventKind) ReducerStrategy {
 	case KindApprovalEvent, KindTokenSpend, KindGateVerdict,
 		KindBriefRejected, KindPRStageTransition,
 		KindManualMerge, KindOperatorIntervention,
-		KindCostCapThrottled, KindCostCapResumed:
+		KindCostCapThrottled, KindCostCapResumed,
+		KindMergeLowRiskDecision:
 		return StrategyAppend
 	default:
 		return StrategyAppend

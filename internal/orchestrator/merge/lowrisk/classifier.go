@@ -96,6 +96,17 @@ func (c *Classifier) Classify(pr PR) (bool, string) {
 	return true, ReasonEligible
 }
 
+// soakRemainingSec reports how many seconds remain on the stateless
+// soak — 0 when already satisfied. Lifts the soak math out of Classify
+// so the audit projection can surface it without recomputing.
+func (c *Classifier) soakRemainingSec(pr PR) int64 {
+	rem := c.cfg.HoldWindow - c.cfg.Clock().Sub(pr.OpenedAt)
+	if rem <= 0 {
+		return 0
+	}
+	return int64(rem.Seconds())
+}
+
 func (c *Classifier) isLoadBearing(path string) bool {
 	clean := strings.TrimPrefix(filepath.ToSlash(path), "./")
 	for _, m := range c.matchers {
