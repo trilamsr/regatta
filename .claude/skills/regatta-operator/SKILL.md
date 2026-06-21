@@ -309,7 +309,15 @@ Misclassifying a finding wastes a fix — a prompt-drift bug shipped as a `[CORE
 
 ## Observation channels
 
-Cheap-first (PR sweep before logs before DB). Silence on a channel that should be chatty is itself a finding.
+Single-command primary (MAY-47): `regatta status --json | jq` folds orchestrator liveness, agent state breakdown, last spawn/exit/merge timestamps, and a `traffic_light` enum (`green`/`yellow`/`red`) into one envelope. Cheap-first fallbacks below remain the degraded path when the primary command is unavailable (older binary, OR when neither the orchestrator socket nor `--db` is reachable from the operator host).
+
+```
+regatta status --json --db "$DB" | jq '{light: .traffic_light, agents: .agents, last_merge: .events.last_merge_at}'
+```
+
+`.traffic_light == "red"` short-circuits sweep; otherwise inspect `.events.last_*_at` staleness before falling through to the channel-level fallbacks. `--db <path>` enables the direct sqlite read when the orchestrator socket is wedged.
+
+Fallbacks (silence on a channel that should be chatty is itself a finding):
 
 | Channel | Command shape (uses pre-flight values) | What it tells you |
 |---|---|---|
