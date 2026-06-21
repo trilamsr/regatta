@@ -198,6 +198,14 @@ import "list"
 
 #Safety: {
 	destructive_ops_deny:    *[] | [...string]
+	// agent_destructive_ops_allow re-permits a denied op when it ALSO
+	// substring-matches an entry here, scoped to self-managed refs each
+	// agent owns (regatta/agent-* branches) so force-with-lease on an
+	// agent's own branch stops stalling mid-run (MAY-97). Default permits
+	// force-with-lease on agent-owned branches out of the box. The resolved
+	// lists bind at runtime by injection into the agent brief
+	// (defaultPromptBuilder, AGENT_BRIEF rule #5); MAY-258.
+	agent_destructive_ops_allow: *["git push --force-with-lease origin regatta/agent-"] | [...string]
 	agent_creds_scope:       *"dev_only" | "test" | "scoped"
 	iteration_cap:           *50 | int & >=1 & <=500
 	spend_cap_usd:           *50 | int & >=0

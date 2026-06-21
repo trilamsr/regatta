@@ -41,6 +41,10 @@ type Request struct {
 
 	// RepoRoot is the absolute repo checkout the agent operates against; empty in isolated prompt-shaping unit tests.
 	RepoRoot string
+
+	// DestructiveOpsDeny + AgentDestructiveOpsAllow are the operator's resolved safety.* lists, rendered into the brief so the agent sees the concrete deny/allow decision at dispatch rather than the abstract AGENT_BRIEF rule #5 (MAY-97, MAY-258). Empty ⇒ no policy section.
+	DestructiveOpsDeny       []string
+	AgentDestructiveOpsAllow []string
 }
 
 // Result reports spawned process identifiers the orchestrator records

@@ -11,7 +11,15 @@
     "acceptance_section": "## Acceptance criteria",
     "default_lane": "self-host"
   },
-  "safety": {},
+  "safety": {
+    "destructive_ops_deny": [
+      "rm -rf /",
+      "git push --force"
+    ],
+    "agent_destructive_ops_allow": [
+      "git push --force-with-lease origin regatta/agent-"
+    ]
+  },
   "scheduler": {
     "parallel_cap": 5
   }

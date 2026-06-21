@@ -329,6 +329,7 @@ func defaultPromptBuilder(req Request) string {
 	b.WriteString("## Branch name (orchestrator-pinned)\n\n")
 	fmt.Fprintf(&b, "Push as `regatta/agent-%d`.\n", req.AgentID)
 	b.WriteString("- Keep orchestrator-assigned branch; never `git checkout -b`. Per CLAUDE.md feedback_keep_orchestrator_branch_name.\n\n")
+	writeDestructiveOpPolicy(&b, req)
 	b.WriteString("## PR shape contract\n\n")
 	b.WriteString("Open ONE PR for this work_item. Title format: `<type>: <short>`. ")
 	b.WriteString("Body sections: Summary / Root cause / Test plan / release-notes fence. ")
@@ -349,6 +350,25 @@ func defaultPromptBuilder(req Request) string {
 	}
 	b.WriteString("Begin now. Do not summarize the brief back.\n")
 	return b.String()
+}
+
+// writeDestructiveOpPolicy renders the operator's resolved deny + allow lists into the brief so the agent's force-with-lease on its own branch binds at dispatch instead of stalling on the abstract AGENT_BRIEF rule #5; empty lists render nothing (MAY-97, MAY-258).
+func writeDestructiveOpPolicy(b *strings.Builder, req Request) {
+	if len(req.DestructiveOpsDeny) == 0 && len(req.AgentDestructiveOpsAllow) == 0 {
+		return
+	}
+	b.WriteString("## Destructive-op policy (resolved from `safety.*`)\n\n")
+	b.WriteString("A shell op whose text contains a DENY substring is blocked UNLESS it also contains an ALLOW substring; ALLOW re-permits the agent's own refs only.\n\n")
+	b.WriteString("DENY (blocked):\n")
+	for _, d := range req.DestructiveOpsDeny {
+		fmt.Fprintf(b, "- `%s`\n", d)
+	}
+	b.WriteString("ALLOW (re-permits a denied op):\n")
+	for _, a := range req.AgentDestructiveOpsAllow {
+		fmt.Fprintf(b, "- `%s`\n", a)
+	}
+	fmt.Fprintf(b, "\nPERMITTED for you: `git push --force-with-lease origin regatta/agent-%d` (your own branch).\n", req.AgentID)
+	b.WriteString("DENIED: `git push --force origin main` (not your branch — no ALLOW match).\n\n")
 }
 
 // enrichmentDisabled reads the REGATTA_PROMPT_ENRICHMENT env override so the

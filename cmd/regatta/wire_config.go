@@ -42,3 +42,17 @@ func loadSchedulerParallelCap(repoRoot string) int {
 	}
 	return cfg.SchedulerParallelCap()
 }
+
+// loadDestructiveOpLists reads regatta.yaml at repoRoot and returns the
+// resolved safety deny + allow lists threaded into the agent brief so
+// force-with-lease on an agent's own branch binds at dispatch (MAY-97,
+// MAY-258). Missing / malformed yaml returns nils — the brief omits the
+// policy section; read-only-best-effort per the siblings above.
+func loadDestructiveOpLists(repoRoot string) (deny, allow []string) {
+	cfgPath := filepath.Join(repoRoot, "regatta.yaml")
+	cfg, err := validateconfig.LoadConfigFile(cfgPath)
+	if err != nil {
+		return nil, nil
+	}
+	return cfg.DestructiveOpLists()
+}

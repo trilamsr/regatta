@@ -122,6 +122,9 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 			RunID:      fmt.Sprintf("agent-%d", a.ID),
 			ItemBody:   itemBody,
 			RepoRoot:   o.cfg.RepoRoot,
+
+			DestructiveOpsDeny:       o.cfg.DestructiveOpsDeny,
+			AgentDestructiveOpsAllow: o.cfg.AgentDestructiveOpsAllow,
 		})
 		if err != nil {
 			o.rollbackReservation(ctx, a)
