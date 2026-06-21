@@ -85,8 +85,12 @@ func VerifyGhVersion(ctx context.Context, probe GhVersionProbe, logger *slog.Log
 type defaultGhVersionProbe struct{}
 
 // Version executes gh --version and returns the trimmed first line.
+// Per-call WithTimeout (defaultGhVersionTimeout) caps wall-clock so a
+// hung gh cannot wedge VerifyGhVersion at boot (MAY-50).
 func (defaultGhVersionProbe) Version(ctx context.Context) (string, error) {
-	cmd := exec.CommandContext(ctx, ghVersionBinary, ghVersionArg) //nolint:gosec // G204: literal binary, no operator input
+	tctx, cancel := context.WithTimeout(ctx, defaultGhVersionTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(tctx, ghVersionBinary, ghVersionArg) //nolint:gosec // G204: literal binary, no operator input
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {

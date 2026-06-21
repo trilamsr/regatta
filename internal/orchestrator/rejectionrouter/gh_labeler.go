@@ -146,7 +146,9 @@ func (g GHLabeler) resolvePRViaGH(ctx context.Context, branch string) (int, erro
 	if ghHangArgs != nil {
 		args = ghHangArgs
 	}
-	cmd := exec.CommandContext(ctx, ghLabelerBinary, args...) //nolint:gosec // G204: literal binary; branch is derived from BranchFn(agentID)
+	tctx, cancel := context.WithTimeout(ctx, defaultGHLabelerTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(tctx, ghLabelerBinary, args...) //nolint:gosec // G204: literal binary; branch is derived from BranchFn(agentID)
 	out, err := cmd.Output()
 	if err != nil {
 		stderr := ""
@@ -172,7 +174,9 @@ func (g GHLabeler) editPRViaGH(ctx context.Context, prNum int, label string) err
 	if ghHangArgs != nil {
 		args = ghHangArgs
 	}
-	cmd := exec.CommandContext(ctx, ghLabelerBinary, args...) //nolint:gosec // G204: literal binary; prNum is an int, label comes from typed config
+	tctx, cancel := context.WithTimeout(ctx, defaultGHLabelerTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(tctx, ghLabelerBinary, args...) //nolint:gosec // G204: literal binary; prNum is an int, label comes from typed config
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%w (%s)", err, strings.TrimSpace(string(out)))

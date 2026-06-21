@@ -8,7 +8,8 @@ import (
 
 // TestDefaultGhVersionProbe_TimesOutWhenGHHangs asserts per-call timeout fires when gh hangs (MAY-50).
 func TestDefaultGhVersionProbe_TimesOutWhenGHHangs(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel: mutates package-level ghVersionBinary +
+	// ghVersionArg + defaultGhVersionTimeout.
 	prevTimeout := defaultGhVersionTimeout
 	defaultGhVersionTimeout = 200 * time.Millisecond
 	prevBin := ghVersionBinary

@@ -8,7 +8,8 @@ import (
 
 // TestResolvePRViaGH_TimesOutWhenGHHangs asserts per-call timeout fires on hung gh (MAY-50).
 func TestResolvePRViaGH_TimesOutWhenGHHangs(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel: tests mutate package-level ghLabelerBinary +
+	// ghHangArgs + defaultGHLabelerTimeout; parallelism would race.
 	prevTimeout := defaultGHLabelerTimeout
 	defaultGHLabelerTimeout = 200 * time.Millisecond
 	prevBin := ghLabelerBinary
@@ -36,7 +37,8 @@ func TestResolvePRViaGH_TimesOutWhenGHHangs(t *testing.T) {
 
 // TestEditPRViaGH_TimesOutWhenGHHangs asserts per-call timeout fires on hung gh (MAY-50).
 func TestEditPRViaGH_TimesOutWhenGHHangs(t *testing.T) {
-	t.Parallel()
+	// No t.Parallel: tests mutate package-level ghLabelerBinary +
+	// ghHangArgs + defaultGHLabelerTimeout; parallelism would race.
 	prevTimeout := defaultGHLabelerTimeout
 	defaultGHLabelerTimeout = 200 * time.Millisecond
 	prevBin := ghLabelerBinary
