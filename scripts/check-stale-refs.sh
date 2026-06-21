@@ -41,12 +41,20 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Operator escape — read PR body if supplied OR via BODY env.
+# Operator escape — read PR body if supplied OR via BODY env. In CI
+# (GITHUB_REF=refs/pull/N/merge) auto-fetch via `gh pr view` so `make check`
+# honors the escape without an explicit --body-file plumb. Local invocations
+# without BODY/--body-file remain strict (PR-context unknowable offline).
 body=""
 if [ -n "$BODY_FILE" ] && [ -f "$BODY_FILE" ]; then
   body=$(cat "$BODY_FILE")
 elif [ -n "${BODY:-}" ]; then
   body="$BODY"
+elif [ -n "${GITHUB_REF:-}" ]; then
+  pr=$(echo "$GITHUB_REF" | sed -n 's|refs/pull/\([0-9]\{1,\}\)/.*|\1|p')
+  if [ -n "$pr" ] && command -v gh >/dev/null 2>&1; then
+    body=$(gh pr view "$pr" --json body --jq .body 2>/dev/null || true)
+  fi
 fi
 
 if printf '%s' "$body" | grep -qE '<!--[[:space:]]*stale-refs-justified:[[:space:]]*[^[:space:]-].{3,}-->'; then
