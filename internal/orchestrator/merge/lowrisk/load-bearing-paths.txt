@@ -1,0 +1,38 @@
+# Single source of truth for the MAY-86 low-risk auto-merge load-bearing veto.
+#
+# Embedded into Go via //go:embed (classifier.go) AND read by any shell
+# consumer at this same repo-relative path, so the Go and shell views can
+# never drift — there is exactly one physical list. No parity gate needed.
+#
+# Format: one matcher per line. Blank lines and lines beginning with `#`
+# are ignored. Two matcher shapes:
+#   - a trailing `/` is a DIRECTORY PREFIX: any changed path under it vetoes.
+#   - a `*` is a GLOB segment matched against the path's basename-bearing
+#     form (filepath.Match semantics), used for scripts/check-*.sh.
+# A changed path is load-bearing when it matches ANY line below.
+#
+# This is the BROADER spec-§3 T3 set (wider than scripts/path-classifier).
+# Anything here is held for an operator glance; never auto-merged.
+
+# Load-bearing Go subsystems.
+internal/ghclient/
+internal/gates/
+internal/orchestrator/
+internal/supervisor/
+internal/ghidempotency/
+internal/secrets/
+internal/sandbox/
+internal/web/
+internal/obs/
+internal/cost/
+internal/canon/
+
+# Composition roots + agent-authority contracts.
+cmd/
+contracts/
+
+# CI-gate surfaces: a silent change here can widen or weaken every gate.
+Makefile
+Makefile.d/
+.github/workflows/
+scripts/check-*.sh
