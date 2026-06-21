@@ -219,11 +219,7 @@ run_case single_commit_empty_escape_fails      1 "ONE commit" setup_single_commi
 run_case test_only_passes               0 "out of scope"      setup_test_only
 run_case prod_only_passes               0 "out of scope"      setup_prod_only
 run_case prod_readded_anchors_first_add 0 "test-first"        setup_prod_readded_after_test
-# Hyphen-in-body cases (MAY-273): regex must accept reasons containing hyphens
-# after the first char — commit shas (78a5b0f), file paths (foo-bar.go),
-# package names (html/template), all contain or are near hyphens. The
-# original `[^-]{3,}` rejected every dashed reason and forced authors into
-# rewrite cycles (PR #1307 burned 2 commit cycles).
+# Hyphen-in-body cases (MAY-273): regex accepts dashes after the first char.
 run_case single_commit_hyphen_in_reason_passes 0 "escape present" setup_single_commit_justified \
   '<!-- tdd-single-commit-justified: ships fix-with-dash in foo-bar.go -->'
 run_case single_commit_pkg_path_reason_passes  0 "escape present" setup_single_commit_justified \
