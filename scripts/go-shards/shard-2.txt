@@ -1,0 +1,24 @@
+# verify-go-2: 20 packages, ~250s historical CPU-time.
+# Greedy bin-packed by last-known per-pkg test times to balance wall-clock.
+# Regenerate via scripts/regen-go-shards.sh (see docs/engineer/pointers.md).
+
+github.com/trilamsr/regatta/cmd/gh-followup-to-items
+github.com/trilamsr/regatta/cmd/regatta
+github.com/trilamsr/regatta/docs/engineer/runbooks
+github.com/trilamsr/regatta/internal/config/validate
+github.com/trilamsr/regatta/internal/cost/estimate
+github.com/trilamsr/regatta/internal/obs/adversarial
+github.com/trilamsr/regatta/internal/obs/digest
+github.com/trilamsr/regatta/internal/obs/otel
+github.com/trilamsr/regatta/internal/obstest
+github.com/trilamsr/regatta/internal/orchestrator/adapter
+github.com/trilamsr/regatta/internal/orchestrator/adaptersync
+github.com/trilamsr/regatta/internal/orchestrator/merge
+github.com/trilamsr/regatta/internal/orchestrator/merge/lowrisk
+github.com/trilamsr/regatta/internal/orchestrator/review
+github.com/trilamsr/regatta/internal/orchestrator/state/jsonscan
+github.com/trilamsr/regatta/internal/strutil
+github.com/trilamsr/regatta/internal/supervisor
+github.com/trilamsr/regatta/tests
+github.com/trilamsr/regatta/tools/check-pricing-drift
+github.com/trilamsr/regatta/tools/grep-go-ident
