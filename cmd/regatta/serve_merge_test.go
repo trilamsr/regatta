@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/merge"
+	"github.com/trilamsr/regatta/internal/orchestrator/merge/lowrisk"
 )
 
 // TestBuildMergeWiring_GhVersionTooOld_RefusesInit asserts a gh 2.39 environment refuses worker init at boot (#656).
@@ -24,7 +25,7 @@ func TestBuildMergeWiring_GhVersionTooOld_RefusesInit(t *testing.T) {
 		return merge.ErrGhVersionUnsupported
 	}
 
-	coord, worker, err := buildMergeWiring(db, true, slog.Default())
+	coord, worker, _, err := buildMergeWiring(db, t.TempDir(), true, slog.Default())
 	if err == nil {
 		t.Fatalf("buildMergeWiring returned nil err for gh 2.39, want refusal")
 	}
@@ -47,7 +48,7 @@ func TestBuildMergeWiring_AutoMergeDisabled_SkipsVersionCheck(t *testing.T) {
 		return merge.ErrGhVersionUnsupported
 	}
 
-	coord, worker, err := buildMergeWiring(db, false, slog.Default())
+	coord, worker, gate, err := buildMergeWiring(db, t.TempDir(), false, slog.Default())
 	if err != nil {
 		t.Fatalf("buildMergeWiring err=%v with auto-merge off; version gate should not fire", err)
 	}
@@ -56,6 +57,9 @@ func TestBuildMergeWiring_AutoMergeDisabled_SkipsVersionCheck(t *testing.T) {
 	}
 	if worker != nil {
 		t.Fatalf("worker non-nil with --auto-merge=false")
+	}
+	if gate != nil {
+		t.Fatalf("low-risk gate non-nil with --auto-merge=false; want nil (no-op path)")
 	}
 	if called {
 		t.Fatalf("version probe called with --auto-merge=false; gate must be worker-gated")
@@ -69,11 +73,15 @@ func TestBuildMergeWiring_GhVersionOk_BuildsWorker(t *testing.T) {
 	t.Cleanup(func() { verifyGhVersionFn = prev })
 	verifyGhVersionFn = func(_ context.Context, _ *slog.Logger) error { return nil }
 
-	coord, worker, err := buildMergeWiring(db, true, slog.Default())
+	coord, worker, gate, err := buildMergeWiring(db, t.TempDir(), true, slog.Default())
 	if err != nil {
 		t.Fatalf("buildMergeWiring: %v", err)
 	}
 	if coord == nil || worker == nil {
 		t.Fatalf("expected coord+worker; got coord=%v worker=%v", coord, worker)
+	}
+	// --auto-merge=true with no regatta.yaml → conservative-default HoldAll.
+	if _, ok := gate.(lowrisk.HoldAll); !ok {
+		t.Fatalf("conservative default must wire HoldAll; got %T", gate)
 	}
 }

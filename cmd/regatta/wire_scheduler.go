@@ -107,24 +107,24 @@ func buildRejectionRouter(db *state.DB, labeler rejectionrouter.PRLabeler, logge
 // SHA-pin guard, so the wiring refuses to fire when gh is too old.
 // The Coordinator's Reconcile path still wires so the recovery sweep
 // stays live.
-func buildMergeWiring(db *state.DB, autoMergeEnabled bool, logger *slog.Logger) (*merge.Coordinator, *merge.Worker, error) {
+func buildMergeWiring(db *state.DB, repoRoot string, autoMergeEnabled bool, logger *slog.Logger) (*merge.Coordinator, *merge.Worker, scheduler.LowRiskGate, error) {
 	coord, err := merge.New(merge.Config{
 		DB:     db,
 		Prober: merge.NewGhProber(nil),
 		Logger: logger,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("merge: new coordinator: %w", err)
+		return nil, nil, nil, fmt.Errorf("merge: new coordinator: %w", err)
 	}
 	if !autoMergeEnabled {
-		return coord, nil, nil
+		return coord, nil, nil, nil
 	}
 	if err := verifyGhVersionFn(context.Background(), logger); err != nil {
-		return nil, nil, fmt.Errorf("merge: gh version check: %w", err)
+		return nil, nil, nil, fmt.Errorf("merge: gh version check: %w", err)
 	}
 	coord.SetExecutor(merge.GhExecutor{})
 	w := merge.NewWorker(coord, 32, logger)
-	return coord, w, nil
+	return coord, w, buildLowRiskGate(repoRoot, autoMergeEnabled, logger), nil
 }
 
 // verifyGhVersionFn is the test seam for the boot-time gh-version
@@ -149,6 +149,7 @@ type schedulerDeps struct {
 	Clock            func() time.Time
 	MergeCoordinator *merge.Coordinator
 	MergeWorker      *merge.Worker
+	LowRiskGate      scheduler.LowRiskGate
 	Meter            metric.Meter
 	Logger           *slog.Logger
 }
@@ -167,6 +168,7 @@ func buildScheduler(db *state.DB, f serveFlags, deps schedulerDeps) *scheduler.S
 		Clock:              deps.Clock,
 		MergeCoordinator:   deps.MergeCoordinator,
 		MergeWorker:        deps.MergeWorker,
+		LowRiskGate:        deps.LowRiskGate,
 		Meter:              deps.Meter,
 		Logger:             deps.Logger,
 		FileScopeExtractor: scheduler.DefaultFileScopeExtractor,

@@ -164,6 +164,14 @@ type Config struct {
 	MergeCoordinator *merge.Coordinator
 	MergeWorker      *merge.Worker
 
+	// LowRiskGate filters which gates-passed PRs may auto-merge (MAY-86).
+	// nil keeps OnGatesPass byte-equivalent to the pre-MAY-86 path
+	// (every PR proceeds); a wired gate holds load-bearing / over-cap /
+	// un-soaked PRs for an operator glance. The conservative default
+	// (--auto-merge=true, low-risk disabled) wires a hold-all gate so
+	// auto-merge never widens past the pre-MAY-86 surface.
+	LowRiskGate LowRiskGate
+
 	// RecheckBackoff*: orphan fetch-failure backoff knobs (#794). Zero
 	// picks legacy defaults (K=3, N=10, stale=20); sub-1 values clamp.
 	RecheckBackoffK             int

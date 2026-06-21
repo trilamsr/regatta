@@ -1,9 +1,13 @@
 package main
 
 import (
+	"log/slog"
 	"path/filepath"
+	"time"
 
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
+	"github.com/trilamsr/regatta/internal/orchestrator/merge/lowrisk"
+	"github.com/trilamsr/regatta/internal/orchestrator/scheduler"
 )
 
 // loadMarkdownCatalogRoot reads regatta.yaml at repoRoot and returns
@@ -55,4 +59,43 @@ func loadDestructiveOpLists(repoRoot string) (deny, allow []string) {
 		return nil, nil
 	}
 	return cfg.DestructiveOpLists()
+}
+
+// buildLowRiskGate resolves the MAY-86 double opt-in into a
+// scheduler.LowRiskGate. It returns nil when auto-merge is OFF (the
+// Worker is nil anyway, so OnGatesPass no-ops). When auto-merge is ON it
+// is the conservative-default boundary:
+//   - low_risk_automerge.enabled=false (or block absent) → HoldAll, so
+//     auto-merge holds EVERYTHING (never widens past pre-MAY-86).
+//   - enabled=true → a real lowrisk.Gate filtering on the embedded
+//     load-bearing veto + loc_cap + stateless soak.
+//
+// An unparseable hold_window also falls back to HoldAll (fail-closed) and
+// logs a WARN so the operator learns their config was rejected rather than
+// silently reverting to "hold everything".
+func buildLowRiskGate(repoRoot string, autoMergeEnabled bool, logger *slog.Logger) scheduler.LowRiskGate {
+	if !autoMergeEnabled {
+		return nil
+	}
+	cfgPath := filepath.Join(repoRoot, "regatta.yaml")
+	cfg, err := validateconfig.LoadConfigFile(cfgPath)
+	if err != nil {
+		return lowrisk.HoldAll{}
+	}
+	lr := cfg.LowRiskAutoMergeConfig()
+	if !lr.Enabled {
+		return lowrisk.HoldAll{}
+	}
+	hold, err := time.ParseDuration(lr.HoldWindow)
+	if err != nil || hold <= 0 {
+		logger.Warn("lowrisk.hold_window_invalid_holding_all",
+			"hold_window", lr.HoldWindow, "err", err)
+		return lowrisk.HoldAll{}
+	}
+	locCap := lr.LOCCap
+	if locCap <= 0 {
+		locCap = 50
+	}
+	c := lowrisk.New(lowrisk.Config{LOCCap: locCap, HoldWindow: hold})
+	return lowrisk.NewGate(c, lowrisk.NewGhFetcher())
 }
