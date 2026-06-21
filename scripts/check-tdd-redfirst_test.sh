@@ -153,6 +153,25 @@ EOF
   git commit -q -m "change: bump + test"
 }
 
+# GREEN: prod added (commit 2) AFTER the test (commit 1), then deleted
+# (commit 3) and re-added (commit 4). The gate anchors prod to its FIRST add
+# (commit 2 via `git log --reverse --diff-filter=A | head -1`), which still
+# trails the test commit -> passes. Guards the diff-filter-A-vs-log
+# disagreement the reviewer flagged.
+setup_prod_readded_after_test() {
+  write_test
+  git add -A
+  git commit -q -m "test: TestFoo first"
+  write_prod
+  git add -A
+  git commit -q -m "feat: Foo impl"
+  git rm -q internal/foo/foo.go
+  git commit -q -m "drop Foo impl"
+  write_prod
+  git add -A
+  git commit -q -m "feat: Foo impl again"
+}
+
 # Special harness for the edit-existing case: it re-seeds origin/main, so
 # it cannot reuse run_case's base. Drive the gate directly.
 run_edit_existing_case() {
@@ -195,6 +214,7 @@ run_case single_commit_justified_passes 0 "escape present"    setup_single_commi
   '<!-- tdd-single-commit-justified: fixture+script land together -->'
 run_case test_only_passes               0 "out of scope"      setup_test_only
 run_case prod_only_passes               0 "out of scope"      setup_prod_only
+run_case prod_readded_anchors_first_add 0 "test-first"        setup_prod_readded_after_test
 run_edit_existing_case
 
 echo

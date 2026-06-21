@@ -73,17 +73,22 @@ while IFS= read -r f; do
   case "$f" in
     */testdata/*|testdata/*) continue ;;
   esac
+  # Read the file content once. `grep -q` / `head` close their pipe early; a
+  # bare `git show | grep -q` would let `set -o pipefail` surface the upstream
+  # SIGPIPE as a 141 failure inside this `set -e` loop. Buffering in a var
+  # drains the producer fully, sidestepping the whole class.
+  content=$(git show "$head:$f" 2>/dev/null || true)
   case "$f" in
     *_test.go)
       # Only a substantive test (real Test/Benchmark/Example func) counts as
       # the red half of a red-first pair.
-      if git show "$head:$f" 2>/dev/null | grep -qE '^func[[:space:]]+(Test|Benchmark|Example)[A-Z_]'; then
+      if printf '%s\n' "$content" | grep -qE '^func[[:space:]]+(Test|Benchmark|Example)[A-Z_]'; then
         test_added="$test_added $f"
       fi
       ;;
     *)
       # Generated code carries no hand-written test ordering.
-      if git show "$head:$f" 2>/dev/null | head -5 | grep -qE 'Code generated|DO NOT EDIT'; then
+      if printf '%s\n' "$content" | head -5 | grep -qE 'Code generated|DO NOT EDIT'; then
         continue
       fi
       prod_added="$prod_added $f"
@@ -101,10 +106,12 @@ fi
 
 # first_add_commit <path> -> the earliest commit in base..head that ADDED
 # the file. --reverse lists oldest-first; --diff-filter=A restricts to the
-# add. head -1 takes the first add (a file added, deleted, re-added in the
-# same branch still anchors to its first introduction).
+# add. A file added, deleted, then re-added on the branch lists more than one
+# add commit; we take the FIRST. `awk NR==1` (no `exit`) drains the whole
+# pipe, so `set -o pipefail` cannot turn an early-closed-pipe SIGPIPE from a
+# multi-line `git log` into a 141 exit (which `head -1` would).
 first_add_commit() {
-  git log --reverse --diff-filter=A --format=%H "$base..$head" -- "$1" 2>/dev/null | head -1
+  git log --reverse --diff-filter=A --format=%H "$base..$head" -- "$1" 2>/dev/null | awk 'NR==1'
 }
 
 # Ordering uses ancestry, not timestamps (which tie / skew on rebase). Within
@@ -129,7 +136,9 @@ while IFS= read -r pf; do
 
   prod_commit=$(first_add_commit "$pf")
   test_commit=$(first_add_commit "$paired_test")
-  [ -z "$prod_commit" ] || [ -z "$test_commit" ] && continue
+  if [ -z "$prod_commit" ] || [ -z "$test_commit" ]; then
+    continue
+  fi
 
   if [ "$test_commit" = "$prod_commit" ]; then
     violations="${violations}  $paired_test + $pf added in ONE commit ${prod_commit:0:12} (test+impl together)"$'\n'

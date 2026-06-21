@@ -42,4 +42,9 @@ jobs:
           fi
           export BODY
           bash scripts/check-tdd.sh
+          # Two-layer escape: the `tdd-justified` LABEL in the step `if:` above
+          # is the maintainer hard-override for the WHOLE step (both gates); the
+          # per-PR self-service escape for THIS gate is the body comment
+          # `<!-- tdd-single-commit-justified: <reason> -->`, parsed by the
+          # script. Label = maintainer; comment = author.
           bash scripts/check-tdd-redfirst.sh
