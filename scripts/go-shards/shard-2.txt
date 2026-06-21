@@ -20,5 +20,6 @@ github.com/trilamsr/regatta/internal/orchestrator/state/jsonscan
 github.com/trilamsr/regatta/internal/strutil
 github.com/trilamsr/regatta/internal/supervisor
 github.com/trilamsr/regatta/tests
+github.com/trilamsr/regatta/tests/orchestrator
 github.com/trilamsr/regatta/tools/check-pricing-drift
 github.com/trilamsr/regatta/tools/grep-go-ident
