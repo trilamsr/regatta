@@ -76,6 +76,59 @@ run_case "stale-refs-justified bypasses" "old-gate.sh" "Mentions old-gate.sh his
 # Case 4: no deletions in PR → pass.
 run_case "no deletions passes" "" "" "" 0
 
+# Like run_case but also seeds a tracked file that SURVIVES into head, plus a
+# reference file citing that surviving file's name. Exercises the stem-match
+# branch: deleting a suffixed variant (kept_file + suffix) must not flag the
+# live refs to kept_file it shares a stem with.
+run_case_keep() {
+  local name="$1" deleted_files="$2" kept_file="$3" ref_content="$4" want_exit="$5"
+  local tmp; tmp=$(mktemp -d)
+  local got_exit out
+  out=$(
+    cd "$tmp" || exit 99
+    git init -q -b main . 2>/dev/null
+    git config user.email t@t.t
+    git config user.name t
+    for f in $deleted_files; do
+      mkdir -p "$(dirname "$f")"
+      echo "original content of $f" > "$f"
+    done
+    mkdir -p "$(dirname "$kept_file")"
+    echo "kept content of $kept_file" > "$kept_file"
+    mkdir -p docs
+    printf '%s\n' "$ref_content" > docs/notes.md
+    git add .
+    git commit -q -m base 2>/dev/null
+    base_sha=$(git rev-parse HEAD)
+    git checkout -q -b work
+    for f in $deleted_files; do
+      rm -f "$f"
+    done
+    git add -A
+    git commit -q -m delete 2>/dev/null
+    bash "$GATE" --base "$base_sha" --head HEAD 2>&1
+  )
+  got_exit=$?
+  rm -rf "$tmp"
+
+  if [ "$got_exit" -eq "$want_exit" ]; then
+    pass "$name (exit=$got_exit)"
+  else
+    fail "$name: want exit=$want_exit got=$got_exit"
+    echo "$out" | sed 's/^/     | /'
+  fi
+}
+
+# Case 5 (MAY-260): deleting a suffixed variant whose stem is a still-tracked
+# file must NOT flag the live refs to that file → pass.
+run_case_keep "suffixed-variant deletion spares live stem ref" \
+  "foo.yaml.bak" "foo.yaml" "See foo.yaml for config." 0
+
+# Case 6 (MAY-260): the legit stem-match still fires — deleting foo.sh whose
+# stem `foo` is NOT a tracked file, with a remaining bare `foo` ref → fail.
+run_case_keep "non-tracked stem still flags" \
+  "foo.sh" "bar.txt" "Invoke foo to run the gate." 1
+
 if [ "$FAIL" -gt 0 ]; then
   echo
   echo "check-stale-refs_test: $FAIL failed, $PASS passed"
