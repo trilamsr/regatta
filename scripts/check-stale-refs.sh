@@ -98,8 +98,12 @@ while IFS= read -r f; do
   # Stem without extension for scripts.
   stem="${bn%.*}"
 
-  # Word-boundary grep reduces noise. Match either basename or stem.
-  if [ "$bn" = "$stem" ]; then
+  # Word-boundary grep reduces noise. Match either basename or stem — but skip
+  # the stem when it names a still-tracked file: deleting a suffixed variant
+  # (X.bak, X.operator-runtime) must not flag the live refs to the real file X
+  # it shares a stem with. dirname yields "." for root-level files, so the
+  # ls-files probe becomes "./stem".
+  if [ "$bn" = "$stem" ] || git ls-files --error-unmatch "$(dirname "$f")/$stem" >/dev/null 2>&1; then
     pattern="\\b${bn}\\b"
   else
     pattern="\\b(${bn}|${stem})\\b"
