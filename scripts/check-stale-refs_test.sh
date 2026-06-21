@@ -137,6 +137,20 @@ run_case_keep "suffixed-variant deletion spares live stem ref" \
 run_case_keep "non-tracked stem still flags" \
   "foo.sh" "bar.txt" "Invoke foo to run the gate." 1
 
+# Cases 9-12 (MAY-272): hyphens inside the justification reason must be
+# accepted after the first char — sibling fix to MAY-273 on check-tdd-redfirst.
+# The original `[^-]{3,}` body class rejected every dashed reason and forced
+# rewrite cycles. Body class loosened to `.{3,}-->`; first-char `[^[:space:]-]`
+# still rejects leading dashes + whitespace-only.
+run_case "hyphen-in-reason-passes" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
+  $'## Summary\n<!-- stale-refs-justified: shipped spec ref foo-bar.go in pre-existing doc -->\n```release-notes\n[CHORE] x\n```' 0
+run_case "pkg-path-in-reason-passes" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
+  $'## Summary\n<!-- stale-refs-justified: docs/spec-of-record historical-accuracy ref -->\n```release-notes\n[CHORE] x\n```' 0
+run_case "leading-dash-rejected" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
+  $'## Summary\n<!-- stale-refs-justified: -bad reason -->\n```release-notes\n[CHORE] x\n```' 1
+run_case "double-dash-rejected" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
+  $'## Summary\n<!-- stale-refs-justified: --bad reason -->\n```release-notes\n[CHORE] x\n```' 1
+
 if [ "$FAIL" -gt 0 ]; then
   echo
   echo "check-stale-refs_test: $FAIL failed, $PASS passed"
