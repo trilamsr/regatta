@@ -34,6 +34,7 @@ func newOrchestrator(w orchestratorWiring) (*orchestrator.Orchestrator, *health.
 		DB:                w.DB,
 		Scheduler:         w.Scheduler,
 		Spawner:           w.Spawner,
+		SpawnerBackend:    w.Flags.SpawnerName,
 		ItemBody:          buildItemBodyLoader(w.Flags.RepoRoot, w.Logger),
 		RepoRoot:          w.Flags.RepoRoot,
 		DBPath:            w.Flags.DBPath,

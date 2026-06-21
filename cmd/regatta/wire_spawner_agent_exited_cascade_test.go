@@ -33,7 +33,7 @@ func TestNewAgentExitedCascade_DrivesRunningToCrashed(t *testing.T) {
 		t.Fatalf("→running: %v", err)
 	}
 
-	cascade := newAgentExitedCascade(db, slog.Default())
+	cascade := newAgentExitedCascade(db, slog.Default(), nil)
 	cascade(a.ID, "WORK-CRASH", 7, spawner.ExitReasonUnknown, 1500)
 
 	got, err := db.GetAgent(ctx, a.ID)
@@ -76,7 +76,7 @@ func TestNewAgentExitedCascade_TerminalAgentIsNoOp(t *testing.T) {
 		t.Fatalf("→crashed: %v", err)
 	}
 
-	cascade := newAgentExitedCascade(db, slog.Default())
+	cascade := newAgentExitedCascade(db, slog.Default(), nil)
 	cascade(a.ID, "WORK-DONE", 0, spawner.ExitReasonCompleted, 100)
 
 	events, err := db.ListEventsByKindSince(ctx, string(obs.EventAgentExited), 0, 10)

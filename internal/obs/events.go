@@ -59,6 +59,17 @@ const (
 	EventSpawnCompleted EventName = "spawn.completed"
 	EventSpawnFailed    EventName = "spawn.failed"
 
+	// EventSpawnBackoffSkipped fires when a work_item's spawn is
+	// suppressed because a prior spawn.failed put it in an exponential
+	// cooldown window — without it the 5s scheduler tick re-dispatches
+	// the same failing item every tick forever (MAY-80).
+	EventSpawnBackoffSkipped EventName = "spawn.backoff_skipped"
+
+	// EventSpawnHeldNoBody fires when a reserved work_item is held back
+	// from spawn because its brief body is unavailable — spawning blind
+	// burns a real agent invocation on a context-less prompt (MAY-81).
+	EventSpawnHeldNoBody EventName = "spawn.held_no_body"
+
 	// EventAgentExited fires once per spawned child after cmd.Wait
 	// returns. Surfaces the silent-exit case in BUG-1051 where a
 	// permission-denied tool call made the agent stop while the
@@ -72,6 +83,21 @@ const (
 	EventReapCandidateDetected EventName = "reap.candidate_detected"
 	EventReapKilled            EventName = "reap.killed"
 	EventReapSkipped           EventName = "reap.skipped"
+
+	// EventSpawnerBackendChanged fires WARN once per crash-recovery row
+	// whose session_id was written by the stub spawner but the daemon now
+	// runs under the claude backend — a reboot ghost with no live process.
+	// Distinct from recovered_crashed (a real dead PID that IS requeued):
+	// the ghost is drained to withdrawn so its lane frees, not re-spawned
+	// (MAY-79).
+	EventSpawnerBackendChanged EventName = "orchestrator.spawner_backend_changed"
+
+	// EventCreditExhausted fires ERROR once when an agent exits with the
+	// provider_credit_exhausted reason — a terminal account-level fault no
+	// retry can clear. Loud so the operator refills credit rather than
+	// silently burning further dispatch attempts against a dead account
+	// (MAY-78).
+	EventCreditExhausted EventName = "orchestrator.credit_exhausted"
 
 	// EventGateVerdict — single event covers l0, security, and HMAC seam alike. Outcome in KeyVerdict, gate identity in KeyGateID (spec §5.5).
 	EventGateVerdict EventName = "gate.verdict"
@@ -195,12 +221,16 @@ func AllEventNames() []EventName {
 		EventSpawnStarted,
 		EventSpawnCompleted,
 		EventSpawnFailed,
+		EventSpawnBackoffSkipped,
+		EventSpawnHeldNoBody,
 		EventAgentExited,
 		EventSpawnReconciled,
 		EventSpawnReconcileFailed,
 		EventReapCandidateDetected,
 		EventReapKilled,
 		EventReapSkipped,
+		EventSpawnerBackendChanged,
+		EventCreditExhausted,
 		EventGateVerdict,
 		EventBriefLoaded,
 		EventBriefRejected,

@@ -46,7 +46,7 @@ func TestBuildSpawner_ClaudeWiresArgs(t *testing.T) {
 	db := openTempDB(t, tmp)
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	set, err := buildSpawner("claude", tmp, "claude", "HEAD", logger, db, nil, "")
+	set, err := buildSpawner("claude", tmp, "claude", "HEAD", logger, db, nil, "", nil)
 	if err != nil {
 		t.Fatalf("buildSpawner: %v", err)
 	}

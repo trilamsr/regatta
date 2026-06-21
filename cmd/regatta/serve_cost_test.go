@@ -18,7 +18,7 @@ func TestBuildSpawner_ClaudeWiresCostCallback(t *testing.T) {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	set, err := buildSpawner("claude", tmp, "claude", "HEAD", logger, db,
-		[]byte("0123456789abcdef0123456789abcdef"), "k1")
+		[]byte("0123456789abcdef0123456789abcdef"), "k1", nil)
 	if err != nil {
 		t.Fatalf("buildSpawner with key: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestBuildSpawner_ClaudeWiresCostCallback(t *testing.T) {
 		t.Fatalf("OnResultEventFor nil when HMAC key supplied; wiring did not land")
 	}
 
-	set, err = buildSpawner("claude", tmp, "claude", "HEAD", logger, db, nil, "")
+	set, err = buildSpawner("claude", tmp, "claude", "HEAD", logger, db, nil, "", nil)
 	if err != nil {
 		t.Fatalf("buildSpawner no-key: %v", err)
 	}

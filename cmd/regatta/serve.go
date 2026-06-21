@@ -179,7 +179,14 @@ func runServe(args []string) int {
 
 	costKeyring, costKeyID := loadBriefKeyringWithActive()
 	costKey := costKeyring[costKeyID]
-	set, err := buildSpawner(f.SpawnerName, f.RepoRoot, f.ClaudeBin, f.BaseRef, slogger, db, costKey, costKeyID)
+	// haltOnCredit cancels the run context when an agent exits
+	// credit-exhausted so dispatch stops instead of burning further
+	// invocations against a dead account (MAY-78).
+	haltOnCredit := func() {
+		slogger.Error("orchestrator.dispatch_halt", "reason", "provider_credit_exhausted")
+		stop()
+	}
+	set, err := buildSpawner(f.SpawnerName, f.RepoRoot, f.ClaudeBin, f.BaseRef, slogger, db, costKey, costKeyID, haltOnCredit)
 	if err != nil {
 		logger.Printf("spawner: %v", err)
 		return 2
