@@ -42,3 +42,4 @@ jobs:
           fi
           export BODY
           bash scripts/check-tdd.sh
+          bash scripts/check-tdd-redfirst.sh

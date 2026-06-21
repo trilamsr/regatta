@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-phase-x-leak check-phase-x-leak-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-stale-refs check-stale-refs-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test check-release-notes-local-test next-migration
+.PHONY: doc-check doc-check-test prose-dup stale-todo verify-vendored-assets lint tidy-check mod-verify check-phase-x-leak check-phase-x-leak-test check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-stale-refs check-stale-refs-test check-tdd-redfirst check-tdd-redfirst-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test check-release-notes-local-test next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, comment-noise, test-godoc length).
 	bash scripts/doc-check.sh
@@ -27,6 +27,12 @@ check-stale-refs:  ## Fail when PR deletes files but tracked files still referen
 
 check-stale-refs-test:  ## Fixture-driven test for check-stale-refs.sh.
 	bash scripts/check-stale-refs_test.sh
+
+check-tdd-redfirst:  ## Fail when a PR adds a new prod .go + co-located _test.go without the test landing in an earlier commit. Escape: `<!-- tdd-single-commit-justified: <reason> -->`.
+	bash scripts/check-tdd-redfirst.sh
+
+check-tdd-redfirst-test:  ## Fixture-driven test for check-tdd-redfirst.sh (one-commit→fail, test-first→pass, escape→pass, out-of-scope→pass).
+	bash scripts/check-tdd-redfirst_test.sh
 
 check-no-bare-sleep:  ## Fail when a *_test.go file carries `time.Sleep` lexically nested inside a `for` block without `// allow-sleep:` directive (#760 migration target: testutil.Eventually).
 	bash scripts/check-no-bare-sleep.sh
