@@ -32,6 +32,18 @@ import "list"
 	programs?:     #Programs
 	alarm_webhook?: #AlarmWebhook
 	secrets?:       #Secrets
+	low_risk_automerge?: #LowRiskAutoMerge
+}
+
+// #LowRiskAutoMerge is the MAY-86 opt-in. Disabled by default; even
+// when enabled it is the SECOND of a double opt-in — `--auto-merge=true`
+// (CLI) AND enabled:true (here) must both hold for any PR to auto-merge,
+// and a load-bearing PR is held regardless. loc_cap + hold_window are the
+// secondary signals; the load-bearing veto is the real safety.
+#LowRiskAutoMerge: {
+	enabled:      *false | bool
+	loc_cap:      *50 | int & >0
+	hold_window:  *"15m" | string & =~ "^[0-9]+(s|m|h)$"
 }
 
 // #Secret + #Secrets live in regatta/secrets.cue per #970 slice 1.

@@ -241,11 +241,10 @@ func runServe(args []string) int {
 		logger.Printf("cost cap: %v", err)
 		return 2
 	}
-	// Merge wiring is built BEFORE the scheduler so OnGatesPass (#612)
-	// can pick up Coordinator+Worker from Config. Coordinator is always
-	// installed (drives Reconcile); Worker is nil when --auto-merge=false
-	// so OnGatesPass stays a no-op by default.
-	mergeCoord, mergeWorker, err := buildMergeWiring(db, f.AutoMerge, slogger)
+	// Built BEFORE the scheduler so OnGatesPass (#612) picks up
+	// Coordinator+Worker+LowRiskGate from Config. Worker is nil when
+	// --auto-merge=false, keeping OnGatesPass a no-op by default.
+	mergeCoord, mergeWorker, lowRiskGate, err := buildMergeWiring(db, f.RepoRoot, f.AutoMerge, slogger)
 	if err != nil {
 		logger.Printf("merge wiring: %v", err)
 		return 2
@@ -260,6 +259,7 @@ func runServe(args []string) int {
 		Clock:            clock,
 		MergeCoordinator: mergeCoord,
 		MergeWorker:      mergeWorker,
+		LowRiskGate:      lowRiskGate,
 		Logger:           slogger,
 	})
 	o, healthHB := newOrchestrator(orchestratorWiring{

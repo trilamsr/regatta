@@ -77,13 +77,23 @@ type Prompts struct {
 
 // Config is the Go form of a validated regatta.yaml; only fields callers reach into are surfaced. Schema authority: contracts/schemas/regatta.v1.cue.
 type Config struct {
-	Prompts      *Prompts      `yaml:"prompts,omitempty" json:"prompts,omitempty"`
-	Repo         *Repo         `yaml:"repo,omitempty" json:"repo,omitempty"`
-	SpecAdapter  *SpecAdapter  `yaml:"spec_adapter,omitempty" json:"spec_adapter,omitempty"`
-	Safety       *Safety       `yaml:"safety,omitempty" json:"safety,omitempty"`
-	Scheduler    *Scheduler    `yaml:"scheduler,omitempty" json:"scheduler,omitempty"`
-	AlarmWebhook *AlarmWebhook `yaml:"alarm_webhook,omitempty" json:"alarm_webhook,omitempty"`
-	Secrets      *Secrets      `yaml:"secrets,omitempty" json:"secrets,omitempty"`
+	Prompts          *Prompts          `yaml:"prompts,omitempty" json:"prompts,omitempty"`
+	Repo             *Repo             `yaml:"repo,omitempty" json:"repo,omitempty"`
+	SpecAdapter      *SpecAdapter      `yaml:"spec_adapter,omitempty" json:"spec_adapter,omitempty"`
+	Safety           *Safety           `yaml:"safety,omitempty" json:"safety,omitempty"`
+	Scheduler        *Scheduler        `yaml:"scheduler,omitempty" json:"scheduler,omitempty"`
+	AlarmWebhook     *AlarmWebhook     `yaml:"alarm_webhook,omitempty" json:"alarm_webhook,omitempty"`
+	Secrets          *Secrets          `yaml:"secrets,omitempty" json:"secrets,omitempty"`
+	LowRiskAutoMerge *LowRiskAutoMerge `yaml:"low_risk_automerge,omitempty" json:"low_risk_automerge,omitempty"`
+}
+
+// LowRiskAutoMerge mirrors `regatta.yaml::low_risk_automerge` (MAY-86).
+// Absent block ⇒ Enabled=false; the CUE defaults (loc_cap=50,
+// hold_window="15m") surface here when the block is present-but-key-omitted.
+type LowRiskAutoMerge struct {
+	Enabled    bool   `yaml:"enabled,omitempty" json:"enabled,omitempty"`
+	LOCCap     int    `yaml:"loc_cap,omitempty" json:"loc_cap,omitempty"`
+	HoldWindow string `yaml:"hold_window,omitempty" json:"hold_window,omitempty"`
 }
 
 // Scheduler mirrors `regatta.yaml::scheduler` (spec
@@ -241,6 +251,16 @@ func (c *Config) SchedulerParallelCap() int {
 		return 0
 	}
 	return c.Scheduler.ParallelCap
+}
+
+// LowRiskAutoMergeConfig returns the resolved `low_risk_automerge` block.
+// Nil-safe: a nil receiver or absent block returns a disabled zero-value,
+// so the double opt-in defaults to "everything held" (MAY-86).
+func (c *Config) LowRiskAutoMergeConfig() LowRiskAutoMerge {
+	if c == nil || c.LowRiskAutoMerge == nil {
+		return LowRiskAutoMerge{}
+	}
+	return *c.LowRiskAutoMerge
 }
 
 // LoadConfig CUE-validates yaml bytes (same gate as LoadBytes) then decodes the unified value into a typed Config — unified value carries CUE defaults concretely (omitted `spec_adapter.root: .` surfaces as ".", not "").

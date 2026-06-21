@@ -32,10 +32,7 @@ func (passAllGate) Eligible(_ context.Context, _ int, _ string) (bool, string) {
 	return true, "eligible"
 }
 
-// TestSchedulerLowRiskGate_ConservativeDefaultHoldsEverything asserts the
-// safety invariant: with Coordinator+Worker wired (auto-merge on) but a
-// hold-all gate (low-risk disabled), OnGatesPass auto-merges NOTHING —
-// the agent never leaves GatesRunning and no merge intent is written.
+// TestSchedulerLowRiskGate_ConservativeDefaultHoldsEverything asserts a hold-all gate keeps the agent in GatesRunning with no intent even when auto-merge is wired (MAY-86).
 func TestSchedulerLowRiskGate_ConservativeDefaultHoldsEverything(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -71,8 +68,7 @@ func TestSchedulerLowRiskGate_ConservativeDefaultHoldsEverything(t *testing.T) {
 	}
 }
 
-// TestSchedulerLowRiskGate_EligiblePRProceeds asserts an eligible PR
-// still flows through PrepareMerge+Enqueue when the gate approves.
+// TestSchedulerLowRiskGate_EligiblePRProceeds asserts an eligible-gate PR transitions to AwaitingMerge via PrepareMerge+Enqueue (MAY-86).
 func TestSchedulerLowRiskGate_EligiblePRProceeds(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)
@@ -105,9 +101,7 @@ func TestSchedulerLowRiskGate_EligiblePRProceeds(t *testing.T) {
 	}
 }
 
-// TestSchedulerLowRiskGate_NilGateByteEquivalent asserts that with NO
-// LowRiskGate wired, OnGatesPass keeps the exact pre-MAY-86 path:
-// PrepareMerge+Enqueue fire unconditionally (the filter is opt-in).
+// TestSchedulerLowRiskGate_NilGateByteEquivalent asserts a nil gate keeps the pre-MAY-86 path: PrepareMerge+Enqueue fire unconditionally (MAY-86).
 func TestSchedulerLowRiskGate_NilGateByteEquivalent(t *testing.T) {
 	ctx := context.Background()
 	db := statetest.OpenDB(t)

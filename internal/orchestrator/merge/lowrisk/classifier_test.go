@@ -10,11 +10,7 @@ func fixedClock(now time.Time) func() time.Time {
 	return func() time.Time { return now }
 }
 
-// TestLowRiskClassifier_LoadBearingChangeFailsClassify asserts the
-// load-bearing veto is FIRST and UNCONDITIONAL: a PR touching a
-// load-bearing path is rejected with reason "load_bearing_path" even
-// when every secondary signal (tiny diff, fully soaked) would otherwise
-// pass. This is the core safety invariant of MAY-86.
+// TestLowRiskClassifier_LoadBearingChangeFailsClassify asserts a load-bearing PR is held (false, "load_bearing_path") even when LOC + soak are green (MAY-86).
 func TestLowRiskClassifier_LoadBearingChangeFailsClassify(t *testing.T) {
 	now := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
 	c := New(Config{LOCCap: 50, HoldWindow: 15 * time.Minute, Clock: fixedClock(now)})
@@ -35,18 +31,15 @@ func TestLowRiskClassifier_LoadBearingChangeFailsClassify(t *testing.T) {
 	}
 }
 
-// TestLowRiskClassifier_LoadBearingVetoBeatsEveryOtherFailure asserts the
-// veto reason wins even when LOC ALSO exceeds the cap — proving the
-// load-bearing branch runs BEFORE the LOC branch (ordering, not just
-// presence).
+// TestLowRiskClassifier_LoadBearingVetoBeatsEveryOtherFailure asserts the veto reason wins over an over-cap+un-soaked diff, proving veto precedes LOC/soak (MAY-86).
 func TestLowRiskClassifier_LoadBearingVetoBeatsEveryOtherFailure(t *testing.T) {
 	now := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
 	c := New(Config{LOCCap: 50, HoldWindow: 15 * time.Minute, Clock: fixedClock(now)})
 
 	pr := PR{
 		ChangedPaths: []string{"cmd/regatta/serve.go", "docs/x.md"},
-		DiffLOC:      9999,                    // over cap
-		OpenedAt:     now,                     // not soaked
+		DiffLOC:      9999, // over cap
+		OpenedAt:     now,  // not soaked
 	}
 	eligible, reason := c.Classify(pr)
 	if eligible {
@@ -57,8 +50,7 @@ func TestLowRiskClassifier_LoadBearingVetoBeatsEveryOtherFailure(t *testing.T) {
 	}
 }
 
-// TestLowRiskClassifier_LOCOverCapHolds asserts a non-load-bearing PR
-// whose diff exceeds the LOC cap is held with reason "loc_over_cap".
+// TestLowRiskClassifier_LOCOverCapHolds asserts a non-load-bearing over-cap diff is held (false, "loc_over_cap") (MAY-86).
 func TestLowRiskClassifier_LOCOverCapHolds(t *testing.T) {
 	now := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
 	c := New(Config{LOCCap: 50, HoldWindow: 15 * time.Minute, Clock: fixedClock(now)})
@@ -77,9 +69,7 @@ func TestLowRiskClassifier_LOCOverCapHolds(t *testing.T) {
 	}
 }
 
-// TestLowRiskClassifier_SoakNotSatisfiedHolds asserts a PR younger than
-// the hold window is held with reason "soak_not_satisfied" even when
-// path + LOC are fine.
+// TestLowRiskClassifier_SoakNotSatisfiedHolds asserts a PR younger than the hold window is held (false, "soak_not_satisfied") (MAY-86).
 func TestLowRiskClassifier_SoakNotSatisfiedHolds(t *testing.T) {
 	now := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
 	c := New(Config{LOCCap: 50, HoldWindow: 15 * time.Minute, Clock: fixedClock(now)})
@@ -98,9 +88,7 @@ func TestLowRiskClassifier_SoakNotSatisfiedHolds(t *testing.T) {
 	}
 }
 
-// TestLowRiskClassifier_HappyLowRiskDocsPREligible asserts a docs-only
-// PR under the LOC cap and past the soak window is eligible with reason
-// "eligible".
+// TestLowRiskClassifier_HappyLowRiskDocsPREligible asserts a soaked docs-only under-cap PR is eligible (true, "eligible") (MAY-86).
 func TestLowRiskClassifier_HappyLowRiskDocsPREligible(t *testing.T) {
 	now := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
 	c := New(Config{LOCCap: 50, HoldWindow: 15 * time.Minute, Clock: fixedClock(now)})
@@ -119,9 +107,7 @@ func TestLowRiskClassifier_HappyLowRiskDocsPREligible(t *testing.T) {
 	}
 }
 
-// TestLowRiskClassifier_SoakBoundaryInclusive asserts the soak check is
-// inclusive at exactly HoldWindow (>=), matching the stateless
-// Clock().Sub(OpenedAt) >= HoldWindow contract.
+// TestLowRiskClassifier_SoakBoundaryInclusive asserts the soak check is inclusive at exactly HoldWindow (Sub >= HoldWindow) (MAY-86).
 func TestLowRiskClassifier_SoakBoundaryInclusive(t *testing.T) {
 	now := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
 	c := New(Config{LOCCap: 50, HoldWindow: 15 * time.Minute, Clock: fixedClock(now)})
@@ -137,10 +123,7 @@ func TestLowRiskClassifier_SoakBoundaryInclusive(t *testing.T) {
 	}
 }
 
-// TestLoadBearingPaths_EmbeddedListCoversT3Set asserts the embedded
-// single-source-of-truth path list covers the broader spec-§3 T3 set so
-// the embed-and-shell-read pair shares one physical file. Each prefix
-// MUST veto.
+// TestLoadBearingPaths_EmbeddedListCoversT3Set asserts every broader spec-§3 T3 prefix vetoes via the embedded list (MAY-86).
 func TestLoadBearingPaths_EmbeddedListCoversT3Set(t *testing.T) {
 	now := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
 	c := New(Config{LOCCap: 50, HoldWindow: 15 * time.Minute, Clock: fixedClock(now)})
@@ -173,9 +156,7 @@ func TestLoadBearingPaths_EmbeddedListCoversT3Set(t *testing.T) {
 	}
 }
 
-// TestLoadBearingPaths_NonCheckScriptNotVetoed asserts the scripts veto
-// is scoped to scripts/check-*.sh (CI gates), not every script — a
-// non-check script under scripts/ is NOT load-bearing for this gate.
+// TestLoadBearingPaths_NonCheckScriptNotVetoed asserts a non-check script under scripts/ is not vetoed (veto is scoped to scripts/check-*.sh) (MAY-86).
 func TestLoadBearingPaths_NonCheckScriptNotVetoed(t *testing.T) {
 	now := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
 	c := New(Config{LOCCap: 50, HoldWindow: 15 * time.Minute, Clock: fixedClock(now)})

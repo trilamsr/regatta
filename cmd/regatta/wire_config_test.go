@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/trilamsr/regatta/internal/orchestrator/merge/lowrisk"
 )
 
 // TestLoadSchedulerParallelCap_ReturnsConfiguredCap asserts wire reads regatta.yaml::scheduler.parallel_cap (#1169).
@@ -80,5 +82,61 @@ safety:
 func TestLoadDestructiveOpLists_MissingYAML_ReturnsNil(t *testing.T) {
 	if deny, allow := loadDestructiveOpLists(t.TempDir()); deny != nil || allow != nil {
 		t.Fatalf("missing yaml should yield nil lists; got deny=%v allow=%v", deny, allow)
+	}
+}
+
+const lowRiskBaseYAML = `version: 1
+repo:
+  host: github
+  owner: trilamsr
+  name: regatta
+spec_adapter:
+  type: github_issues
+  selector: "label:planned"
+ci:
+  command: "go test ./..."
+gates:
+  - id: spec_conformance
+    type: ai
+    model: claude-opus-4-7
+    severity_block: [fail]
+safety:
+  destructive_ops_deny: []
+  agent_creds_scope: dev_only
+`
+
+// TestBuildLowRiskGate_AutoMergeOffReturnsNil asserts the gate is nil when --auto-merge=false (MAY-86).
+func TestBuildLowRiskGate_AutoMergeOffReturnsNil(t *testing.T) {
+	if g := buildLowRiskGate(t.TempDir(), false); g != nil {
+		t.Fatalf("auto-merge off must yield nil gate; got %T", g)
+	}
+}
+
+// TestBuildLowRiskGate_ConservativeDefaultHoldsAll asserts --auto-merge=true with the gate disabled wires HoldAll (MAY-86).
+func TestBuildLowRiskGate_ConservativeDefaultHoldsAll(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), []byte(lowRiskBaseYAML), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	g := buildLowRiskGate(dir, true)
+	if _, ok := g.(lowrisk.HoldAll); !ok {
+		t.Fatalf("conservative default must wire HoldAll; got %T", g)
+	}
+}
+
+// TestBuildLowRiskGate_EnabledWiresRealGate asserts the double opt-in (auto-merge + enabled) wires a real *lowrisk.Gate (MAY-86).
+func TestBuildLowRiskGate_EnabledWiresRealGate(t *testing.T) {
+	dir := t.TempDir()
+	yaml := lowRiskBaseYAML + `low_risk_automerge:
+  enabled: true
+  loc_cap: 40
+  hold_window: "10m"
+`
+	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), []byte(yaml), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	g := buildLowRiskGate(dir, true)
+	if _, ok := g.(*lowrisk.Gate); !ok {
+		t.Fatalf("enabled double opt-in must wire *lowrisk.Gate; got %T", g)
 	}
 }
