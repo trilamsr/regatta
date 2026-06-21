@@ -28,7 +28,15 @@ type StatusJSON struct {
 
 // OrchestratorStatus reports liveness derived from /healthz when the
 // HTTP socket answers, falling back to "unknown" markers when the
-// daemon is wedged or absent (--db direct path).
+// daemon is wedged or absent (--db direct path). PID is a sentinel
+// int (NOT a real OS pid yet) — regatta exposes no introspection
+// endpoint for the daemon's pid, so the field encodes probe outcome:
+// -1 = no socket reached, -2 = socket alive but pid not advertised,
+// 0 = uninitialised (reserved; never emitted). Operator scripts MUST
+// treat negative values as opaque sentinels, not as pid math. A
+// future /healthz extension will replace the -2 sentinel with the
+// real pid without changing the field name; consumers MUST tolerate
+// both shapes (any int >= 1 means "real pid known").
 type OrchestratorStatus struct {
 	Alive         bool   `json:"alive"`
 	PID           int    `json:"pid"`

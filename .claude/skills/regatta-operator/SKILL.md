@@ -317,6 +317,12 @@ regatta status --json --db "$DB" | jq '{light: .traffic_light, agents: .agents, 
 
 `.traffic_light == "red"` short-circuits sweep; otherwise inspect `.events.last_*_at` staleness before falling through to the channel-level fallbacks. `--db <path>` enables the direct sqlite read when the orchestrator socket is wedged.
 
+Contract (v1, stable across patch versions; major bump if changed):
+
+- `traffic_light`: `red` when DB unreachable OR (socket down AND no event in 60 s); `yellow` when any error in `errors[]` OR last-event age > 5 min OR socket down (DB fresh); else `green`.
+- `orchestrator.pid`: sentinel int while regatta has no daemon-PID endpoint — `-1` = no socket, `-2` = socket alive (pid not advertised). Treat negative values as opaque; only `>= 1` is a real OS pid.
+- `errors`: free-form operator-readable strings; not a programmatic API. Do not `jq select(.code == ...)` against them. Surface them in logs; route on `traffic_light` + `events.last_*_at` instead.
+
 Fallbacks (silence on a channel that should be chatty is itself a finding):
 
 | Channel | Command shape (uses pre-flight values) | What it tells you |

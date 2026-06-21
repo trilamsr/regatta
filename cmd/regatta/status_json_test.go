@@ -161,6 +161,44 @@ func TestStatusJSON_SocketProbe_FillsOrchestratorPID(t *testing.T) {
 	}
 }
 
+// TestStatusJSON_SocketDown_DBUp asserts socket-unreachable + live DB → traffic_light=yellow + last_*_at populated.
+func TestStatusJSON_SocketDown_DBUp(t *testing.T) {
+	db, dbPath := seedStatusDB(t)
+	defer func() { _ = db.Close() }()
+
+	// Seed time matches the events; "now" is 30 s later so events are
+	// fresh (< 60 s red threshold + < 5 min yellow threshold). With the
+	// orchestrator socket unreachable, the rule "orchestrator not alive
+	// but DB fresh" falls to yellow, not red.
+	now := time.Date(2026, 6, 21, 5, 0, 30, 0, time.UTC)
+	var buf strings.Builder
+	rc := runStatusJSON(context.Background(), &buf, statusJSONOpts{
+		DBPath:       dbPath,
+		SocketURL:    "http://127.0.0.1:1", // port 1 is reserved → ECONNREFUSED
+		ConnectTimeo: 100 * time.Millisecond,
+		Now:          func() time.Time { return now },
+	})
+	if rc != 0 {
+		t.Fatalf("rc=%d body=%q", rc, buf.String())
+	}
+	var out StatusJSON
+	if err := json.Unmarshal([]byte(buf.String()), &out); err != nil {
+		t.Fatalf("invalid json: %v", err)
+	}
+	if out.TrafficLight != "yellow" {
+		t.Errorf("traffic_light = %q; want yellow (socket down, DB fresh)", out.TrafficLight)
+	}
+	if out.Orchestrator.Alive {
+		t.Error("orchestrator.alive = true; want false (socket refused)")
+	}
+	if out.Events.LastSpawnAt == "" || out.Events.LastExitAt == "" || out.Events.LastMergeAt == "" {
+		t.Errorf("last_*_at must populate from live DB even when socket is down: %+v", out.Events)
+	}
+	if out.Agents.ByState["running"] != 1 {
+		t.Errorf("agents.by_state[running] = %d; want 1", out.Agents.ByState["running"])
+	}
+}
+
 // TestStatusJSON_RunStatus_JSONFlagRouting asserts `runStatus --json` writes parseable JSON to stdout (AC1 e2e).
 func TestStatusJSON_RunStatus_JSONFlagRouting(t *testing.T) {
 	r, w, err := os.Pipe()
