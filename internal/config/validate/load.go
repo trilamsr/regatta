@@ -134,6 +134,33 @@ type AlarmWebhook struct {
 type Safety struct {
 	// Authz — OPA policy hot-reload config; nil ⇒ embed.FS default-deny only, no watcher, no SIGHUP handler.
 	Authz *Authz `yaml:"authz,omitempty" json:"authz,omitempty"`
+	// DestructiveOpsDeny holds substrings that block an agent op outright unless re-permitted by AgentDestructiveOpsAllow.
+	DestructiveOpsDeny []string `yaml:"destructive_ops_deny,omitempty" json:"destructive_ops_deny,omitempty"`
+	// AgentDestructiveOpsAllow re-permits a denied op scoped to refs an agent owns (regatta/agent-* branches, force-with-lease) so self-managed force-push stops stalling mid-run (MAY-97).
+	AgentDestructiveOpsAllow []string `yaml:"agent_destructive_ops_allow,omitempty" json:"agent_destructive_ops_allow,omitempty"`
+}
+
+// IsDestructiveOpAllowed reports whether op may run: a deny-list substring match blocks it unless an allow-list substring also matches, scoping the override to the agent's own refs. Nil receiver and empty deny list both permit (config-absent default-permit). The resolved lists reach the agent at dispatch via spawner.Request → defaultPromptBuilder (MAY-258), where this same deny-then-allow semantics is rendered into the brief.
+func (s *Safety) IsDestructiveOpAllowed(op string) bool {
+	if s == nil {
+		return true
+	}
+	denied := false
+	for _, d := range s.DestructiveOpsDeny {
+		if d != "" && strings.Contains(op, d) {
+			denied = true
+			break
+		}
+	}
+	if !denied {
+		return true
+	}
+	for _, a := range s.AgentDestructiveOpsAllow {
+		if a != "" && strings.Contains(op, a) {
+			return true
+		}
+	}
+	return false
 }
 
 // Authz mirrors `safety.authz`; all fields optional — absent block keeps zero-config deployments on the embed.FS default-deny bundle.
@@ -167,6 +194,14 @@ func (c *Config) PlannerPromptSHA() string {
 		return ""
 	}
 	return c.Prompts.PlannerSHA
+}
+
+// DestructiveOpLists returns the resolved safety deny + allow lists threaded into the agent brief (MAY-97, MAY-258); nil-safe, returns nils when omitted.
+func (c *Config) DestructiveOpLists() (deny, allow []string) {
+	if c == nil || c.Safety == nil {
+		return nil, nil
+	}
+	return c.Safety.DestructiveOpsDeny, c.Safety.AgentDestructiveOpsAllow
 }
 
 // AuthzConfig returns the resolved safety.authz block (nil when omitted); nil-safe at every level.

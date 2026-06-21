@@ -28,23 +28,26 @@ type orchestratorWiring struct {
 // newOrchestrator returns the orchestrator + its HealthHeartbeat cell as one unit.
 func newOrchestrator(w orchestratorWiring) (*orchestrator.Orchestrator, *health.HeartbeatCell) {
 	hb := health.NewHeartbeatCell(w.Clock)
+	deny, allow := loadDestructiveOpLists(w.Flags.RepoRoot)
 	o := orchestrator.New(orchestrator.Config{
-		AdapterSync:       w.Syncer,
-		BriefLoader:       w.Loader,
-		DB:                w.DB,
-		Scheduler:         w.Scheduler,
-		Spawner:           w.Spawner,
-		SpawnerBackend:    w.Flags.SpawnerName,
-		ItemBody:          buildItemBodyLoader(w.Flags.RepoRoot, w.Logger),
-		RepoRoot:          w.Flags.RepoRoot,
-		DBPath:            w.Flags.DBPath,
-		PollInterval:      w.Flags.PollDur,
-		TickInterval:      w.Flags.TickDur,
-		HeartbeatInterval: w.Flags.HeartDur,
-		LockTTL:           w.Flags.LockTTL,
-		Logger:            w.Logger,
-		Clock:             w.Clock,
-		HealthHeartbeat:   hb,
+		AdapterSync:              w.Syncer,
+		BriefLoader:              w.Loader,
+		DB:                       w.DB,
+		Scheduler:                w.Scheduler,
+		Spawner:                  w.Spawner,
+		SpawnerBackend:           w.Flags.SpawnerName,
+		ItemBody:                 buildItemBodyLoader(w.Flags.RepoRoot, w.Logger),
+		RepoRoot:                 w.Flags.RepoRoot,
+		DestructiveOpsDeny:       deny,
+		AgentDestructiveOpsAllow: allow,
+		DBPath:                   w.Flags.DBPath,
+		PollInterval:             w.Flags.PollDur,
+		TickInterval:             w.Flags.TickDur,
+		HeartbeatInterval:        w.Flags.HeartDur,
+		LockTTL:                  w.Flags.LockTTL,
+		Logger:                   w.Logger,
+		Clock:                    w.Clock,
+		HealthHeartbeat:          hb,
 	})
 	return o, hb
 }

@@ -65,6 +65,10 @@ type Config struct {
 	// RepoRoot is the absolute repo path the worker subprocess targets; threaded into spawner.Request.RepoRoot. Empty in unit tests.
 	RepoRoot string
 
+	// DestructiveOpsDeny + AgentDestructiveOpsAllow mirror the resolved safety.* lists; threaded into spawner.Request so the brief renders the concrete deny/allow policy at dispatch (MAY-97, MAY-258). Empty ⇒ no policy section in the brief.
+	DestructiveOpsDeny       []string
+	AgentDestructiveOpsAllow []string
+
 	// DBPath is the on-disk sqlite path; the process-level lockfile derives as <dbPath>.lock.
 	DBPath string
 
