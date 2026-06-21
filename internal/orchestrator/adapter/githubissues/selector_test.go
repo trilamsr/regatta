@@ -101,7 +101,51 @@ func TestGitHubIssues_Selector_FiltersOnParsedLabel(t *testing.T) {
 	}
 }
 
-// TestGitHubIssues_Selector_Malformed fails closed at constructor with a stable error token. Reviewer pass-1 added: whitespace-only value + duplicate clause + state-only.
+// TestGitHubIssues_Selector_MultiLabelAndCombines asserts repeated label clauses AND-combine into a comma-joined GH API arg (#1076).
+func TestGitHubIssues_Selector_MultiLabelAndCombines(t *testing.T) {
+	gh := &fakeGH{listIssues: []ghclient.Issue{}}
+	cfg := GitHubIssuesConfig{
+		Client:   gh,
+		Repo:     Repo{Owner: "o", Name: "r"},
+		Selector: "label:roadmap label:priority-high",
+	}
+	a, err := NewGitHubIssues(cfg)
+	if err != nil {
+		t.Fatalf("NewGitHubIssues: %v", err)
+	}
+	if _, err := a.List(context.Background()); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if gh.lastListLabel != "roadmap,priority-high" {
+		t.Fatalf("selector label=%q want comma-joined AND arg %q", gh.lastListLabel, "roadmap,priority-high")
+	}
+}
+
+// TestGitHubIssues_Selector_MultiLabelFilterRequiresAll asserts the in-memory filter keeps only issues carrying every selected label (#1076).
+func TestGitHubIssues_Selector_MultiLabelFilterRequiresAll(t *testing.T) {
+	gh := &fakeGH{listIssues: []ghclient.Issue{
+		{Number: 1, Title: "ITEM-1: both", Body: "## Acceptance criteria\n- [planned] c1: x\n", Labels: []string{"roadmap", "priority-high"}},
+		{Number: 2, Title: "ITEM-2: one", Body: "## Acceptance criteria\n- [planned] c1: x\n", Labels: []string{"roadmap"}},
+	}}
+	cfg := GitHubIssuesConfig{
+		Client:   gh,
+		Repo:     Repo{Owner: "o", Name: "r"},
+		Selector: "label:roadmap label:priority-high",
+	}
+	a, err := NewGitHubIssues(cfg)
+	if err != nil {
+		t.Fatalf("NewGitHubIssues: %v", err)
+	}
+	items, err := a.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != "ITEM-1" {
+		t.Fatalf("expected only ITEM-1 (carries both labels); got %+v", items)
+	}
+}
+
+// TestGitHubIssues_Selector_Malformed fails closed at constructor with a stable error token. Reviewer pass-1 added: whitespace-only value + duplicate clause + state-only. #1076 swaps distinct-multi-label (now valid) for exact-dup.
 func TestGitHubIssues_Selector_Malformed(t *testing.T) {
 	for _, sel := range []string{
 		"label:",
@@ -109,7 +153,7 @@ func TestGitHubIssues_Selector_Malformed(t *testing.T) {
 		"label:roadmap unknown:foo",
 		"state:open",
 		"label:   ",
-		"label:foo label:bar",
+		"label:foo label:foo",
 		"state:open state:closed",
 	} {
 		cfg := GitHubIssuesConfig{

@@ -1,0 +1,11 @@
+services:
+  regatta:
+    environment:
+      REGATTA_SPAWNER_STRIP_API_KEY: "1"   # #1099: children auth via subscription via ~/.claude mount
+    command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=true", "--spawner=claude"]
+    volumes:
+      - ${REPO_PATH:-.}:/repo
+      - /repo/.regatta/worktrees   # #1161: anon volume shadows bind so worktrees don't leak to host
+      - regatta-data:/data
+      - ./regatta.yaml.operator-runtime:/repo/regatta.yaml:ro
+      - ${HOME}/.claude:/home/nonroot/.claude:ro   # subscription auth for children
