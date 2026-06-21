@@ -1,6 +1,5 @@
 ---
 status: superseded
-phase: x-forward-fit
 revision: v1 (Phase-S delivery roadmap; scopes down v5.1 design to self-host filter)
 author: design-subagent
 date: 2026-06-04
@@ -88,11 +87,12 @@ ops loop without touching dual-principal auth or shadow-proposals.
 ### 2.3 What is explicitly deferred
 
 Per `docs/engineer/briefs/2026-06-01-self-host-first.md` §4: `htmx`
-hot-swap UI is Phase-X-deferred (the mechanical gate `scripts/check-phase-x-leak.sh`
-will fail any active spec that bare-mentions the token — see #740 for
-the gate landing PR). The v5.1 SvelteKit lift is also Phase-X-deferred
-because it requires npm + Vite + Playwright supply-chain (per v5.1 §7
-CI gates).
+hot-swap UI is Phase-X-deferred. Post-MAY-31, the mechanical
+`scripts/check-phase-x-leak.sh` gate was demoted to a `make pre-push-check`
+hint; specs that intentionally explore Phase-X scope live under
+`docs/engineer/specs/phase-x/`. The v5.1 SvelteKit lift is also
+Phase-X-deferred because it requires npm + Vite + Playwright supply-chain
+(per v5.1 §7 CI gates).
 
 ### 2.4 80/20 ops analysis
 
@@ -326,8 +326,8 @@ per-row `[Approve]` + `[Reject]` for the untrusted minority.
 
 1. Operator opens `/console`. Dashboard surfaces the chain-break banner
    at the top (last-good row id + first-bad row id + `[Run-replay]`
-   button) — `check-phase-x-leak.sh` already detects break candidates
-   server-side, no operator input needed.
+   button) — substrate chain-break detection already runs server-side, no
+   operator input needed.
 2. Operator clicks `[Run-replay]` → POST `/console/substrate/replay`
    (S3-1 extension; pre-S3 degrades to a CLI breadcrumb showing the
    exact `regatta substrate verify --row N` invocation) → redirect

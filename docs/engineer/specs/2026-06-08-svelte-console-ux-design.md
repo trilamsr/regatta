@@ -1,6 +1,5 @@
 ---
 status: draft
-phase: x-forward-fit
 revision: v1
 author: design pass (frontend-design + ui-ux-pro-max skills, operator review)
 date: 2026-06-08

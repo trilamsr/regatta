@@ -51,7 +51,7 @@ Sequence T1 → T2 (NOT parallel) because T2's reviewer must see "the spec preco
 
 | # | File | Edit | Rationale |
 |---|---|---|---|
-| 1 | `docs/engineer/specs/2026-06-02-s3-t2-substrate-cutover.md` | Frontmatter: `status: active` → `status: archived`; add `archived_reason: "Phase D' adopted per DESIGN-B 2026-06-04-approvals-shadow-cutover-design.md — zero production callers, scaffold deleted in T2; reopen on external customer Phase X ask"`. Drop `phase: x-forward-fit` (archived specs are skip-listed by `check-phase-x-leak.sh`). | Mark the parent spec archived so the downstream "MUST be merged first" pointers no longer resolve to an active commitment. |
+| 1 | `docs/engineer/specs/2026-06-02-s3-t2-substrate-cutover.md` | Frontmatter: `status: active` → `status: archived`; add `archived_reason: "Phase D' adopted per DESIGN-B 2026-06-04-approvals-shadow-cutover-design.md — zero production callers, scaffold deleted in T2; reopen on external customer Phase X ask"`. Drop `phase: x-forward-fit` (post-MAY-31 the frontmatter is no longer load-bearing — phase-x/ directory placement is the convention). | Mark the parent spec archived so the downstream "MUST be merged first" pointers no longer resolve to an active commitment. |
 | 2 | `docs/engineer/specs/2026-06-03-mvr-3-t3-blackboard-skeleton.md` line 96 | Delete the entire "MUST be merged first: S3-T2 substrate cutover phase B+C" bullet. Renumber following bullets. | Blackboard skeleton no longer depends on the deleted scaffold — `kind=fact` channel from Substrate Wave 1 (bullet 1, line 95) is sufficient. |
 | 3 | `docs/engineer/specs/2026-06-03-mvr-3-t4-research-mode-overlay-skeleton.md` line 102 | Delete "MUST be merged first: Substrate Wave 1 + S3-T2 cutover" bullet. (Substrate Wave 1 itself is already cited transitively via bullet 3 / W9 DurableHistory.) | Research-mode-overlay rides existing substrate primitives; the cutover wedge is not the gate. |
 | 4 | `docs/engineer/specs/2026-06-01-research-mode-extension-design.md` line 23 | Change "currently scheduled for Phase S3-T2 (cost-gov + approvals cutover only; everything-else cutover deferred)" to "shipped via Substrate Wave 1 (`substrate_events` table + reducers + cost-gov writer). Approvals cutover deferred to Phase X per `feedback_deletion_default` — see DESIGN-B." | Reflect reality: cost-gov is substrate-native; approvals cutover never wired. |
@@ -242,7 +242,7 @@ Per `CLAUDE.md` §Self-host filter: "does the sole internal operator need this t
 - T2: YES — deletion is the operator's primary mechanism for keeping the repo navigable. Carrying ~730 LOC of dead scaffold violates `feedback_deletion_default` and pays grep-tax on every reviewer scan.
 - T3 (optional): YES — same rationale as T2.
 
-All three pass the filter. No Phase-X token (`tenant_id`, `RBAC`, `Stripe`, `Sigstore`, `Rekor`, `blackboard`, `Temporal`) is introduced or removed by this work, so `scripts/check-phase-x-leak.sh` is a no-op.
+All three pass the filter. No Phase-X token (`tenant_id`, `RBAC`, `Stripe`, `Sigstore`, `Rekor`, `blackboard`, `Temporal`) is introduced or removed by this work, so the `make pre-push-check` Phase-X hint (post-MAY-31) is a no-op.
 
 ---
 

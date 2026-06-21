@@ -130,8 +130,8 @@ acceptance. Any uncovered row at S4 close → backlog ticket against
 `tenant_id`, `RBAC`, `Stripe`, `Sigstore`, `Rekor`, `blackboard`, and
 `Temporal` remain Phase-X per `docs/engineer/briefs/2026-06-01-self-host-first.md`.
 The SvelteKit lift does not relax these; only the render layer flips.
-`phase: x-forward-fit` retained in frontmatter to satisfy
-`scripts/check-phase-x-leak.sh` for the bare-mentions above.
+(Post-MAY-31, the `phase: x-forward-fit` frontmatter is no longer
+load-bearing — phase-x/ directory placement is the convention.)
 
 ## 3. Re-sequenced phased plan (S0 → S1 → S2 → S3 → S4)
 

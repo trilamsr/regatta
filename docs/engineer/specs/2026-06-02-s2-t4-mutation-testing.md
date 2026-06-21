@@ -2,7 +2,6 @@
 title: "Phase-S S2-T4 — Mutation testing on cost-governor + scheduler (design spec, v1)"
 status: shipped
 shipped_at: 2026-06-04
-phase: x-forward-fit
 summary: "Phase S2-T4 mutation testing on cost-governor + scheduler. References Phase-X seams (Stripe billing) only as forward-fit context."
 ---
 

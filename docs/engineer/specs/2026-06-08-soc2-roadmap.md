@@ -1,7 +1,6 @@
 ---
 title: "SOC 2 readiness roadmap — Trust Services Criteria → regatta primitives"
 status: skeleton-prefetch
-phase: x-forward-fit
 summary: "SOC 2 readiness roadmap. Five slices map TSC Common Criteria + Availability + Confidentiality to existing or planned regatta primitives. Phase-X gated; activates on first enterprise prospect ask OR `W8` multi-tenant launch OR $1M ARR OR 5+ paying customers. Companion brief at docs/engineer/briefs/2026-06-08-soc2-readiness-research.md carries the TSC taxonomy + scope decisions."
 ---
 

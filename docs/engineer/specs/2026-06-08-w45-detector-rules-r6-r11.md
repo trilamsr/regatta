@@ -1,7 +1,6 @@
 ---
 title: "W4.5 self-improve detector rules R6-R11 — Design Spec"
 status: skeleton-prefetch
-phase: x-prefetch
 summary: "Detail spec for the six W4.5 detector rules (R6 latency-outlier, R7 cost-outlier, R8 rework-cycle, R9 success-pattern-extract, R10 priority-thrash, R11 cap-thrash) extending W4's `internal/selfimprove/rules.go` MVP set. Spec is BASELINE-GATED (wedge): no baselines exist yet for std-dev or median computations, autotuner closed-loop (#926) is required for R7/R11 to close, and the research-mode overlay (MVR-3-T4) overlaps R9. Audit-before-build pass confirmed all six rules survive against the existing Sloth SLO surface — SLOs alert on aggregate p95 budget burn, R6-R11 detect per-event outliers + cross-event patterns that fire BEFORE the SLO budget tips, so the surfaces compose rather than duplicate. Reopen-trigger: 30 days of substrate event data (R6/R7 baseline window) AND #926 autotuner spec merged. R8 lands first when wedge unblocks — it is the only rule whose threshold is count-based (≥3 force-pushes), needs zero baseline, and emits signal pre-autotuner."
 ---
 

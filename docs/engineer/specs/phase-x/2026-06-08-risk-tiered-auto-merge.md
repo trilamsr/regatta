@@ -97,7 +97,7 @@ Rules:
 
 We do NOT modify `path-classifier.sh` in-place — load-bearing detection is widely consumed and we want byte-equivalent behavior there (per `feedback_byte_equal_refactor_pin` in CLAUDE.md). The new file lives alongside it.
 
-A Go-side mirror lives in `internal/orchestrator/merge/lowrisk/classifier.go` exposing `Classify(paths []string) (Tier, Reason, error)`. The shell + Go classifiers MUST agree byte-for-byte on the same inputs — enforced by `scripts/check-low-risk-classifier-parity.sh` (template: `scripts/check-prompt-parity.sh`). Drift is rejected at PR-lint time (`pr-lint-byte-equal-pin.yml`-style workflow).
+A Go-side mirror lives in `internal/orchestrator/merge/lowrisk/classifier.go` exposing `Classify(paths []string) (Tier, Reason, error)`. The shell + Go classifiers MUST agree byte-for-byte on the same inputs — enforced by `scripts/check-low-risk-classifier-parity.sh` (template: `scripts/check-prompt-parity.sh`). Drift is rejected by reviewer-subagent dispatch (per `feedback_adversarial_review`; the dedicated byte-equal-pin pr-lint workflow was demoted in MAY-31).
 
 ## §5 LoC cap definition
 

@@ -202,7 +202,7 @@ Per `feedback_tdd_discipline`, every test below lands as a FAILING commit BEFORE
 7. **Issue body format** — `TestIssueBody_ContainsFingerprintAndOverrideHints` parses the rendered body, asserts the DedupKey, sub-rule name, and `do-not-auto-file:` hint strings are all present.
 8. **Idempotent re-scan** — `TestIdempotentReScan_NoDupFile` (run scan twice over same event fixture, assert exactly one `gh issue create` call).
 9. **No leaks across rules** — `TestThrottle_PerRuleNotShared` (R12-friction's throttle does NOT consume budget belonging to future detector rules; budget is per-rule-class if multiple ship).
-10. **Wire-up gate** — `make ci-check` clean after impl; `scripts/check-spec-sections.sh`, `scripts/check-phase-x-leak.sh`, `scripts/check-doc-links.sh` clean on this PR (spec is in scope for the first; the others are noops here).
+10. **Wire-up gate** — `make ci-check` clean after impl; `scripts/check-spec-sections.sh` + `scripts/check-doc-links.sh` clean on this PR (spec is in scope for the first; the second is a noop here).
 
 ## §4 Out of scope
 
