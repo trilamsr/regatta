@@ -2,8 +2,20 @@
 # and REVIEWER_AGENT_ID. Handles operator-escape comment, allowlist shape,
 # self-tag mismatch vs PR_AUTHOR, and the automerge-with-agent-id guard
 #.
+#
+# REQUIRES: RECOMMENDATION, REVIEWER_AGENT_ID, CONFIDENCE_EVIDENCE_NEEDED
+#           (rv_extract_tokens); AUTOMERGE_ENABLED, PR_AUTHOR (rv_parse_args);
+#           BODY_FILE (rv_resolve_body)
+# SETS:     (terminal — exits 0/1/2)
+# ORDER:    must run last, after rv_extract_tokens. Guard fails fast if not.
 
 rv_decide_verdict() {
+  : "${RECOMMENDATION?rv_decide_verdict requires RECOMMENDATION — call rv_extract_tokens first}"
+  : "${REVIEWER_AGENT_ID?rv_decide_verdict requires REVIEWER_AGENT_ID — call rv_extract_tokens first}"
+  : "${CONFIDENCE_EVIDENCE_NEEDED?rv_decide_verdict requires CONFIDENCE_EVIDENCE_NEEDED — call rv_extract_tokens first}"
+  : "${AUTOMERGE_ENABLED?rv_decide_verdict requires AUTOMERGE_ENABLED — call rv_parse_args first}"
+  : "${PR_AUTHOR?rv_decide_verdict requires PR_AUTHOR — call rv_parse_args first}"
+  : "${BODY_FILE?rv_decide_verdict requires BODY_FILE — call rv_resolve_body first}"
   case "$RECOMMENDATION" in
     APPROVE)
       # Automerge guard: if the agent both writes its own

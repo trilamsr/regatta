@@ -1,6 +1,10 @@
 # reviewer-verdict/args.sh — flag parser for check-reviewer-verdict.sh.
-# Sets PR_NUM, BODY_FILE, LOAD_BEARING, PATHS_FILE, SKIP, PR_AUTHOR,
-# AUTOMERGE_ENABLED in caller scope.
+#
+# REQUIRES: (none — entry point; initializes every caller-scope var)
+# SETS:     PR_NUM, BODY_FILE, LOAD_BEARING, PATHS_FILE, SKIP, PR_AUTHOR,
+#           AUTOMERGE_ENABLED
+# ORDER:    must run FIRST. Every other snippet's REQUIRES guard fails fast
+#           if this did not run.
 
 rv_parse_args() {
   PR_NUM=""
