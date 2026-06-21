@@ -14,9 +14,7 @@ import (
 
 // failingSpawner is declared in adversarial_test.go (same package).
 
-// TestSpawnBackoff_SuppressesAfterFailure asserts a work_item that
-// fails to spawn is not re-dispatched on the immediately following
-// tick — the exponential cooldown gates re-admission (MAY-80).
+// TestSpawnBackoff_SuppressesAfterFailure asserts a failed spawn is not re-admitted on the next tick (MAY-80).
 func TestSpawnBackoff_SuppressesAfterFailure(t *testing.T) {
 	b := newSpawnBackoff()
 	const id = "wi-1"
@@ -29,9 +27,7 @@ func TestSpawnBackoff_SuppressesAfterFailure(t *testing.T) {
 	}
 }
 
-// TestSpawnBackoff_ExponentialGrowth asserts consecutive failures widen
-// the cooldown window: failure N suppresses for base<<(N-1) ticks, so
-// the second failure's window is strictly longer than the first (MAY-80).
+// TestSpawnBackoff_ExponentialGrowth asserts consecutive failures widen the cooldown window (MAY-80).
 func TestSpawnBackoff_ExponentialGrowth(t *testing.T) {
 	b := newSpawnBackoff()
 	const id = "wi-1"
@@ -57,8 +53,7 @@ func TestSpawnBackoff_ExponentialGrowth(t *testing.T) {
 	}
 }
 
-// TestSpawnBackoff_SuccessResetsWindow asserts RecordSuccess clears the
-// failure count so the next cooldown is back to the base window (MAY-80).
+// TestSpawnBackoff_SuccessResetsWindow asserts RecordSuccess clears the failure count (MAY-80).
 func TestSpawnBackoff_SuccessResetsWindow(t *testing.T) {
 	b := newSpawnBackoff()
 	const id = "wi-1"
@@ -74,8 +69,7 @@ func TestSpawnBackoff_SuccessResetsWindow(t *testing.T) {
 	}
 }
 
-// TestSpawnBackoff_PerWorkItemIsolation asserts one item's cooldown does
-// not suppress a sibling item (MAY-80).
+// TestSpawnBackoff_PerWorkItemIsolation asserts one item's cooldown does not suppress a sibling (MAY-80).
 func TestSpawnBackoff_PerWorkItemIsolation(t *testing.T) {
 	b := newSpawnBackoff()
 	b.RecordFailure("wi-a")
@@ -87,10 +81,7 @@ func TestSpawnBackoff_PerWorkItemIsolation(t *testing.T) {
 	}
 }
 
-// TestScheduleOnce_SpawnFailureBacksOff asserts a second tick does NOT
-// re-attempt the spawn of a work_item that failed on the first tick:
-// the backoff suppresses re-dispatch and emits spawn.backoff_skipped
-// instead of hammering the spawner every 5s (MAY-80).
+// TestScheduleOnce_SpawnFailureBacksOff asserts tick 2 suppresses re-dispatch + emits spawn.backoff_skipped (MAY-80).
 func TestScheduleOnce_SpawnFailureBacksOff(t *testing.T) {
 	ctx := context.Background()
 	o, _, _, _ := newHarness(t, 1)
@@ -123,10 +114,7 @@ func TestScheduleOnce_SpawnFailureBacksOff(t *testing.T) {
 	}
 }
 
-// TestScheduleOnce_MissingItemBodyHoldsItem asserts a work_item whose
-// brief body is unavailable is NOT spawned blind — it is held back and
-// spawn.held_no_body is emitted so the operator can fix the brief
-// (MAY-81). Supersedes the prior spawn-blind behavior.
+// TestScheduleOnce_MissingItemBodyHoldsItem asserts a body-less item is held + rolled back to pending, not spawned blind (MAY-81).
 func TestScheduleOnce_MissingItemBodyHoldsItem(t *testing.T) {
 	ctx := context.Background()
 	o, stub, db, _ := newHarness(t, 1)
@@ -172,8 +160,7 @@ func TestScheduleOnce_MissingItemBodyHoldsItem(t *testing.T) {
 	}
 }
 
-// TestScheduleOnce_PresentItemBodySpawns asserts the happy path is
-// unaffected: a resolvable brief body spawns normally (MAY-81 guard).
+// TestScheduleOnce_PresentItemBodySpawns asserts a resolvable brief body still spawns normally (MAY-81 guard).
 func TestScheduleOnce_PresentItemBodySpawns(t *testing.T) {
 	ctx := context.Background()
 	o, stub, _, _ := newHarness(t, 1)
