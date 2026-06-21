@@ -27,8 +27,12 @@ import (
 // envAnthropicAPIKey is the legacy env var name for the Anthropic API key, referenced from secretEnvOverrides + doctor.go.
 const envAnthropicAPIKey = "ANTHROPIC_API_KEY" //nolint:gosec // env-var NAME, not a credential value
 
+// envLinearAPIKey is the legacy env var name for the Linear API key (MAY-91), read by buildSpecAdapter after the router exports it.
+const envLinearAPIKey = "LINEAR_API_KEY" //nolint:gosec // env-var NAME, not a credential value
+
 var secretEnvOverrides = map[string][]string{
 	secrets.KeyAnthropic:     {envAnthropicAPIKey},
+	secrets.KeyLinear:        {envLinearAPIKey},
 	secrets.KeyGHToken:       {"GH_TOKEN", "GITHUB_TOKEN"},
 	secrets.KeyBriefHMACs:    {"REGATTA_HMAC_KEYRING"},
 	secrets.KeyAuditHMACKey:  {"REGATTA_AUDIT_HMAC_KEY"},
@@ -71,6 +75,7 @@ func adaptSecretsConfig(in *validate.Secrets) *secrets.Config {
 	}
 	return &secrets.Config{
 		AnthropicAPIKey: conv(in.AnthropicAPIKey),
+		LinearAPIKey:    conv(in.LinearAPIKey),
 		GHToken:         conv(in.GHToken),
 		BriefHMAC:       conv(in.BriefHMAC),
 		AuditHMAC:       conv(in.AuditHMAC),

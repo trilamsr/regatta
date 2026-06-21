@@ -23,6 +23,10 @@ const SpecAdapterTypeMarkdownCatalog = "markdown_catalog"
 // MVR-1-T4 github_issues adapter; cmd/regatta wires it when set.
 const SpecAdapterTypeGitHubIssues = "github_issues"
 
+// SpecAdapterTypeLinear mirrors the CUE discriminator for the Linear
+// read-adapter (MAY-91); cmd/regatta wires it when set.
+const SpecAdapterTypeLinear = "linear"
+
 // LoadFile reads path and runs LoadBytes on its contents.
 func LoadFile(path string) error {
 	data, err := os.ReadFile(path)
@@ -106,6 +110,7 @@ type Secret struct {
 // Secrets is the typed view of `regatta.yaml::secrets`; nil ⇒ Default chain (back-compat).
 type Secrets struct {
 	AnthropicAPIKey *Secret `yaml:"anthropic_api_key,omitempty" json:"anthropic_api_key,omitempty"`
+	LinearAPIKey    *Secret `yaml:"linear_api_key,omitempty" json:"linear_api_key,omitempty"`
 	GHToken         *Secret `yaml:"gh_token,omitempty" json:"gh_token,omitempty"`
 	BriefHMAC       *Secret `yaml:"brief_hmac,omitempty" json:"brief_hmac,omitempty"`
 	AuditHMAC       *Secret `yaml:"audit_hmac,omitempty" json:"audit_hmac,omitempty"`
@@ -186,6 +191,10 @@ type SpecAdapter struct {
 	AcceptanceSection string `yaml:"acceptance_section,omitempty" json:"acceptance_section,omitempty"`
 	// DefaultLane backfills WorkItem.Lane on github_issues items whose body has no `lane:` metadata. Mirror of the scheduler default-lane wedge from #1048; without it adaptersync drops every operator-filed unlabelled issue with `empty_lane` WARN (#1117). Empty = preserve the original "operator must label every issue" contract.
 	DefaultLane string `yaml:"default_lane,omitempty" json:"default_lane,omitempty"`
+	// Team is the Linear team key the adapter filters issues by (MAY-91); empty for non-linear types.
+	Team string `yaml:"team,omitempty" json:"team,omitempty"`
+	// States filters Linear issues by state name (MAY-91); empty ⇒ all states. Zero for non-linear types.
+	States []string `yaml:"states,omitempty" json:"states,omitempty"`
 }
 
 // PlannerPromptSHA returns the operator-pinned planner-prompt sha256; nil-safe at every level. Empty when unpinned.

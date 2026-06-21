@@ -51,12 +51,11 @@ func newTestAdapter(t *testing.T, endpoint string) schemas.SpecAdapter {
 	return a
 }
 
-// TestList_MapsFields asserts a single Linear issue maps onto WorkItem
-// (ID prefix, status map, SHA opaque token, identifier→LinkedArtifact) (MAY-91).
+// TestList_MapsFields asserts a Linear issue maps onto WorkItem fields (MAY-91).
 func TestList_MapsFields(t *testing.T) {
 	page := `{"data":{"issues":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[
 		{"id":"uuid-1","identifier":"MAY-7","title":"Wire the thing",
-		 "description":"Do it.\n\n## Acceptance criteria\n\n- [ ] one\n- [ ] two\n",
+		 "description":"Do it.\n\n## Acceptance criteria\n\n- [planned] c1: one\n- [planned] c2: two\n",
 		 "updatedAt":"2026-06-20T10:00:00.000Z","state":{"name":"In Progress"}}
 	]}}}`
 	srv := stubServer(t, []string{page}, nil)
@@ -104,7 +103,7 @@ func TestList_StatusMap(t *testing.T) {
 	}
 	for stateName, want := range cases {
 		page := `{"data":{"issues":{"pageInfo":{"hasNextPage":false},"nodes":[
-			{"id":"u","identifier":"MAY-1","title":"t","description":"## Acceptance criteria\n- [ ] x\n",
+			{"id":"u","identifier":"MAY-1","title":"t","description":"## Acceptance criteria\n- [planned] c1: x\n",
 			 "updatedAt":"2026-06-20T00:00:00.000Z","state":{"name":"` + stateName + `"}}
 		]}}}`
 		srv := stubServer(t, []string{page}, nil)
@@ -122,10 +121,10 @@ func TestList_StatusMap(t *testing.T) {
 // TestList_Paginates asserts the adapter follows pageInfo.endCursor across pages (MAY-91).
 func TestList_Paginates(t *testing.T) {
 	page1 := `{"data":{"issues":{"pageInfo":{"hasNextPage":true,"endCursor":"cur-1"},"nodes":[
-		{"id":"u1","identifier":"MAY-1","title":"a","description":"## Acceptance criteria\n- [ ] x\n","updatedAt":"2026-06-20T00:00:00.000Z","state":{"name":"Todo"}}
+		{"id":"u1","identifier":"MAY-1","title":"a","description":"## Acceptance criteria\n- [planned] c1: x\n","updatedAt":"2026-06-20T00:00:00.000Z","state":{"name":"Todo"}}
 	]}}}`
 	page2 := `{"data":{"issues":{"pageInfo":{"hasNextPage":false},"nodes":[
-		{"id":"u2","identifier":"MAY-2","title":"b","description":"## Acceptance criteria\n- [ ] y\n","updatedAt":"2026-06-20T00:00:00.000Z","state":{"name":"Done"}}
+		{"id":"u2","identifier":"MAY-2","title":"b","description":"## Acceptance criteria\n- [planned] c1: y\n","updatedAt":"2026-06-20T00:00:00.000Z","state":{"name":"Done"}}
 	]}}}`
 	var sent []string
 	srv := stubServer(t, []string{page1, page2}, &sent)
