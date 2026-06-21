@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log/slog"
 	"path/filepath"
 	"time"
 
@@ -69,8 +70,10 @@ func loadDestructiveOpLists(repoRoot string) (deny, allow []string) {
 //   - enabled=true → a real lowrisk.Gate filtering on the embedded
 //     load-bearing veto + loc_cap + stateless soak.
 //
-// An unparseable hold_window also falls back to HoldAll (fail-closed).
-func buildLowRiskGate(repoRoot string, autoMergeEnabled bool) scheduler.LowRiskGate {
+// An unparseable hold_window also falls back to HoldAll (fail-closed) and
+// logs a WARN so the operator learns their config was rejected rather than
+// silently reverting to "hold everything".
+func buildLowRiskGate(repoRoot string, autoMergeEnabled bool, logger *slog.Logger) scheduler.LowRiskGate {
 	if !autoMergeEnabled {
 		return nil
 	}
@@ -85,6 +88,8 @@ func buildLowRiskGate(repoRoot string, autoMergeEnabled bool) scheduler.LowRiskG
 	}
 	hold, err := time.ParseDuration(lr.HoldWindow)
 	if err != nil || hold <= 0 {
+		logger.Warn("lowrisk.hold_window_invalid_holding_all",
+			"hold_window", lr.HoldWindow, "err", err)
 		return lowrisk.HoldAll{}
 	}
 	locCap := lr.LOCCap

@@ -107,7 +107,7 @@ safety:
 
 // TestBuildLowRiskGate_AutoMergeOffReturnsNil asserts the gate is nil when --auto-merge=false (MAY-86).
 func TestBuildLowRiskGate_AutoMergeOffReturnsNil(t *testing.T) {
-	if g := buildLowRiskGate(t.TempDir(), false); g != nil {
+	if g := buildLowRiskGate(t.TempDir(), false, discardLogger()); g != nil {
 		t.Fatalf("auto-merge off must yield nil gate; got %T", g)
 	}
 }
@@ -118,7 +118,7 @@ func TestBuildLowRiskGate_ConservativeDefaultHoldsAll(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), []byte(lowRiskBaseYAML), 0o600); err != nil {
 		t.Fatalf("write yaml: %v", err)
 	}
-	g := buildLowRiskGate(dir, true)
+	g := buildLowRiskGate(dir, true, discardLogger())
 	if _, ok := g.(lowrisk.HoldAll); !ok {
 		t.Fatalf("conservative default must wire HoldAll; got %T", g)
 	}
@@ -135,8 +135,25 @@ func TestBuildLowRiskGate_EnabledWiresRealGate(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), []byte(yaml), 0o600); err != nil {
 		t.Fatalf("write yaml: %v", err)
 	}
-	g := buildLowRiskGate(dir, true)
+	g := buildLowRiskGate(dir, true, discardLogger())
 	if _, ok := g.(*lowrisk.Gate); !ok {
 		t.Fatalf("enabled double opt-in must wire *lowrisk.Gate; got %T", g)
+	}
+}
+
+// TestBuildLowRiskGate_BadHoldWindowHoldsAll asserts a malformed hold_window reverts to HoldAll (fail-closed) rather than wiring a real gate (MAY-86 reviewer).
+func TestBuildLowRiskGate_BadHoldWindowHoldsAll(t *testing.T) {
+	dir := t.TempDir()
+	yaml := lowRiskBaseYAML + `low_risk_automerge:
+  enabled: true
+  loc_cap: 40
+  hold_window: "0s"
+`
+	if err := os.WriteFile(filepath.Join(dir, "regatta.yaml"), []byte(yaml), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	g := buildLowRiskGate(dir, true, discardLogger())
+	if _, ok := g.(lowrisk.HoldAll); !ok {
+		t.Fatalf("bad hold_window must revert to HoldAll; got %T", g)
 	}
 }

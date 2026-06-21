@@ -156,6 +156,23 @@ func TestLoadBearingPaths_EmbeddedListCoversT3Set(t *testing.T) {
 	}
 }
 
+// TestLowRiskClassifier_EmptyChangedPathsFailsClosed asserts a PR with no changed paths is held (false, "no_changed_paths") so a missing-files fetch never reaches eligible (MAY-86 reviewer).
+func TestLowRiskClassifier_EmptyChangedPathsFailsClosed(t *testing.T) {
+	now := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)
+	c := New(Config{LOCCap: 50, HoldWindow: 15 * time.Minute, Clock: fixedClock(now)})
+
+	// Zero files + zero LOC + fully soaked: every secondary signal green,
+	// but the veto loop never ran. Must fail closed, not auto-merge.
+	pr := PR{ChangedPaths: nil, DiffLOC: 0, OpenedAt: now.Add(-24 * time.Hour)}
+	eligible, reason := c.Classify(pr)
+	if eligible {
+		t.Fatalf("empty-paths PR classified eligible; want held")
+	}
+	if reason != "no_changed_paths" {
+		t.Fatalf("reason=%q; want no_changed_paths", reason)
+	}
+}
+
 // TestLoadBearingPaths_NonCheckScriptNotVetoed asserts a non-check script under scripts/ is not vetoed (veto is scoped to scripts/check-*.sh) (MAY-86).
 func TestLoadBearingPaths_NonCheckScriptNotVetoed(t *testing.T) {
 	now := time.Date(2026, 6, 21, 12, 0, 0, 0, time.UTC)

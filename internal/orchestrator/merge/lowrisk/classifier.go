@@ -25,10 +25,11 @@ var loadBearingList string
 // Reason tokens are stable strings the operator can grep in
 // scheduler.gates_pass_held logs and the audit trail.
 const (
-	ReasonLoadBearing = "load_bearing_path"
-	ReasonLOCOverCap  = "loc_over_cap"
-	ReasonNotSoaked   = "soak_not_satisfied"
-	ReasonEligible    = "eligible"
+	ReasonLoadBearing    = "load_bearing_path"
+	ReasonLOCOverCap     = "loc_over_cap"
+	ReasonNotSoaked      = "soak_not_satisfied"
+	ReasonNoChangedPaths = "no_changed_paths"
+	ReasonEligible       = "eligible"
 )
 
 // PR is the value-object the classifier reasons over. It carries only
@@ -72,6 +73,13 @@ func New(cfg Config) *Classifier {
 // secondary checks (LOC cap, stateless soak) only run once the veto
 // clears.
 func (c *Classifier) Classify(pr PR) (bool, string) {
+	// Fail closed on empty paths: a fetch that returns zero files (gh API
+	// regression, decode loss) would otherwise skip the veto loop entirely
+	// and let a soaked zero-LOC PR reach eligible. Absent file data is
+	// ambiguous, not safe — hold it.
+	if len(pr.ChangedPaths) == 0 {
+		return false, ReasonNoChangedPaths
+	}
 	for _, p := range pr.ChangedPaths {
 		if c.isLoadBearing(p) {
 			return false, ReasonLoadBearing
@@ -111,7 +119,10 @@ type matcher struct {
 func (m matcher) matches(path string) bool {
 	switch {
 	case m.dirPrefix:
-		return strings.HasPrefix(path, m.raw)
+		// Match anything under the dir AND a bare top-level entry named
+		// exactly the dir (e.g. a file literally named `contracts`) so a
+		// slash-less load-bearing path cannot slip the prefix.
+		return strings.HasPrefix(path, m.raw) || path == strings.TrimSuffix(m.raw, "/")
 	case m.glob:
 		ok, err := filepath.Match(m.raw, path)
 		return err == nil && ok

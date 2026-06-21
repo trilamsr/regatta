@@ -45,6 +45,12 @@ func parseGhPRView(data []byte) (PR, error) {
 	if err := json.Unmarshal(bytes.TrimSpace(data), &v); err != nil {
 		return PR{}, fmt.Errorf("lowrisk: decode gh pr view: %w", err)
 	}
+	if len(v.Files) == 0 {
+		// A live PR always changes ≥1 file; an empty array means gh lost the
+		// file list. Fail closed here too (defense in depth — the classifier
+		// also vetoes empty paths) so the Gate never auto-merges on it.
+		return PR{}, fmt.Errorf("lowrisk: gh pr view returned no files")
+	}
 	paths := make([]string, 0, len(v.Files))
 	for _, f := range v.Files {
 		paths = append(paths, f.Path)

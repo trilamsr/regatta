@@ -124,7 +124,7 @@ func buildMergeWiring(db *state.DB, repoRoot string, autoMergeEnabled bool, logg
 	}
 	coord.SetExecutor(merge.GhExecutor{})
 	w := merge.NewWorker(coord, 32, logger)
-	return coord, w, buildLowRiskGate(repoRoot, autoMergeEnabled), nil
+	return coord, w, buildLowRiskGate(repoRoot, autoMergeEnabled, logger), nil
 }
 
 // verifyGhVersionFn is the test seam for the boot-time gh-version

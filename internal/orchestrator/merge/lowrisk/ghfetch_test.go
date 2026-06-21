@@ -26,8 +26,16 @@ func TestParseGhPRView_MapsFilesLOCOpenedAt(t *testing.T) {
 
 // TestParseGhPRView_BadTimestampErrors asserts an unparseable createdAt errors rather than yielding a zero OpenedAt that falsely satisfies soak (MAY-86).
 func TestParseGhPRView_BadTimestampErrors(t *testing.T) {
-	data := []byte(`{"files":[],"additions":0,"deletions":0,"createdAt":"not-a-time"}`)
+	data := []byte(`{"files":[{"path":"docs/a.md"}],"additions":1,"deletions":0,"createdAt":"not-a-time"}`)
 	if _, err := parseGhPRView(data); err == nil {
 		t.Fatalf("want error on bad createdAt; got nil")
+	}
+}
+
+// TestParseGhPRView_EmptyFilesFailsClosed asserts an empty files array errors so the Gate never auto-merges on a lost file list (MAY-86 reviewer).
+func TestParseGhPRView_EmptyFilesFailsClosed(t *testing.T) {
+	data := []byte(`{"files":[],"additions":0,"deletions":0,"createdAt":"2026-06-21T10:00:00Z"}`)
+	if _, err := parseGhPRView(data); err == nil {
+		t.Fatalf("want error on empty files; got nil")
 	}
 }
