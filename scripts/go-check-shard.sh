@@ -24,9 +24,9 @@ grep -vE '^[[:space:]]*(#|$)' "$RACE_FILE" | sort > "$tmp/race.txt"
 comm -12 "$tmp/shard.txt" "$tmp/race.txt" > "$tmp/race-list.txt"
 comm -23 "$tmp/shard.txt" "$tmp/race.txt" > "$tmp/norace-list.txt"
 
-# shellcheck disable=SC2046
-echo "shard ${SHARD}: build $(wc -l < "$tmp/shard.txt" | tr -d ' ') pkgs"
-go build -buildvcs=false $(cat "$tmp/shard.txt")
+# `go test` builds + tests in one pass; standalone `go build` would fail on
+# test-only packages (tests/, docs/engineer/runbooks/) that have no
+# non-test Go files, so we skip the separate build step.
 
 if [ -s "$tmp/race-list.txt" ]; then
   # shellcheck disable=SC2046
