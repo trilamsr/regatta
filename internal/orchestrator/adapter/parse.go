@@ -115,6 +115,20 @@ func splitFrontmatter(data []byte) (body string, fm map[string]string, err error
 	return body, fm, nil
 }
 
+// ParseCriteria extracts acceptance criteria from a markdown body for
+// adapters whose source text is operator prose rather than a strict
+// catalog (e.g. Linear descriptions). It reuses the markdown_catalog
+// checklist extractor but tolerates a missing/malformed section by
+// returning no criteria plus the original body, since those sources do
+// not mandate the section markdown_catalog requires.
+func ParseCriteria(body string) ([]schemas.Criterion, string) {
+	crit, rest, err := parseCriteria(body)
+	if err != nil {
+		return nil, body
+	}
+	return crit, rest
+}
+
 func parseCriteria(body string) ([]schemas.Criterion, string, error) {
 	var out []schemas.Criterion
 	lines := strings.Split(body, "\n")

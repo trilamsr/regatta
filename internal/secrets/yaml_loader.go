@@ -27,6 +27,7 @@ type Spec struct {
 // Config is the Go view of the `secrets:` block, one field per canonical key.
 type Config struct {
 	AnthropicAPIKey *Spec `yaml:"anthropic_api_key,omitempty" json:"anthropic_api_key,omitempty"`
+	LinearAPIKey    *Spec `yaml:"linear_api_key,omitempty" json:"linear_api_key,omitempty"`
 	GHToken         *Spec `yaml:"gh_token,omitempty" json:"gh_token,omitempty"`
 	BriefHMAC       *Spec `yaml:"brief_hmac,omitempty" json:"brief_hmac,omitempty"`
 	AuditHMAC       *Spec `yaml:"audit_hmac,omitempty" json:"audit_hmac,omitempty"`
@@ -41,6 +42,7 @@ func BuildFromConfig(ctx context.Context, cfg *Config) (Fetcher, error) {
 	}
 	mapping := map[string]*Spec{
 		KeyAnthropic:     cfg.AnthropicAPIKey,
+		KeyLinear:        cfg.LinearAPIKey,
 		KeyGHToken:       cfg.GHToken,
 		KeyBriefHMACs:    cfg.BriefHMAC,
 		KeyAuditHMACKey:  cfg.AuditHMAC,

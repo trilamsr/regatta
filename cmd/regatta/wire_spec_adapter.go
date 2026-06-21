@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
@@ -12,6 +13,7 @@ import (
 	"github.com/trilamsr/regatta/internal/ghclient"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter"
 	"github.com/trilamsr/regatta/internal/orchestrator/adapter/githubissues"
+	"github.com/trilamsr/regatta/internal/orchestrator/adapter/linear"
 )
 
 // buildSpecAdapter dispatches the schemas.SpecAdapter by `regatta.yaml::spec_adapter.type` (MVR-1-T4 §10.1). The slogger pin is load-bearing: pre-#867 the LoadConfigFile error path was silently swallowed, so a malformed regatta.yaml would fall back to markdown_catalog with no operator-visible signal that github_issues had been dropped. Every boot now emits one adapter.configured INFO record so operators can confirm the wired type without log archaeology, and yaml-load failures (file present but malformed) surface a WARN record naming the parse error. A missing regatta.yaml stays silent — zero-config deployments are the documented happy path.
@@ -36,6 +38,28 @@ func buildSpecAdapter(f serveFlags, logger *slog.Logger) (schemas.SpecAdapter, e
 			Selector:          cfg.SpecAdapter.Selector,
 			AcceptanceSection: cfg.SpecAdapter.AcceptanceSection,
 			DefaultLane:       cfg.SpecAdapter.DefaultLane,
+		})
+	}
+	if cfg != nil && cfg.SpecAdapter != nil && cfg.SpecAdapter.Type == validateconfig.SpecAdapterTypeLinear {
+		if cfg.SpecAdapter.Team == "" {
+			return nil, fmt.Errorf("spec_adapter.type=linear requires spec_adapter.team")
+		}
+		// The secrets router exports LINEAR_API_KEY to env at boot
+		// (wire_secrets exportSecretsToEnv) from env/keychain/pass; an
+		// empty value here means the operator configured neither.
+		apiKey := os.Getenv(envLinearAPIKey)
+		if apiKey == "" {
+			return nil, fmt.Errorf("spec_adapter.type=linear requires the Linear API key via %s (env or secrets router)", envLinearAPIKey)
+		}
+		logger.Info("adapter.configured",
+			"type", validateconfig.SpecAdapterTypeLinear,
+			"team", cfg.SpecAdapter.Team,
+			"states", cfg.SpecAdapter.States,
+		)
+		return linear.NewLinearCatalog(linear.LinearCatalogConfig{
+			APIKey: apiKey,
+			Team:   cfg.SpecAdapter.Team,
+			States: cfg.SpecAdapter.States,
 		})
 	}
 	logger.Info("adapter.configured",

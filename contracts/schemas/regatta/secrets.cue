@@ -21,6 +21,7 @@ package regattav1
 // for canonical regatta keys. Absent block ⇒ Default chain (back-compat).
 #Secrets: {
 	anthropic_api_key?: #Secret
+	linear_api_key?:    #Secret
 	gh_token?:          #Secret
 	brief_hmac?:        #Secret
 	audit_hmac?:        #Secret
