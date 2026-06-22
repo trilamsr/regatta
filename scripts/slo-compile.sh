@@ -90,6 +90,13 @@ mkdir -p "${OUT_DIR}"
 # non-input-dependent byte in Sloth's output stream.
 shopt -s nullglob
 for src in "${SLO_DIR}"/*.yaml; do
+  # Skip non-sloth specs (operator config + other yaml that
+  # coexists in slo/). Sloth specs declare version + service at
+  # the top level; the cheapest reliable check is the version line.
+  if ! grep -q '^version: ' "${src}"; then
+    echo "slo-compile: skip ${src} (no 'version:' line — non-sloth yaml)"
+    continue
+  fi
   base=$(basename "${src}")
   dst="${OUT_DIR}/${base}"
   echo "slo-compile: ${src} -> ${dst}"

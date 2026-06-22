@@ -139,7 +139,7 @@ func TestGreenClock_DSTSpringForward_HandlesGracefully(t *testing.T) {
 func TestLoadFile_ParsesTriggersYAML(t *testing.T) {
 	// Resolve repo root relative to this test file so the assertion
 	// runs regardless of go test cwd quirks.
-	path := filepath.Join("..", "..", "config", "triggers", "triggers.yaml")
+	path := filepath.Join("..", "..", "slo", "triggers.yaml")
 	f, err := LoadFile(path)
 	if err != nil {
 		t.Fatalf("LoadFile: %v", err)

@@ -31,6 +31,11 @@ echo "slo-compile_test: pin file present ($(cat "${PIN_FILE}"))"
 missing=""
 shopt -s nullglob
 for src in "${SLO_DIR}"/*.yaml; do
+  # Skip non-sloth specs (operator config like triggers.yaml).
+  # Mirror the gate in scripts/slo-compile.sh.
+  if ! grep -q '^version: ' "${src}"; then
+    continue
+  fi
   base=$(basename "${src}")
   dst="${OUT_DIR}/${base}"
   if [ ! -s "${dst}" ]; then
