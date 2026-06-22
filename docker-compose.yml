@@ -53,6 +53,17 @@ services:
     # Transient flakes still recover; bounded restarts keep the journal
     # readable per the secrets_resolved summary line.
     restart: on-failure:5
+    # regatta spawns claude + gh CLI children; without a cap one runaway
+    # child can exhaust host RAM on a single-operator laptop. 2g/2cpus
+    # covers concurrent spawns at the documented parallel cap (3-4) with
+    # headroom; raise via override when the cap is raised.
+    mem_limit: 2g
+    cpus: 2.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     env_file:
       - path: .env
         required: false
@@ -97,7 +108,9 @@ services:
       - ${REPO_PATH:-.}:/repo
       - regatta-data:/data
     ports:
-      - "8080:8080"
+      # 127.0.0.1 not 0.0.0.0 — single-operator self-host stack must not
+      # publish the UI to LAN. Operator hits localhost from the same box.
+      - "127.0.0.1:8080:8080"
     networks:
       - regatta-net
     depends_on:
@@ -109,6 +122,13 @@ services:
   prometheus:
     image: prom/prometheus:v3.7.2
     restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     # --web.enable-otlp-receiver: TSDB-direct OTLP ingest (Prom 3.x stable).
     # --enable-feature=otlp-deltatocumulative: regatta exports delta-temporality
     # counters (OTel default); Prom converts to cumulative at ingest.
@@ -126,7 +146,7 @@ services:
       - ./dashboards/prometheus/rules:/etc/prometheus/rules:ro
       - prom-data:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     networks:
       - regatta-net
     healthcheck:
@@ -136,11 +156,21 @@ services:
       retries: 6
     depends_on:
       alertmanager:
-        condition: service_started
+        # service_healthy not service_started — alertmanager's listener
+        # binds after the process starts, so prom's first scrape can race
+        # the bind without an explicit healthy gate.
+        condition: service_healthy
 
   grafana:
     image: grafana/grafana:11.4.0
     restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       # Self-host default — operator rotates on first login. Documented
       # in docs/operator/docker-compose.md.
@@ -155,7 +185,7 @@ services:
       - ./docs/operator/dashboards:/var/lib/grafana/dashboards/regatta:ro
       - grafana-data:/var/lib/grafana
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     networks:
       - regatta-net
     depends_on:
@@ -165,6 +195,13 @@ services:
   alertmanager:
     image: prom/alertmanager:v0.28.1
     restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"
       - "--storage.path=/alertmanager"
@@ -172,9 +209,14 @@ services:
       - ./docker/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
     ports:
-      - "9093:9093"
+      - "127.0.0.1:9093:9093"
     networks:
       - regatta-net
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
 
 networks:
   regatta-net:
