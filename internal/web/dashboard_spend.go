@@ -32,7 +32,7 @@ func loadSpendView(ctx context.Context, deps Dependencies) any {
 		return view
 	}
 	view.TodayMicros = int64(today)
-	lifetime, err := reader.RecordedUSDForWindow(ctx, "default", time.Unix(0, 0), now)
+	lifetime, err := reader.RecordedUSDForWindow(ctx, "default", time.Unix(0, 0), now) // allow-bare-time-unix: epoch-zero boundary for "all history" window; Location irrelevant.
 	if err != nil {
 		view.Err = err.Error()
 		return view

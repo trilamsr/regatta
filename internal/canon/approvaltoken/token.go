@@ -183,7 +183,7 @@ func VerifyToken(kr Keyring, wire string, expectReviewer string, now time.Time) 
 	if dec.More() {
 		return zero, fmt.Errorf("%w: trailing bytes after payload", ErrUnverifiable)
 	}
-	if !now.Before(time.Unix(p.Window, 0)) {
+	if !now.Before(time.Unix(p.Window, 0)) { // allow-bare-time-unix: now.Before() is instant comparison; Location irrelevant.
 		return zero, ErrTokenExpired
 	}
 	// expectReviewer == "" means "derive from claim" — the HMAC compare
