@@ -145,12 +145,17 @@ func newOTLPMetricExporter(ctx context.Context) (sdkmetric.Exporter, error) {
 		proto = os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL")
 	}
 	switch proto {
-	case "http/protobuf":
+	case protoHTTPProtobuf:
 		return otlpmetrichttp.New(ctx)
 	default:
 		return otlpmetricgrpc.New(ctx)
 	}
 }
+
+// protoHTTPProtobuf is the OTLP HTTP/protobuf protocol selector. Shared
+// across meter + tracer + log exporters so a future protocol-set
+// expansion moves through one edit.
+const protoHTTPProtobuf = "http/protobuf"
 
 func composedMeterShutdown(mp *sdkmetric.MeterProvider, srv *http.Server) ShutdownFunc {
 	var (

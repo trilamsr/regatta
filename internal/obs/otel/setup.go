@@ -241,7 +241,7 @@ func newOTLPTraceExporter(ctx context.Context) (sdktrace.SpanExporter, error) {
 		proto = os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL")
 	}
 	switch proto {
-	case "http/protobuf":
+	case protoHTTPProtobuf:
 		return otlptracehttp.New(ctx)
 	default:
 		return otlptracegrpc.New(ctx)
@@ -256,7 +256,7 @@ func newOTLPLogExporter(ctx context.Context) (log.Exporter, error) {
 		proto = os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL")
 	}
 	switch proto {
-	case "http/protobuf":
+	case protoHTTPProtobuf:
 		return otlploghttp.New(ctx)
 	default:
 		return otlploggrpc.New(ctx)
