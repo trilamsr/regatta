@@ -90,6 +90,21 @@ func (o *Orchestrator) logPollErrIfTransition(err error) {
 	o.logTickErrIfTransition("orchestrator.poll_failed", err)
 }
 
+// initialTickWarn handles the pre-loop kickoff branch: emit with
+// phase=initial attr (operator-distinguishable signal) AND seed
+// tickErrSeen[kind]=true so the immediately-following tickT.C tick
+// running through logTickErrIfTransition suppresses the duplicate.
+func (o *Orchestrator) initialTickWarn(kind string, err error) {
+	if err == nil {
+		return
+	}
+	if o.tickErrSeen == nil {
+		o.tickErrSeen = make(map[string]bool)
+	}
+	o.tickErrSeen[kind] = true
+	o.log.Warn(kind, "phase", "initial", string(obs.KeyErr), err.Error())
+}
+
 // New constructs an Orchestrator from a Config. All deps are wired
 // externally so tests can stub any seam.
 func New(cfg Config) *Orchestrator {
@@ -147,16 +162,8 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	// before the first tick. Errors here are non-fatal for the same
 	// reason as the periodic ticks.
 	o.touchHealthHeartbeat()
-	if err := o.PollOnce(ctx); err != nil {
-		if o.tickErrSeen == nil {
-			o.tickErrSeen = make(map[string]bool)
-		}
-		o.tickErrSeen["orchestrator.poll_failed"] = true
-		o.log.Warn("orchestrator.poll_failed", "phase", "initial", string(obs.KeyErr), err.Error())
-	}
-	if err := o.ScheduleOnce(ctx); err != nil {
-		o.log.Warn("orchestrator.schedule_failed", "phase", "initial", string(obs.KeyErr), err.Error())
-	}
+	o.initialTickWarn("orchestrator.poll_failed", o.PollOnce(ctx))
+	o.initialTickWarn("orchestrator.schedule_failed", o.ScheduleOnce(ctx))
 
 	for {
 		select {
