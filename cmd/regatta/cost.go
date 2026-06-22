@@ -65,7 +65,7 @@ func runCostStatus(args []string) int {
 func runCostStatusWith(deps costDeps, args []string) int {
 	fs := flag.NewFlagSet("cost status", flag.ContinueOnError)
 	fs.SetOutput(deps.Stderr)
-	_ = fs.String("db", stateDBDefaultLiteral, "Path to sqlite state DB")
+	_ = fs.String("db", defaultStateDB(), "Path to sqlite state DB")
 	_ = fs.String("config", defaultRegattaConfig, "Path to regatta.yaml")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta cost status [--db <path>] [--config <path>]")
@@ -207,7 +207,7 @@ func runCostBackfill(args []string) int {
 func runCostBackfillWith(deps backfillDeps, args []string) int {
 	fs := flag.NewFlagSet("cost backfill", flag.ContinueOnError)
 	fs.SetOutput(deps.Stderr)
-	_ = fs.String("db", stateDBDefaultLiteral, "Path to sqlite state DB")
+	_ = fs.String("db", defaultStateDB(), "Path to sqlite state DB")
 	_ = fs.String("config", defaultRegattaConfig, "Path to regatta.yaml")
 	tag := fs.String("backfill-tag", "", "Operator-supplied pricing_rev disambiguator (#705 R1)")
 	fs.Usage = func() {

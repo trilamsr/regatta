@@ -57,7 +57,7 @@ func runEventsTailWith(deps eventsTailDeps, args []string) int {
 	sinceFlag := fs.Duration("since", 24*time.Hour, "Only emit events whose created_at is within this window")
 	formatFlag := fs.String("format", formatTable, "Output format: table | json")
 	followFlag := fs.Bool("f", false, "Follow: poll for new events every 1s until SIGINT")
-	_ = fs.String("db", stateDBDefaultLiteral, "Path to sqlite state DB")
+	_ = fs.String("db", defaultStateDB(), "Path to sqlite state DB")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta events tail [--db PATH] [--agent N] [--kind K] [--since DUR] [--format=table|json] [-f]")
 	}

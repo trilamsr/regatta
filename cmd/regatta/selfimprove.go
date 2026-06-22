@@ -65,7 +65,7 @@ func runSelfImproveScan(args []string) int {
 	fs := flag.NewFlagSet("self-improve scan", flag.ContinueOnError)
 	sinceRaw := fs.String("since", "7d", "window to scan (e.g. 7d, 168h, 30m)")
 	apply := fs.Bool("apply", false, "file GH issues for findings (default false = dry-run)")
-	dbPath := fs.String("db", "regatta.db", "path to substrate sqlite DB (read-only WAL)")
+	dbPath := fs.String("db", defaultStateDB(), "path to substrate sqlite DB (read-only WAL)")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta self-improve scan [--since=7d] [--apply] [--db=regatta.db]")
 		fs.PrintDefaults()
