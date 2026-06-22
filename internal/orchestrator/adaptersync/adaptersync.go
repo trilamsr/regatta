@@ -169,13 +169,16 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	items, err := s.adapter.List(ctx)
 	if err != nil {
 		s.adapterPollErrors.Add(ctx, 1)
+		alreadyFailed := s.lastSyncFailed
 		s.lastSyncFailed = true
-		payload, mErr := json.Marshal(map[string]string{"err": scrubAdaptersyncErr(err.Error())})
-		if mErr != nil {
-			payload = []byte(`{}`)
-		}
-		if recErr := s.db.RecordEvent(ctx, 0, string(obs.EventAdapterSyncFailed), string(payload)); recErr != nil {
-			s.log.Warn("adaptersync.event_record_failed", "kind", string(obs.EventAdapterSyncFailed), "err", recErr)
+		if !alreadyFailed {
+			payload, mErr := json.Marshal(map[string]string{"err": scrubAdaptersyncErr(err.Error())})
+			if mErr != nil {
+				payload = []byte(`{}`)
+			}
+			if recErr := s.db.RecordEvent(ctx, 0, string(obs.EventAdapterSyncFailed), string(payload)); recErr != nil {
+				s.log.Warn("adaptersync.event_record_failed", "kind", string(obs.EventAdapterSyncFailed), "err", recErr)
+			}
 		}
 		return fmt.Errorf("adaptersync: adapter list: %w", err)
 	}
