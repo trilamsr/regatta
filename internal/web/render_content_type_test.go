@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestRender_SetsHTMLContentType pins R27: Render() emits the header BEFORE buf.Write so callers cannot accidentally rely on net/http's DetectContentType — checked via header presence on a body that sniff would otherwise classify as text/plain.
+// TestRender_SetsHTMLContentType pins R27 explicit Content-Type before any body write.
 func TestRender_SetsHTMLContentType(t *testing.T) {
 	const tmpl = `{{define "page"}}ok{{end}}`
 	parsed := template.Must(template.New("layout").Parse(tmpl))
@@ -20,7 +20,7 @@ func TestRender_SetsHTMLContentType(t *testing.T) {
 	}
 }
 
-// TestRender_OverridesGoDefaultSniff pins R27: the explicit header beats net/http's DetectContentType, which would otherwise sniff a short non-HTML-prefixed body as text/plain.
+// TestRender_OverridesGoDefaultSniff pins R27 header override vs DetectContentType.
 func TestRender_OverridesGoDefaultSniff(t *testing.T) {
 	const tmpl = `{{define "tiny"}}hi{{end}}`
 	parsed := template.Must(template.New("layout").Parse(tmpl))

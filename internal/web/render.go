@@ -46,7 +46,7 @@ func LoadTemplates(fsys fs.FS) (*Templates, error) {
 // headers + the double-WriteHeader stderr noise observed on the
 // dashboard drawer routes.
 //
-// Centralising the html/template invocation here means handlers cannot
+// Centralizing the html/template invocation here means handlers cannot
 // bypass auto-escape by writing raw bytes — auto-escape is the spec
 // §8 XSS gate.
 func (t *Templates) Render(w http.ResponseWriter, name string, data any) error {
