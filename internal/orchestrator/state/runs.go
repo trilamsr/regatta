@@ -75,9 +75,9 @@ func (d *DB) GetRun(ctx context.Context, id string) (Run, error) {
 	if err != nil {
 		return Run{}, fmt.Errorf("get run %q: %w", id, err)
 	}
-	r.StartedAt = time.Unix(startedAt, 0)
+	r.StartedAt = time.Unix(startedAt, 0).UTC()
 	if finishedAt.Valid {
-		t := time.Unix(finishedAt.Int64, 0)
+		t := time.Unix(finishedAt.Int64, 0).UTC()
 		r.FinishedAt = &t
 	}
 	if rerunOf.Valid {
@@ -105,7 +105,7 @@ func (d *DB) ListRecentRuns(ctx context.Context, limit int) ([]Run, error) {
 		if err := rows.Scan(&r.ID, &startedAt, &r.Status, &r.CausalHash, &r.TraceID, &r.DeclaredEffectClass); err != nil {
 			return nil, err
 		}
-		r.StartedAt = time.Unix(startedAt, 0)
+		r.StartedAt = time.Unix(startedAt, 0).UTC()
 		out = append(out, r)
 	}
 	return out, rows.Err()
