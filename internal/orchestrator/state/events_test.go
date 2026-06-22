@@ -6,11 +6,7 @@ import (
 	"time"
 )
 
-// TestListEventsSince_TimeCutoffPushedIntoSQL pins the R5-Bug-1 fix:
-// without an in-SQL created_at filter, ListEvents ASC+LIMIT returns
-// oldest rows and a Go-side cutoff drops them all. ListEventsSince
-// must return the row inside the time window even when N>limit
-// older rows precede it.
+// TestListEventsSince_TimeCutoffPushedIntoSQL asserts in-SQL cutoff returns the fresh row even when older rows exceed LIMIT (R5-Bug-1).
 func TestListEventsSince_TimeCutoffPushedIntoSQL(t *testing.T) {
 	now := time.Unix(2_000_000_000, 0).UTC()
 	db := newClockedTestDB(t, &now)
@@ -44,10 +40,7 @@ func TestListEventsSince_TimeCutoffPushedIntoSQL(t *testing.T) {
 	}
 }
 
-// TestListEventsByKindSinceTime_TimeCutoffPushedIntoSQL is the kind-filtered
-// twin of the test above. Closes the reviewer-flagged second half of
-// R5-Bug-1: `events tail --kind K --since DUR` had the same asymmetric
-// cutoff trap as the no-kind path.
+// TestListEventsByKindSinceTime_TimeCutoffPushedIntoSQL asserts the kind-filtered path also pushes cutoff into SQL (R5-Bug-1 second half).
 func TestListEventsByKindSinceTime_TimeCutoffPushedIntoSQL(t *testing.T) {
 	now := time.Unix(2_000_000_000, 0).UTC()
 	db := newClockedTestDB(t, &now)
@@ -76,9 +69,7 @@ func TestListEventsByKindSinceTime_TimeCutoffPushedIntoSQL(t *testing.T) {
 	}
 }
 
-// TestListEventsSince_ZeroCutoffDisablesFilter pins the cutoffUnix=0
-// semantic: callers passing 0 (events tail without --since) must get
-// all rows past sinceID, ordered by id ascending.
+// TestListEventsSince_ZeroCutoffDisablesFilter asserts cutoffUnix=0 returns all rows past sinceID.
 func TestListEventsSince_ZeroCutoffDisablesFilter(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
@@ -96,8 +87,7 @@ func TestListEventsSince_ZeroCutoffDisablesFilter(t *testing.T) {
 	}
 }
 
-// TestListEventsByKindSinceTime_ZeroCutoffDisablesFilter mirrors the
-// no-kind disable-filter pin for the kind-filtered path.
+// TestListEventsByKindSinceTime_ZeroCutoffDisablesFilter asserts kind-filtered cutoffUnix=0 returns all matching rows.
 func TestListEventsByKindSinceTime_ZeroCutoffDisablesFilter(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()
