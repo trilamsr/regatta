@@ -14,6 +14,30 @@ The PR-author dispatching you MUST follow these rules. Flag any violation as a H
 
 These anti-patterns are invisible to gates (which read PR body, not commit messages) — flag any violation as a HIGH-severity finding.
 
+## Scope: read-only validation, NEVER run `make check`
+
+CI already ran `make check` before the reviewer was dispatched; the PR is BLOCKED on the reviewer-verdict gate only. Re-running `make check` from the reviewer adds zero signal at 60-180s wall cost — forbidden. If a SPECIFIC test result is load-bearing for a finding, scope tightly: `go test -run <X> ./<pkg>/... -short` (~5s). Per reviewer dedup audit 2026-06-21.
+
+## Tool conventions
+
+1. **`Read` with `offset + limit` (max 200 lines per call)** for file inspection. `git show HEAD:<file>` dumps full file unbounded — use ONLY for cross-commit diffs (e.g. `git show <SHA>:<file>` to inspect a specific commit). Reviewer dedup audit 2026-06-21 found 215 unbounded `git show` calls across 21 dispatches.
+2. **Parallel independent tool calls** — independent reads (file inspects, git queries, gh metadata) MUST be batched into a single assistant turn (multiple tool-use blocks in one message). Sequential one-tool-per-turn loses 30-40% latency on no quality benefit. Example: `gh pr view`, `gh pr diff`, `git log <base>..HEAD` in ONE parallel turn, not three.
+3. **`Grep` tool over `bash grep`** — when searching the diff or repo, use the harness `Grep` tool with `output_mode=files_with_matches` OR `content + head_limit`. Capped output, structured result, no piping noise. `bash grep` pipelines are uncapped and expensive on large trees.
+4. **Status checks via `gh pr checks` REST, not GraphQL** — poll with `gh pr checks <N> --json name,state,bucket` (REST, ~1 rate-limit unit). NEVER `gh pr view --json statusCheckRollup` for polling (GraphQL, ~5 units, separate bucket). Per `feedback_gh_minimal_fields`.
+
+## Re-review mode (fixup-narrow)
+
+When dispatching a 2nd+ reviewer pass on the same PR, the main thread MUST pass `--since-sha <prior-review-sha>` semantics in the dispatch prompt: the re-reviewer focuses ONLY on the delta between the prior reviewer's read and current HEAD — NOT a full 5-lens re-walk. Verify each prior finding is closed; flag any new issue introduced by the fixup hunks. Saves ~50% on re-pass time. Dispatch prompt skeleton:
+
+```
+PRIOR REVIEWER VERDICT: <verdict>
+PRIOR FINDINGS: <severity-tagged list>
+FIXUP COMMITS SINCE: <sha-range>
+TASK: verify each finding is closed in the fixup range; flag any new issue
+introduced in the fixup hunks; do NOT re-walk lenses for code untouched
+since prior review.
+```
+
 ## Variables
 - `<TARGET>` — `PR #N` | `spec path` | `commit sha range`.
 - `<SPEC-PATH>` — canonical spec the target implements (rubric source).
