@@ -35,11 +35,7 @@ const defaultListenerAddr = ":8080"
 // listenerShutdownBudget mirrors the existing serve.go signal-shutdown contract: 5 s to drain inflight requests before forced exit.
 const listenerShutdownBudget = 5 * time.Second
 
-// reconcilerShutdownBudget bounds how long serve waits for the cost-
-// reconciler goroutine to exit on signal-shutdown. The goroutine's
-// inner select honours ctx.Done immediately on the wait branch, so 5s
-// is a generous upper bound — a stuck Tick() is the only path that
-// would burn through this budget.
+// reconcilerShutdownBudget bounds serve's wait for the cost-reconciler goroutine on signal-shutdown; only a stuck Tick() would exhaust this.
 const reconcilerShutdownBudget = 5 * time.Second
 
 // defaultLogFormat is the value used when --log-format is omitted —
@@ -65,9 +61,7 @@ func newLogHandler(format string, w io.Writer) (slog.Handler, error) {
 	}
 }
 
-// logFormatFlag validates `--log-format=text|json` at Parse time so
-// flag.ExitOnError surfaces a clear error + exit 2 before any startup
-// work happens (#117).
+// logFormatFlag validates `--log-format=text|json` at Parse-time so flag.ExitOnError surfaces a clear error + exit 2 before any startup work (#117).
 type logFormatFlag string
 
 func (l *logFormatFlag) String() string { return string(*l) }
@@ -108,8 +102,11 @@ func (l laneCapsFlag) Set(s string) error {
 }
 
 func runServe(args []string) int {
-	f := parseServeFlags(args)
-
+	f, ferr := parseServeFlagsValidated(args)
+	if ferr != nil {
+		fmt.Fprintln(os.Stderr, "regatta serve:", ferr)
+		return 2
+	}
 	publicHost, publicURLErr := parsePublicURL(f.PublicURL)
 
 	logger := log.New(os.Stderr, "regatta: ", log.LstdFlags|log.Lmicroseconds)
