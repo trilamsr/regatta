@@ -83,3 +83,37 @@ func TestCheckGitdirReachable_OversizeGitFilePasses(t *testing.T) {
 		t.Fatalf("oversize .git should not error: %v", err)
 	}
 }
+
+// TestCheckRepoRootExists_MissingDirFails asserts --repo /nonexistent fails preflight loud (round-3 finding: silently dispatched against cwd before fix).
+func TestCheckRepoRootExists_MissingDirFails(t *testing.T) {
+	err := checkRepoRootExists("/tmp/regatta-r3-nonexistent-path-12345")
+	if err == nil {
+		t.Fatal("checkRepoRootExists on missing path returned nil; want loud error")
+	}
+	if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("err = %q; want 'does not exist' substring", err.Error())
+	}
+}
+
+// TestCheckRepoRootExists_FilePathFails asserts a file path (not directory) gets rejected.
+func TestCheckRepoRootExists_FilePathFails(t *testing.T) {
+	tmp := t.TempDir()
+	filePath := filepath.Join(tmp, "i-am-a-file")
+	if err := os.WriteFile(filePath, []byte("hi"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := checkRepoRootExists(filePath)
+	if err == nil {
+		t.Fatal("checkRepoRootExists on file path returned nil; want error")
+	}
+	if !strings.Contains(err.Error(), "not a directory") {
+		t.Errorf("err = %q; want 'not a directory'", err.Error())
+	}
+}
+
+// TestCheckRepoRootExists_RealDirPasses asserts an existing directory passes.
+func TestCheckRepoRootExists_RealDirPasses(t *testing.T) {
+	if err := checkRepoRootExists(t.TempDir()); err != nil {
+		t.Fatalf("checkRepoRootExists(tempdir) = %v; want nil", err)
+	}
+}

@@ -35,7 +35,6 @@
 services:
   regatta-init:
     image: busybox:1.37
-    container_name: regatta-init
     command: ["sh", "-c", "chown 65532:65532 /data && chmod 0750 /data"]
     volumes:
       - regatta-data:/data
@@ -48,7 +47,6 @@ services:
       context: .
       dockerfile: Dockerfile
     image: regatta:stage2
-    container_name: regatta
     restart: unless-stopped
     env_file:
       - path: .env
@@ -73,6 +71,12 @@ services:
       REGATTA_HMAC_KEY: ${REGATTA_HMAC_KEY:-}
       # Spawner billing mode: 1 strips parent ANTHROPIC_API_KEY → subscription via ~/.claude (operator-mounted via docker-compose.override.yml); 0 passes the token → pay-as-you-go. See docs/operator/docker-compose.md §Spawner billing mode.
       REGATTA_SPAWNER_STRIP_API_KEY: ${REGATTA_SPAWNER_STRIP_API_KEY:-1}
+      # Pin the sibling-CLI default-db path so `docker exec ... regatta
+      # reload-secrets / status / agents / events` resolve the same
+      # /data/regatta.db the daemon serve was launched against. Without
+      # this every sibling verb falls back to "regatta.db" in cwd and
+      # opens a fresh empty sqlite (or panics on "no such table").
+      REGATTA_STATE_DB: "/data/regatta.db"
     command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=${REGATTA_UI:-true}", "--spawner=claude"]
     volumes:
       - ${REPO_PATH:-.}:/repo
@@ -89,7 +93,6 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.7.2
-    container_name: regatta-prometheus
     restart: unless-stopped
     # --web.enable-otlp-receiver: TSDB-direct OTLP ingest (Prom 3.x stable).
     # --enable-feature=otlp-deltatocumulative: regatta exports delta-temporality
@@ -122,7 +125,6 @@ services:
 
   grafana:
     image: grafana/grafana:11.4.0
-    container_name: regatta-grafana
     restart: unless-stopped
     environment:
       # Self-host default — operator rotates on first login. Documented
@@ -147,7 +149,6 @@ services:
 
   alertmanager:
     image: prom/alertmanager:v0.28.1
-    container_name: regatta-alertmanager
     restart: unless-stopped
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"

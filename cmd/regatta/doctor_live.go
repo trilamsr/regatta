@@ -11,6 +11,7 @@ import (
 
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
 	verifyrepo "github.com/trilamsr/regatta/internal/config/verify"
+	"github.com/trilamsr/regatta/internal/secrets"
 )
 
 func liveGitState(ctx context.Context) (gitStateReport, error) {
@@ -55,12 +56,25 @@ func liveVerifyRepoConfig(ctx context.Context) (bool, []string, error) {
 	}
 	branch := cfg.Repo.DefaultBranch
 	if branch == "" {
-		branch = "main"
+		branch = defaultBranchName
+	}
+	// Resolve the GH token through the secret chain so env-aliased
+	// values (compose .env, OS keychain, pass) flow into the check
+	// without forcing the operator to also export GITHUB_TOKEN. Per
+	// internal/secrets/env.go::KeyGHToken aliases (GH_TOKEN +
+	// GITHUB_TOKEN), either env name resolves; without this lookup
+	// the docker compose stack ships GH_TOKEN but the check reads
+	// GITHUB_TOKEN and reports SKIP.
+	chain := secrets.Default(ctx)
+	token := ""
+	if v, _, gerr := secrets.GetWithSource(ctx, chain, secrets.KeyGHToken); gerr == nil {
+		token = string(v.Bytes())
 	}
 	res, err := verifyrepo.Run(ctx, verifyrepo.Config{
 		Owner:  cfg.Repo.Owner,
 		Repo:   cfg.Repo.Name,
 		Branch: branch,
+		Token:  token,
 	})
 	if err != nil {
 		return false, nil, err

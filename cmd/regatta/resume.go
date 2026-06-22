@@ -56,7 +56,7 @@ func runResumeWith(deps resumeDeps, args []string) int {
 	fs := flag.NewFlagSet("resume", flag.ContinueOnError)
 	fs.SetOutput(deps.Stderr)
 	actor := fs.String("actor", deps.Actor, "Operator identity recorded in the audit event (defaults to local user)")
-	_ = fs.String("db", stateDBDefaultLiteral, "Path to sqlite state DB")
+	_ = fs.String("db", defaultStateDB(), "Path to sqlite state DB")
 	_ = fs.String("config", "regatta.yaml", "Path to regatta.yaml")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta resume [--actor <id>] [--db <path>] [--config <path>]")

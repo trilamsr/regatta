@@ -64,13 +64,15 @@ func knownAgentStateLabels() []string {
 
 func runAgentsList(args []string) int {
 	fs := flag.NewFlagSet("agents list", flag.ExitOnError)
-	dbPath := fs.String("db", stateDBDefaultLiteral, "Path to sqlite state DB (relative to cwd unless absolute; ENV: REGATTA_DB)")
+	dbPath := fs.String("db", defaultStateDB(), "Path to sqlite state DB (relative to cwd unless absolute; ENV: REGATTA_STATE_DB)")
 	stateFlag := fs.String("state", "", "Filter by agent state (eg running,pr_open). Comma-separated for multiple.")
 	laneFlag := fs.String("lane", "", "Filter by lane")
 	format := fs.String("format", formatTable, "Output format: table | json")
 	_ = fs.Parse(args)
 
 	resolved := *dbPath
+	// Legacy REGATTA_DB env fallback (pre-MAY-R3 alias); REGATTA_STATE_DB
+	// is the canonical name + already flows through defaultStateDB().
 	if envDB := os.Getenv("REGATTA_DB"); resolved == stateDBDefaultLiteral && envDB != "" {
 		resolved = envDB
 	}
