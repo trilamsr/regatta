@@ -27,6 +27,8 @@ CI already ran `make check` before the reviewer was dispatched; the PR is BLOCKE
 
 ## Re-review mode (fixup-narrow)
 
+**TL;DR**: re-review = diff-only. Operator main thread passes `--since-sha <prior-review-sha>` (or "FIXUP COMMITS SINCE: <sha-range>") + the prior reviewer's findings list in the dispatch prompt. Reviewer focuses ONLY on the delta; do NOT 5-lens re-walk untouched code. Verify each prior finding is closed in the new commits; flag new issues introduced by the fixup hunks only.
+
 When dispatching a 2nd+ reviewer pass on the same PR, the main thread MUST pass `--since-sha <prior-review-sha>` semantics in the dispatch prompt: the re-reviewer focuses ONLY on the delta between the prior reviewer's read and current HEAD — NOT a full 5-lens re-walk. Verify each prior finding is closed; flag any new issue introduced by the fixup hunks. Saves ~50% on re-pass time. Dispatch prompt skeleton:
 
 ```

@@ -25,6 +25,15 @@ rv_category_skip() {
       '[CHORE]'|'[DOCS]'|'[CI]'|'[NONE]'|'[CHANGE]')
         exit 0
         ;;
+      '[FIX]')
+        # Small-PR auto-skip: [FIX] PRs under 50 LoC on non-load-bearing
+        # surfaces don't justify reviewer dispatch round-trip. Per
+        # `feedback_review_proportional`. LOC_DELTA=-1 means caller did
+        # not pass --loc-delta (legacy invocation) → enforce gate.
+        if [ "${LOC_DELTA:--1}" -ge 0 ] && [ "$LOC_DELTA" -lt 50 ]; then
+          exit 0
+        fi
+        ;;
     esac
   fi
 

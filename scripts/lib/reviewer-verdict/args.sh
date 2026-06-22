@@ -2,7 +2,7 @@
 #
 # REQUIRES: (none — entry point; initializes every caller-scope var)
 # SETS:     PR_NUM, BODY_FILE, LOAD_BEARING, PATHS_FILE, SKIP, PR_AUTHOR,
-#           AUTOMERGE_ENABLED
+#           AUTOMERGE_ENABLED, LOC_DELTA
 # ORDER:    must run FIRST. Every other snippet's REQUIRES guard fails fast
 #           if this did not run.
 
@@ -14,6 +14,7 @@ rv_parse_args() {
   SKIP=0
   PR_AUTHOR=""
   AUTOMERGE_ENABLED=0
+  LOC_DELTA=-1
 
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -24,6 +25,7 @@ rv_parse_args() {
       --skip) SKIP=1; shift ;;
       --pr-author) PR_AUTHOR="$2"; shift 2 ;;
       --automerge-enabled) AUTOMERGE_ENABLED=1; shift ;;
+      --loc-delta) LOC_DELTA="$2"; shift 2 ;;
       -h|--help)
         grep '^#' "$0" | sed 's/^# \{0,1\}//'
         exit 0

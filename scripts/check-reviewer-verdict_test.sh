@@ -1051,6 +1051,81 @@ run_case_verdict_requires_token_extract() {
     "verdict before token-extract fails fast"
 }
 
+run_case_fix_small_loc_auto_skips() {
+  # [FIX] <50 LoC on non-load-bearing surface → auto-skip per
+  # feedback_review_proportional.
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+```release-notes
+[FIX] typo in log message
+```
+EOF
+  if "$GATE" --body-file "$body" --loc-delta 12 --load-bearing >/dev/null 2>&1; then
+    pass "[FIX] <50 LoC on non-load-bearing path auto-skips"
+  else
+    fail "[FIX] <50 LoC on non-load-bearing path should auto-skip"
+  fi
+  rm -f "$body"
+}
+
+run_case_fix_large_loc_still_required() {
+  # [FIX] ≥50 LoC on load-bearing surface → still requires APPROVE.
+  local body paths
+  body=$(mktemp)
+  paths=$(mktemp)
+  printf 'internal/orchestrator/scheduler/scheduler.go\n' > "$paths"
+  write_body "$body" <<'EOF'
+```release-notes
+[FIX] big behavior change
+```
+EOF
+  if "$GATE" --body-file "$body" --changed-paths-file "$paths" --loc-delta 80 --load-bearing 2>&1 | grep -qE "Reviewer-recommendation"; then
+    pass "[FIX] ≥50 LoC on load-bearing path still requires token"
+  else
+    fail "[FIX] ≥50 LoC on load-bearing path should require token"
+  fi
+  rm -f "$body" "$paths"
+}
+
+run_case_fix_small_loc_on_load_bearing_still_required() {
+  # [FIX] <50 LoC but load-bearing-by-path → reviewer still required.
+  local body paths
+  body=$(mktemp)
+  paths=$(mktemp)
+  printf 'internal/orchestrator/scheduler/scheduler.go\n' > "$paths"
+  write_body "$body" <<'EOF'
+```release-notes
+[FIX] small but on load-bearing surface
+```
+EOF
+  if "$GATE" --body-file "$body" --changed-paths-file "$paths" --loc-delta 12 --load-bearing 2>&1 | grep -qE "Reviewer-recommendation"; then
+    pass "[FIX] <50 LoC on load-bearing path still requires token"
+  else
+    fail "[FIX] <50 LoC on load-bearing path should require token"
+  fi
+  rm -f "$body" "$paths"
+}
+
+run_case_fix_without_loc_delta_legacy_path() {
+  # Legacy invocation w/o --loc-delta → enforce reviewer gate on [FIX].
+  local body
+  body=$(mktemp)
+  write_body "$body" <<'EOF'
+```release-notes
+[FIX] tiny tweak
+```
+EOF
+  # No --load-bearing, no paths → not-load-bearing path. Should still
+  # auto-skip via existing not-load-bearing shortcut (no LoC needed).
+  if "$GATE" --body-file "$body" >/dev/null 2>&1; then
+    pass "[FIX] non-load-bearing without --loc-delta still skips (no flag = no LoC gate)"
+  else
+    fail "[FIX] non-load-bearing without --loc-delta should still skip"
+  fi
+  rm -f "$body"
+}
+
 run_case_body_source_requires_args
 run_case_path_classifier_requires_args
 run_case_category_skip_requires_path_classifier
@@ -1090,6 +1165,10 @@ run_case_operator_opened_does_not_bypass_allowlist
 run_case_insufficient_evidence_acts_as_revise
 run_case_insufficient_evidence_without_tracker_fails
 run_case_claude_md_prefix_parity
+run_case_fix_small_loc_auto_skips
+run_case_fix_large_loc_still_required
+run_case_fix_small_loc_on_load_bearing_still_required
+run_case_fix_without_loc_delta_legacy_path
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"

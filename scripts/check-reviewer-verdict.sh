@@ -37,6 +37,14 @@
 #                         self-tag loophole (`feedback_no_self_tagged_approve`):
 #                         author writing own APPROVE token == zero
 #                         adversarial pass.
+#     --loc-delta <N>     total insertions+deletions for the diff (from
+#                         `git diff --shortstat`). When the PR is NOT
+#                         load-bearing AND release-notes category is
+#                         `[FIX]` AND N < 50, auto-skip. Closes velocity
+#                         audit 2026-06-21: small [FIX] PRs on
+#                         non-load-bearing surfaces don't justify reviewer
+#                         round-trip. Per `feedback_review_proportional`.
+#                         Omitted/-1 → no LoC-based auto-skip (legacy).
 #     --automerge-enabled signals that `autoMergeRequest != null` on the PR
 #                         (queried via `gh pr view --json autoMergeRequest`).
 #                         When the PR is also load-bearing AND
