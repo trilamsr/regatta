@@ -211,7 +211,7 @@ run_case single_commit_no_justify_fails 1 "ONE commit"        setup_single_commi
 run_case impl_before_test_fails         1 "added BEFORE"      setup_impl_before_test
 run_case test_before_impl_passes        0 "test-first"        setup_test_before_impl
 run_case single_commit_justified_passes 0 "escape present"    setup_single_commit_justified \
-  '<!-- tdd-single-commit-justified: fixture+script land together -->'
+  '<!-- tdd-single-commit-justified: fixture+script-land-together -->'
 run_case single_commit_whitespace_escape_fails 1 "ONE commit" setup_single_commit_no_justify \
   '<!-- tdd-single-commit-justified:     -->'
 run_case single_commit_empty_escape_fails      1 "ONE commit" setup_single_commit_no_justify \
@@ -221,9 +221,9 @@ run_case prod_only_passes               0 "out of scope"      setup_prod_only
 run_case prod_readded_anchors_first_add 0 "test-first"        setup_prod_readded_after_test
 # Hyphen-in-body cases (MAY-273): regex accepts dashes after the first char.
 run_case single_commit_hyphen_in_reason_passes 0 "escape present" setup_single_commit_justified \
-  '<!-- tdd-single-commit-justified: ships fix-with-dash in foo-bar.go -->'
+  '<!-- tdd-single-commit-justified: ships-fix-with-dash-in-foo-bar.go -->'
 run_case single_commit_pkg_path_reason_passes  0 "escape present" setup_single_commit_justified \
-  '<!-- tdd-single-commit-justified: html/template stub w/ multi-word reason -->'
+  '<!-- tdd-single-commit-justified: html/template-stub-w/-no-whitespace -->'
 run_case single_commit_leading_dash_fails      1 "ONE commit"     setup_single_commit_no_justify \
   '<!-- tdd-single-commit-justified: -bad reason -->'
 run_case single_commit_double_dash_fails       1 "ONE commit"     setup_single_commit_no_justify \

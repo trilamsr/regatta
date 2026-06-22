@@ -69,7 +69,7 @@ elif command -v gh >/dev/null 2>&1; then
   fi
 fi
 
-if printf '%s' "$body" | grep -qE '<!--[[:space:]]*stale-refs-justified:[[:space:]]*[^[:space:]-].{3,}-->'; then
+if printf '%s' "$body" | grep -qE '<!--[[:space:]]*stale-refs-justified:[[:space:]]*[^[:space:]-][^[:space:]]{3,}[[:space:]]*-->'; then
   echo "check-stale-refs: stale-refs-justified escape present; skipping"
   exit 0
 fi
