@@ -64,6 +64,33 @@ func TestHealthz_DBDown_Returns503(t *testing.T) {
 	}
 }
 
+// TestHealthz_NoBriefLoaded_StaysOK pins brief-not-configured as OK (not degraded).
+func TestHealthz_NoBriefLoaded_StaysOK(t *testing.T) {
+	db := openMemDB(t)
+	hb := NewHeartbeatCell(time.Now)
+	hb.Touch()
+	brief := NewBriefCell()
+	// no SetPath — operator running without a program brief (the
+	// default --spawner=claude flow); empty path must report OK, not
+	// degraded, so /healthz keeps signaling real degradation.
+	h := Handler(Dependencies{DB: db, Heartbeat: hb, Brief: brief, Version: "v"})
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	req.Header.Set("Accept", "application/json")
+	rr := httptest.NewRecorder()
+	h(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: want 200, got %d", rr.Code)
+	}
+	var got Response
+	_ = json.NewDecoder(rr.Body).Decode(&got)
+	if got.Status != StatusOK {
+		t.Fatalf("status: want ok (brief is optional), got %s body=%v", got.Status, got)
+	}
+	if got.Checks["brief"].Status != "ok" {
+		t.Fatalf("brief check status=%q want ok", got.Checks["brief"].Status)
+	}
+}
+
 // TestHealthz_HeartbeatStale_ReturnsDegradedNot503 covers degraded 200 contract.
 func TestHealthz_HeartbeatStale_ReturnsDegradedNot503(t *testing.T) {
 	db := openMemDB(t)

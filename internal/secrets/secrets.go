@@ -42,6 +42,17 @@ const (
 // CanonicalKeys is the boot-time fetch set; adapters are independent.
 var CanonicalKeys = []string{KeyAnthropic, KeyLinear, KeyGHToken, KeyBriefHMACs, KeyAuditHMACKey, KeyApprovalToken}
 
+// OptionalKeys are CanonicalKeys whose absence is normal for self-host
+// operators not using the corresponding capability (linear adapter,
+// audit substrate, operator approval gate). fetchAll logs misses at
+// INFO instead of WARN so boot-time noise stops training operators to
+// filter the WARN level out.
+var OptionalKeys = map[string]bool{
+	KeyLinear:        true,
+	KeyAuditHMACKey:  true,
+	KeyApprovalToken: true,
+}
+
 const (
 	redactedSentinel = "<redacted>" // single source so test + prod cannot drift
 	sourceMissing    = "missing"    // chain returned ErrNotFound (vs never-resolved)

@@ -3,6 +3,7 @@ package adaptersync_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -13,16 +14,20 @@ import (
 	_ "modernc.org/sqlite"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/obstest"
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
 type stubAdapter struct {
-	items []schemas.WorkItem
+	items   []schemas.WorkItem
+	listErr error
 }
 
-func (s *stubAdapter) List(context.Context) ([]schemas.WorkItem, error) { return s.items, nil }
+func (s *stubAdapter) List(context.Context) ([]schemas.WorkItem, error) {
+	return s.items, s.listErr
+}
 
 // Capabilities returns zero MinPollInterval so the Syncer's MinPoll gate
 // stays off-by-default in tests that don't exercise cadence.
@@ -243,6 +248,78 @@ func TestSync_EmptyListSkipsTombstone(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "adapter.empty_list") {
 		t.Fatalf("logs missing adapter.empty_list warn:\n%s", logs.String())
+	}
+}
+
+// TestSync_EmitsAdapterSyncFailedEventOnListError asserts the declared adaptersync.failed event actually fires.
+func TestSync_EmitsAdapterSyncFailedEventOnListError(t *testing.T) {
+	db := newSyncTestDB(t)
+	adapter := &stubAdapter{listErr: fmt.Errorf("boom")}
+	syncer := mustNew(t, adaptersync.Config{Adapter: adapter, DB: db})
+
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	if err := syncer.Sync(context.Background(), now); err == nil {
+		t.Fatal("Sync want error on List failure")
+	}
+
+	row := db.SQL().QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM events WHERE kind = ?`, string(obs.EventAdapterSyncFailed))
+	var n int
+	if err := row.Scan(&n); err != nil {
+		t.Fatalf("count adaptersync.failed: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("adaptersync.failed event count=%d; want 1", n)
+	}
+}
+
+// TestSync_EmitsAdapterSyncSyncedEventOnRecovery asserts adaptersync.synced fires only on failed→ok transition.
+func TestSync_EmitsAdapterSyncSyncedEventOnRecovery(t *testing.T) {
+	db := newSyncTestDB(t)
+	adapter := &stubAdapter{listErr: fmt.Errorf("boom")}
+	syncer := mustNew(t, adaptersync.Config{Adapter: adapter, DB: db})
+	base := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+
+	_ = syncer.Sync(context.Background(), base)
+
+	adapter.listErr = nil
+	adapter.items = []schemas.WorkItem{{ID: "OK", Kind: schemas.KindFeature, Title: "ok", Lane: "server", Status: schemas.StatusPlanned}}
+	if err := syncer.Sync(context.Background(), base.Add(time.Minute)); err != nil {
+		t.Fatalf("recovery Sync: %v", err)
+	}
+
+	if err := syncer.Sync(context.Background(), base.Add(2*time.Minute)); err != nil {
+		t.Fatalf("steady Sync: %v", err)
+	}
+
+	row := db.SQL().QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM events WHERE kind = ?`, string(obs.EventAdapterSyncSynced))
+	var n int
+	if err := row.Scan(&n); err != nil {
+		t.Fatalf("count adaptersync.synced: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("adaptersync.synced event count=%d; want exactly 1 (one failed→ok transition)", n)
+	}
+}
+
+// TestSync_SustainedEmptyDowngradesToDebug asserts empty steady-state polls do not spam WARN.
+func TestSync_SustainedEmptyDowngradesToDebug(t *testing.T) {
+	logs := captureLogs(t)
+	db := newSyncTestDB(t)
+	empty := &stubAdapter{items: nil}
+	syncer := mustNew(t, adaptersync.Config{Adapter: empty, DB: db})
+
+	base := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	for i := 0; i < 5; i++ {
+		if err := syncer.Sync(context.Background(), base.Add(time.Duration(i)*time.Minute)); err != nil {
+			t.Fatalf("Sync %d: %v", i, err)
+		}
+	}
+
+	warnCount := strings.Count(logs.String(), "level=WARN msg=adapter.empty_list")
+	if warnCount > 1 {
+		t.Fatalf("adapter.empty_list WARN fired %d times across 5 sustained-empty polls; want at most 1 (steady-state must drop to DEBUG)", warnCount)
 	}
 }
 

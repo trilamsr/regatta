@@ -133,7 +133,11 @@ func fetchAll(ctx context.Context, fetcher Fetcher, logger *slog.Logger) *snapsh
 			snap.values[key] = Value{}
 			snap.source[key] = sourceMissing
 			if logger != nil {
-				logger.LogAttrs(ctx, slog.LevelWarn, "secret_missing",
+				level := slog.LevelWarn
+				if OptionalKeys[key] {
+					level = slog.LevelInfo
+				}
+				logger.LogAttrs(ctx, level, "secret_missing",
 					slog.String("key", key),
 					slog.String("chain", fetcher.Name()),
 				)

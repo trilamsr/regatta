@@ -81,6 +81,8 @@ type Syncer struct {
 	tracer            trace.Tracer
 	adapterPollErrors metric.Int64Counter
 	lastPoll          time.Time
+	consecutiveEmpty  int
+	lastSyncFailed    bool
 }
 
 // New constructs a Syncer from a Config. Returns an error if any
@@ -135,13 +137,29 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	items, err := s.adapter.List(ctx)
 	if err != nil {
 		s.adapterPollErrors.Add(ctx, 1)
+		s.lastSyncFailed = true
+		if recErr := s.db.RecordEvent(ctx, 0, string(obs.EventAdapterSyncFailed), ""); recErr != nil {
+			s.log.Warn("adaptersync.event_record_failed", "kind", string(obs.EventAdapterSyncFailed), "err", recErr)
+		}
 		return fmt.Errorf("adaptersync: adapter list: %w", err)
+	}
+	if s.lastSyncFailed {
+		s.lastSyncFailed = false
+		if recErr := s.db.RecordEvent(ctx, 0, string(obs.EventAdapterSyncSynced), ""); recErr != nil {
+			s.log.Warn("adaptersync.event_record_failed", "kind", string(obs.EventAdapterSyncSynced), "err", recErr)
+		}
 	}
 
 	if len(items) == 0 {
-		s.log.Warn("adapter.empty_list", "cutoff", pollStartedAt, "skipping_tombstone", true)
+		s.consecutiveEmpty++
+		if s.consecutiveEmpty == 1 {
+			s.log.Warn("adapter.empty_list", "cutoff", pollStartedAt, "skipping_tombstone", true)
+		} else {
+			s.log.Debug("adapter.empty_list", "cutoff", pollStartedAt, "skipping_tombstone", true, "consecutive", s.consecutiveEmpty)
+		}
 		return s.cascadeChildrenOfArchivedPrograms(ctx, pollStartedAt)
 	}
+	s.consecutiveEmpty = 0
 
 	seen := map[string]bool{}
 	staged := make([]state.WorkItem, 0, len(items))
