@@ -6,8 +6,10 @@ package adaptersync
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -18,6 +20,36 @@ import (
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
+
+// maxAdaptersyncErrPayloadBytes bounds adaptersync.failed payload size.
+// A flapping adapter w/ verbose stderr would otherwise bloat the events
+// table; 4KB holds typical wrapped-chain errs + leaves margin for the
+// "...[truncated]" suffix without forcing a SQL TEXT row past one page.
+const maxAdaptersyncErrPayloadBytes = 4096
+
+// adaptersyncSecretPatterns strips known token shapes from err strings
+// before they land in the substrate events log. Defense in depth: the
+// secrets layer should never let a token reach an err msg, but adapter
+// shellouts (gh CLI stderr) can echo whatever the user shell exported.
+// Substrate events are queryable forever; logs rotate. Cover the
+// surfaces the github_issues + linear adapters actually touch.
+var adaptersyncSecretPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`gh[pousr]_[A-Za-z0-9]{20,}`),
+	regexp.MustCompile(`github_pat_[A-Za-z0-9_]{20,}`),
+	regexp.MustCompile(`lin_api_[A-Za-z0-9]{20,}`),
+	regexp.MustCompile(`sk-ant-[A-Za-z0-9_-]{20,}`),
+}
+
+// scrubAdaptersyncErr redacts known token shapes from err strings + caps length.
+func scrubAdaptersyncErr(msg string) string {
+	for _, re := range adaptersyncSecretPatterns {
+		msg = re.ReplaceAllString(msg, "[REDACTED]")
+	}
+	if len(msg) > maxAdaptersyncErrPayloadBytes {
+		msg = msg[:maxAdaptersyncErrPayloadBytes] + "...[truncated]"
+	}
+	return msg
+}
 
 // SpecAdapter is the subset of schemas.SpecAdapter the Syncer needs:
 // List drives the mirror; Capabilities supplies MinPollInterval so the
@@ -138,7 +170,11 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	if err != nil {
 		s.adapterPollErrors.Add(ctx, 1)
 		s.lastSyncFailed = true
-		if recErr := s.db.RecordEvent(ctx, 0, string(obs.EventAdapterSyncFailed), ""); recErr != nil {
+		payload, mErr := json.Marshal(map[string]string{"err": scrubAdaptersyncErr(err.Error())})
+		if mErr != nil {
+			payload = []byte(`{}`)
+		}
+		if recErr := s.db.RecordEvent(ctx, 0, string(obs.EventAdapterSyncFailed), string(payload)); recErr != nil {
 			s.log.Warn("adaptersync.event_record_failed", "kind", string(obs.EventAdapterSyncFailed), "err", recErr)
 		}
 		return fmt.Errorf("adaptersync: adapter list: %w", err)
