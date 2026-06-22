@@ -105,10 +105,14 @@ func runEventsTailWith(deps eventsTailDeps, args []string) int {
 func emitEventsPage(stdout, stderr io.Writer, db *state.DB, ctx context.Context, kind string, agentID int64, cutoff time.Time, sinceID int64, format string, header bool) (int64, error) {
 	var rows []state.Event
 	var err error
+	cutoffUnix := int64(0)
+	if !cutoff.IsZero() {
+		cutoffUnix = cutoff.Unix()
+	}
 	if kind != "" {
 		rows, err = db.ListEventsByKindSince(ctx, kind, sinceID, eventsDefaultLim)
 	} else {
-		rows, err = db.ListEvents(ctx, eventsDefaultLim)
+		rows, err = db.ListEventsSince(ctx, sinceID, cutoffUnix, eventsDefaultLim)
 	}
 	if err != nil {
 		return sinceID, err

@@ -118,6 +118,40 @@ func (d *DB) LatestEventByKind(ctx context.Context, kind string) (Event, error) 
 	return e, nil
 }
 
+// ListEventsSince returns events whose id is strictly greater than
+// sinceID AND created_at >= cutoffUnix, ordered by id ascending.
+// Closes the bug where `regatta events tail --since 5m` against a
+// fully-populated events table silently hid new rows behind the
+// oldest LIMIT cap (ListEvents w/ ASC order returned only the
+// earliest rows). cutoffUnix=0 disables the time filter; sinceID=0
+// disables the resume cursor. Limit ≤0 defaults to 100.
+func (d *DB) ListEventsSince(ctx context.Context, sinceID int64, cutoffUnix int64, limit int) ([]Event, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := d.sql.QueryContext(ctx,
+		`SELECT id, agent_id, kind, payload_json, created_at
+		 FROM events
+		 WHERE id > ? AND created_at >= ?
+		 ORDER BY id ASC
+		 LIMIT ?`, sinceID, cutoffUnix, limit)
+	if err != nil {
+		return nil, fmt.Errorf("state: list events since: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Event
+	for rows.Next() {
+		var e Event
+		var created int64
+		if err := rows.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
+			return nil, err
+		}
+		e.CreatedAt = time.Unix(created, 0).UTC()
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // ListEvents returns events ordered by id ascending. Used by tests and
 // the audit log writer.
 func (d *DB) ListEvents(ctx context.Context, limit int) ([]Event, error) {
