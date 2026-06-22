@@ -148,6 +148,48 @@ func (b *threadSafeBuf) Write(p []byte) (int, error) {
 	return b.buf.Write(p)
 }
 
+// TestStatus_ActiveSubagents_QueriesRealAgentsSchema asserts the subagents panel does not reference dropped agents.name / agents.started_at columns.
+func TestStatus_ActiveSubagents_QueriesRealAgentsSchema(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "test.db")
+	writer, err := sql.Open("sqlite", "file:"+dbPath+"?_journal_mode=WAL")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = writer.Close() }()
+	if _, err := writer.Exec(`CREATE TABLE agents (
+		id INTEGER PRIMARY KEY,
+		work_item_id TEXT NOT NULL,
+		lane TEXT NOT NULL,
+		state TEXT NOT NULL,
+		pid INTEGER NOT NULL DEFAULT 0,
+		session_id TEXT NOT NULL DEFAULT '',
+		pr_sha TEXT NOT NULL DEFAULT '',
+		rejection_count INTEGER NOT NULL DEFAULT 0,
+		created_at INTEGER NOT NULL,
+		updated_at INTEGER NOT NULL
+	)`); err != nil {
+		t.Fatalf("create agents: %v", err)
+	}
+	if _, err := writer.Exec(`CREATE TABLE substrate_events (id INTEGER PRIMARY KEY, emitted_at DATETIME, kind TEXT)`); err != nil {
+		t.Fatalf("create substrate_events: %v", err)
+	}
+	now := time.Now().Unix()
+	if _, err := writer.Exec(`INSERT INTO agents (work_item_id, lane, state, created_at, updated_at) VALUES (?,?,?,?,?)`,
+		"WORK-1", "server", "spawning", now, now); err != nil {
+		t.Fatalf("insert agent: %v", err)
+	}
+
+	src, err := newDefaultSource(dbPath)
+	if err != nil {
+		t.Fatalf("newDefaultSource: %v", err)
+	}
+	snap := src.Snapshot(context.Background())
+	if snap.ActiveSubagents.State == PanelMissing {
+		t.Fatalf("ActiveSubagents reported MISSING against real schema; lines=%v (the query references dropped columns)", snap.ActiveSubagents.Lines)
+	}
+}
+
 // TestStatus_Once_RendersToStdout proves the --once path returns 0 without entering the refresh loop.
 func TestStatus_Once_RendersToStdout(t *testing.T) {
 	args := []string{"--once", "--width=80", "--height=24"}

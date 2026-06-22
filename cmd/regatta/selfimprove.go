@@ -11,10 +11,27 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/trilamsr/regatta/internal/selfimprove"
 )
+
+// parseSinceFlag accepts Go-stdlib durations PLUS "Nd" for whole-day
+// windows since the public CLI help advertises --since=7d but
+// time.ParseDuration rejects "d". Trailing "d" is converted to N*24h
+// then handed to time.ParseDuration so units stay composable
+// (e.g. "1d12h" not supported, but "7d" + "36h" both parse).
+func parseSinceFlag(s string) (time.Duration, error) {
+	if strings.HasSuffix(s, "d") && len(s) > 1 {
+		days, err := strconv.Atoi(s[:len(s)-1])
+		if err == nil {
+			return time.Duration(days) * 24 * time.Hour, nil
+		}
+	}
+	return time.ParseDuration(s)
+}
 
 const (
 	subcmdSelfImprove = "self-improve"
@@ -46,7 +63,7 @@ func runSelfImprove(args []string) int {
 // a noisy ruleset never silently spams the tracker on first run (#646).
 func runSelfImproveScan(args []string) int {
 	fs := flag.NewFlagSet("self-improve scan", flag.ContinueOnError)
-	since := fs.Duration("since", 7*24*time.Hour, "window to scan (default 7d)")
+	sinceRaw := fs.String("since", "7d", "window to scan (e.g. 7d, 168h, 30m)")
 	apply := fs.Bool("apply", false, "file GH issues for findings (default false = dry-run)")
 	dbPath := fs.String("db", "regatta.db", "path to substrate sqlite DB (read-only WAL)")
 	fs.Usage = func() {
@@ -56,6 +73,12 @@ func runSelfImproveScan(args []string) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	parsedSince, err := parseSinceFlag(*sinceRaw)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "regatta self-improve scan: --since: %v\n", err)
+		return 2
+	}
+	since := &parsedSince
 
 	ctx := context.Background()
 

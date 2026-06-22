@@ -5,9 +5,27 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/trilamsr/regatta/internal/supervisor"
 )
+
+// detectContainer returns true when the process is running inside a
+// container with no host init manager (no systemd, no launchd) so
+// install-service can refuse instead of silently writing a unit file
+// that nothing will load. Sentinel dir is overridable via
+// REGATTA_CONTAINER_SENTINEL_DIR for tests.
+func detectContainer() bool {
+	dir := os.Getenv("REGATTA_CONTAINER_SENTINEL_DIR")
+	if dir == "" {
+		dir = "/"
+	}
+	// #nosec G304 G703 -- dir is bounded to "/" or a test sentinel (REGATTA_CONTAINER_SENTINEL_DIR);
+	// .dockerenv is a fixed filename. Operator already controls the env, so taint analysis
+	// flags a false positive — there is no untrusted-input → file-read path here.
+	_, err := os.Stat(filepath.Join(dir, ".dockerenv"))
+	return err == nil
+}
 
 // runInstallService is the `regatta install-service` CLI entry point —
 // spec §3.8 surface. Thin wrapper; all logic lives in
@@ -31,6 +49,10 @@ func runInstallServiceTo(out, errW io.Writer, args []string) int {
 	name := fs.String("name", "", "per-target namespace suffix so multiple regatta installs coexist side-by-side (spec #929). Empty preserves the single-target `regatta` namespace. Example: --name myrepo → launchd Label com.regatta.serve.myrepo, systemd UnitName regatta-myrepo.service, paths under <base>/regatta/myrepo/.")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if detectContainer() {
+		_, _ = fmt.Fprintln(errW, "install-service: container detected (/.dockerenv present); the unit file would not be loaded by any init manager (no systemd, no launchd). Install on the container host, not inside.")
+		return 1
 	}
 	if *name != "" {
 		if err := supervisor.ValidateName(*name); err != nil {

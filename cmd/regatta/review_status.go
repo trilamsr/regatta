@@ -129,14 +129,23 @@ func collapse(s string, width int) string {
 	return s[:width-1] + "…"
 }
 
+// stateDBDefaultLiteral is the canonical "regatta.db" literal default
+// shared by every db-touching CLI subcommand (agents, audit, approval,
+// cost, events, merge_status, resume, selfimprove) so a future
+// relocation moves through one edit. Distinct from defaultDBPath
+// (which is the resolver func for the --db flag default).
+const stateDBDefaultLiteral = "regatta.db"
+
 // defaultStateDB returns the canonical regatta state.db path. Mirrors
-// `regatta status`/`regatta audit` defaults so operators do not have
-// to remember a different flag for each subcommand.
+// the stateDBDefaultLiteral the rest of the CLI uses so operators do
+// not need to remember a different flag for each subcommand.
+// REGATTA_STATE_DB overrides for daemon-side wiring that pins a
+// non-default location (e.g. docker compose /data/regatta.db).
 func defaultStateDB() string {
 	if v := os.Getenv("REGATTA_STATE_DB"); v != "" {
 		return v
 	}
-	return filepath.Join(".regatta", "state.db")
+	return stateDBDefaultLiteral
 }
 
 // runReviewSetupCodeowners appends a catch-all CODEOWNERS line so the

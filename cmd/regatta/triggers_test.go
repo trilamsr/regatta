@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,6 +10,30 @@ import (
 
 	"github.com/trilamsr/regatta/internal/triggers"
 )
+
+// TestTriggers_DefaultConfigPathResolvesAgainstRepoRoot asserts the default --config path resolves against the repo root (not orphan config/triggers/).
+func TestTriggers_DefaultConfigPathResolvesAgainstRepoRoot(t *testing.T) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repoRoot := cwd
+	for i := 0; i < 10; i++ {
+		if _, err := os.Stat(filepath.Join(repoRoot, "go.mod")); err == nil {
+			break
+		}
+		parent := filepath.Dir(repoRoot)
+		if parent == repoRoot {
+			t.Fatalf("repo root not found from %q (no go.mod ancestor)", cwd)
+		}
+		repoRoot = parent
+	}
+	const defaultConfig = "slo/triggers.yaml"
+	path := filepath.Join(repoRoot, defaultConfig)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("triggers default config path %q does not resolve from repo root %q: %v", defaultConfig, repoRoot, err)
+	}
+}
 
 // TestTriggers_BuildRowsSortsByName pins deterministic row ordering on map iteration (#636).
 func TestTriggers_BuildRowsSortsByName(t *testing.T) {

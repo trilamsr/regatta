@@ -46,6 +46,32 @@ func TestNewWebHandlerWiresApprovalRoutes(t *testing.T) {
 	}
 }
 
+// TestReadOnlyRoutes_RejectNonGETWithMethodNotAllowed asserts /healthz + /ui/panels/* refuse POST/PUT/DELETE with 405 to stop accidental cache poisoning + CSRF surface.
+func TestReadOnlyRoutes_RejectNonGETWithMethodNotAllowed(t *testing.T) {
+	t.Setenv("REGATTA_HMAC_KEY", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+	srv, err := bootListener(listenerConfig{
+		UI:    true,
+		Clock: func() time.Time { return time.Unix(0, 0) },
+	})
+	if err != nil {
+		t.Fatalf("bootListener: %v", err)
+	}
+	if srv == nil {
+		t.Fatal("bootListener returned nil server with UI=true")
+	}
+	h := srv.Handler
+	readOnly := []string{"/healthz", "/ui/panels/health", "/ui/panels/agents"}
+	for _, path := range readOnly {
+		for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, httptest.NewRequest(method, path, nil))
+			if rec.Code != http.StatusMethodNotAllowed {
+				t.Errorf("%s %s status = %d; want 405", method, path, rec.Code)
+			}
+		}
+	}
+}
+
 // TestBuildListenerConfig pins serveFlags -> listenerConfig threading (UI/Addr/DB/Clock/Authorizer/PublicHost/Heartbeat/TickInterval) so MAY-48 tick-stale wiring cannot silently regress.
 func TestBuildListenerConfig(t *testing.T) {
 	t.Parallel()

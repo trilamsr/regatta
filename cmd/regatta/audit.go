@@ -124,7 +124,7 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 	fs := flag.NewFlagSet("audit verify", flag.ContinueOnError)
 	fs.SetOutput(deps.Stderr)
 	runID := fs.String("run-id", "", "Run id to verify (required)")
-	_ = fs.String("db", "regatta.db", "Path to sqlite state DB")
+	_ = fs.String("db", stateDBDefaultLiteral, "Path to sqlite state DB")
 	format := fs.String("format", "json", "Output format: json | table")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta audit verify --run-id <id> [--db <path>] [--format json|table]")
