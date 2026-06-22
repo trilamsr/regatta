@@ -51,9 +51,11 @@ func runReloadSecrets(args []string) int {
 func runReloadSecretsWithDeps(d reloadDeps) int {
 	fs := flag.NewFlagSet("reload-secrets", flag.ContinueOnError)
 	fs.SetOutput(d.Stderr)
-	// Default lockfile path matches the `regatta serve --db` default
-	// (regatta.db) — `<dbPath> + ".lock"` per orchestrator convention.
-	pidPath := fs.String("pidfile", "regatta.db.lock", "path to regatta-serve lockfile (PID written under the flock)")
+	// Default lockfile path follows defaultStateDB() so REGATTA_STATE_DB
+	// overrides flow through automatically (docker compose pins --db
+	// /data/regatta.db -> the lockfile lands at /data/regatta.db.lock,
+	// per orchestrator lockfile convention `<dbPath> + ".lock"`).
+	pidPath := fs.String("pidfile", defaultStateDB()+".lock", "path to regatta-serve lockfile (PID written under the flock)")
 	if err := fs.Parse(d.Args); err != nil {
 		return 2
 	}
