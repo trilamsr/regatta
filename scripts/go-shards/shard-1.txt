@@ -1,7 +1,8 @@
-# verify-go-1: 19 packages, ~251s historical CPU-time.
+# verify-go-1: 20 packages, ~251s historical CPU-time.
 # Greedy bin-packed by last-known per-pkg test times to balance wall-clock.
 # Regenerate via scripts/regen-go-shards.sh (see docs/engineer/pointers.md).
 
+github.com/trilamsr/regatta/cmd/smoke-lowrisk-automerge
 github.com/trilamsr/regatta/contracts/schemas
 github.com/trilamsr/regatta/internal/authz
 github.com/trilamsr/regatta/internal/authz/policies/embedded
