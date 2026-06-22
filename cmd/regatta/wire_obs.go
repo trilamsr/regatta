@@ -17,10 +17,11 @@ import (
 // shutdown derives a NEW bounded context (not a child of the
 // SIGTERM-canceled parent) so the final flush still has 5s to drain.
 func wireMeterProvider(_ context.Context, slogger *slog.Logger) (func(), error) {
-	shutdown, err := otelpkg.SetupMeter(context.Background(), otelpkg.Config{ServiceName: "regatta"})
+	shutdown, err := otelpkg.SetupMeter(context.Background(), otelpkg.Config{ServiceName: "regatta"}) //nolint:contextcheck // Setup uses Background so the SIGTERM-canceled serve ctx does not poison the exporter wiring.
 	if err != nil {
 		return nil, err
 	}
+	//nolint:contextcheck // parent ctx is already SIGTERM-canceled when shutdown fires; derive fresh background-bounded ctx so the flush window survives.
 	return func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -57,10 +58,11 @@ func wireObservability(ctx context.Context, slogger *slog.Logger) (func(), error
 // but for the trace+log pair. Returns a shutdown closure with the
 // same SIGTERM-safe child-of-background ctx as the meter shutdown.
 func wireTracerProvider(_ context.Context, slogger *slog.Logger) (func(), error) {
-	shutdown, err := otelpkg.Setup(context.Background(), otelpkg.Config{ServiceName: "regatta"})
+	shutdown, err := otelpkg.Setup(context.Background(), otelpkg.Config{ServiceName: "regatta"}) //nolint:contextcheck // Setup uses Background so the SIGTERM-canceled serve ctx does not poison the exporter wiring.
 	if err != nil {
 		return nil, err
 	}
+	//nolint:contextcheck // parent ctx is already SIGTERM-canceled when shutdown fires; derive fresh background-bounded ctx so the flush window survives.
 	return func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
