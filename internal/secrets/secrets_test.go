@@ -375,6 +375,75 @@ func TestCache_SIGHUPSwapsSnapshotAtomically(t *testing.T) {
 	<-done
 }
 
+// TestCache_OnRotateFiresAfterSIGHUP asserts the OnRotate callback receives the post-fetch (chain, keys) tuple so callers can append a substrate audit row (R4-Bug-B).
+func TestCache_OnRotateFiresAfterSIGHUP(t *testing.T) {
+	rf := &rotatingFetcher{}
+	c := NewCache()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c.Load(ctx, rf, nil)
+
+	stop := installHUPGuard(t)
+	defer stop()
+
+	var callbackHits atomic.Int64
+	var lastChain atomic.Value
+	var lastKeys atomic.Int64
+	onRotate := func(_ context.Context, chain string, keys int) {
+		lastChain.Store(chain)
+		lastKeys.Store(int64(keys))
+		callbackHits.Add(1)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		c.Run(ctx, rf, nil, onRotate)
+		close(done)
+	}()
+	time.Sleep(20 * time.Millisecond)
+	if err := syscall.Kill(syscall.Getpid(), syscall.SIGHUP); err != nil {
+		t.Fatalf("kill SIGHUP: %v", err)
+	}
+	waitCtx, waitCancel := context.WithTimeout(ctx, 2*time.Second)
+	testutil.Eventually(t, waitCtx, 5*time.Millisecond, func() bool {
+		return callbackHits.Load() > 0
+	}, "OnRotate callback never fired after SIGHUP")
+	waitCancel()
+	if got := lastChain.Load(); got != "rotating" {
+		t.Errorf("OnRotate chain = %v; want rotating", got)
+	}
+	if got := lastKeys.Load(); got != int64(len(CanonicalKeys)) {
+		t.Errorf("OnRotate keys = %d; want %d", got, len(CanonicalKeys))
+	}
+	cancel()
+	<-done
+}
+
+// TestCache_OnRotateNilSkipped asserts a nil OnRotate is a no-op and never panics.
+func TestCache_OnRotateNilSkipped(t *testing.T) {
+	rf := &rotatingFetcher{}
+	c := NewCache()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c.Load(ctx, rf, nil)
+
+	stop := installHUPGuard(t)
+	defer stop()
+
+	done := make(chan struct{})
+	go func() {
+		c.Run(ctx, rf, nil, nil)
+		close(done)
+	}()
+	time.Sleep(20 * time.Millisecond)
+	if err := syscall.Kill(syscall.Getpid(), syscall.SIGHUP); err != nil {
+		t.Fatalf("kill SIGHUP: %v", err)
+	}
+	time.Sleep(50 * time.Millisecond) // allow rotation handler to run; no callback to wait on
+	cancel()
+	<-done
+}
+
 // TestCache_ReadersDoNotBlockDuringRotation pins the atomic.Pointer hot-path invariant — concurrent readers see consistent snapshots.
 func TestCache_ReadersDoNotBlockDuringRotation(t *testing.T) {
 	rf := &rotatingFetcher{}
