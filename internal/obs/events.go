@@ -59,6 +59,19 @@ const (
 	EventSpawnCompleted EventName = "spawn.completed"
 	EventSpawnFailed    EventName = "spawn.failed"
 
+	// EventTickAgentLoadFailed fires WARN when ScheduleOnce cannot load a
+	// reserved agent row from state. Per-agent failure must not strand
+	// sibling agents in the same tick — the loop logs + continues
+	// instead of returning (R19-A O2).
+	EventTickAgentLoadFailed EventName = "tick.agent_load_failed"
+
+	// EventSpawnPostTransitionFailed fires WARN when the post-spawn
+	// spawning→running transition fails after the spawner has already
+	// returned a live PID. The reservation is rolled back so the lane
+	// frees + a later tick can re-attempt, rather than aborting the
+	// whole tick and stranding sibling spawns (R19-A O3).
+	EventSpawnPostTransitionFailed EventName = "spawn.post_transition_failed"
+
 	// EventSpawnBackoffSkipped fires when a work_item's spawn is
 	// suppressed because a prior spawn.failed put it in an exponential
 	// cooldown window — without it the 5s scheduler tick re-dispatches
@@ -221,6 +234,8 @@ func AllEventNames() []EventName {
 		EventSpawnStarted,
 		EventSpawnCompleted,
 		EventSpawnFailed,
+		EventTickAgentLoadFailed,
+		EventSpawnPostTransitionFailed,
 		EventSpawnBackoffSkipped,
 		EventSpawnHeldNoBody,
 		EventAgentExited,

@@ -53,6 +53,12 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 	o.log.Log(ctx, level, string(obs.EventTickStarted))
 	defer func() {
 		durationMs := o.cfg.Clock().Sub(startedAt).Milliseconds()
+		// R19-A O1: an NTP backwards step between startedAt and this
+		// deferred read produces a negative duration that mis-fires the
+		// slowTickThreshold comparison and ships nonsense in dashboards.
+		if durationMs < 0 {
+			durationMs = 0
+		}
 		o.log.Log(ctx, level, string(obs.EventTickCompleted),
 			string(obs.KeyDurationMs), durationMs,
 			string(obs.KeyWorkItemsEvaluated), int64(evaluated),
@@ -66,9 +72,17 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 	}()
 
 	for _, id := range ids {
-		a, err := o.db.GetAgent(ctx, id)
+		a, err := o.getAgent(ctx, id)
 		if err != nil {
-			return fmt.Errorf("orchestrator: load agent %d: %w", id, err)
+			// R19-A O2: one bad GetAgent must not abort the tick — siblings
+			// in ids never get spawned, and the scheduler's reservation
+			// state stays inconsistent until the recovery sweep. Log +
+			// continue is the same shape as the spawn-failed branch below.
+			o.log.Warn(string(obs.EventTickAgentLoadFailed),
+				string(obs.KeyAgentID), id,
+				string(obs.KeyErr), err.Error(),
+			)
+			continue
 		}
 		// MAY-80: a work_item that recently failed to spawn is still in
 		// its exponential cooldown — release the reservation back to
@@ -144,11 +158,23 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 		o.spawnBackoff.RecordSuccess(a.WorkItemID)
 		pid := result.PID
 		sess := result.SessionID
-		if _, err := o.db.TransitionAgent(ctx, a.ID, state.AgentRunning, state.AgentMutation{
+		if _, err := o.transitionAgent(ctx, a.ID, state.AgentRunning, state.AgentMutation{
 			PID:       &pid,
 			SessionID: &sess,
 		}); err != nil {
-			return fmt.Errorf("orchestrator: mark agent %d running: %w", a.ID, err)
+			// R19-A O3: spawn already returned a live PID, but the
+			// state-DB row is still spawning. Aborting the tick here
+			// strands sibling agents (their spawn calls would never
+			// run). Roll the failed reservation back so the lane frees
+			// + a later tick can re-attempt, log + continue.
+			o.rollbackReservation(ctx, a)
+			_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnPostTransitionFailed), fmt.Sprintf(`{"error":%q}`, err.Error()))
+			o.log.Warn(string(obs.EventSpawnPostTransitionFailed),
+				string(obs.KeyAgentID), a.ID,
+				string(obs.KeyWorkItemID), a.WorkItemID,
+				string(obs.KeyErr), err.Error(),
+			)
+			continue
 		}
 		_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnCompleted),
 			fmt.Sprintf(`{"pid":%d,"session_id":%q}`, pid, sess))
@@ -168,6 +194,24 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 		return fmt.Errorf("orchestrator: scheduler tick: %w", tickErr)
 	}
 	return nil
+}
+
+// getAgent dispatches to the test override when set, else to the real
+// state.DB. Keeps the production hot path as a single nil-check.
+func (o *Orchestrator) getAgent(ctx context.Context, id int64) (*state.Agent, error) {
+	if o.getAgentOverride != nil {
+		return o.getAgentOverride(ctx, id)
+	}
+	return o.db.GetAgent(ctx, id)
+}
+
+// transitionAgent dispatches to the test override when set, else to
+// the real state.DB. Symmetric with getAgent.
+func (o *Orchestrator) transitionAgent(ctx context.Context, id int64, next state.AgentState, mut state.AgentMutation) (*state.Agent, error) {
+	if o.transitionAgentOverride != nil {
+		return o.transitionAgentOverride(ctx, id, next, mut)
+	}
+	return o.db.TransitionAgent(ctx, id, next, mut)
 }
 
 // rollbackReservation releases a reserved agent back to pending with its

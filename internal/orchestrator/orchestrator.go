@@ -61,6 +61,15 @@ type Orchestrator struct {
 	heartbeat    HeartbeatToucher
 	spawnBackoff *spawnBackoff
 	tickErrSeen  map[string]bool
+
+	// getAgentOverride and transitionAgentOverride are nil in
+	// production and let unit tests inject per-call failures into
+	// ScheduleOnce's GetAgent / TransitionAgent path without wrapping
+	// the entire *state.DB in an interface (R19-A O2 + O3 tests). The
+	// nil-check is one branch on a hot path; the trade is justified by
+	// the cost of refactoring every db caller in the package.
+	getAgentOverride        func(ctx context.Context, id int64) (*state.Agent, error)
+	transitionAgentOverride func(ctx context.Context, id int64, next state.AgentState, mut state.AgentMutation) (*state.Agent, error)
 }
 
 // logTickErrIfTransition emits a Warn for kind ONCE on the pending→failed
