@@ -79,7 +79,11 @@ func runApprovalDecide(args []string) int {
 	}, args)
 }
 
-// defaultDBPath scans args for --db override; default matches `regatta serve` so operator muscle memory holds across subcommands.
+// defaultDBPath scans args for --db override; default falls through
+// to defaultStateDB() so the REGATTA_STATE_DB env override the docker
+// compose stack pins (R3-Bug-6) flows into every subcommand using
+// this resolver (approval decide, events tail). Without this the
+// literal "regatta.db" wins and operators get an empty cwd-sqlite.
 func defaultDBPath(args []string) string {
 	for i, a := range args {
 		switch {
@@ -93,7 +97,7 @@ func defaultDBPath(args []string) string {
 			return strings.TrimPrefix(a, "-db=")
 		}
 	}
-	return stateDBDefaultLiteral
+	return defaultStateDB()
 }
 
 // runApprovalDecideWith is the testable entry point so tests bypass os.Stdout/os.Stderr/time.Now.
