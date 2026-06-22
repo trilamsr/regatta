@@ -68,6 +68,10 @@ func runEventsTailWith(deps eventsTailDeps, args []string) int {
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta events tail: --format must be table|json, got %q\n", *formatFlag)
 		return 2
 	}
+	if *sinceFlag <= 0 {
+		_, _ = fmt.Fprintf(deps.Stderr, "regatta events tail: --since must be > 0 (got %s)\n", *sinceFlag)
+		return 2
+	}
 
 	ctx := context.Background()
 	db, err := state.OpenWithClock(ctx, deps.DSN, deps.Clock)

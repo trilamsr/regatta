@@ -98,6 +98,19 @@ func TestEventsTail_UnknownFormat(t *testing.T) {
 	}
 }
 
+// TestEventsTail_NegativeSinceRejected asserts --since 0 or negative exits 2 with hint (R14-Bug-1; previously silent no-op because cutoff = now.Add(-(-dur)) lands in the future).
+func TestEventsTail_NegativeSinceRejected(t *testing.T) {
+	_, dsn, t0 := newEventsHarness(t)
+	clock := func() time.Time { return t0 }
+	code, _, stderr := runEventsTailCLI(t, dsn, clock, "--since", "-1h")
+	if code != 2 {
+		t.Fatalf("exit=%d want 2 for --since=-1h; stderr=%q", code, stderr)
+	}
+	if !strings.Contains(stderr, "--since must be > 0") {
+		t.Errorf("stderr missing --since hint: %q", stderr)
+	}
+}
+
 // TestEventsTail_NoSubcommand asserts no-verb exit 2 (#1078).
 func TestEventsTail_NoSubcommand(t *testing.T) {
 	code := runEvents(nil)
