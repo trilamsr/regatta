@@ -273,6 +273,29 @@ func TestSync_EmitsAdapterSyncFailedEventOnListError(t *testing.T) {
 	}
 }
 
+// TestSync_AdapterSyncFailedEventCarriesErrPayload asserts payload includes the err msg (R6-Bug-1).
+func TestSync_AdapterSyncFailedEventCarriesErrPayload(t *testing.T) {
+	db := newSyncTestDB(t)
+	adapter := &stubAdapter{listErr: fmt.Errorf("adapter list: gh issue list: exit status 4")}
+	syncer := mustNew(t, adaptersync.Config{Adapter: adapter, DB: db})
+
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	if err := syncer.Sync(context.Background(), now); err == nil {
+		t.Fatal("Sync want error on List failure")
+	}
+
+	row := db.SQL().QueryRowContext(context.Background(),
+		`SELECT payload_json FROM events WHERE kind = ? ORDER BY id DESC LIMIT 1`,
+		string(obs.EventAdapterSyncFailed))
+	var payload string
+	if err := row.Scan(&payload); err != nil {
+		t.Fatalf("scan payload: %v", err)
+	}
+	if !strings.Contains(payload, "adapter list: gh issue list: exit status 4") {
+		t.Fatalf("payload missing err msg: %q", payload)
+	}
+}
+
 // TestSync_EmitsAdapterSyncSyncedEventOnRecovery asserts adaptersync.synced fires only on failed→ok transition.
 func TestSync_EmitsAdapterSyncSyncedEventOnRecovery(t *testing.T) {
 	db := newSyncTestDB(t)
