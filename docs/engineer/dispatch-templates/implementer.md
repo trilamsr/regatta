@@ -85,16 +85,37 @@ STOP AT `gh pr ready` (no self-revise)
 MEMORY CITES
 - Cite `<MEMORY-RULES>` in PR body footer (path-relative, e.g. `memory/feedback_root_cause`). Reviewer checks citations resolve.
 
-CI-CHECK OUTPUT COMPRESSION
-- Report `make ci-check` via grep-then-tail (`feedback_subagent_cicheck_compress`):
+CI-CHECK OUTPUT COMPRESSION (PIPESTATUS-safe per MAY-275)
+- Report `make ci-check` / `make check` via the canonical PIPESTATUS-safe pattern. The naive form `cmd | tee | grep | tail; echo "exit=$?"` samples TAIL's exit, not make's — a green tail next to a red make ships a false "exit=0" claim. Use one of:
+
+  Pattern A (`set -o pipefail`):
   ```
+  set -o pipefail
   make ci-check 2>&1 | tee /tmp/cicheck.log | grep -E "^(FAIL|ok|---|Error|error:|PASS)" | tail -40
   echo "exit=$?"
   ```
-  If grep empty AND exit≠0 → fallback `tail -50 /tmp/cicheck.log`. Main thread re-runs full (~10% lie rate per `feedback_subagent_verification`).
 
-PRE-COMMIT `make check` MANDATORY
-- After implementing + before `git add`: run `make check` and verify exit=0. Do NOT stage or commit on failure. Fix root cause + re-run. Use the same compressed-report form as CI-CHECK above. Skipping → post-push gate failure → re-investigate + re-fix + re-push round-trip (~25min cost per offender, hit 2× session 2026-06-10 on #1208/#1214). Per `feedback_pre_commit_make_check`.
+  Pattern B (rc capture, no pipefail required):
+  ```
+  make ci-check 2>&1 | tee /tmp/cicheck.log
+  rc=$?
+  grep -E "^(FAIL|ok|---|Error|error:|PASS)" /tmp/cicheck.log | tail -40
+  echo "exit=$rc"
+  ```
+
+  If grep empty AND exit≠0 → fallback `tail -50 /tmp/cicheck.log`. Main thread re-runs full (~10% lie rate per `feedback_subagent_verification`). Per `feedback_subagent_cicheck_compress`.
+
+FAST PRECHECK BEFORE `make check` (MAY-276)
+- During iteration, run `go build ./... && go vet ./<changed-pkg>/...` FIRST (~5s) on every code change; only escalate to `make check` (~60s) once build+vet are green. Fail-fast on syntax/typos/import-cycles at ~1/12th the cost of `make check`. Per `feedback_compile_precheck`.
+
+PRE-PUSH `make check` MANDATORY (relaxed from per-commit MAY-276)
+- Run `make check` (PIPESTATUS-safe form above) exactly ONCE before `git push` and verify exit=0. Per-commit `make check` runs are NOT required; during iteration, use `go test ./<changed-pkg>/... -short` (~5s) as the cheaper signal. Never push broken state; fix root cause + re-run. Skipping pre-push → post-push gate failure → re-investigate + re-fix + re-push round-trip (~25min cost per offender, hit 2× session 2026-06-10 on #1208/#1214). Per `feedback_pre_commit_make_check`.
+
+NO `while pgrep / sleep` BABYSIT LOOPS
+- Run `make check` (or any long-running command) in the FOREGROUND, OR use the harness Monitor tool. Chained `until ! pgrep ...; do sleep N; done` patterns burn 30-50min idle per implementer (efficiency audit 2026-06-21) because the model wakes only after each sleep elapses; foreground commands return immediately, and background processes get notification-based completion. Per `feedback_no_pgrep_sleep_babysit`.
+
+GREP FIRST, READ TARGETED
+- Default to `Grep` + `Read` with `offset + limit` (max 200 lines). Full-file Read only when about to Edit AND the file is ≤300 lines. Audit 2026-06-21 found 45-73% of implementer Reads were unnecessary full-file pulls on 800-1500 LOC files. Per `feedback_grep_first_read_targeted`.
 
 SHARED-PRIMITIVE OWNERSHIP
 - Before edit, scan composition roots (`cmd/regatta/serve.go`, `internal/orchestrator/state/machine.go`, `Makefile`) for sibling-touch. Defer to named OWNER if assigned. `docs/engineer/specs/README.md` used to belong here but is now gitignored + regenerated locally. (`feedback_parallel_safety`, `feedback_conflict_anticipation`)
@@ -137,6 +158,10 @@ These slugs MUST be cited by `internal/orchestrator/spawner/claude.go::defaultPr
 - `feedback_subagent_output_verify`
 - `feedback_honest_tdd_claims`
 - `feedback_stop_at_pr_ready`
+- `feedback_subagent_cicheck_compress`
+- `feedback_compile_precheck`
+- `feedback_no_pgrep_sleep_babysit`
+- `feedback_grep_first_read_targeted`
 
 Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mark a slug intentionally kept here but not pushed to the prompt.
 
