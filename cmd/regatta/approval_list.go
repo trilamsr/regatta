@@ -38,7 +38,7 @@ func runApprovalListWith(deps approvalListDeps, args []string) int {
 	fs.SetOutput(deps.Stderr)
 	mineFlag := fs.String("mine", "", "Filter to approvals whose snapshot includes the given reviewer id")
 	formatFlag := fs.String("format", formatTable, "Output format: table | json")
-	_ = fs.String("db", "regatta.db", "Path to sqlite state DB")
+	_ = fs.String("db", stateDBDefaultLiteral, "Path to sqlite state DB")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta approval list [--mine <reviewer-id>] [--format=table|json]")
 	}

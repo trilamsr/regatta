@@ -57,7 +57,7 @@ func runMergeStatus(args []string) int {
 func runMergeStatusWith(deps mergeStatusDeps, args []string) int {
 	fs := flag.NewFlagSet("merge status", flag.ContinueOnError)
 	fs.SetOutput(deps.Stderr)
-	_ = fs.String("db", "regatta.db", "Path to sqlite state DB")
+	_ = fs.String("db", stateDBDefaultLiteral, "Path to sqlite state DB")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta merge status [--db <path>]")
 		_, _ = fmt.Fprintln(deps.Stderr, "Lists agents in awaiting_merge with their PR + intent + last probe outcome.")

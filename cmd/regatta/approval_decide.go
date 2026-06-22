@@ -93,7 +93,7 @@ func defaultDBPath(args []string) string {
 			return strings.TrimPrefix(a, "-db=")
 		}
 	}
-	return "regatta.db"
+	return stateDBDefaultLiteral
 }
 
 // runApprovalDecideWith is the testable entry point so tests bypass os.Stdout/os.Stderr/time.Now.
@@ -104,7 +104,7 @@ func runApprovalDecideWith(deps approvalDecideDeps, args []string) int {
 	decisionFlag := fs.String("decision", "", "allow | deny")
 	reasonFlag := fs.String("reason", "", "Optional human-readable reason")
 	reviewerIDFlag := fs.String("reviewer-id", "", "Reviewer id presenting the token (required)")
-	_ = fs.String("db", "regatta.db", "Path to sqlite state DB")
+	_ = fs.String("db", stateDBDefaultLiteral, "Path to sqlite state DB")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta approval decide --token <signed> --decision allow|deny --reviewer-id <id> [--reason <text>]")
 		_, _ = fmt.Fprintln(deps.Stderr, "Exit codes:")
