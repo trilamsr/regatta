@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
@@ -53,7 +54,7 @@ func TestEventsTail_JSONFormat(t *testing.T) {
 	db, dsn, t0 := newEventsHarness(t)
 	clock := func() time.Time { return t0 }
 	ctx := context.Background()
-	if err := db.RecordEvent(ctx, 0, "merge.completed", `{"pr":42}`); err != nil {
+	if err := db.RecordEvent(ctx, 0, string(obs.EventMergeCompleted), `{"pr":42}`); err != nil {
 		t.Fatalf("RecordEvent: %v", err)
 	}
 	// Seed an agent so the agent_id FK on the second event resolves; without
@@ -62,7 +63,7 @@ func TestEventsTail_JSONFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertPending: %v", err)
 	}
-	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{"reason":"ok"}`); err != nil {
+	if err := db.RecordEvent(ctx, a.ID, string(obs.EventAgentExited), `{"reason":"ok"}`); err != nil {
 		t.Fatalf("RecordEvent: %v", err)
 	}
 
@@ -77,8 +78,8 @@ func TestEventsTail_JSONFormat(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("rows=%d want 2: %v", len(rows), rows)
 	}
-	if rows[0]["kind"] != "merge.completed" {
-		t.Fatalf("rows[0].kind=%v want merge.completed", rows[0]["kind"])
+	if rows[0]["kind"] != string(obs.EventMergeCompleted) {
+		t.Fatalf("rows[0].kind=%v want %q", rows[0]["kind"], obs.EventMergeCompleted)
 	}
 	if rows[1]["agent_id"] == nil {
 		t.Fatalf("rows[1].agent_id=nil want non-nil; got rows=%v", rows)
@@ -124,18 +125,18 @@ func TestEventsTail_KindFilter(t *testing.T) {
 	db, dsn, t0 := newEventsHarness(t)
 	clock := func() time.Time { return t0 }
 	ctx := context.Background()
-	if err := db.RecordEvent(ctx, 0, "merge.completed", `{}`); err != nil {
+	if err := db.RecordEvent(ctx, 0, string(obs.EventMergeCompleted), `{}`); err != nil {
 		t.Fatalf("RecordEvent: %v", err)
 	}
 	a, err := db.UpsertPending(ctx, "BUG-EVTS-KIND", "server")
 	if err != nil {
 		t.Fatalf("UpsertPending: %v", err)
 	}
-	if err := db.RecordEvent(ctx, a.ID, "agent.exited", `{}`); err != nil {
+	if err := db.RecordEvent(ctx, a.ID, string(obs.EventAgentExited), `{}`); err != nil {
 		t.Fatalf("RecordEvent: %v", err)
 	}
 
-	code, stdout, stderr := runEventsTailCLI(t, dsn, clock, "--kind", "agent.exited", "--format", "json")
+	code, stdout, stderr := runEventsTailCLI(t, dsn, clock, "--kind", string(obs.EventAgentExited), "--format", "json")
 	if code != 0 {
 		t.Fatalf("exit=%d stderr=%q", code, stderr)
 	}
@@ -146,8 +147,8 @@ func TestEventsTail_KindFilter(t *testing.T) {
 	if len(rows) != 1 {
 		t.Fatalf("rows=%d want 1: %v", len(rows), rows)
 	}
-	if rows[0]["kind"] != "agent.exited" {
-		t.Fatalf("rows[0].kind=%v want agent.exited", rows[0]["kind"])
+	if rows[0]["kind"] != string(obs.EventAgentExited) {
+		t.Fatalf("rows[0].kind=%v want %q", rows[0]["kind"], obs.EventAgentExited)
 	}
 }
 
@@ -164,10 +165,10 @@ func TestEventsTail_AgentFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpsertPending a2: %v", err)
 	}
-	if err := db.RecordEvent(ctx, a1.ID, "agent.exited", `{"who":1}`); err != nil {
+	if err := db.RecordEvent(ctx, a1.ID, string(obs.EventAgentExited), `{"who":1}`); err != nil {
 		t.Fatalf("RecordEvent a1: %v", err)
 	}
-	if err := db.RecordEvent(ctx, a2.ID, "agent.exited", `{"who":2}`); err != nil {
+	if err := db.RecordEvent(ctx, a2.ID, string(obs.EventAgentExited), `{"who":2}`); err != nil {
 		t.Fatalf("RecordEvent a2: %v", err)
 	}
 
@@ -244,7 +245,7 @@ func TestDefaultDBPath_HonorsEnv(t *testing.T) {
 func TestEventsTail_SinceCutoff(t *testing.T) {
 	db, dsn, t0 := newEventsHarness(t)
 	ctx := context.Background()
-	if err := db.RecordEvent(ctx, 0, "merge.completed", `{"old":true}`); err != nil {
+	if err := db.RecordEvent(ctx, 0, string(obs.EventMergeCompleted), `{"old":true}`); err != nil {
 		t.Fatalf("RecordEvent: %v", err)
 	}
 	// Advance the clock past the --since window so the seeded row falls outside it.

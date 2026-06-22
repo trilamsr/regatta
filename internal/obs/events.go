@@ -152,6 +152,28 @@ const (
 	EventCostReconcileFallback EventName = "cost.reconcile_fallback"
 	EventCostReconcileFailing  EventName = "cost.reconcile_failing"
 	EventCostDriftAlert        EventName = "cost.drift_alert"
+
+	// Subsystem event-kind names registered here so DB.RecordEvent can
+	// fail-closed on typos against one unified vocabulary (Bug S4). The
+	// subsystem packages keep their EventKind* constants for
+	// readability, but their string values MUST equal these consts.
+	EventCostCapThrottled    EventName = "cost_cap_throttled"
+	EventCostCapResumed      EventName = "cost_cap_resumed"
+	EventMergeIntent         EventName = "merge_intent"
+	EventMergeCompleted      EventName = "merge_completed"
+	EventMergeExecuted       EventName = "merge_executed"
+	EventMergeFailed         EventName = "merge_failed"
+	EventMergeRecovered      EventName = "merge_recovered"
+	EventGateRejected        EventName = "gate_rejected"
+	EventEscalated           EventName = "escalated"
+	EventLabeled             EventName = "labeled"
+	EventRecoveredCrashed    EventName = "recovered_crashed"
+	EventReaped              EventName = "reaped"
+	EventSecretsRotated      EventName = "secrets_rotated"
+	EventAgentPROpened       EventName = "agent_pr_opened"
+	EventAgentPRHeadChanged  EventName = "agent_pr_head_changed"
+	EventAgentBranchRenamed  EventName = "agent_branch_renamed"
+	EventAgentPRDirty        EventName = "agent_pr_dirty"
 )
 
 // Attribute keys. The set is intentionally small — anything not listed lives under attrs.* so dashboards do not break when a new component-specific key is introduced.
@@ -267,7 +289,44 @@ func AllEventNames() []EventName {
 		EventCostReconcileFallback,
 		EventCostReconcileFailing,
 		EventCostDriftAlert,
+		EventCostCapThrottled,
+		EventCostCapResumed,
+		EventMergeIntent,
+		EventMergeCompleted,
+		EventMergeExecuted,
+		EventMergeFailed,
+		EventMergeRecovered,
+		EventGateRejected,
+		EventEscalated,
+		EventLabeled,
+		EventRecoveredCrashed,
+		EventReaped,
+		EventSecretsRotated,
+		EventAgentPROpened,
+		EventAgentPRHeadChanged,
+		EventAgentBranchRenamed,
+		EventAgentPRDirty,
 	}
+}
+
+// knownEvents indexes AllEventNames for O(1) IsKnownEvent lookup.
+var knownEvents = func() map[string]struct{} {
+	all := AllEventNames()
+	m := make(map[string]struct{}, len(all))
+	for _, e := range all {
+		m[string(e)] = struct{}{}
+	}
+	return m
+}()
+
+// IsKnownEvent reports whether kind matches a declared EventName
+// constant. DB.RecordEvent + RecordEventTx call this at the write
+// boundary so a typo'd kind (e.g. "spawn_compeleted") fails-closed
+// rather than silently inserting a row no dashboard recognizes (Bug
+// S4). Keep the AllEventNames slice in sync when adding new events.
+func IsKnownEvent(kind string) bool {
+	_, ok := knownEvents[kind]
+	return ok
 }
 
 // AllAttrKeys enumerates every AttrKey constant — symmetric with AllEventNames; same maintenance contract.

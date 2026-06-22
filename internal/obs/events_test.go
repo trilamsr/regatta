@@ -50,6 +50,46 @@ func enumerateAttrKeys(t *testing.T) map[string]obs.AttrKey {
 	return got
 }
 
+// FROZEN: do not add new entries — use the dotted component.event
+// format for new event kinds. This allowlist captures the 17 legacy
+// underscore-form kinds whose wire strings are pinned on-disk + in
+// dashboards + selfimprove rules; changing them would silently break
+// historical event queries.
+//
+// legacyUnderscoreEventNames are pre-existing wire strings emitted by
+// subsystem packages (merge, rejectionrouter, cost/cap, reaper,
+// prwatch, etc.) before the dotted convention was adopted. They
+// landed in obs.AllEventNames so DB.RecordEvent can fail-closed on
+// typos (Bug S4) without breaking dashboards / runbooks / on-disk
+// events that already grep for the underscored form. New events MUST
+// use the dotted component.event format.
+var legacyUnderscoreEventNames = map[string]struct{}{
+	"cost_cap_throttled":    {},
+	"cost_cap_resumed":      {},
+	"merge_intent":          {},
+	"merge_completed":       {},
+	"merge_executed":        {},
+	"merge_failed":          {},
+	"merge_recovered":       {},
+	"gate_rejected":         {},
+	"escalated":             {},
+	"labeled":               {},
+	"recovered_crashed":     {},
+	"reaped":                {},
+	"secrets_rotated":       {},
+	"agent_pr_opened":       {},
+	"agent_pr_head_changed": {},
+	"agent_branch_renamed":  {},
+	"agent_pr_dirty":        {},
+}
+
+// TestLegacyUnderscoreEventNames_Frozen pins the legacy allowlist size; new entries fail CI.
+func TestLegacyUnderscoreEventNames_Frozen(t *testing.T) {
+	if got, want := len(legacyUnderscoreEventNames), 17; got != want {
+		t.Fatalf("legacyUnderscoreEventNames is FROZEN; got %d entries, want %d — new events must use dotted component.event format", got, want)
+	}
+}
+
 func TestEventName_AllNonEmpty(t *testing.T) {
 	events := enumerateEventNames(t)
 	if len(events) == 0 {
@@ -58,6 +98,9 @@ func TestEventName_AllNonEmpty(t *testing.T) {
 	for s := range events {
 		if s == "" {
 			t.Errorf("EventName constant has empty value")
+			continue
+		}
+		if _, legacy := legacyUnderscoreEventNames[s]; legacy {
 			continue
 		}
 		// Dotted format: every event is component.event so operators
