@@ -50,6 +50,12 @@ func enumerateAttrKeys(t *testing.T) map[string]obs.AttrKey {
 	return got
 }
 
+// FROZEN: do not add new entries — use the dotted component.event
+// format for new event kinds. This allowlist captures the 17 legacy
+// underscore-form kinds whose wire strings are pinned on-disk + in
+// dashboards + selfimprove rules; changing them would silently break
+// historical event queries.
+//
 // legacyUnderscoreEventNames are pre-existing wire strings emitted by
 // subsystem packages (merge, rejectionrouter, cost/cap, reaper,
 // prwatch, etc.) before the dotted convention was adopted. They
@@ -75,6 +81,13 @@ var legacyUnderscoreEventNames = map[string]struct{}{
 	"agent_pr_head_changed": {},
 	"agent_branch_renamed":  {},
 	"agent_pr_dirty":        {},
+}
+
+// TestLegacyUnderscoreEventNames_Frozen pins the legacy allowlist size; new entries fail CI.
+func TestLegacyUnderscoreEventNames_Frozen(t *testing.T) {
+	if got, want := len(legacyUnderscoreEventNames), 17; got != want {
+		t.Fatalf("legacyUnderscoreEventNames is FROZEN; got %d entries, want %d — new events must use dotted component.event format", got, want)
+	}
 }
 
 func TestEventName_AllNonEmpty(t *testing.T) {
