@@ -204,6 +204,69 @@ func (r *Reaper) ReapAll(ctx context.Context) error {
 	return firstErr
 }
 
+// SweepCrashedWithPID kills the orphan child of each crashed agent whose
+// PID was stamped by R19-A's post-spawn TransitionAgent-failure path,
+// releases any locks the agent still holds, and drives the row back to
+// pending so ListSpawnable can re-schedule the work item. Crashed agents
+// without a stamped PID are clean rollbackReservation outcomes and are
+// left untouched. Per-agent errors are logged and skipped — one failing
+// kill must not strand sibling orphans.
+func (r *Reaper) SweepCrashedWithPID(ctx context.Context) error {
+	ctx, span := r.tracer.Start(ctx, "reaper.crashed_sweep")
+	defer span.End()
+	agents, err := r.db.ListAgentsByState(ctx, state.AgentCrashed)
+	if err != nil {
+		return fmt.Errorf("reaper: list crashed agents: %w", err)
+	}
+	for _, a := range agents {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if a.PID == 0 {
+			continue
+		}
+		if r.killer != nil {
+			if _, err := r.killer.KillAgent(a.ID); err != nil {
+				r.log.Warn(string(obs.EventReapSkipped),
+					string(obs.KeyAgentID), a.ID,
+					string(obs.KeyReason), "kill_failed",
+					string(obs.KeyErr), err.Error(),
+				)
+				continue
+			}
+		}
+		if _, err := r.db.ReleaseAgentLocks(ctx, a.ID); err != nil {
+			r.log.Warn(string(obs.EventReapSkipped),
+				string(obs.KeyAgentID), a.ID,
+				string(obs.KeyReason), "release_locks_failed",
+				string(obs.KeyErr), err.Error(),
+			)
+			continue
+		}
+		zeroPID := 0
+		emptySess := ""
+		if _, err := r.db.TransitionAgent(ctx, a.ID, state.AgentPending, state.AgentMutation{
+			PID:       &zeroPID,
+			SessionID: &emptySess,
+		}); err != nil {
+			r.log.Warn(string(obs.EventReapSkipped),
+				string(obs.KeyAgentID), a.ID,
+				string(obs.KeyReason), "requeue_failed",
+				string(obs.KeyErr), err.Error(),
+			)
+			continue
+		}
+		if err := r.db.RecordEvent(ctx, a.ID, string(obs.EventReapCrashedRequeued), "{}"); err != nil {
+			r.log.Warn(string(obs.EventReapSkipped),
+				string(obs.KeyAgentID), a.ID,
+				string(obs.KeyReason), "record_event_failed",
+				string(obs.KeyErr), err.Error(),
+			)
+		}
+	}
+	return nil
+}
+
 // ErrAgentNotTerminal is returned by Reap when called on an agent
 // whose state is not one of done | withdrawn | escalated.
 var ErrAgentNotTerminal = errors.New("reaper: agent is not in a terminal state")

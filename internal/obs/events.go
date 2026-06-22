@@ -96,6 +96,10 @@ const (
 	EventReapCandidateDetected EventName = "reap.candidate_detected"
 	EventReapKilled            EventName = "reap.killed"
 	EventReapSkipped           EventName = "reap.skipped"
+	// EventReapCrashedRequeued fires when SweepCrashedWithPID kills the
+	// stamped orphan child, releases locks, and drives crashed→pending
+	// so ListSpawnable can re-schedule the work item (R19-A follow-up).
+	EventReapCrashedRequeued EventName = "reaper.crashed_requeued"
 
 	// EventSpawnerBackendChanged fires WARN once per crash-recovery row
 	// whose session_id was written by the stub spawner but the daemon now
@@ -266,6 +270,7 @@ func AllEventNames() []EventName {
 		EventReapCandidateDetected,
 		EventReapKilled,
 		EventReapSkipped,
+		EventReapCrashedRequeued,
 		EventSpawnerBackendChanged,
 		EventCreditExhausted,
 		EventGateVerdict,
