@@ -296,6 +296,30 @@ func TestSync_AdapterSyncFailedEventCarriesErrPayload(t *testing.T) {
 	}
 }
 
+// TestSync_AdapterSyncFailedDedupsConsecutiveFailures asserts adaptersync.failed emits ONCE on transition, not every poll (R9-Bug-1; mirror of R8 spawn.held_no_body fix).
+func TestSync_AdapterSyncFailedDedupsConsecutiveFailures(t *testing.T) {
+	db := newSyncTestDB(t)
+	adapter := &stubAdapter{listErr: fmt.Errorf("boom")}
+	syncer := mustNew(t, adaptersync.Config{Adapter: adapter, DB: db})
+
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	for i := 0; i < 5; i++ {
+		if err := syncer.Sync(context.Background(), now.Add(time.Duration(i)*time.Minute)); err == nil {
+			t.Fatalf("Sync %d want error on List failure", i)
+		}
+	}
+
+	row := db.SQL().QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM events WHERE kind = ?`, string(obs.EventAdapterSyncFailed))
+	var n int
+	if err := row.Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("adaptersync.failed event count=%d after 5 consecutive failures; want 1 (emit only on pending→failed transition)", n)
+	}
+}
+
 // TestSync_AdapterSyncFailedRedactsSecretsAndTruncates asserts payload scrubber strips known token shapes + caps length (R6-Bug-1 reviewer R1+R2).
 func TestSync_AdapterSyncFailedRedactsSecretsAndTruncates(t *testing.T) {
 	db := newSyncTestDB(t)
