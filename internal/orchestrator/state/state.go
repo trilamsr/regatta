@@ -58,10 +58,15 @@ type DB struct {
 }
 
 // DSN returns the standard modernc.org/sqlite DSN: 5s busy_timeout,
-// foreign_keys on, _txlock=immediate so every BeginTx takes the writer
-// lock at BEGIN-time rather than at first-write (see WithTx).
+// foreign_keys on, journal_mode=WAL + synchronous=NORMAL so the
+// dashboard's 5s reader poll never serializes behind the orchestrator's
+// 5s tick writes (rollback-journal mode takes an EXCLUSIVE lock that
+// blocks all readers), and _txlock=immediate so every BeginTx takes the
+// writer lock at BEGIN-time rather than at first-write (see WithTx).
+// NORMAL is the SQLite-recommended pair for WAL — FULL is overly
+// defensive when WAL already fsyncs on checkpoint.
 func DSN(path string) string {
-	return fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate", path)
+	return fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)&_pragma=synchronous(NORMAL)&_txlock=immediate", path)
 }
 
 // Open opens (or creates) the sqlite DB, applies pending migrations,
