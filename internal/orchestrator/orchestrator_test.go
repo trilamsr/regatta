@@ -590,6 +590,40 @@ func TestScheduleOnceThreadsItemBodyAndRepoRootIntoSpawnRequest(t *testing.T) {
 	}
 }
 
+// TestLogPollErrIfTransition_DedupsConsecutiveFailures asserts the helper emits orchestrator.poll_failed once on transition pending→failed, not on every call (R12-Bug-1; mirror of R9 substrate-side dedup at the log layer).
+func TestLogPollErrIfTransition_DedupsConsecutiveFailures(t *testing.T) {
+	o, _, _, _ := newHarness(t, 0)
+	h := obstest.New()
+	o.log = slog.New(h)
+
+	err := fmt.Errorf("boom")
+	for i := 0; i < 5; i++ {
+		o.logPollErrIfTransition(err)
+	}
+
+	count := 0
+	for _, msg := range h.Messages() {
+		if msg == "orchestrator.poll_failed" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Fatalf("orchestrator.poll_failed log count=%d after 5 consecutive errs; want 1", count)
+	}
+
+	o.logPollErrIfTransition(nil)
+	o.logPollErrIfTransition(err)
+	count2 := 0
+	for _, msg := range h.Messages() {
+		if msg == "orchestrator.poll_failed" {
+			count2++
+		}
+	}
+	if count2 != 2 {
+		t.Fatalf("after recovery + re-fail, log count=%d; want 2 (first transition + recovery-then-fail transition)", count2)
+	}
+}
+
 // MAY-81 changed the missing-item-body contract from "spawn blind" to
 // "hold the item": the prior TestScheduleOnceMissingItemBodyStillSpawns
 // is superseded by TestScheduleOnce_MissingItemBodyHoldsItem in
