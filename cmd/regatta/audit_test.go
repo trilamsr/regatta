@@ -458,3 +458,21 @@ func TestAuditVerify_EmptyRunID_EmitsStderrHint(t *testing.T) {
 		t.Errorf("stderr missing 'no gate verdicts' hint: %q", stderr.String())
 	}
 }
+
+
+// TestAuditVerify_BadFormat_FailsFastBeforeDBOpen asserts unknown --format errors before DB open (R18-Bug-1).
+func TestAuditVerify_BadFormat_FailsFastBeforeDBOpen(t *testing.T) {
+	t.Setenv("REGATTA_AUDIT_HMAC_KEY", "0123456789abcdef0123456789abcdef")
+	var stdout, stderr bytes.Buffer
+	code := runAuditVerifyWith(auditDeps{Stdout: &stdout, Stderr: &stderr, DSN: state.DSN("/nonexistent.db")},
+		[]string{"--run-id", "x", "--format", "yaml"})
+	if code != 2 {
+		t.Fatalf("exit=%d want 2 for bad --format; stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), `unknown format "yaml"`) {
+		t.Errorf("stderr missing unknown-format hint: %q", stderr.String())
+	}
+	if strings.Contains(stderr.String(), "open db") {
+		t.Errorf("stderr leaked db-open err — format check should fail BEFORE DB open: %q", stderr.String())
+	}
+}
