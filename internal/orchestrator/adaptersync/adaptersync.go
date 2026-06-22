@@ -115,6 +115,7 @@ type Syncer struct {
 	lastPoll          time.Time
 	consecutiveEmpty  int
 	lastSyncFailed    bool
+	failureStartedAt  time.Time
 }
 
 // New constructs a Syncer from a Config. Returns an error if any
@@ -172,6 +173,7 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		alreadyFailed := s.lastSyncFailed
 		s.lastSyncFailed = true
 		if !alreadyFailed {
+			s.failureStartedAt = pollStartedAt
 			payload, mErr := json.Marshal(map[string]string{"err": scrubAdaptersyncErr(err.Error())})
 			if mErr != nil {
 				payload = []byte(`{}`)
@@ -184,7 +186,15 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	}
 	if s.lastSyncFailed {
 		s.lastSyncFailed = false
-		if recErr := s.db.RecordEvent(ctx, 0, string(obs.EventAdapterSyncSynced), ""); recErr != nil {
+		downtimeMs := pollStartedAt.Sub(s.failureStartedAt).Milliseconds()
+		if downtimeMs < 0 {
+			downtimeMs = 0
+		}
+		payload, mErr := json.Marshal(map[string]int64{"items_count": int64(len(items)), "downtime_ms": downtimeMs})
+		if mErr != nil {
+			payload = []byte(`{}`)
+		}
+		if recErr := s.db.RecordEvent(ctx, 0, string(obs.EventAdapterSyncSynced), string(payload)); recErr != nil {
 			s.log.Warn("adaptersync.event_record_failed", "kind", string(obs.EventAdapterSyncSynced), "err", recErr)
 		}
 	}
