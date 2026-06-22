@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -430,5 +431,30 @@ func TestAuditVerify_UnsetKeyring_ExitsNonZero(t *testing.T) {
 	}
 	if got.Rows[0].HMACStatus != "chain-unverifiable" {
 		t.Errorf("HMACStatus=%q want chain-unverifiable", got.Rows[0].HMACStatus)
+	}
+}
+
+// TestAuditVerify_EmptyRunID_EmitsStderrHint asserts unknown run-id gets actionable stderr (R7-Bug-1).
+func TestAuditVerify_EmptyRunID_EmitsStderrHint(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	t.Setenv("REGATTA_AUDIT_HMAC_KEY", "0123456789abcdef0123456789abcdef")
+
+	ctx := context.Background()
+	_, err := state.Open(ctx, state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := runAuditVerifyWith(auditDeps{Stdout: &stdout, Stderr: &stderr, DSN: state.DSN(dbPath)},
+		[]string{"--run-id", "does-not-exist", "--format", "json"})
+	if code != 0 {
+		t.Fatalf("exit=%d want 0 on empty run (no rows = nothing to verify, not a failure); stderr=%q", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "does-not-exist") {
+		t.Errorf("stderr missing run-id hint: %q", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "no gate verdicts") {
+		t.Errorf("stderr missing 'no gate verdicts' hint: %q", stderr.String())
 	}
 }
