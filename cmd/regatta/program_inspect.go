@@ -47,7 +47,7 @@ type programShowReport struct {
 func runProgramShow(args []string) int {
 	fs := flag.NewFlagSet("program show", flag.ExitOnError)
 	keyEnv := fs.String("hmac-key-env", "", "Env var holding the HMAC key (if set, verify brief signature)")
-	keyID := fs.String("hmac-key-id", "k1", "key_id to expect in the signature (default \"k1\")")
+	keyID := fs.String("hmac-key-id", "k1", "key_id to expect in the signature")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta program show <brief.json>")
 		fs.PrintDefaults()
