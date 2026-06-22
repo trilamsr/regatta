@@ -258,6 +258,10 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 		return 1
 	}
 
+	if summary.Total == 0 {
+		_, _ = fmt.Fprintf(deps.Stderr, "regatta audit verify: no gate verdicts recorded for run-id %q (typo? wrong --db? unrecorded run?)\n", *runID)
+	}
+
 	if summary.ChainBroken > 0 || keyErr != nil {
 		return 1
 	}
