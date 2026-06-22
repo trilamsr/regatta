@@ -71,7 +71,7 @@ run_case "deletion w/ stale ref fails" "old-gate.sh" "Run \`bash old-gate.sh\` b
 
 # Case 3: escape hatch in PR body bypasses the gate.
 run_case "stale-refs-justified bypasses" "old-gate.sh" "Mentions old-gate.sh historically." \
-  $'## Summary\n<!-- stale-refs-justified: shipped spec historical accuracy -->\n```release-notes\n[CHORE] x\n```' 0
+  $'## Summary\n<!-- stale-refs-justified: shipped-spec-historical-accuracy -->\n```release-notes\n[CHORE] x\n```' 0
 
 # Case 4: no deletions in PR → pass.
 run_case "no deletions passes" "" "" "" 0
@@ -143,13 +143,24 @@ run_case_keep "non-tracked stem still flags" \
 # rewrite cycles. Body class loosened to `.{3,}-->`; first-char `[^[:space:]-]`
 # still rejects leading dashes + whitespace-only.
 run_case "hyphen-in-reason-passes" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
-  $'## Summary\n<!-- stale-refs-justified: shipped spec ref foo-bar.go in pre-existing doc -->\n```release-notes\n[CHORE] x\n```' 0
+  $'## Summary\n<!-- stale-refs-justified: shipped-spec-ref-foo-bar.go-in-pre-existing-doc -->\n```release-notes\n[CHORE] x\n```' 0
 run_case "pkg-path-in-reason-passes" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
-  $'## Summary\n<!-- stale-refs-justified: docs/spec-of-record historical-accuracy ref -->\n```release-notes\n[CHORE] x\n```' 0
+  $'## Summary\n<!-- stale-refs-justified: docs/spec-of-record-historical-accuracy-ref -->\n```release-notes\n[CHORE] x\n```' 0
 run_case "leading-dash-rejected" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
   $'## Summary\n<!-- stale-refs-justified: -bad reason -->\n```release-notes\n[CHORE] x\n```' 1
 run_case "double-dash-rejected" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
   $'## Summary\n<!-- stale-refs-justified: --bad reason -->\n```release-notes\n[CHORE] x\n```' 1
+
+# MAY-272: tighten body class to `[^[:space:]]{3,}` — reject single-char +
+# trailing-whitespace bypass AND reject internal whitespace. Honor-system
+# gate; tightening removes a regex-shape bypass that paired one non-whitespace
+# char with whitespace padding to satisfy the `.{3,}` body.
+run_case "single-char-trailing-space-rejected" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
+  $'## Summary\n<!-- stale-refs-justified: a    -->\n```release-notes\n[CHORE] x\n```' 1
+run_case "internal-whitespace-rejected" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
+  $'## Summary\n<!-- stale-refs-justified: a b c -->\n```release-notes\n[CHORE] x\n```' 1
+run_case "no-whitespace-body-accepted" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
+  $'## Summary\n<!-- stale-refs-justified: abcd -->\n```release-notes\n[CHORE] x\n```' 0
 
 if [ "$FAIL" -gt 0 ]; then
   echo
