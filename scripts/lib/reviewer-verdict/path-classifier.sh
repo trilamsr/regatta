@@ -17,6 +17,12 @@
 # prompts; sibling of contracts/schemas already in the workflow list)
 # added — same #1133 gap class: silent [CHORE]/[DOCS] changes there
 # break operator-decision / safety / money / event-vocab surfaces.
+# MAY-266 (audit 2026-06-21): internal/{ghclient,gates,orchestrator,
+# supervisor,ghidempotency,secrets,sandbox}/* + cmd/* added — the
+# classifier omitted 8 of the 11 internal/* prefixes + cmd/ that
+# CLAUDE.md §Reviewer-verdict gate lists as load-bearing, allowing
+# [CHANGE]/[CHORE]/[DOCS] PRs touching those surfaces to auto-skip
+# the reviewer-verdict gate. Drift caught by run_case_claude_md_prefix_parity.
 #
 # REQUIRES: PATHS_FILE LOAD_BEARING  (set by rv_parse_args)
 # SETS:     LOAD_BEARING_BY_PATH, LOAD_BEARING (upgraded on match)
@@ -49,6 +55,14 @@ rv_classify_paths() {
         break
         ;;
       internal/cost/*|internal/canon/*|contracts/*)
+        LOAD_BEARING_BY_PATH=1
+        break
+        ;;
+      internal/ghclient/*|internal/gates/*|internal/orchestrator/*|internal/supervisor/*)
+        LOAD_BEARING_BY_PATH=1
+        break
+        ;;
+      internal/ghidempotency/*|internal/secrets/*|internal/sandbox/*|cmd/*)
         LOAD_BEARING_BY_PATH=1
         break
         ;;

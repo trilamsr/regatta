@@ -969,6 +969,53 @@ assert_guard_fires() {
   fi
 }
 
+run_case_claude_md_prefix_parity() {
+  # MAY-266 parity gate: every load-bearing prefix listed in CLAUDE.md
+  # §Reviewer-verdict gate MUST flag LOAD_BEARING_BY_PATH=1. CLAUDE.md
+  # lists: internal/{ghclient,gates,orchestrator,supervisor,ghidempotency,
+  # secrets,sandbox,web,obs,cost,canon}/, cmd/, contracts/, Makefile,
+  # Makefile.d/*, .github/workflows/*, scripts/check-*.sh.
+  # Fails closed if any prefix auto-skips.
+  local path body paths_file
+  for path in \
+    "internal/ghclient/client.go" \
+    "internal/gates/scorecard.go" \
+    "internal/orchestrator/spawner/claude.go" \
+    "internal/supervisor/sup.go" \
+    "internal/ghidempotency/store.go" \
+    "internal/secrets/vault.go" \
+    "internal/sandbox/runner.go" \
+    "internal/web/dashboard.go" \
+    "internal/obs/events.go" \
+    "internal/cost/cap/cap.go" \
+    "internal/canon/canon.go" \
+    "cmd/regatta/serve.go" \
+    "contracts/prompts/planner.md" \
+    "Makefile" \
+    "Makefile.d/check.mk" \
+    ".github/workflows/pr-lint.yml" \
+    "scripts/check-foo.sh"; do
+    body=$(mktemp)
+    paths_file=$(mktemp)
+    write_body "$body" <<EOF
+## Summary
+
+Touches $path.
+
+\`\`\`release-notes
+[CHORE] tweak $path
+\`\`\`
+EOF
+    printf '%s\n' "$path" > "$paths_file"
+    if "$GATE" --body-file "$body" --changed-paths-file "$paths_file" 2>&1 | grep -qE "Reviewer-recommendation"; then
+      pass "CLAUDE.md prefix parity: $path flagged load-bearing"
+    else
+      fail "CLAUDE.md prefix parity: $path MUST flag load-bearing (CLAUDE.md §Reviewer-verdict gate)"
+    fi
+    rm -f "$body" "$paths_file"
+  done
+}
+
 run_case_body_source_requires_args() {
   assert_guard_fires body-source.sh rv_resolve_body \
     "rv_resolve_body requires PR_NUM" \
@@ -1042,6 +1089,7 @@ run_case_operator_opened_still_requires_reviewer_id
 run_case_operator_opened_does_not_bypass_allowlist
 run_case_insufficient_evidence_acts_as_revise
 run_case_insufficient_evidence_without_tracker_fails
+run_case_claude_md_prefix_parity
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"
