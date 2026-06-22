@@ -6,6 +6,7 @@ package approvaltoken
 
 import (
 	"crypto/hmac"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -188,7 +189,8 @@ func VerifyToken(kr Keyring, wire string, expectReviewer string, now time.Time) 
 	// expectReviewer == "" means "derive from claim" — the HMAC compare
 	// above is the authentication boundary; this branch only enforces
 	// reviewer-pinning for callers that already know the identity.
-	if expectReviewer != "" && p.Reviewer != expectReviewer {
+	// Constant-time compare even though HMAC auth has already verified the payload — defense-in-depth + repo-wide pattern parity with gates/approval/decide.go::inReviewerSet.
+	if expectReviewer != "" && subtle.ConstantTimeCompare([]byte(p.Reviewer), []byte(expectReviewer)) != 1 {
 		return zero, fmt.Errorf("%w: reviewer mismatch", ErrUnverifiable)
 	}
 	return p, nil

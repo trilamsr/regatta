@@ -5,6 +5,9 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -366,6 +369,55 @@ func TestExtractKID_TypedSentinels(t *testing.T) {
 				t.Fatalf("err=%v; want errors.Is(%v)", err, tc.want)
 			}
 		})
+	}
+}
+
+// TestVerifyToken_ReviewerPinUsesConstantTimeCompare pins the reviewer-pin compare to subtle.ConstantTimeCompare for defense-in-depth + repo-wide parity with gates/approval/decide.go::inReviewerSet (R26).
+func TestVerifyToken_ReviewerPinUsesConstantTimeCompare(t *testing.T) {
+	t.Parallel()
+	_, filename, _, _ := runtime.Caller(0)
+	tokenPath := filepath.Join(filepath.Dir(filename), "token.go")
+	raw, err := os.ReadFile(tokenPath)
+	if err != nil {
+		t.Fatalf("read token.go: %v", err)
+	}
+	src := string(raw)
+	if !strings.Contains(src, `"crypto/subtle"`) {
+		t.Fatalf("token.go must import crypto/subtle for constant-time reviewer-pin compare")
+	}
+	if !strings.Contains(src, "subtle.ConstantTimeCompare([]byte(p.Reviewer), []byte(expectReviewer))") {
+		t.Fatalf("VerifyToken reviewer-pin must use subtle.ConstantTimeCompare; variable-time != was retained")
+	}
+	if strings.Contains(src, "p.Reviewer != expectReviewer") {
+		t.Fatalf("VerifyToken reviewer-pin still contains variable-time `p.Reviewer != expectReviewer`; replace with subtle.ConstantTimeCompare")
+	}
+}
+
+// TestVerifyToken_ReviewerPinMismatch_Rejected covers the constant-time mismatch branch end-to-end (R26).
+func TestVerifyToken_ReviewerPinMismatch_Rejected(t *testing.T) {
+	t.Parallel()
+	kr := newTestKeyring()
+	wire, _ := mintForTest(t, "alice", time.Now().Add(time.Hour).Unix())
+	_, err := VerifyToken(kr, wire, "bob", time.Now())
+	if !errors.Is(err, ErrUnverifiable) {
+		t.Fatalf("want ErrUnverifiable, got %v", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "reviewer mismatch") {
+		t.Fatalf("want error containing %q, got %v", "reviewer mismatch", err)
+	}
+}
+
+// TestVerifyToken_ReviewerPinMatch_Accepted covers the constant-time match branch end-to-end (R26).
+func TestVerifyToken_ReviewerPinMatch_Accepted(t *testing.T) {
+	t.Parallel()
+	kr := newTestKeyring()
+	wire, _ := mintForTest(t, "alice", time.Now().Add(time.Hour).Unix())
+	got, err := VerifyToken(kr, wire, "alice", time.Now())
+	if err != nil {
+		t.Fatalf("verify with matching reviewer: %v", err)
+	}
+	if got.Reviewer != "alice" {
+		t.Fatalf("reviewer = %q want %q", got.Reviewer, "alice")
 	}
 }
 
