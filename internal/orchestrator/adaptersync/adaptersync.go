@@ -187,6 +187,9 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	if s.lastSyncFailed {
 		s.lastSyncFailed = false
 		downtimeMs := pollStartedAt.Sub(s.failureStartedAt).Milliseconds()
+		if downtimeMs < 0 {
+			downtimeMs = 0
+		}
 		payload, mErr := json.Marshal(map[string]int64{"items_count": int64(len(items)), "downtime_ms": downtimeMs})
 		if mErr != nil {
 			payload = []byte(`{}`)
