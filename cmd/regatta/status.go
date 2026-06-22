@@ -145,6 +145,18 @@ func renderPanel(b *strings.Builder, p Panel, w int) {
 	}
 }
 
+// statusDefaultDB resolves the --db value: empty flag falls through to
+// defaultStateDB() (REGATTA_STATE_DB env, then "regatta.db" literal).
+// Closes the same-class gap fixed for events tail + approval decide in
+// R5-Bug-5: status was the lone db-touching subcommand still bypassing
+// the env-aware resolver.
+func statusDefaultDB(flagVal string) string {
+	if flagVal != "" {
+		return flagVal
+	}
+	return defaultStateDB()
+}
+
 // runStatus is the cobra-style entry point. Flags: --refresh, --once,
 // --width, --height. --once renders one frame to stdout and exits;
 // the loop mode would require raw-terminal handling and is gated by
@@ -167,12 +179,12 @@ func runStatus(args []string) int {
 
 	if *jsonOut {
 		return runStatusJSON(context.Background(), os.Stdout, statusJSONOpts{
-			DBPath:    *dbPath,
+			DBPath:    statusDefaultDB(*dbPath),
 			SocketURL: *socketURL,
 		})
 	}
 
-	src, err := newDefaultSource(*dbPath)
+	src, err := newDefaultSource(statusDefaultDB(*dbPath))
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "regatta status: source init:", err)
 		return 1
