@@ -47,7 +47,12 @@ services:
       context: .
       dockerfile: Dockerfile
     image: regatta:stage2
-    restart: unless-stopped
+    # on-failure:5 (not unless-stopped) so fatal-config errors (missing
+    # spawner auth → exit 2 from preflight) stop within seconds instead
+    # of crashlooping forever on a default-broken Docker Desktop install.
+    # Transient flakes still recover; bounded restarts keep the journal
+    # readable per the secrets_resolved summary line.
+    restart: on-failure:5
     env_file:
       - path: .env
         required: false

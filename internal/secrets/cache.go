@@ -130,23 +130,27 @@ func (c *Cache) Rotate(ctx context.Context, fetcher Fetcher, logger *slog.Logger
 }
 
 // fetchAll walks the canonical key list and returns a fresh snapshot.
-// Logs every miss + every resolution at info level — operators see
-// `secret_resolved key=… source=…` substrate events but never values.
+// One INFO summary line ("secrets_resolved resolved=N missing=M") per
+// boot keeps the journal readable when docker restart-on-failure cycles
+// the daemon; per-key detail demoted to DEBUG. Missing-mandatory keys
+// stay at WARN so operator misconfig still surfaces above INFO.
 func fetchAll(ctx context.Context, fetcher Fetcher, logger *slog.Logger) *snapshot {
 	snap := &snapshot{
 		values: make(map[string]Value, len(CanonicalKeys)),
 		source: make(map[string]string, len(CanonicalKeys)),
 		at:     time.Now(),
 	}
+	var resolved, missing int
 	for _, key := range CanonicalKeys {
 		v, src, err := GetWithSource(ctx, fetcher, key)
 		if err != nil {
 			snap.values[key] = Value{}
 			snap.source[key] = sourceMissing
+			missing++
 			if logger != nil {
-				level := slog.LevelWarn
-				if OptionalKeys[key] {
-					level = slog.LevelInfo
+				level := slog.LevelDebug
+				if !OptionalKeys[key] {
+					level = slog.LevelWarn
 				}
 				logger.LogAttrs(ctx, level, "secret_missing",
 					slog.String("key", key),
@@ -157,13 +161,22 @@ func fetchAll(ctx context.Context, fetcher Fetcher, logger *slog.Logger) *snapsh
 		}
 		snap.values[key] = v
 		snap.source[key] = src
+		resolved++
 		if logger != nil {
-			logger.LogAttrs(ctx, slog.LevelInfo, "secret_resolved",
+			logger.LogAttrs(ctx, slog.LevelDebug, "secret_resolved",
 				slog.String("key", key),
 				slog.String("source", src),
 				slog.Int("bytes", v.Len()),
 			)
 		}
+	}
+	if logger != nil {
+		logger.LogAttrs(ctx, slog.LevelInfo, "secrets_resolved",
+			slog.Int("resolved", resolved),
+			slog.Int("missing", missing),
+			slog.Int("total", len(CanonicalKeys)),
+			slog.String("chain", fetcher.Name()),
+		)
 	}
 	return snap
 }
