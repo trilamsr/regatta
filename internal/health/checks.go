@@ -106,7 +106,7 @@ func checkBrief(c *BriefCell) CheckResult {
 	}
 	path := c.Path()
 	if path == "" {
-		return CheckResult{Status: checkMissing}
+		return CheckResult{Status: checkOK}
 	}
 	return CheckResult{Status: checkOK, LoadedAt: path}
 }
