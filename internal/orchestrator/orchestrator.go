@@ -60,25 +60,34 @@ type Orchestrator struct {
 	tracer       trace.Tracer
 	heartbeat    HeartbeatToucher
 	spawnBackoff *spawnBackoff
-	lastPollErr  bool
+	tickErrSeen  map[string]bool
 }
 
-// logPollErrIfTransition emits orchestrator.poll_failed Warn ONCE on the
-// pending→failed edge, suppressing duplicate emits while the err state
-// persists across consecutive ticks. Mirrors the adaptersync.failed
-// substrate-event dedup (R9-Bug-1) at the log layer so operators
-// tailing logs see one notice per failure episode instead of one
-// per 30s poll. The recovery emit fires through tick.completed (no
-// dedicated orchestrator.poll_recovered yet — adjacent followup).
-func (o *Orchestrator) logPollErrIfTransition(err error) {
+// logTickErrIfTransition emits a Warn for kind ONCE on the pending→failed
+// edge, suppressing dup emits while err persists across consecutive ticks.
+// Generalized from the R12-Bug-1 poll-specific helper to cover every tick
+// branch — schedule_failed, rejection_route_failed, reap_failed,
+// prwatch_failed all flooded the same way before this. tickErrSeen tracks
+// per-kind state so a failure in one branch does not suppress a fresh
+// failure in another.
+func (o *Orchestrator) logTickErrIfTransition(kind string, err error) {
 	if err == nil {
-		o.lastPollErr = false
+		delete(o.tickErrSeen, kind)
 		return
 	}
-	if !o.lastPollErr {
-		o.lastPollErr = true
-		o.log.Warn("orchestrator.poll_failed", string(obs.KeyErr), err.Error())
+	if o.tickErrSeen == nil {
+		o.tickErrSeen = make(map[string]bool)
 	}
+	if !o.tickErrSeen[kind] {
+		o.tickErrSeen[kind] = true
+		o.log.Warn(kind, string(obs.KeyErr), err.Error())
+	}
+}
+
+// logPollErrIfTransition keeps the R12 entry-point name. Thin wrapper
+// over logTickErrIfTransition for the poll path.
+func (o *Orchestrator) logPollErrIfTransition(err error) {
+	o.logTickErrIfTransition("orchestrator.poll_failed", err)
 }
 
 // New constructs an Orchestrator from a Config. All deps are wired
@@ -139,7 +148,10 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	// reason as the periodic ticks.
 	o.touchHealthHeartbeat()
 	if err := o.PollOnce(ctx); err != nil {
-		o.lastPollErr = true
+		if o.tickErrSeen == nil {
+			o.tickErrSeen = make(map[string]bool)
+		}
+		o.tickErrSeen["orchestrator.poll_failed"] = true
 		o.log.Warn("orchestrator.poll_failed", "phase", "initial", string(obs.KeyErr), err.Error())
 	}
 	if err := o.ScheduleOnce(ctx); err != nil {
@@ -163,18 +175,10 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			// cancel runs the moment the body returns so a slow tick
 			// does not leak a context past the next case-fire.
 			tickCtx, tickCancel := context.WithTimeout(ctx, o.cfg.TickInterval)
-			if err := o.ScheduleOnce(tickCtx); err != nil {
-				o.log.Warn("orchestrator.schedule_failed", string(obs.KeyErr), err.Error())
-			}
-			if err := o.RouteRejections(tickCtx); err != nil {
-				o.log.Warn("orchestrator.rejection_route_failed", string(obs.KeyErr), err.Error())
-			}
-			if err := o.ReapTerminal(tickCtx); err != nil {
-				o.log.Warn("orchestrator.reap_failed", string(obs.KeyErr), err.Error())
-			}
-			if err := o.WatchPRs(tickCtx); err != nil {
-				o.log.Warn("orchestrator.prwatch_failed", string(obs.KeyErr), err.Error())
-			}
+			o.logTickErrIfTransition("orchestrator.schedule_failed", o.ScheduleOnce(tickCtx))
+			o.logTickErrIfTransition("orchestrator.rejection_route_failed", o.RouteRejections(tickCtx))
+			o.logTickErrIfTransition("orchestrator.reap_failed", o.ReapTerminal(tickCtx))
+			o.logTickErrIfTransition("orchestrator.prwatch_failed", o.WatchPRs(tickCtx))
 			tickCancel()
 		case <-heartT.C:
 			o.touchHealthHeartbeat()

@@ -624,6 +624,40 @@ func TestLogPollErrIfTransition_DedupsConsecutiveFailures(t *testing.T) {
 	}
 }
 
+// TestLogTickErrIfTransition_PerKindIsolation asserts dedup is per-kind: schedule_failed re-emit suppressed but reap_failed fresh failure still emits (R13-Bug-1; extends R12 helper to siblings).
+func TestLogTickErrIfTransition_PerKindIsolation(t *testing.T) {
+	o, _, _, _ := newHarness(t, 0)
+	h := obstest.New()
+	o.log = slog.New(h)
+	bang := fmt.Errorf("boom")
+
+	o.logTickErrIfTransition("orchestrator.schedule_failed", bang)
+	o.logTickErrIfTransition("orchestrator.schedule_failed", bang)
+	o.logTickErrIfTransition("orchestrator.reap_failed", bang)
+	o.logTickErrIfTransition("orchestrator.schedule_failed", bang)
+
+	counts := map[string]int{}
+	for _, m := range h.Messages() {
+		counts[m]++
+	}
+	if counts["orchestrator.schedule_failed"] != 1 {
+		t.Errorf("schedule_failed count=%d; want 1", counts["orchestrator.schedule_failed"])
+	}
+	if counts["orchestrator.reap_failed"] != 1 {
+		t.Errorf("reap_failed count=%d; want 1 (per-kind isolation broken if 0 — siblings sharing state)", counts["orchestrator.reap_failed"])
+	}
+
+	o.logTickErrIfTransition("orchestrator.schedule_failed", nil)
+	o.logTickErrIfTransition("orchestrator.schedule_failed", bang)
+	counts2 := map[string]int{}
+	for _, m := range h.Messages() {
+		counts2[m]++
+	}
+	if counts2["orchestrator.schedule_failed"] != 2 {
+		t.Errorf("schedule_failed after recovery+re-fail count=%d; want 2", counts2["orchestrator.schedule_failed"])
+	}
+}
+
 // MAY-81 changed the missing-item-body contract from "spawn blind" to
 // "hold the item": the prior TestScheduleOnceMissingItemBodyStillSpawns
 // is superseded by TestScheduleOnce_MissingItemBodyHoldsItem in
