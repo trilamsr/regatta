@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -17,8 +18,21 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/config/validate"
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/secrets"
 )
+
+// startSecretsRotationLoop launches the SIGHUP-driven rotation
+// goroutine with an audit-event callback. Separated from serve.go to
+// keep that composition root under the file-size ceiling (#737).
+func startSecretsRotationLoop(ctx context.Context, cache *secrets.Cache, fetcher secrets.Fetcher, slogger *slog.Logger, db *state.DB) {
+	go cache.Run(ctx, fetcher, slogger, func(eventCtx context.Context, chain string, keys int) {
+		payload := fmt.Sprintf(`{"chain":%q,"keys":%d}`, chain, keys)
+		if recErr := db.RecordEvent(eventCtx, 0, "secrets_rotated", payload); recErr != nil {
+			slogger.Warn("secrets_rotated.event_record_failed", "err", recErr)
+		}
+	})
+}
 
 // secretEnvOverrides maps canonical secret keys to the legacy env-var
 // names that existing serve.go consumers already read. Setting these

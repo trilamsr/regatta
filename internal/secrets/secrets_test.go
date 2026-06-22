@@ -357,7 +357,7 @@ func TestCache_SIGHUPSwapsSnapshotAtomically(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		c.Run(ctx, rf, nil)
+		c.Run(ctx, rf, nil, nil)
 		close(done)
 	}()
 	// Yield to let Run's signal.Notify register.
