@@ -47,9 +47,11 @@ func runResume(args []string) int {
 }
 
 // stateDSNFromArgs is a thin wrapper so test wiring can override
-// without duplicating defaultDBPath logic.
+// without duplicating defaultDBPath logic. Delegates to state.DSN so
+// the resume path picks up every pragma the orchestrator's main DB
+// uses (busy_timeout, foreign_keys, WAL, synchronous, _txlock).
 func stateDSNFromArgs(args []string) string {
-	return "file:" + defaultDBPath(args) + "?_pragma=journal_mode(WAL)"
+	return state.DSN(defaultDBPath(args))
 }
 
 func runResumeWith(deps resumeDeps, args []string) int {
