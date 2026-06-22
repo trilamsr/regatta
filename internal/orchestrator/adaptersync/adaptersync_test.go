@@ -383,6 +383,39 @@ func TestSync_EmitsAdapterSyncSyncedEventOnRecovery(t *testing.T) {
 	}
 }
 
+// TestSync_AdapterSyncSyncedEventCarriesRecoveryPayload asserts the recovery event includes items_count + downtime_ms (R17-Bug-1; mirror of R6 failed-side payload enrichment).
+func TestSync_AdapterSyncSyncedEventCarriesRecoveryPayload(t *testing.T) {
+	db := newSyncTestDB(t)
+	adapter := &stubAdapter{listErr: fmt.Errorf("boom")}
+	syncer := mustNew(t, adaptersync.Config{Adapter: adapter, DB: db})
+	base := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+
+	_ = syncer.Sync(context.Background(), base)
+
+	adapter.listErr = nil
+	adapter.items = []schemas.WorkItem{
+		{ID: "A", Kind: schemas.KindFeature, Title: "a", Lane: "server", Status: schemas.StatusPlanned},
+		{ID: "B", Kind: schemas.KindFeature, Title: "b", Lane: "server", Status: schemas.StatusPlanned},
+	}
+	if err := syncer.Sync(context.Background(), base.Add(7*time.Minute)); err != nil {
+		t.Fatalf("recovery Sync: %v", err)
+	}
+
+	row := db.SQL().QueryRowContext(context.Background(),
+		`SELECT payload_json FROM events WHERE kind = ? ORDER BY id DESC LIMIT 1`,
+		string(obs.EventAdapterSyncSynced))
+	var payload string
+	if err := row.Scan(&payload); err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	if !strings.Contains(payload, `"items_count":2`) {
+		t.Errorf("recovery payload missing items_count=2: %q", payload)
+	}
+	if !strings.Contains(payload, `"downtime_ms":420000`) {
+		t.Errorf("recovery payload missing downtime_ms=420000 (7min): %q", payload)
+	}
+}
+
 // TestSync_SustainedEmptyDowngradesToDebug asserts empty steady-state polls do not spam WARN.
 func TestSync_SustainedEmptyDowngradesToDebug(t *testing.T) {
 	logs := captureLogs(t)
