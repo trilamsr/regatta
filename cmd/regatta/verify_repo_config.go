@@ -35,7 +35,7 @@ func runVerifyRepoConfig(args []string) int {
 		}
 	}
 	if *branch == "" {
-		*branch = "main"
+		*branch = defaultBranchName
 	}
 
 	if *owner == "" || *repo == "" {

@@ -136,6 +136,12 @@ func collapse(s string, width int) string {
 // (which is the resolver func for the --db flag default).
 const stateDBDefaultLiteral = "regatta.db"
 
+// defaultBranchName is the GitHub protected-branch default used when
+// regatta.yaml omits repo.default_branch. Shared by doctor +
+// verify-repo-config so a future convention change moves through one
+// edit.
+const defaultBranchName = "main"
+
 // defaultStateDB returns the canonical regatta state.db path. Mirrors
 // the stateDBDefaultLiteral the rest of the CLI uses so operators do
 // not need to remember a different flag for each subcommand.
