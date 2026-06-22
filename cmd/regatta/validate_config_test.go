@@ -11,9 +11,8 @@ import (
 // TestValidateConfig_RejectsPositionalArg asserts a stray positional arg fails loudly rather than silently passing the default file.
 func TestValidateConfig_RejectsPositionalArg(t *testing.T) {
 	stderr, restore := captureStderr(t)
-	defer restore()
-
 	code := runValidateConfig([]string{"/tmp/some-nonexistent-yaml-the-operator-wanted-to-pass.yaml"})
+	restore()
 
 	if code == 0 {
 		t.Fatalf("runValidateConfig with stray positional exit = 0; want non-zero (operator-supplied path silently dropped + default validated)")

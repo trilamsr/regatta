@@ -11,9 +11,15 @@ import (
 )
 
 func runValidateConfig(args []string) int {
-	fs := flag.NewFlagSet(subcmdValidateConfig, flag.ExitOnError)
+	fs := flag.NewFlagSet(subcmdValidateConfig, flag.ContinueOnError)
 	cfgPath := fs.String("config", "regatta.yaml", "Path to regatta.yaml")
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "validate-config: unexpected positional arg(s) %v — use --config <path>\n", fs.Args())
+		return 2
+	}
 
 	if err := validateconfig.LoadFile(*cfgPath); err != nil {
 		fmt.Fprintf(os.Stderr, "validate-config: FAIL\n%s\n", err)
