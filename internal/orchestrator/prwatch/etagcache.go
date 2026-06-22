@@ -151,6 +151,13 @@ func (e *ETagLister) fetchHead(ctx context.Context, branch string) ([]PullReques
 	if err != nil {
 		return nil, err
 	}
+	// The defer drains+closes the body at function return — AFTER the
+	// switch's io.ReadAll completes (defers run after the return value is
+	// computed). The drain serves only the 304 / non-200 paths that don't
+	// otherwise consume the body; on 200 the body is already consumed and
+	// io.Copy reads 0 bytes. Investigator sweep 2026-06-22 (R21-I4) flagged
+	// this as a body-drain-before-read defect; defer-ordering semantics
+	// make that impossible.
 	defer func() { _, _ = io.Copy(io.Discard, resp.Body); _ = resp.Body.Close() }()
 
 	switch resp.StatusCode {
