@@ -78,6 +78,19 @@ func captureStdout(t *testing.T, fn func()) string {
 	return string(<-done)
 }
 
+// TestProgramShow_RunWithSignedBrief_FlagsDoNotDoubleDefault is a smoke check that runProgramShow accepts an explicit --hmac-key-id (R10-Bug-1 anchor; usage-string fix is the prod side).
+func TestProgramShow_RunWithSignedBrief_FlagsDoNotDoubleDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := writeFixtureBrief(t, dir, "abc123def456abc123def456abc123def456abc1", false)
+	var code int
+	captureStdout(t, func() {
+		code = runProgramShow([]string{"--hmac-key-id", "k1", path})
+	})
+	if code != 0 {
+		t.Fatalf("exit=%d want 0 with explicit --hmac-key-id k1", code)
+	}
+}
+
 func TestProgramShow_EmitsEngineVersion(t *testing.T) {
 	dir := t.TempDir()
 	path := writeFixtureBrief(t, dir, "abc123def456abc123def456abc123def456abc1", true)
