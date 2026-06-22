@@ -199,6 +199,17 @@ func TestStatus_Once_RendersToStdout(t *testing.T) {
 	}
 }
 
+// TestStatus_DefaultDBHonorsStateDBEnv asserts --db default falls through to REGATTA_STATE_DB (R11-Bug-1; closes the R5-Bug-5 same-class gap for the status subcommand).
+func TestStatus_DefaultDBHonorsStateDBEnv(t *testing.T) {
+	t.Setenv("REGATTA_STATE_DB", "/data/regatta.db")
+	if got := statusDefaultDB(""); got != "/data/regatta.db" {
+		t.Fatalf("statusDefaultDB(\"\") ignored REGATTA_STATE_DB: got %q want /data/regatta.db", got)
+	}
+	if got := statusDefaultDB("/custom/path.db"); got != "/custom/path.db" {
+		t.Fatalf("statusDefaultDB(\"/custom/path.db\") override lost: got %q", got)
+	}
+}
+
 // TestStatus_DegradedSource_AllMissing verifies the no-db degraded source emits MISSING panels.
 func TestStatus_DegradedSource_AllMissing(t *testing.T) {
 	src, _ := newDefaultSource("")
