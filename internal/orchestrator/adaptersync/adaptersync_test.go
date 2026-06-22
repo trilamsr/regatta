@@ -246,6 +246,26 @@ func TestSync_EmptyListSkipsTombstone(t *testing.T) {
 	}
 }
 
+// TestSync_SustainedEmptyDowngradesToDebug asserts empty steady-state polls do not spam WARN.
+func TestSync_SustainedEmptyDowngradesToDebug(t *testing.T) {
+	logs := captureLogs(t)
+	db := newSyncTestDB(t)
+	empty := &stubAdapter{items: nil}
+	syncer := mustNew(t, adaptersync.Config{Adapter: empty, DB: db})
+
+	base := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	for i := 0; i < 5; i++ {
+		if err := syncer.Sync(context.Background(), base.Add(time.Duration(i)*time.Minute)); err != nil {
+			t.Fatalf("Sync %d: %v", i, err)
+		}
+	}
+
+	warnCount := strings.Count(logs.String(), "level=WARN msg=adapter.empty_list")
+	if warnCount > 1 {
+		t.Fatalf("adapter.empty_list WARN fired %d times across 5 sustained-empty polls; want at most 1 (steady-state must drop to DEBUG)", warnCount)
+	}
+}
+
 // TestSync_DedupsDuplicateIDsInSameTick asserts duplicate adapter IDs in one tick surface a bug, not two upserts.
 func TestSync_DedupsDuplicateIDsInSameTick(t *testing.T) {
 	logs := captureLogs(t)
