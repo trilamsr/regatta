@@ -204,6 +204,11 @@ func (r *Reaper) ReapAll(ctx context.Context) error {
 	return firstErr
 }
 
+// SweepCrashedWithPID — R19-A follow-up stub; real impl lands in the GREEN commit.
+func (r *Reaper) SweepCrashedWithPID(ctx context.Context) error {
+	return nil
+}
+
 // ErrAgentNotTerminal is returned by Reap when called on an agent
 // whose state is not one of done | withdrawn | escalated.
 var ErrAgentNotTerminal = errors.New("reaper: agent is not in a terminal state")
