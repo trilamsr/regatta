@@ -71,6 +71,12 @@ services:
       REGATTA_HMAC_KEY: ${REGATTA_HMAC_KEY:-}
       # Spawner billing mode: 1 strips parent ANTHROPIC_API_KEY → subscription via ~/.claude (operator-mounted via docker-compose.override.yml); 0 passes the token → pay-as-you-go. See docs/operator/docker-compose.md §Spawner billing mode.
       REGATTA_SPAWNER_STRIP_API_KEY: ${REGATTA_SPAWNER_STRIP_API_KEY:-1}
+      # Pin the sibling-CLI default-db path so `docker exec ... regatta
+      # reload-secrets / status / agents / events` resolve the same
+      # /data/regatta.db the daemon serve was launched against. Without
+      # this every sibling verb falls back to "regatta.db" in cwd and
+      # opens a fresh empty sqlite (or panics on "no such table").
+      REGATTA_STATE_DB: "/data/regatta.db"
     command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=${REGATTA_UI:-true}", "--spawner=claude"]
     volumes:
       - ${REPO_PATH:-.}:/repo
