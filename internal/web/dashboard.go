@@ -167,7 +167,7 @@ const (
 const (
 	emptyHintAgents    = "No agents in flight. Scheduler ticks every 5s."
 	emptyHintWorkItems = "No work-items found. Adapter polls every 30s; check spec_adapter.selector in regatta.yaml."
-	emptyHintEvents    = "No events in last 24h."
+	emptyHintEvents    = "No events recorded yet."
 )
 
 type dashboardDockerSoakView struct {
