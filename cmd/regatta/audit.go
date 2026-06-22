@@ -145,6 +145,10 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 		fs.Usage()
 		return 2
 	}
+	if *format != logFormatJSON && *format != formatTable {
+		_, _ = fmt.Fprintf(deps.Stderr, "regatta audit verify: unknown format %q (want json|table)\n", *format)
+		return 2
+	}
 
 	ctx := context.Background()
 	db, err := state.Open(ctx, deps.DSN)
