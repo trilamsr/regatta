@@ -160,6 +160,40 @@ func TestScheduleOnce_MissingItemBodyHoldsItem(t *testing.T) {
 	}
 }
 
+// TestScheduleOnce_HeldNoBodyEntersBackoff asserts held_no_body emits backoff_skipped on the next tick instead of re-flooding the event log (R8-Bug-1; closes R3-Bug-7).
+func TestScheduleOnce_HeldNoBodyEntersBackoff(t *testing.T) {
+	ctx := context.Background()
+	o, stub, _, _ := newHarness(t, 1)
+	o.cfg.ItemBody = func(context.Context, string) (string, bool) { return "", false }
+	h := obstest.New()
+	o.log = slog.New(h)
+
+	if err := o.PollOnce(ctx); err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+	if err := o.ScheduleOnce(ctx); err != nil {
+		t.Fatalf("schedule tick 1: %v", err)
+	}
+	if _, ok := h.FindEvent(obs.EventSpawnHeldNoBody); !ok {
+		t.Fatalf("spawn.held_no_body not emitted on tick 1")
+	}
+
+	h2 := obstest.New()
+	o.log = slog.New(h2)
+	if err := o.ScheduleOnce(ctx); err != nil {
+		t.Fatalf("schedule tick 2: %v", err)
+	}
+	if _, ok := h2.FindEvent(obs.EventSpawnHeldNoBody); ok {
+		t.Fatalf("spawn.held_no_body re-emitted on tick 2; backoff must suppress duplicate emission")
+	}
+	if _, ok := h2.FindEvent(obs.EventSpawnBackoffSkipped); !ok {
+		t.Fatalf("spawn.backoff_skipped not emitted on suppressed tick 2")
+	}
+	if len(stub.Calls()) != 0 {
+		t.Fatalf("spawner calls=%d; want 0 (held item must not spawn)", len(stub.Calls()))
+	}
+}
+
 // TestScheduleOnce_PresentItemBodySpawns asserts a resolvable brief body still spawns normally (MAY-81 guard).
 func TestScheduleOnce_PresentItemBodySpawns(t *testing.T) {
 	ctx := context.Background()
