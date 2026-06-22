@@ -24,7 +24,9 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 )
@@ -216,16 +218,49 @@ func buildExporters(ctx context.Context, cfg Config) (sdktrace.SpanExporter, log
 		return te, le, nil
 	}
 
-	te, err := otlptracegrpc.New(ctx)
+	te, err := newOTLPTraceExporter(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %w", ErrTraceExporter, err)
 	}
-	le, err := otlploggrpc.New(ctx)
+	le, err := newOTLPLogExporter(ctx)
 	if err != nil {
 		_ = te.Shutdown(ctx)
 		return nil, nil, fmt.Errorf("%w: %w", ErrLogExporter, err)
 	}
 	return te, le, nil
+}
+
+// newOTLPTraceExporter mirrors the meter.go::newOTLPMetricExporter
+// pattern: branch on OTEL_EXPORTER_OTLP_PROTOCOL so http/protobuf
+// endpoints (Prometheus 3 native OTLP receiver via Tempo/Grafana
+// Loki HTTP path) route through otlptracehttp instead of dialing
+// gRPC at :4317 forever.
+func newOTLPTraceExporter(ctx context.Context) (sdktrace.SpanExporter, error) {
+	proto := os.Getenv("OTEL_EXPORTER_OTLP_TRACES_PROTOCOL")
+	if proto == "" {
+		proto = os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL")
+	}
+	switch proto {
+	case protoHTTPProtobuf:
+		return otlptracehttp.New(ctx)
+	default:
+		return otlptracegrpc.New(ctx)
+	}
+}
+
+// newOTLPLogExporter — mirror of newOTLPTraceExporter for the log
+// pipeline. Same protocol env var rules.
+func newOTLPLogExporter(ctx context.Context) (log.Exporter, error) {
+	proto := os.Getenv("OTEL_EXPORTER_OTLP_LOGS_PROTOCOL")
+	if proto == "" {
+		proto = os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL")
+	}
+	switch proto {
+	case protoHTTPProtobuf:
+		return otlploghttp.New(ctx)
+	default:
+		return otlploggrpc.New(ctx)
+	}
 }
 
 // noopShutdown is the closure returned when no exporter wires; cached

@@ -57,9 +57,19 @@ services:
       # collector hop. Protocol is http/protobuf because Prom's native
       # receiver only accepts the HTTP path today (gRPC OTLP would
       # require a collector hop, which #519 §6 explicitly rejects).
-      # Endpoint contract: internal/obs/otel/meter.go reads
-      # OTEL_EXPORTER_OTLP_METRICS_ENDPOINT for the per-signal override.
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://prometheus:9090/api/v1/otlp"
+      # Per-signal METRICS_ENDPOINT only — we deliberately do NOT set
+      # the bare OTEL_EXPORTER_OTLP_ENDPOINT because Prom's receiver
+      # rejects /traces + /logs with 404 and the SDK would otherwise
+      # spam export-failure logs. Operators wanting trace/log export
+      # set the per-signal endpoint + per-signal protocol explicitly
+      # in docker-compose.override.yml, e.g.:
+      #   environment:
+      #     OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://tempo:4318/v1/traces"
+      #     OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf"  # or "grpc"
+      #     OTEL_EXPORTER_OTLP_LOGS_ENDPOINT:   "http://loki:4318/v1/logs"
+      #     OTEL_EXPORTER_OTLP_LOGS_PROTOCOL:   "http/protobuf"
+      # Valid protocols per OTel SDK: "grpc" (default) | "http/protobuf".
+      # http/json is NOT supported by the Go SDK exporters wired here.
       OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "http://prometheus:9090/api/v1/otlp/v1/metrics"
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
       OTEL_SERVICE_NAME: "regatta"

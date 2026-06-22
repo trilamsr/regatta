@@ -79,7 +79,7 @@ func runApprovalDecide(args []string) int {
 	}, args)
 }
 
-// defaultDBPath scans args for --db override; default matches `regatta serve` so operator muscle memory holds across subcommands.
+// defaultDBPath scans args for --db; fallback honors REGATTA_STATE_DB via defaultStateDB() (R3-Bug-6).
 func defaultDBPath(args []string) string {
 	for i, a := range args {
 		switch {
@@ -93,7 +93,7 @@ func defaultDBPath(args []string) string {
 			return strings.TrimPrefix(a, "-db=")
 		}
 	}
-	return stateDBDefaultLiteral
+	return defaultStateDB()
 }
 
 // runApprovalDecideWith is the testable entry point so tests bypass os.Stdout/os.Stderr/time.Now.

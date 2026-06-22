@@ -174,6 +174,59 @@ func TestEventsTail_AgentFilter(t *testing.T) {
 	}
 }
 
+// TestEventsTail_KindAndSinceCutoff asserts --kind K --since DUR returns fresh row past LIMIT cap of older same-kind rows (R5-Bug-1 second half).
+func TestEventsTail_KindAndSinceCutoff(t *testing.T) {
+	t0 := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
+	now := t0
+	clock := func() time.Time { return now }
+	dbPath := filepath.Join(t.TempDir(), "events.db")
+	dsn := state.DSN(dbPath)
+	db, err := state.OpenWithClock(context.Background(), dsn, clock)
+	if err != nil {
+		t.Fatalf("OpenWithClock: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if err := db.RecordEvent(ctx, 0, "secrets_rotated", `{"old":true}`); err != nil {
+			t.Fatalf("record old %d: %v", i, err)
+		}
+	}
+	now = t0.Add(48 * time.Hour)
+	if err := db.RecordEvent(ctx, 0, "secrets_rotated", `{"fresh":true}`); err != nil {
+		t.Fatalf("record fresh: %v", err)
+	}
+	now = now.Add(1 * time.Minute)
+
+	code, stdout, stderr := runEventsTailCLI(t, dsn, clock, "--kind", "secrets_rotated", "--since", "5m", "--format", "json")
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, stderr)
+	}
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(stdout), &rows); err != nil {
+		t.Fatalf("Unmarshal: %v stdout=%q", err, stdout)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows=%d want 1 (only the fresh row): %v", len(rows), rows)
+	}
+	payload, ok := rows[0]["payload_json"].(string)
+	if !ok || !strings.Contains(payload, "fresh") {
+		t.Fatalf("rows[0].payload=%v want fresh", rows[0]["payload_json"])
+	}
+}
+
+// TestDefaultDBPath_HonorsEnv asserts defaultDBPath falls through to REGATTA_STATE_DB when no --db is given (R5-Bug-5).
+func TestDefaultDBPath_HonorsEnv(t *testing.T) {
+	t.Setenv("REGATTA_STATE_DB", "/data/regatta.db")
+	if got := defaultDBPath([]string{"--decision", "allow"}); got != "/data/regatta.db" {
+		t.Fatalf("defaultDBPath=%q want /data/regatta.db", got)
+	}
+	if got := defaultDBPath([]string{"--db", "/custom/path.db"}); got != "/custom/path.db" {
+		t.Fatalf("defaultDBPath --db override=%q want /custom/path.db", got)
+	}
+}
+
 // TestEventsTail_SinceCutoff asserts --since excludes events older than the window (#1078).
 func TestEventsTail_SinceCutoff(t *testing.T) {
 	db, dsn, t0 := newEventsHarness(t)
