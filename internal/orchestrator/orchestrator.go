@@ -60,6 +60,25 @@ type Orchestrator struct {
 	tracer       trace.Tracer
 	heartbeat    HeartbeatToucher
 	spawnBackoff *spawnBackoff
+	lastPollErr  bool
+}
+
+// logPollErrIfTransition emits orchestrator.poll_failed Warn ONCE on the
+// pending→failed edge, suppressing duplicate emits while the err state
+// persists across consecutive ticks. Mirrors the adaptersync.failed
+// substrate-event dedup (R9-Bug-1) at the log layer so operators
+// tailing logs see one notice per failure episode instead of one
+// per 30s poll. The recovery emit fires through tick.completed (no
+// dedicated orchestrator.poll_recovered yet — adjacent followup).
+func (o *Orchestrator) logPollErrIfTransition(err error) {
+	if err == nil {
+		o.lastPollErr = false
+		return
+	}
+	if !o.lastPollErr {
+		o.lastPollErr = true
+		o.log.Warn("orchestrator.poll_failed", string(obs.KeyErr), err.Error())
+	}
 }
 
 // New constructs an Orchestrator from a Config. All deps are wired
@@ -120,6 +139,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 	// reason as the periodic ticks.
 	o.touchHealthHeartbeat()
 	if err := o.PollOnce(ctx); err != nil {
+		o.lastPollErr = true
 		o.log.Warn("orchestrator.poll_failed", "phase", "initial", string(obs.KeyErr), err.Error())
 	}
 	if err := o.ScheduleOnce(ctx); err != nil {
@@ -132,9 +152,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 			return nil
 		case <-pollT.C:
 			o.touchHealthHeartbeat()
-			if err := o.PollOnce(ctx); err != nil {
-				o.log.Warn("orchestrator.poll_failed", string(obs.KeyErr), err.Error())
-			}
+			o.logPollErrIfTransition(o.PollOnce(ctx))
 		case <-tickT.C:
 			o.touchHealthHeartbeat()
 			// Defense-in-depth: cap the synchronous tick body at one
