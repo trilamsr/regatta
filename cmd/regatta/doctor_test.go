@@ -149,6 +149,22 @@ func allPassEnv() doctorEnv {
 	}
 }
 
+// TestCheckBinaries_DefaultsSkipDevTools_InsideDistroless asserts make/osv-scanner/gitleaks no longer FAIL by default.
+func TestCheckBinaries_DefaultsSkipDevTools_InsideDistroless(t *testing.T) {
+	env := allPassEnv()
+	missing := map[string]bool{"make": true, "osv-scanner": true, "gitleaks": true}
+	env.lookPath = func(name string) (string, error) {
+		if missing[name] {
+			return "", errors.New("exec: \"" + name + "\": not found")
+		}
+		return "/usr/bin/" + name, nil
+	}
+	got := checkBinaries(env)
+	if got.Status != statusPass {
+		t.Fatalf("checkBinaries status=%q want PASS (dev tools must be optional by default); err=%q", got.Status, got.Error)
+	}
+}
+
 // TestCheckSpawnerAuth_RecognizesOAuthToken pins the doctor hint when subscription auth flows via CLAUDE_CODE_OAUTH_TOKEN (the macOS Docker Desktop unblock). The hint MUST name the env var so operators can grep `regatta doctor` output to confirm which path is active.
 func TestCheckSpawnerAuth_RecognizesOAuthToken(t *testing.T) {
 	env := doctorEnv{getenv: func(key string) string {
