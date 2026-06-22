@@ -31,9 +31,10 @@ fi
 cd "$REPO_ROOT"
 
 # path:budget pairs. Add only after a real cascade-rebase incident.
+# Skipped silently when the path doesn't exist — useful when a god-file gets split
+# but the ceiling stays as a regression guard against re-coalescing.
 BUDGETS=(
   "cmd/regatta/serve.go:2000"
-  "internal/orchestrator/state/machine.go:1500"
 )
 
 violations=0

@@ -104,7 +104,7 @@ func (d *DB) TryAcquireLock(ctx context.Context, name string, agentID int64, ttl
 				}
 				return nil
 			}
-			expiry := time.Unix(heartbeat, 0).Add(ttl) // allow-bare-time-unix: now.Before(expiry) comparison; Location irrelevant. // allow-bare-time-unix: now.Before(expiry) comparison; Location irrelevant.
+			expiry := time.Unix(heartbeat, 0).Add(ttl) // allow-bare-time-unix: now.Before(expiry) comparison; Location irrelevant.
 			if now.Before(expiry) {
 				return ErrLockHeld
 			}
