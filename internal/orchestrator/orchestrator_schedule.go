@@ -103,7 +103,11 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 				// a real agent invocation on a context-less prompt. Hold the
 				// item (release back to pending) so a later tick re-attempts
 				// once the brief lands, instead of spawning blind.
+				// MAY-90: register a backoff failure so the next tick's
+				// Admit gate suppresses re-emission of spawn.held_no_body
+				// instead of flooding the events log every tick.
 				o.rollbackReservation(ctx, a)
+				o.spawnBackoff.RecordFailure(a.WorkItemID)
 				_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnHeldNoBody), "{}")
 				o.log.Warn(string(obs.EventSpawnHeldNoBody),
 					string(obs.KeyWorkItemID), a.WorkItemID,
