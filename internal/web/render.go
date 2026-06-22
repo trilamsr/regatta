@@ -60,6 +60,11 @@ func (t *Templates) Render(w http.ResponseWriter, name string, data any) error {
 	if err := parsed.ExecuteTemplate(&buf, name, data); err != nil {
 		return err
 	}
+	// Explicit Content-Type beats net/http DetectContentType, which can sniff
+	// short / minified HTML bodies as text/plain and exposes the response to
+	// legacy-browser MIME sniffing. Set after the buffered execute succeeds so
+	// the no-bytes-on-error contract (#1134-adjacent) still holds.
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, err := w.Write(buf.Bytes())
 	return err
 }
