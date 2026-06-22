@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/obs"
 )
 
 // Event is the in-memory view of a row in the events table.
@@ -25,6 +27,9 @@ type Event struct {
 // issue #477) use RecordEventTx via DB.WithTx so the audit row commits
 // atomically with the state change it audits.
 func (d *DB) RecordEvent(ctx context.Context, agentID int64, kind, payloadJSON string) error {
+	if !obs.IsKnownEvent(kind) {
+		return fmt.Errorf("state: unknown event kind %q (register in obs.AllEventNames)", kind)
+	}
 	if payloadJSON == "" {
 		payloadJSON = "{}"
 	}
@@ -47,6 +52,9 @@ func (d *DB) RecordEvent(ctx context.Context, agentID int64, kind, payloadJSON s
 // owns the tx lifecycle so the audit row commits atomically with the
 // state mutation it audits.
 func (d *DB) RecordEventTx(ctx context.Context, tx *sql.Tx, agentID int64, kind, payloadJSON string) error {
+	if !obs.IsKnownEvent(kind) {
+		return fmt.Errorf("state: unknown event kind %q (register in obs.AllEventNames)", kind)
+	}
 	if payloadJSON == "" {
 		payloadJSON = "{}"
 	}

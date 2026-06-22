@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/trilamsr/regatta/internal/obs"
 )
 
 // newTestDB returns a private on-disk sqlite database for the test.
@@ -303,10 +305,10 @@ func TestRecordEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	if err := db.RecordEvent(ctx, a.ID, "spawned", `{"pid":42}`); err != nil {
+	if err := db.RecordEvent(ctx, a.ID, string(obs.EventSpawnStarted), `{"pid":42}`); err != nil {
 		t.Fatalf("record: %v", err)
 	}
-	if err := db.RecordEvent(ctx, 0, "system_start", ""); err != nil {
+	if err := db.RecordEvent(ctx, 0, string(obs.EventTickStarted), ""); err != nil {
 		t.Fatalf("record nil agent: %v", err)
 	}
 	events, err := db.ListEvents(ctx, 100)

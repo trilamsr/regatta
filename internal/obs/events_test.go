@@ -50,6 +50,33 @@ func enumerateAttrKeys(t *testing.T) map[string]obs.AttrKey {
 	return got
 }
 
+// legacyUnderscoreEventNames are pre-existing wire strings emitted by
+// subsystem packages (merge, rejectionrouter, cost/cap, reaper,
+// prwatch, etc.) before the dotted convention was adopted. They
+// landed in obs.AllEventNames so DB.RecordEvent can fail-closed on
+// typos (Bug S4) without breaking dashboards / runbooks / on-disk
+// events that already grep for the underscored form. New events MUST
+// use the dotted component.event format.
+var legacyUnderscoreEventNames = map[string]struct{}{
+	"cost_cap_throttled":    {},
+	"cost_cap_resumed":      {},
+	"merge_intent":          {},
+	"merge_completed":       {},
+	"merge_executed":        {},
+	"merge_failed":          {},
+	"merge_recovered":       {},
+	"gate_rejected":         {},
+	"escalated":             {},
+	"labeled":               {},
+	"recovered_crashed":     {},
+	"reaped":                {},
+	"secrets_rotated":       {},
+	"agent_pr_opened":       {},
+	"agent_pr_head_changed": {},
+	"agent_branch_renamed":  {},
+	"agent_pr_dirty":        {},
+}
+
 func TestEventName_AllNonEmpty(t *testing.T) {
 	events := enumerateEventNames(t)
 	if len(events) == 0 {
@@ -58,6 +85,9 @@ func TestEventName_AllNonEmpty(t *testing.T) {
 	for s := range events {
 		if s == "" {
 			t.Errorf("EventName constant has empty value")
+			continue
+		}
+		if _, legacy := legacyUnderscoreEventNames[s]; legacy {
 			continue
 		}
 		// Dotted format: every event is component.event so operators
