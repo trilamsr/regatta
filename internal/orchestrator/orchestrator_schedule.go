@@ -162,17 +162,36 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 			PID:       &pid,
 			SessionID: &sess,
 		}); err != nil {
-			// R19-A O3: spawn already returned a live PID, but the
-			// state-DB row is still spawning. Aborting the tick here
-			// strands sibling agents (their spawn calls would never
-			// run). Roll the failed reservation back so the lane frees
-			// + a later tick can re-attempt, log + continue.
-			o.rollbackReservation(ctx, a)
-			_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnPostTransitionFailed), fmt.Sprintf(`{"error":%q}`, err.Error()))
+			// R19-A O3 (R19-A reviewer HIGH): spawn already returned a
+			// live PID + session. Rolling the agent back to pending
+			// (the prior shape) re-emits the same work_item on the next
+			// tick because ListSpawnable filters `a.id IS NULL` — but a
+			// pending row clears that gate, so the scheduler spawns a
+			// SECOND process for the same work_item while the first PID
+			// still runs. Stamp the PID + SessionID onto a crashed row
+			// instead: ListSpawnable stays blocked (agent row exists,
+			// state≠pending) AND the PID is durably attached for the
+			// reaper to kill once crashed enters its terminal set
+			// (follow-up tracked in PR body; reaper.terminal currently
+			// {done, withdrawn, escalated}). Locks are released so the
+			// lane is not wedged.
+			_, terr := o.transitionAgent(ctx, a.ID, state.AgentCrashed, state.AgentMutation{
+				PID:       &pid,
+				SessionID: &sess,
+			})
+			if terr != nil {
+				o.log.Warn("orchestrator.post_transition_crashed_stamp_failed",
+					string(obs.KeyAgentID), a.ID,
+					string(obs.KeyErr), terr.Error(),
+				)
+			}
+			_, _ = o.db.ReleaseAgentLocks(ctx, a.ID)
+			_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnPostTransitionFailed), fmt.Sprintf(`{"error":%q,"pid":%d}`, err.Error(), pid))
 			o.log.Warn(string(obs.EventSpawnPostTransitionFailed),
 				string(obs.KeyAgentID), a.ID,
 				string(obs.KeyWorkItemID), a.WorkItemID,
 				string(obs.KeyErr), err.Error(),
+				"pid", pid,
 			)
 			continue
 		}

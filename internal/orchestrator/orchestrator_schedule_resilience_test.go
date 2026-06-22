@@ -89,7 +89,7 @@ func TestScheduleOnce_GetAgentErrorProcessesSiblings(t *testing.T) {
 	}
 }
 
-// TestScheduleOnce_TransitionAgentErrorProcessesSiblings asserts a per-agent TransitionAgent failure rolls back + continues rather than stranding sibling spawns (R19-A O3).
+// TestScheduleOnce_TransitionAgentErrorProcessesSiblings asserts a per-agent TransitionAgent failure stamps PID+crashes the row + continues rather than stranding sibling spawns OR re-emitting the work_item (R19-A O3).
 func TestScheduleOnce_TransitionAgentErrorProcessesSiblings(t *testing.T) {
 	ctx := context.Background()
 	o, stub, db, _ := newHarness(t, 3)
@@ -100,11 +100,16 @@ func TestScheduleOnce_TransitionAgentErrorProcessesSiblings(t *testing.T) {
 		t.Fatalf("poll: %v", err)
 	}
 
+	// scheduler.Tick returns ids ordered by ListSpawnable's `ORDER BY
+	// w.id` ASC → calls==2 always hits the middle of the 3 reserved
+	// agents deterministically (no need to sort the ids slice or switch
+	// to a map[id]error injection).
 	calls := 0
 	o.transitionAgentOverride = func(ctx context.Context, id int64, next state.AgentState, mut state.AgentMutation) (*state.Agent, error) {
-		// Only intercept the spawning→running transition; rollback chain
-		// (crashed/pending) must reach the real DB so the failed agent's
-		// row + lock are released.
+		// Only intercept the spawning→running transition; the
+		// post-failure crashed-stamp transition must reach the real DB
+		// so the failed agent's PID lands on the row + locks are
+		// released.
 		if next != state.AgentRunning {
 			return o.db.TransitionAgent(ctx, id, next, mut)
 		}
@@ -119,8 +124,6 @@ func TestScheduleOnce_TransitionAgentErrorProcessesSiblings(t *testing.T) {
 		t.Fatalf("schedule: %v (expected nil; per-agent TransitionAgent err must not abort tick)", err)
 	}
 
-	// All three agents had spawn attempts; the failing transition
-	// agent should have rolled back to pending.
 	if got := len(stub.Calls()); got != 3 {
 		t.Fatalf("spawner calls=%d; want 3 (all three agents must reach spawn even when one transition fails)", got)
 	}
@@ -130,6 +133,31 @@ func TestScheduleOnce_TransitionAgentErrorProcessesSiblings(t *testing.T) {
 	}
 	if got := len(running); got != 2 {
 		t.Fatalf("running agents=%d; want 2 (one TransitionAgent failure must not strand siblings)", got)
+	}
+	// The failed agent must be crashed (NOT pending) so a later tick
+	// cannot re-reserve the same work_item and spawn a SECOND process
+	// against the still-live PID (R19-A reviewer HIGH double-spawn).
+	crashed, err := db.ListAgentsByState(ctx, state.AgentCrashed)
+	if err != nil {
+		t.Fatalf("list crashed: %v", err)
+	}
+	if got := len(crashed); got != 1 {
+		t.Fatalf("crashed agents=%d; want 1 (post-transition-failed must land crashed, not pending)", got)
+	}
+	// PID + SessionID must be stamped on the crashed row so the
+	// follow-up reaper (or `regatta debug`) can kill the orphan.
+	if crashed[0].PID == 0 {
+		t.Fatalf("crashed agent PID=0; want stub PID stamped (orphan unkillable)")
+	}
+	if crashed[0].SessionID == "" {
+		t.Fatalf("crashed agent SessionID empty; want stub session stamped")
+	}
+	pending, err := db.ListAgentsByState(ctx, state.AgentPending)
+	if err != nil {
+		t.Fatalf("list pending: %v", err)
+	}
+	if got := len(pending); got != 0 {
+		t.Fatalf("pending agents=%d; want 0 (rollback-to-pending would double-spawn)", got)
 	}
 	if _, ok := h.FindEvent(obs.EventSpawnPostTransitionFailed); !ok {
 		t.Fatalf("%s not emitted on post-spawn TransitionAgent failure", obs.EventSpawnPostTransitionFailed)

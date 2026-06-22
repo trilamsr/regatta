@@ -62,12 +62,13 @@ type Orchestrator struct {
 	spawnBackoff *spawnBackoff
 	tickErrSeen  map[string]bool
 
-	// getAgentOverride and transitionAgentOverride are nil in
-	// production and let unit tests inject per-call failures into
-	// ScheduleOnce's GetAgent / TransitionAgent path without wrapping
-	// the entire *state.DB in an interface (R19-A O2 + O3 tests). The
-	// nil-check is one branch on a hot path; the trade is justified by
-	// the cost of refactoring every db caller in the package.
+	// getAgentOverride and transitionAgentOverride are TEST-ONLY hooks.
+	// Mutate them ONLY before any goroutine reads them — never
+	// concurrently with a running ScheduleOnce. No lock is taken on the
+	// hot path; a concurrent mutation would race. Production code keeps
+	// both nil; the nil-check is one branch on a hot path and avoids
+	// refactoring every db caller in the package onto an interface
+	// (R19-A O2 + O3 tests).
 	getAgentOverride        func(ctx context.Context, id int64) (*state.Agent, error)
 	transitionAgentOverride func(ctx context.Context, id int64, next state.AgentState, mut state.AgentMutation) (*state.Agent, error)
 }
