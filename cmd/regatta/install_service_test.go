@@ -2,10 +2,32 @@ package main
 
 import (
 	"bytes"
+	"os"
 	"runtime"
 	"strings"
 	"testing"
 )
+
+// TestInstallService_RefusesInsideContainer asserts the verb refuses when /.dockerenv signals a non-systemd/non-launchd host.
+func TestInstallService_RefusesInsideContainer(t *testing.T) {
+	tmpDir := t.TempDir()
+	sentinel := tmpDir + "/.dockerenv"
+	f, err := os.Create(sentinel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	t.Setenv("REGATTA_CONTAINER_SENTINEL_DIR", tmpDir)
+
+	var out, errBuf bytes.Buffer
+	code := runInstallServiceTo(&out, &errBuf, []string{"--dry-run"})
+	if code != 1 {
+		t.Fatalf("exit=%d want 1 (container detected); stderr=%q stdout=%q", code, errBuf.String(), out.String())
+	}
+	if !strings.Contains(errBuf.String(), "container") {
+		t.Errorf("stderr should mention container detection; got %q", errBuf.String())
+	}
+}
 
 // TestInstallServiceHealthzURLFlag asserts --healthz-url overrides hardcoded :8080 default (#667).
 func TestInstallServiceHealthzURLFlag(t *testing.T) {
