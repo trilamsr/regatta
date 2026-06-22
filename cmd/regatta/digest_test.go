@@ -34,6 +34,19 @@ func TestDigest_WritesFileToDocsDigests(t *testing.T) {
 	}
 }
 
+// TestDigest_FutureDateRejected asserts a --date past today exits 2 (no events can exist; silent empty file misleads operators).
+func TestDigest_FutureDateRejected(t *testing.T) {
+	root := t.TempDir()
+	code := runDigest([]string{"--date", "2099-12-31", "--root", root})
+	if code != 2 {
+		t.Errorf("runDigest with future date exit = %d; want 2", code)
+	}
+	out := filepath.Join(root, "docs", "digests", "2099-12-31.md")
+	if _, err := os.Stat(out); err == nil {
+		t.Errorf("digest %s should NOT have been written for future date", out)
+	}
+}
+
 // TestDigest_BadDateExits2 locks the exit-2 usage-error contract on malformed --date.
 func TestDigest_BadDateExits2(t *testing.T) {
 	root := t.TempDir()
