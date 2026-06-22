@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/trilamsr/regatta/internal/obs/digest"
 )
@@ -40,6 +41,15 @@ func runDigest(args []string) int {
 	}
 	if *date == "" {
 		fs.Usage()
+		return 2
+	}
+	parsed, err := time.Parse("2006-01-02", *date)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "regatta digest: --date %q: want YYYY-MM-DD: %v\n", *date, err)
+		return 2
+	}
+	if parsed.After(time.Now().UTC().Truncate(24 * time.Hour)) {
+		fmt.Fprintf(os.Stderr, "regatta digest: --date %q is in the future; no events can exist yet\n", *date)
 		return 2
 	}
 
