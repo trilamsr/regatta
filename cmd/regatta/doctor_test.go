@@ -149,6 +149,22 @@ func allPassEnv() doctorEnv {
 	}
 }
 
+// TestCheckBinaries_WithDevTools_FailsOnMissingMake asserts --with-dev re-adds the dev surface.
+func TestCheckBinaries_WithDevTools_FailsOnMissingMake(t *testing.T) {
+	env := allPassEnv()
+	env.withDevTools = true
+	env.lookPath = func(name string) (string, error) {
+		if name == "make" {
+			return "", errors.New("exec: \"make\": not found")
+		}
+		return "/usr/bin/" + name, nil
+	}
+	got := checkBinaries(env)
+	if got.Status != statusFail {
+		t.Fatalf("checkBinaries status=%q want FAIL when --with-dev set and make missing", got.Status)
+	}
+}
+
 // TestCheckBinaries_DefaultsSkipDevTools_InsideDistroless asserts make/osv-scanner/gitleaks no longer FAIL by default.
 func TestCheckBinaries_DefaultsSkipDevTools_InsideDistroless(t *testing.T) {
 	env := allPassEnv()

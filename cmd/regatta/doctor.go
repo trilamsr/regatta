@@ -69,6 +69,7 @@ type doctorEnv struct {
 	getenv            func(key string) string // nil → spawner-auth check returns SKIP
 	toolPins          []string
 	configPath        string
+	withDevTools      bool
 }
 
 func runDoctor(args []string) int {
@@ -79,10 +80,14 @@ func runDoctorTo(out, errW io.Writer, args []string, env doctorEnv) int {
 	fs := flag.NewFlagSet(subcmdDoctor, flag.ContinueOnError)
 	fs.SetOutput(errW)
 	asJSON := fs.Bool("json", false, "emit machine-readable JSON envelope")
+	withDev := fs.Bool("with-dev", false, "include dev/CI binaries (make, osv-scanner, gitleaks) in the binaries check")
 	var skip stringList
 	fs.Var(&skip, "skip", "comma-separated check names to omit (repeatable)")
 	if err := fs.Parse(args); err != nil {
 		return 2
+	}
+	if *withDev {
+		env.withDevTools = true
 	}
 	skipSet := skip.set()
 
@@ -199,12 +204,34 @@ func secretEnvVar(canonicalKey string) string {
 	return strings.ToUpper(strings.ReplaceAll(strings.TrimPrefix(canonicalKey, "regatta."), ".", "_"))
 }
 
+// runtimeBinaries are required for the orchestrator to dispatch
+// agents against a real repo: spawner, GitHub CLI for PR + checks,
+// git for worktree ops. They MUST be on PATH on every host that
+// boots `regatta serve`.
+var runtimeBinaries = []string{"claude", "gh", "git"}
+
+const (
+	binMake     = "make"
+	binGitleaks = "gitleaks"
+	binOSV      = "osv-scanner"
+)
+
+// devBinaries are only used by the dev-time `make` targets +
+// security gates that shell out from CI. The distroless runtime
+// image has none of these (intentionally — distroless excludes the
+// whole shell + build toolchain), so checking them inside the
+// container produces a permanent FAIL the operator can't act on.
+// checkBinaries treats them as optional unless --with-dev is set.
+var devBinaries = []string{binMake}
+
 func checkBinaries(env doctorEnv) doctorCheckResult {
-	required := make([]string, 0, 4+len(env.toolPins))
-	required = append(required, "claude", "gh", "git", "make")
-	required = append(required, env.toolPins...)
 	if env.lookPath == nil {
 		return doctorCheckResult{Status: statusSkip, Hint: "no PATH probe wired"}
+	}
+	required := append([]string{}, runtimeBinaries...)
+	if env.withDevTools {
+		required = append(required, devBinaries...)
+		required = append(required, env.toolPins...)
 	}
 	var missing []string
 	for _, name := range required {
@@ -406,7 +433,7 @@ func liveDoctorEnv() doctorEnv {
 		verifyRepoConfig:  liveVerifyRepoConfig,
 		supervisorPresent: liveSupervisorPresent,
 		getenv:            os.Getenv,
-		toolPins:          []string{"osv-scanner", "gitleaks"},
+		toolPins:          []string{binOSV, binGitleaks},
 		configPath:        "regatta.yaml",
 	}
 }
