@@ -182,42 +182,59 @@ type dashboardDockerSoakView struct {
 }
 
 func registerDashboardRoutes(mux *http.ServeMux, deps Dependencies) {
-	mux.HandleFunc("/ui/panels/agents", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/ui/panels/agents", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveDashboardPanel(w, r, deps, "_agents", loadAgentsView)
-	})
-	mux.HandleFunc("/ui/panels/work-items", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/ui/panels/work-items", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveDashboardPanel(w, r, deps, "_work_items", loadWorkItemsView)
-	})
-	mux.HandleFunc("/ui/panels/events", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/ui/panels/events", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveDashboardPanel(w, r, deps, "_events", loadEventsView)
-	})
-	mux.HandleFunc("/ui/panels/spend", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/ui/panels/spend", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveDashboardPanel(w, r, deps, "_spend", loadSpendView)
-	})
-	mux.HandleFunc("/ui/panels/flow", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/ui/panels/flow", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveDashboardPanel(w, r, deps, "_flow", loadFlowView)
-	})
-	mux.HandleFunc("/ui/panels/docker-soak", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/ui/panels/docker-soak", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveDashboardPanel(w, r, deps, "_docker_soak", loadDockerSoakView)
-	})
-	mux.HandleFunc("/ui/panels/pipeline", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/ui/panels/pipeline", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveDashboardPanel(w, r, deps, "_pipeline", loadPipelineView)
-	})
-	mux.HandleFunc("/ui/panels/health", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/ui/panels/health", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveHealthPanel(w, r, deps)
-	})
-	mux.HandleFunc("/ui/drawer/pipeline/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/ui/drawer/pipeline/", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		servePipelineDrawer(w, r, deps)
-	})
-	mux.HandleFunc("/ui/drawer/agent/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/ui/drawer/agent/", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveAgentDrawer(w, r, deps)
-	})
-	mux.HandleFunc("/ui/drawer/work-item/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/ui/drawer/work-item/", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveWorkItemDrawer(w, r, deps)
-	})
-	mux.HandleFunc("/ui/drawer/event/", func(w http.ResponseWriter, r *http.Request) {
+	}))
+	mux.HandleFunc("/ui/drawer/event/", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveEventDrawer(w, r, deps)
-	})
+	}))
+}
+
+// getOnly wraps a handler to return 405 on non-GET/HEAD requests so
+// read-only dashboard surfaces refuse POST/PUT/DELETE (CSRF +
+// cache-poisoning defense). Pattern-match registration was attempted
+// first but the `/` catch-all in server.go fall-through prevented
+// http.ServeMux from emitting 405 — explicit check keeps the
+// behavior under one file.
+func getOnly(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		h(w, r)
+	}
 }
 
 func serveDashboardPanel(w http.ResponseWriter, r *http.Request, deps Dependencies, name string, loader func(context.Context, Dependencies) any) {

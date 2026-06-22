@@ -92,12 +92,20 @@ func bootListener(cfg listenerConfig) (*http.Server, error) {
 	if hb == nil {
 		hb = health.NewHeartbeatCell(cfg.Clock)
 	}
-	mux.HandleFunc("/healthz", health.Handler(health.Dependencies{
+	healthHandler := health.Handler(health.Dependencies{
 		DB:        healthDB,
 		Heartbeat: hb,
 		Brief:     health.NewBriefCell(),
 		Version:   version,
-	}))
+	})
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		healthHandler(w, r)
+	})
 	cbPath, cbHandler := approval.NewHTTPCallback(approval.Dependencies{
 		DB:      cfg.DB,
 		Keyring: cfg.Keyring,
