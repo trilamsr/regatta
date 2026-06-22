@@ -19,6 +19,10 @@ func runBootPreflights(f serveFlags, logger *log.Logger) error {
 		logger.Printf("%v", err)
 		return err
 	}
+	if err := checkRepoRootExists(f.RepoRoot); err != nil {
+		logger.Printf("repo preflight: %v", err)
+		return err
+	}
 	if err := checkGitdirReachable(f.RepoRoot); err != nil {
 		logger.Printf("repo preflight: %v", err)
 		return err
@@ -31,6 +35,26 @@ func runBootPreflights(f serveFlags, logger *log.Logger) error {
 }
 
 var gitdirPointerRx = regexp.MustCompile(`(?m)^gitdir:\s+(.+)$`)
+
+// checkRepoRootExists asserts the operator-supplied --repo path
+// actually exists and is a directory. Without this preflight a
+// typo'd path falls through every downstream subsystem (state.Open
+// mkdir's .regatta, adapter falls back to markdown_catalog from
+// cwd, mirror loop spins on an empty queue) so the operator never
+// learns the path was wrong.
+func checkRepoRootExists(repoRoot string) error {
+	st, err := os.Stat(repoRoot)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("--repo %q does not exist", repoRoot)
+		}
+		return fmt.Errorf("stat --repo %q: %w", repoRoot, err)
+	}
+	if !st.IsDir() {
+		return fmt.Errorf("--repo %q is not a directory", repoRoot)
+	}
+	return nil
+}
 
 // checkGitdirReachable rejects mounting a git worktree (whose .git is a `gitdir:` pointer file referencing a host path absent inside the container) so every subsequent `git worktree add` does not fail silently per #1095. A regular .git directory or missing .git both pass through — the latter so smoke-test fixtures without a git ancestor still boot.
 func checkGitdirReachable(repoRoot string) error {
