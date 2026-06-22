@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	"os"
 	"path/filepath"
@@ -9,6 +10,8 @@ import (
 	"testing"
 
 	_ "modernc.org/sqlite"
+
+	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
 // mustExec opens dbPath, runs one stmt with args, and t.Fatals on error.
@@ -138,5 +141,30 @@ func TestCollapseCol_TruncatesWithEllipsis(t *testing.T) {
 	}
 	if got := collapse("ok", 5); got != "ok" {
 		t.Errorf("collapse(short,5) = %q, want ok", got)
+	}
+}
+
+// TestReviewStatus_NegativeSinceRejected asserts --since <= 0 exits non-zero with stderr hint (R15-Bug-1; mirror of R14 events tail fix).
+func TestReviewStatus_NegativeSinceRejected(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "state.db")
+	_, err := state.Open(context.Background(), state.DSN(dbPath))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	var out bytes.Buffer
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	code := runReviewStatus([]string{"--db", dbPath, "--since", "-1h"}, &out)
+	_ = w.Close()
+	os.Stderr = old
+	b := make([]byte, 4096)
+	n, _ := r.Read(b)
+	stderr := string(b[:n])
+	if code == 0 {
+		t.Fatalf("exit=0 want non-zero for --since=-1h; stderr=%q", stderr)
+	}
+	if !strings.Contains(stderr, "--since must be > 0") {
+		t.Errorf("stderr missing --since hint: %q", stderr)
 	}
 }

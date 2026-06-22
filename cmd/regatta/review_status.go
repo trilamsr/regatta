@@ -57,6 +57,10 @@ func runReviewStatus(args []string, out io.Writer) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
+	if *sinceDur <= 0 {
+		fmt.Fprintf(os.Stderr, "review status: --since must be > 0 (got %s)\n", *sinceDur)
+		return 2
+	}
 	db, err := sql.Open("sqlite", *dbPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "review status: open db: %v\n", err)
