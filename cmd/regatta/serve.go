@@ -163,12 +163,12 @@ func runServe(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	meterShutdown, meterErr := wireMeterProvider(ctx, slogger)
-	if meterErr != nil {
-		logger.Printf("setup meter: %v", meterErr)
+	obsShutdown, obsErr := wireObservability(ctx, slogger)
+	if obsErr != nil {
+		logger.Printf("%v", obsErr)
 		return 2
 	}
-	defer meterShutdown()
+	defer obsShutdown()
 
 	db, err := state.Open(ctx, state.DSN(f.DBPath))
 	if err != nil {

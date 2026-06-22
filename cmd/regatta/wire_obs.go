@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -25,6 +26,46 @@ func wireMeterProvider(_ context.Context, slogger *slog.Logger) (func(), error) 
 		defer cancel()
 		if err := shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			slogger.Warn("meter.shutdown_failed", "err", err)
+		}
+	}, nil
+}
+
+// wireObservability launches both OTel providers (meter + tracer/log)
+// at boot and returns a combined shutdown the caller defers exactly
+// once. Bundles the two SetupX calls so serve.go stays under the
+// file-size ceiling.
+func wireObservability(ctx context.Context, slogger *slog.Logger) (func(), error) {
+	meterShutdown, err := wireMeterProvider(ctx, slogger)
+	if err != nil {
+		return nil, fmt.Errorf("setup meter: %w", err)
+	}
+	tracerShutdown, err := wireTracerProvider(ctx, slogger)
+	if err != nil {
+		meterShutdown()
+		return nil, fmt.Errorf("setup tracer: %w", err)
+	}
+	return func() {
+		tracerShutdown()
+		meterShutdown()
+	}, nil
+}
+
+// wireTracerProvider invokes otelpkg.Setup so spans + logs flow
+// through the OTLP exporter the operator env wired. Without the call
+// the global TracerProvider stays noop and every span / log batch
+// drops silently — same root cause class as the meter wiring (R2-Bug-11)
+// but for the trace+log pair. Returns a shutdown closure with the
+// same SIGTERM-safe child-of-background ctx as the meter shutdown.
+func wireTracerProvider(_ context.Context, slogger *slog.Logger) (func(), error) {
+	shutdown, err := otelpkg.Setup(context.Background(), otelpkg.Config{ServiceName: "regatta"})
+	if err != nil {
+		return nil, err
+	}
+	return func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdown(shutdownCtx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
+			slogger.Warn("tracer.shutdown_failed", "err", err)
 		}
 	}, nil
 }

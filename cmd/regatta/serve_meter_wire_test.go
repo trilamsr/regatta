@@ -6,20 +6,22 @@ import (
 	"testing"
 )
 
-// TestServe_CallsSetupMeterOnce asserts serve.go wires the global OTel MeterProvider before subsystems start (else every counter drops silently).
-func TestServe_CallsSetupMeterOnce(t *testing.T) {
+// TestServe_CallsObservabilityWireOnce asserts serve.go wires both OTel providers (meter + tracer) before subsystems start (else metrics + spans drop silently).
+func TestServe_CallsObservabilityWireOnce(t *testing.T) {
 	serveSrc, err := os.ReadFile("serve.go")
 	if err != nil {
 		t.Fatalf("read serve.go: %v", err)
 	}
-	if !strings.Contains(string(serveSrc), "wireMeterProvider(") {
-		t.Fatalf("serve.go missing wireMeterProvider(ctx, ...) call; global MeterProvider stays noop and every regatta.* metric silently drops. Re-add the call near boot (post-secrets, pre-orchestrator).")
+	if !strings.Contains(string(serveSrc), "wireObservability(") {
+		t.Fatalf("serve.go missing wireObservability(ctx, ...) call; global Meter+Tracer providers stay noop and every regatta.* metric/span drops. Re-add the call near boot (post-secrets, pre-orchestrator).")
 	}
 	wireSrc, err := os.ReadFile("wire_obs.go")
 	if err != nil {
 		t.Fatalf("read wire_obs.go: %v", err)
 	}
-	if !strings.Contains(string(wireSrc), "otelpkg.SetupMeter(") {
-		t.Fatal("wire_obs.go missing otelpkg.SetupMeter() body; wireMeterProvider must actually invoke the SDK setup.")
+	for _, sym := range []string{"otelpkg.SetupMeter(", "otelpkg.Setup("} {
+		if !strings.Contains(string(wireSrc), sym) {
+			t.Errorf("wire_obs.go missing %s body; wireObservability must actually invoke the SDK setup.", sym)
+		}
 	}
 }
