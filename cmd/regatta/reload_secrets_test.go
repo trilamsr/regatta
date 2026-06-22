@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -137,3 +139,21 @@ func TestReloadSecrets_ParsePID_RejectsNegative(t *testing.T) {
 // ensure errors.Is wiring is exercised — gosec linter sometimes
 // removes unused imports if a helper is the only consumer.
 var _ = errors.Is
+
+// TestReloadSecrets_DefaultPidfileHonorsStateDBEnv asserts REGATTA_STATE_DB overrides flow through into the default --pidfile so docker compose pinning --db /data/regatta.db automatically points the lockfile reader at /data/regatta.db.lock.
+func TestReloadSecrets_DefaultPidfileHonorsStateDBEnv(t *testing.T) {
+	t.Setenv("REGATTA_STATE_DB", "/tmp/custom/state.db")
+	var stderr strings.Builder
+	rc := runReloadSecretsWithDeps(reloadDeps{
+		Args:     nil,
+		Stdout:   io.Discard,
+		Stderr:   &stderr,
+		ReadFile: func(p string) ([]byte, error) { return nil, fmt.Errorf("stat %s: no such file or directory", p) },
+		Kill:     func(int, syscall.Signal) error { return nil },
+	})
+	_ = rc
+	want := "/tmp/custom/state.db.lock"
+	if !strings.Contains(stderr.String(), want) {
+		t.Fatalf("stderr lacks expected default pidfile %q (REGATTA_STATE_DB-derived); got %q", want, stderr.String())
+	}
+}
