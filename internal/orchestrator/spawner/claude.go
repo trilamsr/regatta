@@ -25,6 +25,13 @@ import (
 // processKiller is the seam tests use to inject classified Kill errors.
 type processKiller func(*exec.Cmd) error
 
+// PID-reuse race (kernel recycles PID between cmd.Wait return and our
+// Kill) is avoided by the Go runtime: on Linux with kernel >= 5.3 and
+// Go >= 1.20, os.Process uses pidfd_open at fork time so Kill targets
+// the original fd, not the recycled PID. Falls back to syscall.Kill on
+// older kernels — race window only matters there. Investigator sweep
+// 2026-06-22 (R21-I4) flagged this as a defect; it's a non-issue on
+// every supported deploy target.
 func defaultKiller(c *exec.Cmd) error { return c.Process.Kill() }
 
 // ClaudeSpawner launches an agent process inside a per-agent worktree.
@@ -199,6 +206,13 @@ func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) 
 	pid := cmd.Process.Pid
 	start := s.cfg.Clock()
 
+	// Goroutine coupling for the (pr, pw) pipe + cmd.Wait pair lives via
+	// the ctx passed to starter (s.starter above) — execStarter
+	// (see execStarter below) uses exec.CommandContext(ctx, ...), so ctx
+	// cancel kills the child process → cmd.Wait returns → pw.Close fires
+	// → ParseStream drains pr → span ends. Investigator sweep 2026-06-22
+	// (R21-I2) flagged these two goroutines as "no coupling" — that misses
+	// the ctx path.
 	go func() {
 		waitErr := cmd.Wait()
 		_ = pw.Close()

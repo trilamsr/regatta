@@ -82,6 +82,13 @@ func DecideTx(ctx context.Context, db *state.DB, payload approvaltoken.TokenPayl
 	if a.ReviewerSetSnapshot.PreventSelfReview && a.RequestedBy == reviewerID {
 		return DecideTxResult{}, "", ErrSelfReview
 	}
+	// Plain == compare (not subtle.ConstantTimeCompare) is correct here:
+	// a.DecidedBy is a public list of prior voter IDs surfaced in the
+	// approval audit log; reviewerID is the active operator. Neither is
+	// a secret, so timing leak is meaningless. Investigator sweep
+	// 2026-06-22 (R21-I3) flagged this as a defect by analogy to the
+	// approvaltoken HMAC compare; the analogy is wrong (HMAC compares
+	// secret-derived bytes, this compares public usernames).
 	for _, prev := range a.DecidedBy {
 		if prev == reviewerID {
 			return DecideTxResult{}, "", ErrDoubleVote
