@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -300,19 +301,20 @@ func (s *sqliteSource) Snapshot(ctx context.Context) Snapshot {
 
 func (s *sqliteSource) queryActiveSubagents(ctx context.Context) Panel {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT name, started_at FROM agents WHERE state IN ('spawning','running') ORDER BY started_at LIMIT 3`)
+		`SELECT work_item_id, created_at FROM agents WHERE state IN ('spawning','running') ORDER BY created_at LIMIT 3`)
 	if err != nil {
 		return Panel{Title: titleActiveSubagents, State: PanelMissing, Lines: []string{err.Error()}}
 	}
 	defer func() { _ = rows.Close() }()
 	var lines []string
 	for rows.Next() {
-		var name string
-		var startedAt time.Time
-		if err := rows.Scan(&name, &startedAt); err != nil {
+		var workItemID string
+		var createdAtUnix int64
+		if err := rows.Scan(&workItemID, &createdAtUnix); err != nil {
 			break
 		}
-		lines = append(lines, fmt.Sprintf("%s  %s", name, time.Since(startedAt).Round(time.Second)))
+		started := time.Unix(createdAtUnix, 0)
+		lines = append(lines, fmt.Sprintf("%s  %s", workItemID, time.Since(started).Round(time.Second)))
 	}
 	if len(lines) == 0 {
 		return Panel{Title: titleActiveSubagents, State: PanelEmpty, Lines: []string{"— no active subagents"}}
@@ -322,19 +324,25 @@ func (s *sqliteSource) queryActiveSubagents(ctx context.Context) Panel {
 
 func (s *sqliteSource) queryInFlightPRs(ctx context.Context) Panel {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT number, title, head_sha FROM prs WHERE state='open' ORDER BY opened_at DESC LIMIT 5`)
+		`SELECT work_item_id, payload_json, written_at
+		   FROM substrate_events
+		  WHERE kind = 'agent_pr_opened'
+		    AND work_item_id NOT IN (
+		      SELECT work_item_id FROM substrate_events WHERE kind = 'agent_pr_merged'
+		    )
+		  ORDER BY written_at DESC LIMIT 5`)
 	if err != nil {
 		return Panel{Title: titleInFlightPRs, State: PanelMissing, Lines: []string{err.Error()}}
 	}
 	defer func() { _ = rows.Close() }()
 	var lines []string
 	for rows.Next() {
-		var num int
-		var title, head string
-		if err := rows.Scan(&num, &title, &head); err != nil {
+		var workItem, payload string
+		var writtenAt int64
+		if err := rows.Scan(&workItem, &payload, &writtenAt); err != nil {
 			break
 		}
-		lines = append(lines, fmt.Sprintf("#%d %s (%s)", num, title, head[:min(7, len(head))]))
+		lines = append(lines, fmt.Sprintf("%s  %s", workItem, prPayloadSummary(payload)))
 	}
 	if len(lines) == 0 {
 		return Panel{Title: titleInFlightPRs, State: PanelEmpty, Lines: []string{"— no open PRs"}}
@@ -343,27 +351,52 @@ func (s *sqliteSource) queryInFlightPRs(ctx context.Context) Panel {
 }
 
 func (s *sqliteSource) queryRecentMerges(ctx context.Context, now time.Time) Panel {
-	cutoff := now.Add(-24 * time.Hour)
+	cutoffMs := now.Add(-24 * time.Hour).UnixMilli()
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT number, title FROM prs WHERE state='merged' AND merged_at >= ? ORDER BY merged_at DESC LIMIT 3`,
-		cutoff)
+		`SELECT work_item_id, payload_json
+		   FROM substrate_events
+		  WHERE kind = 'agent_pr_merged' AND written_at >= ?
+		  ORDER BY written_at DESC LIMIT 3`,
+		cutoffMs)
 	if err != nil {
 		return Panel{Title: titleRecentMerges, State: PanelMissing, Lines: []string{err.Error()}}
 	}
 	defer func() { _ = rows.Close() }()
 	var lines []string
 	for rows.Next() {
-		var num int
-		var title string
-		if err := rows.Scan(&num, &title); err != nil {
+		var workItem, payload string
+		if err := rows.Scan(&workItem, &payload); err != nil {
 			break
 		}
-		lines = append(lines, fmt.Sprintf("#%d %s", num, title))
+		lines = append(lines, fmt.Sprintf("%s  %s", workItem, prPayloadSummary(payload)))
 	}
 	if len(lines) == 0 {
 		return Panel{Title: titleRecentMerges, State: PanelEmpty, Lines: []string{"— none in window"}}
 	}
 	return Panel{Title: titleRecentMerges, State: PanelOK, Lines: lines}
+}
+
+// prPayloadSummary extracts a short human label from an agent_pr_*
+// substrate event payload. Falls back to an empty string on parse
+// failure so the row still renders the work-item identifier.
+func prPayloadSummary(payload string) string {
+	if payload == "" {
+		return ""
+	}
+	var p struct {
+		Number int    `json:"pr_number"`
+		Title  string `json:"title"`
+	}
+	if err := json.Unmarshal([]byte(payload), &p); err != nil {
+		return ""
+	}
+	if p.Number > 0 && p.Title != "" {
+		return fmt.Sprintf("#%d %s", p.Number, p.Title)
+	}
+	if p.Number > 0 {
+		return fmt.Sprintf("#%d", p.Number)
+	}
+	return p.Title
 }
 
 func (s *sqliteSource) mostRecentEventAge(ctx context.Context, now time.Time) time.Duration {
