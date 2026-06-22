@@ -179,7 +179,7 @@ func classifyGHCLIError(stderr []byte, runErr error, ctxLabel string) error {
 		if m := rateLimitResetRe.FindStringSubmatch(s); len(m) == 2 {
 			ts, parseErr := strconv.ParseInt(m[1], 10, 64)
 			if parseErr == nil {
-				resetAt := time.Unix(ts, 0)
+				resetAt := time.Unix(ts, 0) // allow-bare-time-unix: time.Until() is duration; resetAt carried only in RateLimitHint and never rendered as wall-clock.
 				retry := time.Until(resetAt)
 				if retry < time.Second {
 					retry = time.Second

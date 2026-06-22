@@ -40,6 +40,15 @@ check-no-bare-sleep:  ## Fail when a *_test.go file carries `time.Sleep` lexical
 check-no-bare-sleep-test:  ## Fixture-driven test for check-no-bare-sleep.sh.
 	bash scripts/check-no-bare-sleep_test.sh
 
+check-no-bare-pragma:  ## Fail when `_pragma=` appears outside state.DSN() (R24 class — resume.go shipped a divergent DSN).
+	bash scripts/check-no-bare-pragma.sh
+
+check-no-bare-time-unix:  ## Fail when `time.Unix(` appears without `.UTC()` or `// allow-bare-time-unix:` (R22 class — runs.go scanned Local).
+	bash scripts/check-no-bare-time-unix.sh
+
+check-file-line-budget:  ## Fail when god-files exceed their line budget (cascade-rebase prevention per feedback_cascade_rebase_root_cause).
+	bash scripts/check-file-line-budget.sh
+
 check-state-tier-order:  ## Fail when a pure subpackage under internal/orchestrator/state (jsonscan/edgeagg/transitions/cycle/approvals_shadow) imports the parent `state` package (plan #795 Option E one-way tier).
 	bash scripts/check-state-tier-order.sh
 

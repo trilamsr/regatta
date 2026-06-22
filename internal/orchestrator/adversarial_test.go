@@ -96,11 +96,11 @@ func TestRunConcurrentWithRecoverIsRaceFree(t *testing.T) {
 		t.Fatalf("adapter: %v", err)
 	}
 	dbPath := filepath.Join(t.TempDir(), "state.db")
-	// WAL + generous busy_timeout: without WAL, sqlite serializes every
-	// write through a global lock and the 20-way recover storm trips
-	// SQLITE_BUSY under CI contention. 500ms ctx + 30s busy_timeout
-	// gives every goroutine room to complete its tx chain.
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(30000)&_pragma=journal_mode(wal)&_pragma=foreign_keys(1)", dbPath)
+	// state.DSN ships WAL + busy_timeout(5000) + foreign_keys + synchronous(NORMAL)
+	// + _txlock=immediate; the 20-way recover storm's SQLITE_BUSY footprint is
+	// covered by WAL + busy_timeout pair. Was 30s; the 5s in state.DSN is the
+	// repo-wide default and matches the orchestrator's production budget.
+	dsn := state.DSN(dbPath)
 	db, err := state.Open(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("state: %v", err)

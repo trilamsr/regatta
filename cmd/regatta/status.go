@@ -325,7 +325,7 @@ func (s *sqliteSource) queryActiveSubagents(ctx context.Context) Panel {
 		if err := rows.Scan(&workItemID, &createdAtUnix); err != nil {
 			break
 		}
-		started := time.Unix(createdAtUnix, 0)
+		started := time.Unix(createdAtUnix, 0) // allow-bare-time-unix: time.Since() consumes the instant; Location is irrelevant.
 		lines = append(lines, fmt.Sprintf("%s  %s", workItemID, time.Since(started).Round(time.Second)))
 	}
 	if len(lines) == 0 {

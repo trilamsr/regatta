@@ -63,7 +63,7 @@ func acquireOne(ctx context.Context, tx *sql.Tx, name string, agentID int64, ttl
 				`UPDATE locks SET heartbeat_at = ? WHERE name = ?`, now.Unix(), name)
 			return err
 		}
-		expiry := time.Unix(heartbeat, 0).Add(ttl)
+		expiry := time.Unix(heartbeat, 0).Add(ttl) // allow-bare-time-unix: now.Before(expiry) comparison; Location irrelevant.
 		if now.Before(expiry) {
 			return ErrLockHeld
 		}
@@ -104,7 +104,7 @@ func (d *DB) TryAcquireLock(ctx context.Context, name string, agentID int64, ttl
 				}
 				return nil
 			}
-			expiry := time.Unix(heartbeat, 0).Add(ttl)
+			expiry := time.Unix(heartbeat, 0).Add(ttl) // allow-bare-time-unix: now.Before(expiry) comparison; Location irrelevant.
 			if now.Before(expiry) {
 				return ErrLockHeld
 			}

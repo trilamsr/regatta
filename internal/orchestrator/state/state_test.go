@@ -3,7 +3,6 @@ package state
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -22,7 +21,7 @@ func newTestDB(t *testing.T) *DB {
 
 func openTestDB(t *testing.T, path string) *DB {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)", path)
+	dsn := DSN(path)
 	db, err := Open(context.Background(), dsn)
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -36,8 +35,7 @@ func openTestDB(t *testing.T, path string) *DB {
 // closure captures the pointer once at constructor time.
 func newClockedTestDB(t *testing.T, now *time.Time) *DB {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)",
-		filepath.Join(t.TempDir(), "state.db"))
+	dsn := DSN(filepath.Join(t.TempDir(), "state.db"))
 	db, err := OpenWithClock(context.Background(), dsn, func() time.Time { return *now })
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -57,8 +55,7 @@ func TestOpenCapsConnectionPoolAtOne(t *testing.T) {
 // TestOpenWithClock_BindsAtConstructor proves OpenWithClock fixes the clock at constructor time and mutating tests advance it via closure.
 func TestOpenWithClock_BindsAtConstructor(t *testing.T) {
 	clock := time.Unix(1_700_000_000, 0).UTC()
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)",
-		filepath.Join(t.TempDir(), "state.db"))
+	dsn := DSN(filepath.Join(t.TempDir(), "state.db"))
 	db, err := OpenWithClock(context.Background(), dsn, func() time.Time { return clock })
 	if err != nil {
 		t.Fatalf("OpenWithClock: %v", err)

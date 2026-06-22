@@ -134,7 +134,7 @@ func (r *retrier) Do(ctx context.Context, fn func() (*http.Response, error)) (*h
 func (r *retrier) computeDelay(attempt int, header http.Header) time.Duration {
 	if v := header.Get("X-RateLimit-Reset"); v != "" {
 		if ts, err := strconv.ParseInt(v, 10, 64); err == nil {
-			resetAt := time.Unix(ts, 0)
+			resetAt := time.Unix(ts, 0) // allow-bare-time-unix: resetAt.Sub() is duration-only; Location irrelevant.
 			if d := resetAt.Sub(r.opts.Clock.Now()); d > 0 {
 				// Clamp to MaxDelay so a hostile or buggy upstream cannot
 				// pin the receiver waiting hours for a forged "reset"

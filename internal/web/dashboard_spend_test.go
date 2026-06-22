@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -13,7 +12,7 @@ import (
 // TestLoadSpendView_AllZeroSetsEmptyReason: when no token_spend rows exist and an agent.exited event carries exit_reason=provider_credit_exhausted in the last 24h, loadSpendView surfaces an EmptyReason + CreditExhaustedCount so the operator reads "no agents completed" instead of "spend tracking broken".
 func TestLoadSpendView_AllZeroSetsEmptyReason(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "state.db")
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_txlock=immediate", dbPath)
+	dsn := state.DSN(dbPath)
 	clock := func() time.Time { return time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC) }
 	db, err := state.OpenWithClock(context.Background(), dsn, clock)
 	if err != nil {

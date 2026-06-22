@@ -16,8 +16,9 @@ import (
 // default; the tests below assert tx-discipline, not WAL semantics.
 func newDB(t *testing.T) *sql.DB {
 	t.Helper()
+	// dbutil sits below state in the package graph (state imports dbutil); importing state.DSN would cycle. Minimal sqlite DSN for tx-discipline tests.
 	dsn := "file:" + filepath.Join(t.TempDir(), "withtx.db") +
-		"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+		"?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)" // allow-bare-pragma: cycle-prevention
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatalf("open: %v", err)
