@@ -78,6 +78,10 @@ func runSelfImproveScan(args []string) int {
 		fmt.Fprintf(os.Stderr, "regatta self-improve scan: --since: %v\n", err)
 		return 2
 	}
+	if parsedSince <= 0 {
+		fmt.Fprintf(os.Stderr, "regatta self-improve scan: --since must be > 0 (got %s)\n", parsedSince)
+		return 2
+	}
 	since := &parsedSince
 
 	ctx := context.Background()
