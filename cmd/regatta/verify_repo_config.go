@@ -10,27 +10,50 @@ import (
 	"fmt"
 	"os"
 
+	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
 	verifyrepo "github.com/trilamsr/regatta/internal/config/verify"
+	"github.com/trilamsr/regatta/internal/secrets"
 )
 
 func runVerifyRepoConfig(args []string) int {
 	fs := flag.NewFlagSet(subcmdVerifyRepoConfig, flag.ExitOnError)
-	owner := fs.String("owner", "", "GitHub repo owner")
-	repo := fs.String("repo", "", "GitHub repo name")
-	branch := fs.String("branch", "main", "Protected branch name")
+	owner := fs.String("owner", "", "GitHub repo owner (default: regatta.yaml repo.owner)")
+	repo := fs.String("repo", "", "GitHub repo name (default: regatta.yaml repo.name)")
+	branch := fs.String("branch", "", "Protected branch name (default: regatta.yaml repo.default_branch, then main)")
 	asJSON := fs.Bool("json", false, "Emit JSON instead of human-readable summary")
 	_ = fs.Parse(args)
 
+	if cfg, _ := validateconfig.LoadConfigFile("regatta.yaml"); cfg != nil && cfg.Repo != nil {
+		if *owner == "" {
+			*owner = cfg.Repo.Owner
+		}
+		if *repo == "" {
+			*repo = cfg.Repo.Name
+		}
+		if *branch == "" {
+			*branch = cfg.Repo.DefaultBranch
+		}
+	}
+	if *branch == "" {
+		*branch = "main"
+	}
+
 	if *owner == "" || *repo == "" {
 		fs.Usage()
-		fmt.Fprintln(os.Stderr, "regatta verify-repo-config: -owner and -repo required")
+		fmt.Fprintln(os.Stderr, "regatta verify-repo-config: -owner and -repo required (or set repo.owner + repo.name in regatta.yaml)")
 		return 2
 	}
 
-	res, err := verifyrepo.Run(context.Background(), verifyrepo.Config{
+	ctx := context.Background()
+	token := ""
+	if v, _, err := secrets.GetWithSource(ctx, secrets.Default(ctx), secrets.KeyGHToken); err == nil {
+		token = string(v.Bytes())
+	}
+	res, err := verifyrepo.Run(ctx, verifyrepo.Config{
 		Owner:  *owner,
 		Repo:   *repo,
 		Branch: *branch,
+		Token:  token,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "regatta verify-repo-config:", err)
