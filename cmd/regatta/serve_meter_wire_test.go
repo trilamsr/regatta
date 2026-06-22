@@ -6,19 +6,20 @@ import (
 	"testing"
 )
 
-// TestServe_CallsSetupMeterOnce asserts cmd/regatta/serve.go wires the
-// global OTel MeterProvider before subsystems run. Without the call
-// every meter.Int64Counter resolves to the SDK noop provider and
-// metrics drop silently regardless of OTLP env config. The serve.go
-// surface is too wide for a runtime integration test; a source-grep
-// catches regressions cheaply.
+// TestServe_CallsSetupMeterOnce asserts serve.go wires the global OTel MeterProvider before subsystems start (else every counter drops silently).
 func TestServe_CallsSetupMeterOnce(t *testing.T) {
-	body, err := os.ReadFile("serve.go")
+	serveSrc, err := os.ReadFile("serve.go")
 	if err != nil {
 		t.Fatalf("read serve.go: %v", err)
 	}
-	src := string(body)
-	if !strings.Contains(src, "otelpkg.SetupMeter(") {
-		t.Fatalf("serve.go missing otelpkg.SetupMeter(ctx, ...) wiring; global MeterProvider stays noop and every regatta.* metric silently drops. Re-add the SetupMeter call near boot (post-secrets, pre-orchestrator).")
+	if !strings.Contains(string(serveSrc), "wireMeterProvider(") {
+		t.Fatalf("serve.go missing wireMeterProvider(ctx, ...) call; global MeterProvider stays noop and every regatta.* metric silently drops. Re-add the call near boot (post-secrets, pre-orchestrator).")
+	}
+	wireSrc, err := os.ReadFile("wire_obs.go")
+	if err != nil {
+		t.Fatalf("read wire_obs.go: %v", err)
+	}
+	if !strings.Contains(string(wireSrc), "otelpkg.SetupMeter(") {
+		t.Fatal("wire_obs.go missing otelpkg.SetupMeter() body; wireMeterProvider must actually invoke the SDK setup.")
 	}
 }
