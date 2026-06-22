@@ -151,6 +151,17 @@ run_case "leading-dash-rejected" "old-gate.sh" "Run \`bash old-gate.sh\` before 
 run_case "double-dash-rejected" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
   $'## Summary\n<!-- stale-refs-justified: --bad reason -->\n```release-notes\n[CHORE] x\n```' 1
 
+# MAY-272: tighten body class to `[^[:space:]]{3,}` — reject single-char +
+# trailing-whitespace bypass AND reject internal whitespace. Honor-system
+# gate; tightening removes a regex-shape bypass that paired one non-whitespace
+# char with whitespace padding to satisfy the `.{3,}` body.
+run_case "single-char-trailing-space-rejected" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
+  $'## Summary\n<!-- stale-refs-justified: a    -->\n```release-notes\n[CHORE] x\n```' 1
+run_case "internal-whitespace-rejected" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
+  $'## Summary\n<!-- stale-refs-justified: a b c -->\n```release-notes\n[CHORE] x\n```' 1
+run_case "no-whitespace-body-accepted" "old-gate.sh" "Run \`bash old-gate.sh\` before push." \
+  $'## Summary\n<!-- stale-refs-justified: abcd -->\n```release-notes\n[CHORE] x\n```' 0
+
 if [ "$FAIL" -gt 0 ]; then
   echo
   echo "check-stale-refs_test: $FAIL failed, $PASS passed"

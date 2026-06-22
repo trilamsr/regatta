@@ -228,6 +228,14 @@ run_case single_commit_leading_dash_fails      1 "ONE commit"     setup_single_c
   '<!-- tdd-single-commit-justified: -bad reason -->'
 run_case single_commit_double_dash_fails       1 "ONE commit"     setup_single_commit_no_justify \
   '<!-- tdd-single-commit-justified: --bad reason -->'
+# MAY-272: tightened body class `[^[:space:]]{3,}` — reject single-char +
+# trailing-whitespace bypass + internal whitespace. Sibling to stale-refs gate.
+run_case single_commit_single_char_trailing_space_fails 1 "ONE commit" setup_single_commit_no_justify \
+  '<!-- tdd-single-commit-justified: a    -->'
+run_case single_commit_internal_whitespace_fails        1 "ONE commit" setup_single_commit_no_justify \
+  '<!-- tdd-single-commit-justified: a b c -->'
+run_case single_commit_no_whitespace_passes             0 "escape present" setup_single_commit_justified \
+  '<!-- tdd-single-commit-justified: abcd -->'
 run_edit_existing_case
 
 echo
