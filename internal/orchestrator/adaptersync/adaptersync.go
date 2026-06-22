@@ -6,6 +6,7 @@ package adaptersync
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
@@ -138,7 +139,11 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	if err != nil {
 		s.adapterPollErrors.Add(ctx, 1)
 		s.lastSyncFailed = true
-		if recErr := s.db.RecordEvent(ctx, 0, string(obs.EventAdapterSyncFailed), ""); recErr != nil {
+		payload, mErr := json.Marshal(map[string]string{"err": err.Error()})
+		if mErr != nil {
+			payload = []byte(`{}`)
+		}
+		if recErr := s.db.RecordEvent(ctx, 0, string(obs.EventAdapterSyncFailed), string(payload)); recErr != nil {
 			s.log.Warn("adaptersync.event_record_failed", "kind", string(obs.EventAdapterSyncFailed), "err", recErr)
 		}
 		return fmt.Errorf("adaptersync: adapter list: %w", err)
