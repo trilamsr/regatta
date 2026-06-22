@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	promexp "go.opentelemetry.io/otel/exporters/prometheus"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
@@ -36,7 +37,9 @@ var ErrMetricExporter = errors.New("obs/otel: metric exporter init failed")
 // selection is env-var driven so operators stay on the SDK's documented
 // contract:
 //
-//   - OTEL_EXPORTER_OTLP_METRICS_ENDPOINT set → otlpmetricgrpc.
+//   - OTEL_EXPORTER_OTLP_METRICS_ENDPOINT set → otlpmetric exporter
+//     (otlpmetrichttp when OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf,
+//     otlpmetricgrpc otherwise; mismatch silently drops every push).
 //   - OTEL_METRICS_PROMETHEUS_PORT set → Prometheus pull endpoint on /metrics.
 //   - Both set → ErrOTelMetricExporterConflict.
 //   - Neither → noop; the SDK's default noop provider wins and SetupMeter
@@ -67,7 +70,7 @@ func SetupMeter(ctx context.Context, cfg Config) (ShutdownFunc, error) {
 	}
 
 	if otlpSet {
-		exp, err := otlpmetricgrpc.New(ctx)
+		exp, err := newOTLPMetricExporter(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrMetricExporter, err)
 		}
@@ -129,6 +132,24 @@ func startPrometheusServer(port int, reg *prometheus.Registry) (*http.Server, er
 		}
 	}()
 	return srv, nil
+}
+
+// newOTLPMetricExporter returns the right OTLP metric exporter for the
+// active OTEL_EXPORTER_OTLP_PROTOCOL. http/protobuf routes through
+// otlpmetrichttp so OTLP-HTTP receivers (Prometheus 3 native
+// /api/v1/otlp) actually receive metrics — otlpmetricgrpc against an
+// HTTP-only endpoint silently retries gRPC forever.
+func newOTLPMetricExporter(ctx context.Context) (sdkmetric.Exporter, error) {
+	proto := os.Getenv("OTEL_EXPORTER_OTLP_METRICS_PROTOCOL")
+	if proto == "" {
+		proto = os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL")
+	}
+	switch proto {
+	case "http/protobuf":
+		return otlpmetrichttp.New(ctx)
+	default:
+		return otlpmetricgrpc.New(ctx)
+	}
 }
 
 func composedMeterShutdown(mp *sdkmetric.MeterProvider, srv *http.Server) ShutdownFunc {
