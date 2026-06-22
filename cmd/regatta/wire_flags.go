@@ -2,9 +2,43 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"path/filepath"
 	"time"
 )
+
+// parseServeFlagsValidated wraps parseServeFlags + validateServeFlags so
+// runServe stays under the 400-line ceiling enforced by check-file-size.
+func parseServeFlagsValidated(args []string) (serveFlags, error) {
+	f := parseServeFlags(args)
+	if err := validateServeFlags(f); err != nil {
+		return f, err
+	}
+	return f, nil
+}
+
+// validateServeFlags rejects non-positive durations that orchestrator.New
+// would silently substitute with defaults (PollInterval/TickInterval/
+// HeartbeatInterval all default-fallback on <= 0 in internal/orchestrator/
+// orchestrator.go::New). Operator passing --poll 0 today thinks they
+// disabled polling but actually gets the 30s default — silent typo class.
+// Same shape as the events tail / review status / self-improve scan
+// --since guards from R14 + R15.
+func validateServeFlags(f serveFlags) error {
+	if f.PollDur <= 0 {
+		return fmt.Errorf("--poll must be > 0 (got %s)", f.PollDur)
+	}
+	if f.TickDur <= 0 {
+		return fmt.Errorf("--tick must be > 0 (got %s)", f.TickDur)
+	}
+	if f.HeartDur <= 0 {
+		return fmt.Errorf("--heartbeat must be > 0 (got %s)", f.HeartDur)
+	}
+	if f.LockTTL <= 0 {
+		return fmt.Errorf("--lock-ttl must be > 0 (got %s)", f.LockTTL)
+	}
+	return nil
+}
 
 // serveFlags bundles the parsed flag values runServe consumes. The
 // struct stays internal to this package; the public surface is still
