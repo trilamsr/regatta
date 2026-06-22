@@ -42,3 +42,22 @@ func captureStdoutToBuf(t *testing.T) (*bytes.Buffer, func()) {
 		_ = r.Close()
 	}
 }
+
+// TestSelfImproveScan_NegativeSinceRejected asserts --since <= 0 exits non-zero (R15-Bug-2; mirror of R14 events tail fix).
+func TestSelfImproveScan_NegativeSinceRejected(t *testing.T) {
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	code := runSelfImproveScan([]string{"--since", "-1h"})
+	_ = w.Close()
+	os.Stderr = old
+	b := make([]byte, 4096)
+	n, _ := r.Read(b)
+	stderr := string(b[:n])
+	if code == 0 {
+		t.Fatalf("exit=0 want non-zero for --since=-1h; stderr=%q", stderr)
+	}
+	if !strings.Contains(stderr, "must be > 0") {
+		t.Errorf("stderr missing > 0 hint: %q", stderr)
+	}
+}
