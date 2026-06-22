@@ -82,6 +82,11 @@ NO AUTOMERGE FROM IMPLEMENTER
 STOP AT `gh pr ready` (no self-revise)
 - After pushing + opening PR + running `gh pr ready <N>`, the implementer MUST STOP. Do NOT self-revise. Do NOT pre-emptively address potential reviewer findings. Do NOT push fixup commits. Wait for explicit feedback from operator-dispatched independent reviewer OR operator. If you draft a self-critique alongside, that is fine — but do NOT commit/push it. Self-revising creates stale-PR races with reviewer dispatch (operator wastes a reviewer slot reviewing already-changed code; wave D session 2026-06-21 hit this multiple times). Per `feedback_stop_at_pr_ready`.
 
+EXPLICIT COMPLETION SIGNAL
+- At end of session (after `gh pr ready <N>` + report block printed), implementer MUST emit ONE final Bash call:
+  `echo "AGENT_DONE: implementer pr=<N> branch=<branch> sha=<sha>"`
+- This guarantees the harness fires a completion notification on the final tool turn. Silent-ends (no final tool call) leave the harness uncertain whether the agent is still running — operator wastes 30-60min polling transcript-mtime per offender (efficiency audit 2026-06-21 logged ~5-7 silent-ends per session). Per `feedback_explicit_completion_signal`.
+
 MEMORY CITES
 - Cite `<MEMORY-RULES>` in PR body footer (path-relative, e.g. `memory/feedback_root_cause`). Reviewer checks citations resolve.
 
@@ -162,6 +167,7 @@ These slugs MUST be cited by `internal/orchestrator/spawner/claude.go::defaultPr
 - `feedback_compile_precheck`
 - `feedback_no_pgrep_sleep_babysit`
 - `feedback_grep_first_read_targeted`
+- `feedback_explicit_completion_signal`
 
 Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mark a slug intentionally kept here but not pushed to the prompt.
 

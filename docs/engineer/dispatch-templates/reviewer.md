@@ -247,6 +247,14 @@ The reviewer re-score is necessary but not sufficient — re-scoring measures th
 - [ ] memory rules cited
 - [ ] Reviewer-* tokens absent OR valid (APPROVE/REVISE/BLOCK/INSUFFICIENT_EVIDENCE + subagent id). NEVER `<pending>`.
 
+## EXPLICIT COMPLETION SIGNAL
+
+At end of session (after verdict + comment block posted), reviewer MUST emit ONE final Bash call:
+
+  `echo "AGENT_DONE: reviewer verdict=<APPROVE|REVISE|BLOCK|INSUFFICIENT_EVIDENCE> count=<finding-count>"`
+
+This guarantees the harness fires a completion notification on the final tool turn. Silent-ends leave the operator polling transcript-mtime. Per `feedback_explicit_completion_signal`.
+
 ## RECURRING-FAILURE TRAPS
 
 1. **`gh pr create` / `gh pr edit` MUST use `--body-file`** per `CLAUDE.md` §CI gates "PR body hygiene" when posting review summary.
