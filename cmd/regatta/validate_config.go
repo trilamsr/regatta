@@ -23,6 +23,7 @@ func runValidateConfig(args []string) int {
 
 	if err := validateconfig.LoadFile(*cfgPath); err != nil {
 		fmt.Fprintf(os.Stderr, "validate-config: FAIL\n%s\n", err)
+		fmt.Fprintln(os.Stderr, "\nHint: run `regatta init` to scaffold a minimal valid regatta.yaml then edit from there.")
 		return 1
 	}
 	fmt.Printf("validate-config: PASS - %s validates against regatta.v1\n", *cfgPath)

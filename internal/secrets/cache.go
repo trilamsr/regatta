@@ -86,11 +86,19 @@ func (c *Cache) Snapshot() map[string]string {
 	return out
 }
 
+// OnRotate is the optional callback fired after a successful SIGHUP
+// re-fetch. callers wire it to record a substrate audit row so
+// `regatta events tail` carries a durable rotation trail beyond the
+// slog INFO line. Nil means no callback.
+type OnRotate func(ctx context.Context, chain string, keys int)
+
 // Run blocks until ctx is cancelled, watching for SIGHUP. Each SIGHUP
 // triggers a re-fetch + atomic publish. The signal channel is buffered
 // (size 1) so a burst of HUPs collapses into one refetch — exactly
-// the operator intent ("reload now").
-func (c *Cache) Run(ctx context.Context, fetcher Fetcher, logger *slog.Logger) {
+// the operator intent ("reload now"). onRotate, if non-nil, fires
+// after the snapshot publish so the caller can append a substrate
+// audit event.
+func (c *Cache) Run(ctx context.Context, fetcher Fetcher, logger *slog.Logger, onRotate OnRotate) {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGHUP)
 	defer signal.Stop(sigCh)
@@ -106,6 +114,9 @@ func (c *Cache) Run(ctx context.Context, fetcher Fetcher, logger *slog.Logger) {
 					slog.String("chain", fetcher.Name()),
 					slog.Int("keys", len(snap.values)),
 				)
+			}
+			if onRotate != nil {
+				onRotate(ctx, fetcher.Name(), len(snap.values))
 			}
 		}
 	}

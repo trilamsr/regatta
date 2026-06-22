@@ -141,10 +141,11 @@ func runServe(args []string) int {
 	}
 	secretCache.Load(bootSecretsCtx, secretFetcher, slogger)
 	exportSecretsToEnv(bootSecretsCtx, secretCache, slogger)
-	go secretCache.Run(bootSecretsCtx, secretFetcher, slogger)
 	// Re-export on every rotation so SIGHUP-driven token rotation
 	// surfaces to existing env-var readers without a full re-exec.
 	go watchSecretsExport(bootSecretsCtx, secretCache, slogger)
+	// secretCache.Run starts AFTER db.Open below so the onRotate
+	// callback can write an audit row through db.RecordEvent.
 
 	// clock is the single composition-root wall-clock source. Threading
 	// one source through every subsystem Config (scheduler, orchestrator,
@@ -162,12 +163,12 @@ func runServe(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	meterShutdown, meterErr := wireMeterProvider(ctx, slogger)
-	if meterErr != nil {
-		logger.Printf("setup meter: %v", meterErr)
+	obsShutdown, obsErr := wireObservability(ctx, slogger)
+	if obsErr != nil {
+		logger.Printf("%v", obsErr)
 		return 2
 	}
-	defer meterShutdown()
+	defer obsShutdown()
 
 	db, err := state.Open(ctx, state.DSN(f.DBPath))
 	if err != nil {
@@ -175,6 +176,8 @@ func runServe(args []string) int {
 		return 2
 	}
 	defer func() { _ = db.Close() }()
+
+	startSecretsRotationLoop(bootSecretsCtx, secretCache, secretFetcher, slogger, db)
 
 	ad, err := buildSpecAdapter(f, slogger)
 	if err != nil {

@@ -17,6 +17,16 @@ import (
 func liveGitState(ctx context.Context) (gitStateReport, error) {
 	branch, err := runGit(ctx, "rev-parse", "--abbrev-ref", "HEAD")
 	if err != nil {
+		// Empty repo (no commits yet) — `git rev-parse HEAD` returns
+		// when the operator runs against a fresh `git init` with no
+		// commits. Detect via the verify-HEAD probe (locale-stable;
+		// no string match against git's stderr which varies by
+		// locale + version).
+		if _, verifyErr := runGit(ctx, "rev-parse", "--verify", "HEAD"); verifyErr != nil {
+			if _, headErr := runGit(ctx, "rev-parse", "--git-dir"); headErr == nil {
+				return gitStateReport{}, fmt.Errorf("git repo has no commits yet (run `git commit` first)")
+			}
+		}
 		return gitStateReport{}, fmt.Errorf("git rev-parse: %w", err)
 	}
 	status, err := runGit(ctx, "status", "--porcelain")
