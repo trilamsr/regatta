@@ -97,6 +97,39 @@ func (d *DB) ListEventsByKindSince(ctx context.Context, kind string, sinceID int
 	return out, rows.Err()
 }
 
+// ListEventsByKindSinceTime is ListEventsByKindSince with an additional
+// created_at >= cutoffUnix SQL predicate. Use 0 to disable the time
+// filter. Pushing the cutoff into SQL closes the same asymmetric-cutoff
+// trap fixed for the no-kind path (R5-Bug-1): without it, `events tail
+// --kind K --since DUR` against a populated table would return oldest
+// LIMIT rows of that kind, then drop them all in the Go-side filter.
+func (d *DB) ListEventsByKindSinceTime(ctx context.Context, kind string, sinceID int64, cutoffUnix int64, limit int) ([]Event, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := d.sql.QueryContext(ctx,
+		`SELECT id, agent_id, kind, payload_json, created_at
+		 FROM events
+		 WHERE kind = ? AND id > ? AND created_at >= ?
+		 ORDER BY id ASC
+		 LIMIT ?`, kind, sinceID, cutoffUnix, limit)
+	if err != nil {
+		return nil, fmt.Errorf("state: list events by kind since time: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []Event
+	for rows.Next() {
+		var e Event
+		var created int64
+		if err := rows.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
+			return nil, err
+		}
+		e.CreatedAt = time.Unix(created, 0).UTC()
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
 // LatestEventByKind returns the most recent event of kind by
 // created_at, or sql.ErrNoRows when none exists. Cost-cap derives the
 // operator-resume window from the row's created_at: a Resume event

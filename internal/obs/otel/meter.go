@@ -20,6 +20,11 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 )
 
+// protoHTTPProtobuf is the OTLP HTTP/protobuf protocol selector. Shared
+// across meter + tracer + log exporters so a future protocol-set
+// expansion moves through one edit.
+const protoHTTPProtobuf = "http/protobuf"
+
 // ErrOTelMetricExporterConflict surfaces when OTEL_EXPORTER_OTLP_METRICS_ENDPOINT
 // AND OTEL_METRICS_PROMETHEUS_PORT are both set. Two wire formats from
 // one process would double-emit measurements with divergent unit-suffix
@@ -151,11 +156,6 @@ func newOTLPMetricExporter(ctx context.Context) (sdkmetric.Exporter, error) {
 		return otlpmetricgrpc.New(ctx)
 	}
 }
-
-// protoHTTPProtobuf is the OTLP HTTP/protobuf protocol selector. Shared
-// across meter + tracer + log exporters so a future protocol-set
-// expansion moves through one edit.
-const protoHTTPProtobuf = "http/protobuf"
 
 func composedMeterShutdown(mp *sdkmetric.MeterProvider, srv *http.Server) ShutdownFunc {
 	var (

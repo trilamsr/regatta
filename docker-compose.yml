@@ -61,8 +61,15 @@ services:
       # the bare OTEL_EXPORTER_OTLP_ENDPOINT because Prom's receiver
       # rejects /traces + /logs with 404 and the SDK would otherwise
       # spam export-failure logs. Operators wanting trace/log export
-      # set TRACES_ENDPOINT + LOGS_ENDPOINT explicitly (e.g. Tempo +
-      # Loki) in their docker-compose.override.yml.
+      # set the per-signal endpoint + per-signal protocol explicitly
+      # in docker-compose.override.yml, e.g.:
+      #   environment:
+      #     OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://tempo:4318/v1/traces"
+      #     OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf"  # or "grpc"
+      #     OTEL_EXPORTER_OTLP_LOGS_ENDPOINT:   "http://loki:4318/v1/logs"
+      #     OTEL_EXPORTER_OTLP_LOGS_PROTOCOL:   "http/protobuf"
+      # Valid protocols per OTel SDK: "grpc" (default) | "http/protobuf".
+      # http/json is NOT supported by the Go SDK exporters wired here.
       OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "http://prometheus:9090/api/v1/otlp/v1/metrics"
       OTEL_EXPORTER_OTLP_PROTOCOL: "http/protobuf"
       OTEL_SERVICE_NAME: "regatta"

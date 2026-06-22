@@ -110,7 +110,7 @@ func emitEventsPage(stdout, stderr io.Writer, db *state.DB, ctx context.Context,
 		cutoffUnix = cutoff.Unix()
 	}
 	if kind != "" {
-		rows, err = db.ListEventsByKindSince(ctx, kind, sinceID, eventsDefaultLim)
+		rows, err = db.ListEventsByKindSinceTime(ctx, kind, sinceID, cutoffUnix, eventsDefaultLim)
 	} else {
 		rows, err = db.ListEventsSince(ctx, sinceID, cutoffUnix, eventsDefaultLim)
 	}
@@ -122,9 +122,6 @@ func emitEventsPage(stdout, stderr io.Writer, db *state.DB, ctx context.Context,
 	maxID := sinceID
 	for _, e := range rows {
 		if e.ID <= sinceID {
-			continue
-		}
-		if !cutoff.IsZero() && e.CreatedAt.Before(cutoff) {
 			continue
 		}
 		if agentID != 0 {
