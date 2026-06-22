@@ -145,7 +145,11 @@ open http://localhost:9093
 Inside the Prometheus UI:
 
 1. **Status → Configuration** — sanity-check the OTLP receiver section
-   and the scrape job for `regatta:9464`.
+   (`otlp:` block + `--web.enable-otlp-receiver` flag). Regatta pushes
+   metrics over OTLP-HTTP; no pull-mode scrape job in the default
+   config. Operators who flip `OTEL_METRICS_PROMETHEUS_PORT=9464` in
+   their override re-add a `job_name: regatta` scrape against
+   `regatta:9464`.
 2. **Status → Rules** — every Sloth-compiled rule under
    `dashboards/prometheus/rules/` should be listed with green
    `OK` state.
