@@ -10,6 +10,11 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
+// captureBootStart is the seam runServe calls before flag parsing so
+// the boot-duration measurement starts at the entry point; centralised
+// here so cmd/regatta/serve.go stays under the god-file ceiling.
+func captureBootStart() time.Time { return time.Now() }
+
 // emitServeStarted records the serve.started boot-completion marker so
 // the operator's journal carries an explicit ready signal with version
 // and boot duration. Failures are best-effort: a substrate write that
