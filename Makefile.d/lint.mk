@@ -19,6 +19,15 @@ check-doc-links:  ## Fail when a markdown-link `](path)` body under docs/ or CLA
 check-doc-links-test:  ## Smoke test for check-doc-links.sh (broken / existing / external / testdata / anchor-suffix).
 	bash scripts/check-doc-links_test.sh
 
+check-docker-env-parity:  ## Fail when a REGATTA_* env var declared in docker-compose*.yml is not read by prod Go code (R-MEGA-2 G2).
+	bash scripts/check-docker-env-parity.sh
+
+check-docker-env-parity-test:  ## Fixture-driven self-test for check-docker-env-parity.sh.
+	bash scripts/check-docker-env-parity_test.sh
+
+check-env-canonical:  ## Fail when prod Go code reads a legacy env var name when a canonical alias exists (R-MEGA-2 G3). Escape: `// canonical-env-skip: <reason>`.
+	bash scripts/check-env-canonical.sh
+
 check-stale-refs:  ## Fail when PR deletes files but tracked files still reference them. Escape: `<!-- stale-refs-justified: <reason> -->`.
 	bash scripts/check-stale-refs.sh
 
