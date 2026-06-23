@@ -74,7 +74,7 @@ func (o *Orchestrator) Recover(ctx context.Context) error {
 			return fmt.Errorf("orchestrator: release locks for crashed agent %d: %w", a.ID, err)
 		}
 		if _, err := o.db.TransitionAgent(ctx, a.ID, state.AgentPending, state.AgentMutation{}); err != nil {
-			if errors.Is(err, state.ErrInvalidTransition) {
+			if !errors.Is(err, state.ErrInvalidTransition) {
 				return fmt.Errorf("orchestrator: requeue agent %d: %w", a.ID, err)
 			}
 		}
