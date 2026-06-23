@@ -5,7 +5,14 @@ services:
     command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=true", "--spawner=claude"]
     volumes:
       - ${REPO_PATH:-.}:/repo
-      - /repo/.regatta/worktrees   # #1161: anon volume shadows bind so worktrees don't leak to host
+      # Named volume (was anonymous: orphaned every `docker compose down -v`
+      # because anonymous volumes survive the named-only cleanup pass).
+      # R31 docker-runtime finding. #1161 still applies: shadows the bind
+      # mount so worktrees never leak to host.
+      - regatta-worktrees:/repo/.regatta/worktrees
       - regatta-data:/data
       - ./regatta.yaml.operator-runtime:/repo/regatta.yaml:ro
       - ${HOME}/.claude:/home/nonroot/.claude:ro   # subscription auth for children
+
+volumes:
+  regatta-worktrees:

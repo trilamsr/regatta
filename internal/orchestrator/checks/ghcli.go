@@ -5,7 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"time"
 )
+
+// defaultGHTimeout caps the wall-clock duration of any single `gh` shell
+// invocation from this package. Mirrors prwatch/ghcli.go's per-call
+// timeout pattern (R31-I4: checks.Poller.Poll was stalling indefinitely
+// on network hang because the caller's ctx had no timeout wrapper).
+const defaultGHTimeout = 10 * time.Second
 
 // GHShell folds `gh pr checks --required` rows into a single CheckRun rollup; failure-wins, success only when every required check completed.
 type GHShell struct {
@@ -51,6 +58,8 @@ func (g *GHShell) PRChecks(ctx context.Context, pr string) (CheckRun, error) {
 }
 
 func defaultExec(ctx context.Context, name string, args ...string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // gh CLI binary + literal-arg shell-out (mirrors prwatch/ghcli.go)
+	tctx, cancel := context.WithTimeout(ctx, defaultGHTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(tctx, name, args...) //nolint:gosec // gh CLI binary + literal-arg shell-out (mirrors prwatch/ghcli.go)
 	return cmd.Output()
 }
