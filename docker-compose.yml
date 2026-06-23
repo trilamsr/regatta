@@ -113,6 +113,15 @@ services:
       - "127.0.0.1:8080:8080"
     networks:
       - regatta-net
+    healthcheck:
+      # regatta serves /healthz (cmd/regatta/wire_web.go). Without an
+      # explicit healthcheck `docker compose up --wait` treated bare
+      # "running" as healthy and the operator missed the boot-broken
+      # state (R31-S finding).
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
     depends_on:
       prometheus:
         condition: service_healthy
@@ -188,6 +197,11 @@ services:
       - "127.0.0.1:3000:3000"
     networks:
       - regatta-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
     depends_on:
       prometheus:
         condition: service_healthy

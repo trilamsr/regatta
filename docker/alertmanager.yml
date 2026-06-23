@@ -2,13 +2,10 @@
 #
 # Single receiver: regatta-alarm-webhook (#458 W1). Sloth-compiled alert
 # rules carry sloth_severity=page or sloth_severity=ticket labels; both
-# route to the same receiver today. When W1 ships, the URL becomes the
-# actual binding; until then the http://regatta:9095/alarm path is a
-# placeholder so the receiver dial fails closed with a clear error
-# rather than the alarm getting silently dropped.
+# route to the same receiver today.
 #
 # AlertManager retries non-2xx with exponential back-off; #519 §8 lays
-# out the idempotency + 30s-timeout contract the receiver must honour.
+# out the idempotency + 30s-timeout contract the receiver honours.
 
 global:
   resolve_timeout: 5m
@@ -23,10 +20,10 @@ route:
 receivers:
   - name: regatta-alarm-webhook
     webhook_configs:
-      # Placeholder until #458 W1 lands `cmd/regatta-alarm-webhook`.
-      # Path is documented in docs/engineer/research/2026-06-02-container-stages.md §8.
-      # Bump the port + path here when the receiver ships.
-      - url: http://regatta:9095/alarm
+      # regatta-alarm-webhook serves /webhook (internal/alarmwebhook/serve.go).
+      # The earlier /alarm path was a placeholder pre-W1; alerts silently
+      # 404'd in production until R31 docker-runtime audit caught the drift.
+      - url: http://regatta:9095/webhook
         send_resolved: true
         max_alerts: 50
 

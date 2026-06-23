@@ -13,6 +13,18 @@ import (
 // slowTickThresholdMs is the duration above which ScheduleOnce emits obs.EventTickSlow at WARN. Default TickInterval is 5s (cmd/regatta/serve.go); 1s = 20% of a normal tick budget — generous enough to never fire on a hot path but tight enough to catch sqlite-lock contention or scheduler bugs.
 const slowTickThresholdMs = 1000
 
+// eventPayloadErrCap bounds err.Error() embedded in substrate event payloads. Wrapped error chains (context.Canceled + exec stack + git stderr) can balloon to multi-KB rows, bloating the events table and slowing every downstream scan. 512 chars keeps root-cause readable while preventing storage runaway (R31-I3).
+const eventPayloadErrCap = 512
+
+// truncErr returns err.Error() capped at eventPayloadErrCap with a "…[truncated N chars]" suffix when truncation fired so the operator knows the original was longer.
+func truncErr(err error) string {
+	s := err.Error()
+	if len(s) <= eventPayloadErrCap {
+		return s
+	}
+	return s[:eventPayloadErrCap] + fmt.Sprintf("…[truncated %d chars]", len(s)-eventPayloadErrCap)
+}
+
 // tickLogLevel picks DEBUG for zero-work ticks (operator log surface stays signal-rich) and INFO for non-zero ticks (dispatch activity loud). Closes #1066: 98% of dogfood-session log output was tick heartbeat.
 func tickLogLevel(evaluated int) slog.Level {
 	if evaluated == 0 {
@@ -159,7 +171,7 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 		if err != nil {
 			o.rollbackReservation(ctx, a)
 			o.spawnBackoff.RecordFailure(a.WorkItemID)
-			_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnFailed), fmt.Sprintf(`{"error":%q}`, err.Error()))
+			_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnFailed), fmt.Sprintf(`{"error":%q}`, truncErr(err)))
 			o.log.Warn(string(obs.EventSpawnFailed),
 				string(obs.KeyAgentID), a.ID,
 				string(obs.KeyWorkItemID), a.WorkItemID,
@@ -198,7 +210,7 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 				)
 			}
 			_, _ = o.db.ReleaseAgentLocks(ctx, a.ID)
-			_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnPostTransitionFailed), fmt.Sprintf(`{"error":%q,"pid":%d}`, err.Error(), pid))
+			_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventSpawnPostTransitionFailed), fmt.Sprintf(`{"error":%q,"pid":%d}`, truncErr(err), pid))
 			o.log.Warn(string(obs.EventSpawnPostTransitionFailed),
 				string(obs.KeyAgentID), a.ID,
 				string(obs.KeyWorkItemID), a.WorkItemID,

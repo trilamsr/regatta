@@ -138,11 +138,11 @@ func runServe(args []string) int {
 	}
 	secretCache.Load(bootSecretsCtx, secretFetcher, slogger)
 	exportSecretsToEnv(bootSecretsCtx, secretCache, slogger)
-	// Re-export on every rotation so SIGHUP-driven token rotation
-	// surfaces to existing env-var readers without a full re-exec.
-	go watchSecretsExport(bootSecretsCtx, secretCache, slogger)
-	// secretCache.Run starts AFTER db.Open below so the onRotate
-	// callback can write an audit row through db.RecordEvent.
+	// secretCache.Run + watchSecretsExport are wired AFTER signal-aware
+	// `ctx` is installed below so SIGTERM cancels them cleanly. Using
+	// bootSecretsCtx here would kill them when runServe returns (any
+	// boot-error path), silently terminating the SIGHUP rotation loop.
+	// R31-I1 finding.
 
 	// clock is the single composition-root wall-clock source. Threading
 	// one source through every subsystem Config (scheduler, orchestrator,
@@ -174,7 +174,8 @@ func runServe(args []string) int {
 	}
 	defer func() { _ = db.Close() }()
 
-	startSecretsRotationLoop(bootSecretsCtx, secretCache, secretFetcher, slogger, db)
+	go watchSecretsExport(ctx, secretCache, slogger)
+	startSecretsRotationLoop(ctx, secretCache, secretFetcher, slogger, db)
 
 	ad, err := buildSpecAdapter(f, slogger)
 	if err != nil {
