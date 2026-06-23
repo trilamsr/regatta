@@ -57,9 +57,12 @@ func runEventsTailWith(deps eventsTailDeps, args []string) int {
 	sinceFlag := fs.Duration("since", 24*time.Hour, "Only emit events whose created_at is within this window")
 	formatFlag := fs.String("format", formatTable, "Output format: table | json")
 	followFlag := fs.Bool("f", false, "Follow: poll for new events every 1s until SIGINT")
+	// -n matches the unix tail convention; --limit is the long-form alias. Both default to eventsDefaultLim.
+	limitFlag := fs.Int("limit", eventsDefaultLim, "Max events to emit per page")
+	fs.IntVar(limitFlag, "n", eventsDefaultLim, "Alias for --limit (unix tail convention)")
 	_ = fs.String("db", defaultStateDB(), "Path to sqlite state DB")
 	fs.Usage = func() {
-		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta events tail [--db PATH] [--agent N] [--kind K] [--since DUR] [--format=table|json] [-f]")
+		_, _ = fmt.Fprintln(deps.Stderr, "Usage: regatta events tail [--db PATH] [--agent N] [--kind K] [--since DUR] [-n N|--limit N] [--format=table|json] [-f]")
 	}
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -72,6 +75,10 @@ func runEventsTailWith(deps eventsTailDeps, args []string) int {
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta events tail: --since must be > 0 (got %s)\n", *sinceFlag)
 		return 2
 	}
+	if *limitFlag <= 0 {
+		_, _ = fmt.Fprintf(deps.Stderr, "regatta events tail: -n/--limit must be > 0 (got %d)\n", *limitFlag)
+		return 2
+	}
 
 	ctx := context.Background()
 	db, err := state.OpenWithClock(ctx, deps.DSN, deps.Clock)
@@ -82,7 +89,7 @@ func runEventsTailWith(deps eventsTailDeps, args []string) int {
 	defer func() { _ = db.Close() }()
 
 	cutoff := deps.Clock().Add(-*sinceFlag)
-	lastID, err := emitEventsPage(deps.Stdout, deps.Stderr, db, ctx, *kindFlag, *agentFlag, cutoff, 0, *formatFlag, true)
+	lastID, err := emitEventsPage(deps.Stdout, deps.Stderr, db, ctx, *kindFlag, *agentFlag, cutoff, 0, *limitFlag, *formatFlag, true)
 	if err != nil {
 		_, _ = fmt.Fprintln(deps.Stderr, "regatta events tail:", err)
 		return 1
@@ -94,7 +101,7 @@ func runEventsTailWith(deps eventsTailDeps, args []string) int {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	for range ticker.C {
-		newLast, err := emitEventsPage(deps.Stdout, deps.Stderr, db, ctx, *kindFlag, *agentFlag, cutoff, lastID, *formatFlag, false)
+		newLast, err := emitEventsPage(deps.Stdout, deps.Stderr, db, ctx, *kindFlag, *agentFlag, cutoff, lastID, *limitFlag, *formatFlag, false)
 		if err != nil {
 			_, _ = fmt.Fprintln(deps.Stderr, "regatta events tail:", err)
 			return 1
@@ -106,7 +113,7 @@ func runEventsTailWith(deps eventsTailDeps, args []string) int {
 	return 0
 }
 
-func emitEventsPage(stdout, stderr io.Writer, db *state.DB, ctx context.Context, kind string, agentID int64, cutoff time.Time, sinceID int64, format string, header bool) (int64, error) {
+func emitEventsPage(stdout, stderr io.Writer, db *state.DB, ctx context.Context, kind string, agentID int64, cutoff time.Time, sinceID int64, limit int, format string, header bool) (int64, error) {
 	var rows []state.Event
 	var err error
 	cutoffUnix := int64(0)
@@ -114,9 +121,9 @@ func emitEventsPage(stdout, stderr io.Writer, db *state.DB, ctx context.Context,
 		cutoffUnix = cutoff.Unix()
 	}
 	if kind != "" {
-		rows, err = db.ListEventsByKindSinceTime(ctx, kind, sinceID, cutoffUnix, eventsDefaultLim)
+		rows, err = db.ListEventsByKindSinceTime(ctx, kind, sinceID, cutoffUnix, limit)
 	} else {
-		rows, err = db.ListEventsSince(ctx, sinceID, cutoffUnix, eventsDefaultLim)
+		rows, err = db.ListEventsSince(ctx, sinceID, cutoffUnix, limit)
 	}
 	if err != nil {
 		return sinceID, err
@@ -136,6 +143,9 @@ func emitEventsPage(stdout, stderr io.Writer, db *state.DB, ctx context.Context,
 		filtered = append(filtered, e)
 		if e.ID > maxID {
 			maxID = e.ID
+		}
+		if len(filtered) >= limit {
+			break
 		}
 	}
 

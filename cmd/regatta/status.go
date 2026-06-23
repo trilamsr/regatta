@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -163,7 +164,7 @@ func statusDefaultDB(flagVal string) string {
 // the TTY detection in the production wiring.
 func runStatus(args []string) int {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
-	fs.SetOutput(io.Discard)
+	fs.SetOutput(os.Stderr)
 	refresh := fs.Duration("refresh", 2*time.Second, "tick interval (e.g. 2s, 5s)")
 	once := fs.Bool("once", false, "render a single frame to stdout and exit")
 	width := fs.Int("width", 80, "render width (cols)")
@@ -173,6 +174,11 @@ func runStatus(args []string) int {
 	socketURL := fs.String("socket", "", "orchestrator socket base URL (default: http://127.0.0.1"+defaultListenerAddr+")")
 
 	if err := fs.Parse(args); err != nil {
+		// -h / --help is documented behaviour, not an error. flag prints
+		// the usage to fs.Output() already; surface exit 0 (R31-Bug-B).
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
 		fmt.Fprintln(os.Stderr, "regatta status: flag parse:", err)
 		return 2
 	}

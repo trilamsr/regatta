@@ -58,6 +58,8 @@ var subcommands = []subcommand{
 	{subcmdProgram, runProgram},
 	{subcmdServe, runServe},
 	{subcmdValidateConfig, runValidateConfig},
+	// Alias: docs + operator muscle memory invoke `config-validate` (R31-Bug-C).
+	{"config-validate", runValidateConfig},
 	{subcmdInit, runInit},
 	{subcmdApproval, runApproval},
 	{subcmdKeys, runKeys},
@@ -133,8 +135,8 @@ func usage(w io.Writer) {
   regatta install-service [--user|--system]           Install OS-native supervisor (launchd or systemd)
   regatta uninstall-service [--user|--system]         Reverse install-service (idempotent)
   regatta doctor [--json] [--skip <name>]             Preflight: secrets, binaries, gh auth, git, config, branch protection
-  regatta agents list [--state=<s>] [--lane=<l>] [--format=table|json]  List agents from state.db (read-only; closes #1078)
-  regatta events tail [--db PATH] [--agent N] [--kind K] [--since DUR] [-f]  Read-only tail of substrate events (table | json; closes #1078 c2)
+  regatta agents list [--state=<s>] [--lane=<l>] [--format=table|json|--json]  List agents from state.db (read-only; closes #1078)
+  regatta events tail [--db PATH] [--agent N] [--kind K] [--since DUR] [-n N] [-f]  Read-only tail of substrate events (table | json; closes #1078 c2)
   regatta version                                     Print build info
   regatta help                                        This message
 
