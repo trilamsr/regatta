@@ -63,6 +63,18 @@ func (o *Orchestrator) ScheduleOnce(ctx context.Context) error {
 			string(obs.KeyDurationMs), durationMs,
 			string(obs.KeyWorkItemsEvaluated), int64(evaluated),
 		)
+		// Substrate liveness heartbeat: sibling-CLI `regatta status` reads
+		// substrate-event mtime as the daemon-up signal. Without this, an
+		// idle daemon (no spawn activity) emits zero substrate events and
+		// status falsely reports "regatta serve not detected". Bounded
+		// write rate at 5s tick: ~17k rows/day, comparable to spawn/merge
+		// event volume on a busy session. Retention policy is a separate
+		// concern (filed as followup); log on failure so a wedged substrate
+		// surfaces rather than silently disabling the liveness signal.
+		if err := o.db.RecordEvent(ctx, 0, string(obs.EventTickCompleted),
+			fmt.Sprintf(`{"duration_ms":%d,"work_items_evaluated":%d}`, durationMs, evaluated)); err != nil {
+			o.log.Warn("orchestrator.tick_heartbeat_record_failed", string(obs.KeyErr), err.Error())
+		}
 		if durationMs >= slowTickThresholdMs {
 			o.log.Warn(string(obs.EventTickSlow),
 				string(obs.KeyDurationMs), durationMs,

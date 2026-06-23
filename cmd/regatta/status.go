@@ -412,11 +412,16 @@ func prPayloadSummary(payload string) string {
 }
 
 func (s *sqliteSource) mostRecentEventAge(ctx context.Context, now time.Time) time.Duration {
-	row := s.db.QueryRowContext(ctx, `SELECT MAX(emitted_at) FROM substrate_events`)
-	var t sql.NullTime
-	if err := row.Scan(&t); err != nil || !t.Valid {
+	// `events` is the authoritative emission table (DB.RecordEvent writes here).
+	// `substrate_events` was an earlier experiment that production code never
+	// populates — only tests write to it — so reading it meant the liveness
+	// banner always tripped on a healthy daemon. R30: daemon now emits
+	// tick.completed to events every 5s, so liveness == max(created_at) age.
+	row := s.db.QueryRowContext(ctx, `SELECT MAX(created_at) FROM events`)
+	var unixSec sql.NullInt64
+	if err := row.Scan(&unixSec); err != nil || !unixSec.Valid {
 		return 24 * time.Hour
 	}
-	return now.Sub(t.Time)
+	return now.Sub(time.Unix(unixSec.Int64, 0).UTC())
 }
 
