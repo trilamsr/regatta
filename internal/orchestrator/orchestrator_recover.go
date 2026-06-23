@@ -78,7 +78,7 @@ func (o *Orchestrator) Recover(ctx context.Context) error {
 				return fmt.Errorf("orchestrator: requeue agent %d: %w", a.ID, err)
 			}
 		}
-		_ = o.db.RecordEvent(ctx, a.ID, "recovered_crashed", "{}")
+		_ = o.db.RecordEvent(ctx, a.ID, string(obs.EventRecoveredCrashed), "{}")
 		o.log.Info("orchestrator.recovered_crashed",
 			string(obs.KeyAgentID), a.ID,
 			string(obs.KeyWorkItemID), a.WorkItemID,
