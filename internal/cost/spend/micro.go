@@ -9,9 +9,12 @@ type USDMicro int64
 
 const scale = 1_000_000
 
-// FromUSD converts float USD into integer micro-USD using half-away-from-zero — sole place float math touches the money path; over-recording by 1 micro is the safe-rounding direction for cap-defending budget enforcement.
+// FromUSD converts float USD into integer micro-USD using half-away-from-zero — sole place float math touches the money path; over-recording by 1 micro is the safe-rounding direction for cap-defending budget enforcement. Negative inputs clamp to 0 (R-MEGA-2 C4): a refund-shaped charge would shrink the accumulated budget and let a subsequent spawn slip past the cap.
 func FromUSD(usd float64) USDMicro {
 	if math.IsNaN(usd) || math.IsInf(usd, 0) {
+		return 0
+	}
+	if usd < 0 {
 		return 0
 	}
 	return USDMicro(math.Round(usd * scale))
