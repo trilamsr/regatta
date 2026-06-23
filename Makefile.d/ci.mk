@@ -29,7 +29,7 @@ check-docs: doc-check prose-dup check-no-bare-sleep check-state-tier-order check
 # 19 targets total: 15 scripts/check-*_test.sh fixtures + doc-check-test
 # + specs-index-test (gen-specs-readme) + gen-boot-status-test
 # + check-meta-coverage-test (drift watchdog asserting this list stays complete).
-check-meta: doc-check-test specs-index-test gen-boot-status-test check-no-bare-sleep-test check-state-tier-order-test check-prompt-parity-test check-reviewer-verdict-test check-release-notes-local-test check-stale-refs-test check-tdd-redfirst-test check-migration-numbers-test check-spec-sections-test check-doc-links-test check-docker-env-parity-test check-byte-equal-pin-test check-mock-vs-real-test check-prose-dup-test check-tdd-test check-go-shard-coverage-test check-meta-coverage-test  ## Nightly: gate + generator self-tests. Edit a gate or generator? Run this locally before push.
+check-meta: doc-check-test specs-index-test gen-boot-status-test check-no-bare-sleep-test check-state-tier-order-test check-prompt-parity-test check-reviewer-verdict-test check-release-notes-local-test check-stale-refs-test check-tdd-redfirst-test check-migration-numbers-test check-spec-sections-test check-doc-links-test check-docker-env-parity-test check-alert-severity-label-test check-byte-equal-pin-test check-mock-vs-real-test check-prose-dup-test check-tdd-test check-go-shard-coverage-test check-meta-coverage-test  ## Nightly: gate + generator self-tests. Edit a gate or generator? Run this locally before push.
 
 check-go: tidy-check mod-verify verify-vendored-assets go-check  ## CI shard: Go module + race-test sweep. `lint` runs in its own job. Slow (~3-5min, setup-go cached).
 

@@ -10,10 +10,7 @@ import (
 	"testing"
 )
 
-// TestParse_RestoresViaDefer asserts every cmd/regatta CLI helper uses
-// flag.ContinueOnError so a parse failure returns through main() — letting
-// deferred cleanup (db.Close, scheduler.Stop) fire before exit. ExitOnError
-// would call os.Exit(2) inline, skipping defers (R-MEGA-3 LIVE-15).
+// TestParse_RestoresViaDefer asserts cmd/regatta CLI helpers use flag.ContinueOnError so parse failure returns through defers not os.Exit (R-MEGA-3 LIVE-15).
 func TestParse_RestoresViaDefer(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {

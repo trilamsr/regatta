@@ -12,10 +12,7 @@ import (
 	"time"
 )
 
-// TestBootSecretsRequired_FailClosed asserts `regatta serve` exits nonzero within 5s when a required secret env var is unset, and stderr names the secret (R-MEGA-3 INT-2).
-//
-// Catches the LIVE-6/7/8 fail-closed class: a missing GH_TOKEN with github_issues
-// adapter must abort boot loudly instead of crashing at first scheduler tick.
+// TestBootSecretsRequired_FailClosed asserts `regatta serve` exits nonzero within 5s when a required secret env var is unset (R-MEGA-3 INT-2 / LIVE-6/7/8 fail-closed class).
 func TestBootSecretsRequired_FailClosed(t *testing.T) {
 	repoRoot := findRepoRoot(t)
 	binPath := buildRegatta(t, repoRoot)

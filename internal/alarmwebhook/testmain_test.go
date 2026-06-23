@@ -5,11 +5,7 @@ import (
 	"testing"
 )
 
-// TestMain wires the WEBHOOK_AUTH_TOKEN before any test runs so the new
-// LIVE-12 auth gate accepts the shared `test-token-default` post() bakes
-// into every fixture request. Doing this via os.Setenv (not t.Setenv from
-// inside post()) keeps the env-write off the test-parallelism path so
-// TestHandler_MutexGC_RaceWithConcurrentReceive does not race (R-MEGA-3 LIVE-12).
+// TestMain wires WEBHOOK_AUTH_TOKEN via os.Setenv pre-parallelism so the new auth gate accepts fixture requests without racing the receive test (R-MEGA-3 LIVE-12).
 func TestMain(m *testing.M) {
 	_ = os.Setenv(WebhookAuthEnv, "test-token-default")
 	os.Exit(m.Run())

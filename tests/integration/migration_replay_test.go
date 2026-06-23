@@ -16,12 +16,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// TestMigrationReplay_DeterministicSchema asserts running the forward-only migration set twice across two fresh SQLite databases yields byte-identical schema dumps (R-MEGA-3 INT-4).
-//
-// Brief originally specified UP→DOWN→UP byte-equal; this repo's migrations are
-// forward-only (no Down SQL shipped under internal/orchestrator/state/migrations).
-// The deterministic-replay variant is the testable property: a non-deterministic
-// migration (e.g. one that injects a timestamp into the schema) would diverge.
+// TestMigrationReplay_DeterministicSchema asserts forward-only migrations yield byte-identical schema dumps across two fresh DBs — non-determinism (timestamps in DDL) diverges (R-MEGA-3 INT-4).
 func TestMigrationReplay_DeterministicSchema(t *testing.T) {
 	dump1 := freshMigrateAndDump(t)
 	dump2 := freshMigrateAndDump(t)
