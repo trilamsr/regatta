@@ -178,6 +178,7 @@ func TestBuildSpecAdapter_MissingYAMLStaysSilent(t *testing.T) {
 
 // TestBuildSpecAdapter_DefaultLaneYAMLAccepted pins #1117: regatta.yaml `spec_adapter.default_lane` is accepted by buildSpecAdapter and surfaces as a non-nil adapter — the wire path from validate.Load through SpecAdapter.DefaultLane into the github_issues config is exercised end-to-end. The empty-lane skip behaviour is covered by the parse-layer test `TestParseIssueBody_DefaultLaneAppliedWhenNoLabel`; this test gates the wire seam.
 func TestBuildSpecAdapter_DefaultLaneYAMLAccepted(t *testing.T) {
+	t.Setenv("GH_TOKEN", "stub-token-for-test")
 	yaml := `version: 1
 repo:
   host: github
