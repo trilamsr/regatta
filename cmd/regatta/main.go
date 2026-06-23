@@ -82,6 +82,7 @@ var subcommands = []subcommand{
 	{subcmdDoctor, runDoctor},
 	{subcmdAgents, runAgents},
 	{subcmdEvents, runEvents},
+	{subcmdHealthcheck, runHealthcheck},
 }
 
 func main() {
@@ -140,6 +141,7 @@ func usage(w io.Writer) {
   regatta doctor [--json] [--skip <name>]             Preflight: secrets, binaries, gh auth, git, config, branch protection
   regatta agents list [--state=<s>] [--lane=<l>] [--format=table|json|--json]  List agents from state.db (read-only; closes #1078)
   regatta events tail [--db PATH] [--agent N] [--kind K] [--since DUR] [-n N] [-f]  Read-only tail of substrate events (table | json; closes #1078 c2)
+  regatta healthcheck [--url URL] [--timeout DUR]     Probe /healthz; exit 0 on 200 (docker HEALTHCHECK target for distroless)
   regatta version                                     Print build info
   regatta help                                        This message
 

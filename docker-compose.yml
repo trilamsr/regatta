@@ -114,11 +114,10 @@ services:
     networks:
       - regatta-net
     healthcheck:
-      # regatta serves /healthz (cmd/regatta/wire_web.go). Without an
-      # explicit healthcheck `docker compose up --wait` treated bare
-      # "running" as healthy and the operator missed the boot-broken
-      # state (R31-S finding).
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/healthz"]
+      # distroless ships without sh or wget so the previous wget-based probe
+      # marked the container unhealthy forever (R-MEGA-2 C0); /healthcheck
+      # is an in-binary probe so the CMD form needs no shell.
+      test: ["CMD", "/usr/local/bin/regatta", "healthcheck"]
       interval: 10s
       timeout: 3s
       retries: 6
