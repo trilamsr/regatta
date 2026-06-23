@@ -30,6 +30,7 @@ const (
 	subcmdProgram          = "program"
 	subcmdServe            = "serve"
 	subcmdValidateConfig   = "validate-config"
+	subcmdConfigValidate   = "config-validate" // R31-Bug-C alias.
 	subcmdInit             = "init"
 	subcmdVerifyRepoConfig = "verify-repo-config"
 	subcmdApproval         = "approval"
@@ -38,6 +39,8 @@ const (
 	subcmdInstallService   = "install-service"
 	subcmdUninstallService = "uninstall-service"
 	// subcmdDoctor is declared in doctor.go.
+
+	flagLongHelp = "--help"
 )
 
 // subcmdAudit is declared in audit.go (its run function lives there).
@@ -59,7 +62,7 @@ var subcommands = []subcommand{
 	{subcmdServe, runServe},
 	{subcmdValidateConfig, runValidateConfig},
 	// Alias: docs + operator muscle memory invoke `config-validate` (R31-Bug-C).
-	{"config-validate", runValidateConfig},
+	{subcmdConfigValidate, runValidateConfig},
 	{subcmdInit, runInit},
 	{subcmdApproval, runApproval},
 	{subcmdKeys, runKeys},
@@ -95,7 +98,7 @@ func main() {
 	switch arg {
 	case "version", "-v", "--version":
 		fmt.Println("regatta", version)
-	case "help", "-h", "--help":
+	case "help", "-h", flagLongHelp:
 		usage(os.Stdout)
 	default:
 		fmt.Fprintf(os.Stderr, "regatta: unknown subcommand %q\n", arg)

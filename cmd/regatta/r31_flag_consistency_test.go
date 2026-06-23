@@ -48,7 +48,7 @@ func TestEventsTail_DashNLimit(t *testing.T) {
 
 // TestStatus_HelpExitsZero asserts `status --help` exits 0 not 2 (R31-Bug-B).
 func TestStatus_HelpExitsZero(t *testing.T) {
-	code := runStatus([]string{"--help"})
+	code := runStatus([]string{flagLongHelp})
 	if code != 0 {
 		t.Fatalf("runStatus --help exit=%d want 0 (R31-Bug-B: --help must not be a flag-parse error)", code)
 	}
@@ -58,13 +58,13 @@ func TestStatus_HelpExitsZero(t *testing.T) {
 func TestConfigValidate_AliasRoutes(t *testing.T) {
 	found := false
 	for _, sc := range subcommands {
-		if sc.name == "config-validate" {
+		if sc.name == subcmdConfigValidate {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("subcommand alias 'config-validate' not registered (R31-Bug-C: docs say config-validate, binary only knows validate-config)")
+		t.Fatalf("subcommand alias %q not registered (R31-Bug-C: docs say config-validate, binary only knows validate-config)", subcmdConfigValidate)
 	}
 }
 
