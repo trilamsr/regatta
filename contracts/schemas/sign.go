@@ -149,8 +149,15 @@ func VerifyWithAllowlist(payload map[string]any, keyring map[string][]byte, allo
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrUnverifiable, err)
 	}
-	got := hex.EncodeToString(mac)
-	if !hmac.Equal([]byte(got), []byte(want)) {
+	// LIVE-11: decode the wire token to raw bytes before constant-time
+	// compare. hmac.Equal on hex ASCII leaks the longest-common-prefix
+	// length via timing — convert both sides to raw before comparing so
+	// the comparison runs over fixed-width MAC bytes.
+	wantRaw, decErr := hex.DecodeString(want)
+	if decErr != nil {
+		return ErrUnverifiable
+	}
+	if !hmac.Equal(mac, wantRaw) {
 		return ErrUnverifiable
 	}
 	return nil

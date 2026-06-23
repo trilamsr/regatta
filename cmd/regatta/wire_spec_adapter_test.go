@@ -68,6 +68,9 @@ spec_adapter:
 					t.Fatalf("write: %v", err)
 				}
 			}
+			// LIVE-6: GH_TOKEN is fail-closed at boot for github_issues; pin a
+			// non-empty value so the dispatch test stays focused on type-routing.
+			t.Setenv("GH_TOKEN", "test-token-for-routing")
 			ad, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, slog.New(slog.NewTextHandler(bytes.NewBuffer(nil), nil)))
 			if err != nil {
 				t.Fatalf("buildSpecAdapter: %v", err)
@@ -123,6 +126,9 @@ spec_adapter:
 					t.Fatalf("write: %v", err)
 				}
 			}
+			// LIVE-6: GH_TOKEN fail-closed at boot — pin a value so the log-shape
+			// test stays focused on the configured-type record.
+			t.Setenv("GH_TOKEN", "test-token-for-logging")
 			buf := &bytes.Buffer{}
 			logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
 			if _, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, logger); err != nil {
@@ -172,6 +178,7 @@ func TestBuildSpecAdapter_MissingYAMLStaysSilent(t *testing.T) {
 
 // TestBuildSpecAdapter_DefaultLaneYAMLAccepted pins #1117: regatta.yaml `spec_adapter.default_lane` is accepted by buildSpecAdapter and surfaces as a non-nil adapter — the wire path from validate.Load through SpecAdapter.DefaultLane into the github_issues config is exercised end-to-end. The empty-lane skip behaviour is covered by the parse-layer test `TestParseIssueBody_DefaultLaneAppliedWhenNoLabel`; this test gates the wire seam.
 func TestBuildSpecAdapter_DefaultLaneYAMLAccepted(t *testing.T) {
+	t.Setenv("GH_TOKEN", "stub-token-for-test")
 	yaml := `version: 1
 repo:
   host: github

@@ -10,6 +10,7 @@ import (
 
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/web/internalerror"
 )
 
 // sentinelTokenInvalid is the operator-facing slug for any unrecognised /
@@ -96,7 +97,7 @@ func approvalPageHandler(deps Dependencies) http.Handler {
 			CSRFToken:   CSRFTokenFromRequest(r),
 		}
 		if err := deps.Templates.Render(w, "approval.tmpl", view); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalerror.Write(w, nil, "web.approval_render", err)
 		}
 	})
 }
@@ -141,7 +142,7 @@ func approvalDecideHandler(deps Dependencies) http.Handler {
 			Pending:   pendingReviewers(r, deps, aid, result.DecidedBy),
 		}
 		if err := deps.Templates.Render(w, "approval_decided.tmpl", view); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalerror.Write(w, nil, "web.approval_decided_render", err)
 		}
 	})
 }

@@ -50,7 +50,7 @@ func runReview(args []string) int {
 // substrate and prints one row per verdict. Read-only; does not touch
 // GitHub so the call is safe to run inside the autonomous loop.
 func runReviewStatus(args []string, out io.Writer) int {
-	fs := flag.NewFlagSet("review status", flag.ExitOnError)
+	fs := flag.NewFlagSet("review status", flag.ContinueOnError)
 	dbPath := fs.String("db", defaultStateDB(), "path to regatta state.db")
 	sinceDur := fs.Duration("since", 7*24*time.Hour, "lookback window (e.g. 24h, 168h)")
 	limit := fs.Int("limit", 50, "max rows to print")
@@ -162,7 +162,7 @@ func defaultStateDB() string {
 // reviewer-bot is auto-requested on every PR (#624). Idempotent: if the
 // line already exists the file is untouched and the verb exits 0.
 func runReviewSetupCodeowners(args []string, out io.Writer) int {
-	fs := flag.NewFlagSet("review setup-codeowners", flag.ExitOnError)
+	fs := flag.NewFlagSet("review setup-codeowners", flag.ContinueOnError)
 	login := fs.String("reviewer-bot-login", "regatta-reviewer-bot",
 		"GH login to request on every PR")
 	repoRoot := fs.String("repo-root", ".", "repository root (CODEOWNERS lives under .github/)")

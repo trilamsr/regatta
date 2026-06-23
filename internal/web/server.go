@@ -9,6 +9,7 @@ import (
 	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/health"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/web/internalerror"
 )
 
 // assetsFS embeds templates/ + static/ at build time (spec §3.8). The
@@ -71,8 +72,31 @@ func NewHandler(deps Dependencies) http.Handler {
 	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
+	// /ui and /ui/ alias the dashboard root so an operator typing the
+	// /ui prefix in a browser reaches the layout instead of 404 (LIVE-1).
+	// Permanent redirect lets browsers cache the canonical "/" URL.
+	mux.HandleFunc("/ui", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/", http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("/ui/", func(w http.ResponseWriter, r *http.Request) {
+		// /ui/static/* + /ui/panels/* + /ui/drawer/* win via
+		// longest-prefix; bare /ui/ falls through to here.
+		if r.URL.Path == "/ui/" {
+			http.Redirect(w, r, "/", http.StatusMovedPermanently)
+			return
+		}
+		http.NotFound(w, r)
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", noStoreCacheControl)
+		// Root catch-all matches every verb; restrict to GET+HEAD so an
+		// errant POST surfaces as 405 instead of rendering the layout
+		// (LIVE-4). Allow header documents the accepted verbs.
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		// Narrow the catch-all to literal root so /foo surfaces as 404
 		// instead of rendering the layout. T6 mounts /approve/* via
 		// RouteRegistrar; longest-prefix rule lets those win.
@@ -89,7 +113,7 @@ func NewHandler(deps Dependencies) http.Handler {
 			clock = time.Now
 		}
 		if err := deps.Templates.Render(w, "layout.tmpl", dashboardLayoutView{Now: clock()}); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			internalerror.Write(w, nil, "web.layout_render", err)
 		}
 	})
 	registerDashboardRoutes(mux, deps)
@@ -107,7 +131,7 @@ func staticHandler() http.Handler {
 		// staticDirName tracks the //go:embed directive — this branch
 		// is the test-FS escape hatch (LoadTemplates synthetic root).
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			http.Error(w, "static fs init: "+err.Error(), http.StatusInternalServerError)
+			internalerror.Write(w, nil, "web.static_fs_init", err)
 		})
 	}
 	fileSrv := http.FileServer(http.FS(sub))

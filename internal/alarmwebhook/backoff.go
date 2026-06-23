@@ -3,6 +3,7 @@ package alarmwebhook
 import (
 	"context"
 	"errors"
+	"io"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -108,23 +109,46 @@ func (r *retrier) Do(ctx context.Context, fn func() (*http.Response, error)) (*h
 	for attempt := 0; attempt < r.opts.MaxAttempts; attempt++ {
 		resp, err := fn()
 		if err != nil {
+			// LIVE-13: drain + close any retained 429 response before
+			// surfacing the transport error so the underlying TCP fd is
+			// returned to the pool.
+			drainAndClose(lastResp)
 			return nil, err
 		}
 		if resp.StatusCode != http.StatusTooManyRequests {
 			r.recordSuccess()
+			drainAndClose(lastResp)
 			return resp, nil
 		}
 		r.record429()
+		// Each 429 body must be drained-and-closed before being replaced
+		// (LIVE-13). Without this, retrying on a hot 429 path leaks one fd
+		// per retry until the OS connection table fills.
+		drainAndClose(lastResp)
 		lastResp = resp
 		if attempt == r.opts.MaxAttempts-1 {
 			break
 		}
 		delay := r.computeDelay(attempt, resp.Header)
 		if err := r.opts.Clock.Sleep(ctx, delay); err != nil {
+			// LIVE-13: ctx-cancel mid-backoff would orphan lastResp
+			// without this close.
+			drainAndClose(lastResp)
 			return nil, err
 		}
 	}
 	return lastResp, nil
+}
+
+// drainAndClose discards the body bytes then closes the response so the
+// underlying TCP connection can be reused. nil-safe — callers pass the
+// retained lastResp unconditionally.
+func drainAndClose(resp *http.Response) {
+	if resp == nil || resp.Body == nil {
+		return
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
 }
 
 // computeDelay picks the next sleep duration. X-RateLimit-Reset wins when

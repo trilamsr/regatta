@@ -290,6 +290,7 @@ groups:
       )
     labels:
       category: availability
+      severity: page
       slo_id: slo-3
       sloth_severity: page
     annotations:

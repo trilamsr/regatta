@@ -98,6 +98,7 @@ func loadSample(t *testing.T) []byte {
 func post(t *testing.T, h http.Handler, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(string(body)))
+	req.Header.Set(WebhookAuthHeader, "test-token-default")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	return rr

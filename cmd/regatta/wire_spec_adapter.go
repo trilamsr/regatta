@@ -27,6 +27,12 @@ func buildSpecAdapter(f serveFlags, logger *slog.Logger) (schemas.SpecAdapter, e
 		if cfg.Repo == nil || cfg.Repo.Owner == "" || cfg.Repo.Name == "" {
 			return nil, fmt.Errorf("spec_adapter.type=github_issues requires repo.{owner,name}")
 		}
+		// Mirror the Linear branch: fail-closed at boot if GH_TOKEN
+		// is unresolved so the first scheduler tick does not crash
+		// with a runtime unauth error (R-MEGA-3 LIVE-6).
+		if os.Getenv("GH_TOKEN") == "" && os.Getenv("GITHUB_TOKEN") == "" {
+			return nil, fmt.Errorf("spec_adapter.type=github_issues requires GH_TOKEN (or GITHUB_TOKEN) via env or secrets router")
+		}
 		logger.Info("adapter.configured",
 			"type", validateconfig.SpecAdapterTypeGitHubIssues,
 			"selector", cfg.SpecAdapter.Selector,

@@ -4,13 +4,28 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/secrets"
 )
+
+// emptyKeyringWarnOnce keeps the boot WARN to a single emission across the
+// many call sites (wire_web / wire_authz / serve / cost) so log volume
+// stays one line instead of one per consumer (R-MEGA-3 LIVE-7).
+var emptyKeyringWarnOnce sync.Once
+
+func warnEmptyBriefKeyring() {
+	emptyKeyringWarnOnce.Do(func() {
+		slog.Default().Warn("keyring.empty",
+			"surface", "brief_hmac",
+			"detail", "REGATTA_HMAC_KEYRING and REGATTA_HMAC_KEY both unset; brief signing + verify disabled")
+	})
+}
 
 // loadBriefKeyring returns the configured HMAC keyring for brief
 // verification + approval-token verify. The verify-side consumes every
@@ -34,6 +49,7 @@ func loadBriefKeyringWithActive() (map[string][]byte, string) {
 	if raw := os.Getenv("REGATTA_HMAC_KEYRING"); raw != "" {
 		keys, order, err := parseBriefKeyring(raw)
 		if err != nil {
+			warnEmptyBriefKeyring()
 			return map[string][]byte{}, ""
 		}
 		active := order[len(order)-1]
@@ -57,6 +73,7 @@ func loadBriefKeyringWithActive() (map[string][]byte, string) {
 		}
 	}
 	if v == "" {
+		warnEmptyBriefKeyring()
 		return map[string][]byte{}, ""
 	}
 	keyID := os.Getenv("REGATTA_HMAC_KEY_ID")
@@ -110,10 +127,24 @@ func parseBriefKeyring(raw string) (map[string][]byte, []string, error) {
 // Operators set REGATTA_HMAC_KEY once and both surfaces light up; an
 // empty key returns an empty MapKeyring so NewGate's constructor guard
 // fires only when the operator has at least one gate defined.
+//
+// Empty-keyring WARN fires here (in addition to the loadBriefKeyring one)
+// so the operator-visible log names the approval-gate surface explicitly —
+// an empty approval-token keyring otherwise sits silent until a reviewer
+// hits "approve" and the gate denies-all (R-MEGA-3 LIVE-8 fail-closed).
 func approvalKeyring() (approvaltoken.Keyring, string) {
 	keys, active := loadBriefKeyringWithActive()
+	if len(keys) == 0 {
+		emptyApprovalKeyringWarnOnce.Do(func() {
+			slog.Default().Warn("keyring.empty",
+				"surface", "approval_token",
+				"detail", "approval gate keyring empty; gate fails-closed (denies-all) until REGATTA_HMAC_KEY is set")
+		})
+	}
 	if active == "" {
 		active = "k1"
 	}
 	return approvaltoken.MapKeyring(keys), active
 }
+
+var emptyApprovalKeyringWarnOnce sync.Once

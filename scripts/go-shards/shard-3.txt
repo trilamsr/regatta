@@ -21,5 +21,6 @@ github.com/trilamsr/regatta/internal/testutil/gitenv
 github.com/trilamsr/regatta/internal/watchdog
 github.com/trilamsr/regatta/internal/web
 github.com/trilamsr/regatta/internal/web/etag
+github.com/trilamsr/regatta/internal/web/internalerror
 github.com/trilamsr/regatta/scripts/cron
 github.com/trilamsr/regatta/tools/lint-substrate-queries

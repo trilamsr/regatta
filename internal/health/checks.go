@@ -161,6 +161,15 @@ func (h *HeartbeatCell) Age() time.Duration {
 	return h.now().Sub(h.last)
 }
 
+// NeverTouched reports whether Touch has been called at least once.
+// /readyz uses this as the "first scheduler tick fired" gate so the
+// probe stays 503 until the orchestrator is genuinely live (LIVE-2).
+func (h *HeartbeatCell) NeverTouched() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.last.IsZero()
+}
+
 // BriefCell mirrors the brief-loader path so the probe stays read-only.
 type BriefCell struct {
 	mu   sync.RWMutex

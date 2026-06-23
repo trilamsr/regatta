@@ -2,12 +2,14 @@ package alarmwebhook
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -21,6 +23,30 @@ import (
 	"github.com/trilamsr/regatta/internal/ghclient"
 	"github.com/trilamsr/regatta/internal/obs"
 )
+
+// WebhookAuthHeader names the inbound header carrying the shared secret.
+// Network-localhost binding is not a defence — any local process can POST
+// (R-MEGA-3 LIVE-12). Operators set WEBHOOK_AUTH_TOKEN in docker-compose
+// and AlertManager mirrors it via webhook_configs[].http_config.
+const (
+	WebhookAuthHeader = "X-Webhook-Token" //nolint:gosec // header NAME, not a secret
+	WebhookAuthEnv    = "WEBHOOK_AUTH_TOKEN"
+)
+
+// checkWebhookAuth fails-closed when WEBHOOK_AUTH_TOKEN is unset OR the
+// inbound header does not match. constant-time compare is mandatory so
+// an attacker cannot byte-by-byte time-attack the token.
+func checkWebhookAuth(r *http.Request) bool {
+	want := os.Getenv(WebhookAuthEnv)
+	if want == "" {
+		return false
+	}
+	got := r.Header.Get(WebhookAuthHeader)
+	if got == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
 
 // MaxBodyBytes caps an incoming webhook body. 4 MiB covers any realistic
 // AlertManager batch (the upstream default group_by produces payloads
@@ -246,6 +272,17 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// LIVE-12: shared-secret auth — fail-closed when WEBHOOK_AUTH_TOKEN is
+	// unset or the inbound header does not match. The bind addr is not a
+	// security boundary: localhost bound is reachable from every container
+	// on the same host.
+	if !checkWebhookAuth(r) {
+		h.resolveLogger().WarnContext(ctx, "alarmwebhook.auth_rejected",
+			"remote", r.RemoteAddr)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 

@@ -10,7 +10,10 @@ import (
 // parseServeFlagsValidated wraps parseServeFlags + validateServeFlags so
 // runServe stays under the 400-line ceiling enforced by check-file-size.
 func parseServeFlagsValidated(args []string) (serveFlags, error) {
-	f := parseServeFlags(args)
+	f, err := parseServeFlags(args)
+	if err != nil {
+		return f, err
+	}
 	if err := validateServeFlags(f); err != nil {
 		return f, err
 	}
@@ -67,15 +70,15 @@ type serveFlags struct {
 // parseServeFlags registers the `regatta serve` flag set against args,
 // applies the regatta.yaml-driven items-root fallback (explicit flag
 // wins; yaml spec_adapter.root is the second-choice), and returns the
-// populated serveFlags. flag.ExitOnError keeps the original CLI
-// contract — bad flags exit 2 before any startup work.
-func parseServeFlags(args []string) serveFlags {
-	fs := flag.NewFlagSet(subcmdServe, flag.ExitOnError)
+// populated serveFlags. ContinueOnError surfaces the parse error so
+// main() can run deferred cleanup before exit (R-MEGA-3 LIVE-15).
+func parseServeFlags(args []string) (serveFlags, error) {
+	fs := flag.NewFlagSet(subcmdServe, flag.ContinueOnError)
 	f := serveFlags{
 		LaneCaps:  laneCapsFlag{},
 		LogFormat: logFormatFlag(defaultLogFormat),
 	}
-	fs.StringVar(&f.DBPath, "db", "regatta.db", "Path to sqlite state DB")
+	fs.StringVar(&f.DBPath, "db", stateDBDefaultLiteral, "Path to sqlite state DB")
 	fs.StringVar(&f.ItemsRoot, "items-root", ".", "Repo root containing .regatta/items/*.md (overrides regatta.yaml spec_adapter.root when set explicitly)")
 	fs.BoolVar(&f.TickOnce, "tick-once", false, "Run one poll+schedule cycle and exit")
 	fs.DurationVar(&f.PollDur, "poll", 30*time.Second, "SpecAdapter poll interval")
@@ -97,7 +100,9 @@ func parseServeFlags(args []string) serveFlags {
 	// autonomous-loop merge gap.
 	fs.BoolVar(&f.AutoMerge, "auto-merge", false, "Enable autonomous gh-pr-merge worker (PHASE AUTONOMY §11 W2 c2)")
 	fs.StringVar(&f.PublicURL, "public-url", "", "Public URL operators reach the listener via (e.g. https://regatta.example.com). Reverse-proxy deployments MUST set this so OriginCheck matches the external hostname instead of the inner pod r.Host (#304).")
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return f, err
+	}
 
 	// Resolution priority for the adapter items-root (spec
 	// docs/engineer/specs/2026-06-02-s1-t1-self-host-regatta-yaml.md §5):
@@ -122,5 +127,5 @@ func parseServeFlags(args []string) serveFlags {
 			f.ItemsRoot = resolved
 		}
 	}
-	return f
+	return f, nil
 }

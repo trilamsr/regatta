@@ -92,6 +92,10 @@ func compose(ctx context.Context, repoRoot string, args ...string) *exec.Cmd {
 	cmd.Dir = repoRoot
 	cmd.Env = append(os.Environ(),
 		"REGATTA_HMAC_KEY="+orDefault(os.Getenv("REGATTA_HMAC_KEY"), "smoke-test-hmac-key"),
+		"GH_TOKEN="+orDefault(os.Getenv("GH_TOKEN"), "smoke-test-gh-token"),
+		"REGATTA_BRIEF_HMAC_KEYS="+orDefault(os.Getenv("REGATTA_BRIEF_HMAC_KEYS"), "kid1:smoke-brief-key"),
+		"ANTHROPIC_API_KEY="+orDefault(os.Getenv("ANTHROPIC_API_KEY"), "smoke-test-anthropic-key"),
+		"WEBHOOK_AUTH_TOKEN="+orDefault(os.Getenv("WEBHOOK_AUTH_TOKEN"), "smoke-test-webhook-token"),
 	)
 	return cmd
 }

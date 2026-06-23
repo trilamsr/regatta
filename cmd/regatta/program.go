@@ -50,7 +50,7 @@ func runProgram(args []string) int {
 // stdout. Source adapters are deferred -- for v1, operators
 // hand-author the parent WorkItem or feed it from an adapter dump.
 func runProgramPlan(args []string) int {
-	fs := flag.NewFlagSet("program plan", flag.ExitOnError)
+	fs := flag.NewFlagSet("program plan", flag.ContinueOnError)
 	model := fs.String("model", "claude-opus-4-7", "Claude model id (anthropic planner only)")
 	keyEnv := fs.String("hmac-key-env", "", "Env var holding HMAC key (required)")
 	keyID := fs.String("hmac-key-id", "k1", "key_id to stamp into signature")
@@ -64,11 +64,15 @@ func runProgramPlan(args []string) int {
 		"overwrite existing brief at the target path")
 	unsafeWriteDir := fs.Bool("unsafe-write-dir", false,
 		"allow --write-dir to point outside cwd (defense-in-depth opt-out)")
+	planDryRun := fs.Bool("dry-run", false,
+		"with --write, log the would-do action to stderr instead of writing the brief (R-MEGA-3 LIVE-18)")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta program plan <work-item.{md,json}>")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 	if fs.NArg() != 1 {
 		fs.Usage()
 		return 2
@@ -156,7 +160,7 @@ func runProgramPlan(args []string) int {
 			return 1
 		}
 		briefPath := filepath.Join(target, plan.ProgramID+".json")
-		if err := atomicWriteBrief(briefPath, raw, *force); err != nil {
+		if err := atomicWriteBriefDryRun(briefPath, raw, *force, *planDryRun); err != nil {
 			fmt.Fprintln(os.Stderr, "regatta program plan:", err)
 			if errors.Is(err, orchestrator.ErrTargetExists) {
 				return 2
@@ -414,17 +418,31 @@ const atomicWriteBriefReadCap = 8 << 20
 // `data` (briefs are <= 1 MiB by maxBriefSize) so the equality check
 // short-circuits to false and the force gate handles the rest.
 func atomicWriteBrief(path string, data []byte, force bool) error {
+	return atomicWriteBriefDryRun(path, data, force, false)
+}
+
+// atomicWriteBriefDryRun adds an opt-in dry-run mode: when dryRun is true
+// the function logs the would-do action to stderr + returns nil without
+// touching the filesystem (R-MEGA-3 LIVE-18).
+func atomicWriteBriefDryRun(path string, data []byte, force, dryRun bool) error {
 	equal, exists, err := readExistingForEqualityCheck(path, data)
 	if err != nil {
 		return fmt.Errorf("stat target: %w", err)
 	}
 	if exists {
 		if equal {
+			if dryRun {
+				fmt.Fprintf(os.Stderr, "dry-run: %s already equal; no write\n", path)
+			}
 			return nil
 		}
 		if !force {
 			return fmt.Errorf("%w: %s", orchestrator.ErrTargetExists, path)
 		}
+	}
+	if dryRun {
+		fmt.Fprintf(os.Stderr, "dry-run: would write %d bytes to %s (force=%v)\n", len(data), path, force)
+		return nil
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".brief-*.tmp")
 	if err != nil {
@@ -485,14 +503,16 @@ func readExistingForEqualityCheckWithCap(path string, want []byte, capBytes int6
 }
 
 func runProgramVerifyHandoff(args []string) int {
-	fs := flag.NewFlagSet("program verify-handoff", flag.ExitOnError)
+	fs := flag.NewFlagSet("program verify-handoff", flag.ContinueOnError)
 	keyEnv := fs.String("hmac-key-env", "", "Env var holding the HMAC key (if set, verify signature)")
 	keyID := fs.String("hmac-key-id", "k1", "key_id to expect in the signature")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta program verify-handoff <handoff.json>")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 	if fs.NArg() != 1 {
 		fs.Usage()
 		return 2

@@ -3,6 +3,7 @@ package merge
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -393,13 +394,25 @@ func (c *Coordinator) markFailedFromMergeCall(ctx context.Context, agentID int64
 	if err := c.recordMergeEvent(ctx, *a, EventKindMergeFailed, string(payload)); err != nil {
 		return fmt.Errorf("merge: record failed: %w", err)
 	}
-	if _, err := c.db.TransitionAgent(ctx, agentID, state.AgentCrashed, state.AgentMutation{}); err != nil {
-		if !errors.Is(err, state.ErrInvalidTransition) {
-			return fmt.Errorf("merge: transition crashed: %w", err)
+	// LIVE-10: TransitionAgent(Crashed) + ReleaseAgentLocks run in a single
+	// tx so a concurrent Reaper.Reap on the same agent cannot interleave
+	// (release fires twice → no-op on the second; the SQLite RELEASE
+	// statement is idempotent so the race is benign, but binding the
+	// transition + release in one tx removes the read-modify-write
+	// surface entirely).
+	err = c.db.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := c.db.TransitionAgentTx(ctx, tx, agentID, state.AgentCrashed, state.AgentMutation{}); err != nil {
+			if !errors.Is(err, state.ErrInvalidTransition) {
+				return fmt.Errorf("merge: transition crashed: %w", err)
+			}
 		}
-	}
-	if _, err := c.db.ReleaseAgentLocks(ctx, agentID); err != nil {
-		return fmt.Errorf("merge: release locks: %w", err)
+		if _, err := c.db.ReleaseAgentLocksTx(ctx, tx, agentID); err != nil {
+			return fmt.Errorf("merge: release locks: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	c.log.Warn("merge.failed_normal_path",
 		"agent_id", agentID, "pr_number", prNumber,

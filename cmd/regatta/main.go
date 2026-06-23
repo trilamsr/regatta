@@ -98,7 +98,7 @@ func main() {
 	}
 	switch arg {
 	case "version", "-v", "--version":
-		fmt.Println("regatta", version)
+		emitVersion(os.Args[2:])
 	case "help", "-h", flagLongHelp:
 		usage(os.Stdout)
 	default:
