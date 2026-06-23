@@ -118,10 +118,7 @@ func TestCheckRepoRootExists_RealDirPasses(t *testing.T) {
 	}
 }
 
-// TestPreflight_AcceptsWorktreeRepo asserts a worktree mount with a
-// relative `gitdir:` pointer (the form `git worktree add` writes)
-// resolves against repoRoot and passes preflight when the target
-// directory exists (R-MEGA-2 P1).
+// TestPreflight_AcceptsWorktreeRepo asserts relative gitdir pointer resolves against repoRoot (R-MEGA-2 P1).
 func TestPreflight_AcceptsWorktreeRepo(t *testing.T) {
 	root := t.TempDir()
 	mainGit := filepath.Join(root, "..", "main-git")

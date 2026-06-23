@@ -10,8 +10,7 @@ import (
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
-// TestWorker_EnqueueAfterStop_NoPanic asserts Stop's close(w.in) cannot
-// race a concurrent Enqueue into a closed-channel panic (R-MEGA-2 C2).
+// TestWorker_EnqueueAfterStop_NoPanic asserts Stop does not race Enqueue into a closed-channel panic (R-MEGA-2 C2).
 func TestWorker_EnqueueAfterStop_NoPanic(t *testing.T) {
 	db := statetest.OpenDB(t)
 	c := newCoordinatorWithExecutor(t, db, &fakeExecutor{})

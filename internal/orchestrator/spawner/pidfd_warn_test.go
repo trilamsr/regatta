@@ -8,9 +8,7 @@ import (
 	"testing"
 )
 
-// TestWarnIfPidfdFallbackPossible_LinuxEmits asserts the boot WARN
-// fires on Linux so operators see the PID-reuse-race posture in the
-// journal (R-MEGA-2 C8).
+// TestWarnIfPidfdFallbackPossible_LinuxEmits asserts the boot WARN fires on Linux (R-MEGA-2 C8).
 func TestWarnIfPidfdFallbackPossible_LinuxEmits(t *testing.T) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))

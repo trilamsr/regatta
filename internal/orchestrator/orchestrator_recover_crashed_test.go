@@ -8,9 +8,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// TestRecover_CrashedStateIdempotent asserts a second Recover finishes
-// the transition for an agent stuck Crashed because the daemon died
-// between the Crashed and Pending steps in a prior Recover (R-MEGA-2 C3).
+// TestRecover_CrashedStateIdempotent asserts second Recover drains a stuck-Crashed agent (R-MEGA-2 C3).
 func TestRecover_CrashedStateIdempotent(t *testing.T) {
 	ctx := context.Background()
 	o, _, db, _ := newHarness(t, 1)

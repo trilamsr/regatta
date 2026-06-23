@@ -34,9 +34,7 @@ func (p *probeEstimator) Estimate(_ context.Context, _ gate.EstHint, _ string) (
 	return p.usd, nil
 }
 
-// TestEvaluator_ConcurrentEvaluate_RespectsCap asserts the per-Gate mutex
-// serialises Evaluate so concurrent spawners cannot each read a stale
-// recorded-spend and collectively breach the cap (R-MEGA-2 C1 TOCTOU).
+// TestEvaluator_ConcurrentEvaluate_RespectsCap asserts Gate.mu serialises Evaluate against TOCTOU (R-MEGA-2 C1).
 func TestEvaluator_ConcurrentEvaluate_RespectsCap(t *testing.T) {
 	db := statetest.OpenMigratedRaw(t)
 	insertSpend(t, db, `{"usd":80.0,"dag_id":"DAG-A","operator_id":"agent-7","work_item_id":"WI-OLD"}`,

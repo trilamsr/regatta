@@ -9,11 +9,7 @@ import (
 	"github.com/trilamsr/regatta/internal/testutil/statetest"
 )
 
-// TestScheduler_BackoffPersistsAcrossRestart asserts a persisted entry
-// survives the equivalent of a daemon restart: UpsertBackoff →
-// ListBackoff round-trips with the same retry_at + attempt_count so the
-// rehydrate path at Scheduler.New does not race a recheck storm
-// (R-MEGA-2 P4).
+// TestScheduler_BackoffPersistsAcrossRestart asserts UpsertBackoff round-trips through ListBackoff (R-MEGA-2 P4).
 func TestScheduler_BackoffPersistsAcrossRestart(t *testing.T) {
 	db := statetest.OpenDB(t)
 	ctx := context.Background()
@@ -37,9 +33,7 @@ func TestScheduler_BackoffPersistsAcrossRestart(t *testing.T) {
 	}
 }
 
-// TestScheduler_BackoffUpsertReplaces asserts a second UpsertBackoff
-// replaces the prior row rather than appending — the suppression-rearm
-// semantics rely on this.
+// TestScheduler_BackoffUpsertReplaces asserts a second UpsertBackoff replaces (R-MEGA-2 P4).
 func TestScheduler_BackoffUpsertReplaces(t *testing.T) {
 	db := statetest.OpenDB(t)
 	ctx := context.Background()
@@ -80,8 +74,7 @@ func TestScheduler_BackoffDelete(t *testing.T) {
 	}
 }
 
-// TestScheduler_BackoffPurgeExpired drops entries whose retry_at is
-// strictly less than now.
+// TestScheduler_BackoffPurgeExpired drops entries whose retry_at < now (R-MEGA-2 P4).
 func TestScheduler_BackoffPurgeExpired(t *testing.T) {
 	db := statetest.OpenDB(t)
 	ctx := context.Background()

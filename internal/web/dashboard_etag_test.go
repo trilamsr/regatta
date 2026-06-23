@@ -23,8 +23,7 @@ func newEtagDashboardDB(t *testing.T) *state.DB {
 	return db
 }
 
-// TestDashboard_ETag304OnUnchanged asserts a second poll with the prior
-// ETag returns 304 when the row-set is unchanged (R-MEGA-2 P2).
+// TestDashboard_ETag304OnUnchanged asserts second poll with prior ETag returns 304 (R-MEGA-2 P2).
 func TestDashboard_ETag304OnUnchanged(t *testing.T) {
 	tmpls, err := LoadTemplates(AssetsFS())
 	if err != nil {
@@ -56,8 +55,7 @@ func TestDashboard_ETag304OnUnchanged(t *testing.T) {
 	}
 }
 
-// TestDashboard_ETag200OnChanged asserts a row-set change flips the
-// digest and serves a fresh 200 with a new ETag (R-MEGA-2 P2).
+// TestDashboard_ETag200OnChanged asserts row-set change flips digest and serves 200 (R-MEGA-2 P2).
 func TestDashboard_ETag200OnChanged(t *testing.T) {
 	tmpls, err := LoadTemplates(AssetsFS())
 	if err != nil {

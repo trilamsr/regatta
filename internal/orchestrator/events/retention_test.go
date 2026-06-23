@@ -24,9 +24,7 @@ func (f *fakeDeleter) DeleteEventsOlderThan(_ context.Context, cutoff time.Time)
 	return f.deleted, nil
 }
 
-// TestRetention_DeletesOldRows asserts the first sweep computes the
-// cutoff as now - RetentionDays and forwards the delete call to the DB
-// (R-MEGA-2 P3).
+// TestRetention_DeletesOldRows asserts first sweep deletes with cutoff=now-RetentionDays (R-MEGA-2 P3).
 func TestRetention_DeletesOldRows(t *testing.T) {
 	now := time.Date(2026, 6, 22, 12, 0, 0, 0, time.UTC)
 	d := &fakeDeleter{deleted: 5}
@@ -64,8 +62,7 @@ func TestRetention_DeletesOldRows(t *testing.T) {
 	}
 }
 
-// TestRetention_DisabledWhenDaysZero asserts a zero-day horizon yields
-// nil so the daemon can skip the goroutine entirely (R-MEGA-2 P3).
+// TestRetention_DisabledWhenDaysZero asserts RetentionDays=0 yields nil (R-MEGA-2 P3).
 func TestRetention_DisabledWhenDaysZero(t *testing.T) {
 	r := New(Config{DB: &fakeDeleter{}, RetentionDays: 0})
 	if r != nil {
@@ -81,8 +78,7 @@ func TestRetention_DisabledWhenDBNil(t *testing.T) {
 	}
 }
 
-// TestRetention_SweepErrorDoesNotHaltLoop asserts a failed sweep logs +
-// continues; the next tick still runs (R-MEGA-2 P3).
+// TestRetention_SweepErrorDoesNotHaltLoop asserts failed sweep logs and the loop continues (R-MEGA-2 P3).
 func TestRetention_SweepErrorDoesNotHaltLoop(t *testing.T) {
 	now := time.Date(2026, 6, 22, 12, 0, 0, 0, time.UTC)
 	d := &fakeDeleter{err: errors.New("synthetic")}

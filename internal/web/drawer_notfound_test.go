@@ -12,9 +12,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// TestDrawer_404ReturnsHTMLFragment asserts every drawer route serves a
-// styled HTML fragment on miss instead of the raw "404 page not found"
-// text/plain leak (R-MEGA-2 P5).
+// TestDrawer_404ReturnsHTMLFragment asserts drawer 404 serves a styled HTML fragment (R-MEGA-2 P5).
 func TestDrawer_404ReturnsHTMLFragment(t *testing.T) {
 	tmpls, err := LoadTemplates(AssetsFS())
 	if err != nil {

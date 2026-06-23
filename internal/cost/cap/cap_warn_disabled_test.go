@@ -11,9 +11,7 @@ import (
 	"github.com/trilamsr/regatta/internal/cost/spend"
 )
 
-// TestEnforcer_CapZero_LogsWarn asserts the boot path emits a single
-// cap.disabled WARN when CapMicro==0 so operators see the silent
-// unlimited-spawn state in the journal (R-MEGA-2 C5).
+// TestEnforcer_CapZero_LogsWarn asserts cap.disabled WARN fires when CapMicro==0 (R-MEGA-2 C5).
 func TestEnforcer_CapZero_LogsWarn(t *testing.T) {
 	var buf bytes.Buffer
 	h := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})
@@ -41,8 +39,7 @@ func TestEnforcer_CapZero_LogsWarn(t *testing.T) {
 	}
 }
 
-// TestEnforcer_CapNonZero_NoWarn asserts the disabled WARN does not
-// fire when an actual cap is configured (R-MEGA-2 C5 guard).
+// TestEnforcer_CapNonZero_NoWarn asserts no cap.disabled WARN when cap is configured (R-MEGA-2 C5).
 func TestEnforcer_CapNonZero_NoWarn(t *testing.T) {
 	var buf bytes.Buffer
 	h := slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn})

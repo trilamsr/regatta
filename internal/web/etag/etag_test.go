@@ -2,8 +2,7 @@ package etag
 
 import "testing"
 
-// TestHash_StableForSameInput asserts identical row-sets produce
-// identical hex digests so the ETag header round-trips for htmx 304s.
+// TestHash_StableForSameInput asserts identical inputs produce identical digests (R-MEGA-2 P2).
 func TestHash_StableForSameInput(t *testing.T) {
 	a := map[string]any{"rows": []int{1, 2, 3}, "n": 3}
 	b := map[string]any{"rows": []int{1, 2, 3}, "n": 3}
@@ -21,16 +20,14 @@ func TestHash_DiffersForChangedInput(t *testing.T) {
 	}
 }
 
-// TestHash_NilReturnsEmpty asserts a nil view skips the ETag rather
-// than emitting a misleading constant digest.
+// TestHash_NilReturnsEmpty asserts Hash(nil) returns empty (R-MEGA-2 P2).
 func TestHash_NilReturnsEmpty(t *testing.T) {
 	if got := Hash(nil); got != "" {
 		t.Fatalf("Hash(nil)=%q want empty", got)
 	}
 }
 
-// TestHash_UnmarshallableReturnsEmpty asserts a value json.Marshal cannot
-// encode (e.g. channel) returns empty rather than panicking.
+// TestHash_UnmarshallableReturnsEmpty asserts unmarshallable input returns empty (R-MEGA-2 P2).
 func TestHash_UnmarshallableReturnsEmpty(t *testing.T) {
 	ch := make(chan int)
 	if got := Hash(ch); got != "" {

@@ -9,10 +9,7 @@ import (
 	"github.com/trilamsr/regatta/internal/testutil"
 )
 
-// TestSpawn_StarterError_NoLooseGoroutine asserts a starter failure does
-// not leave a ParseStream reader goroutine blocked on the pipe — the
-// pre-fix path launched ParseStream before the starter ran, so a fast
-// starter error parked the reader on pr.Read until GC (R-MEGA-2 C6).
+// TestSpawn_StarterError_NoLooseGoroutine asserts starter failure does not leak the ParseStream reader (R-MEGA-2 C6).
 func TestSpawn_StarterError_NoLooseGoroutine(t *testing.T) {
 	cs, fs, _ := newClaudeHarness(t)
 	fs.failNow.Store(true)

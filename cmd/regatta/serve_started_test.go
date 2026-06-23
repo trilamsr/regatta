@@ -14,9 +14,7 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// TestServe_EmitsServeStarted asserts emitServeStarted writes one
-// serve.started substrate event with version + boot_duration_ms and
-// emits a matching INFO log line (R-MEGA-2 P6).
+// TestServe_EmitsServeStarted asserts one serve.started substrate row + INFO log on boot (R-MEGA-2 P6).
 func TestServe_EmitsServeStarted(t *testing.T) {
 	ctx := context.Background()
 	dbPath := filepath.Join(t.TempDir(), "serve-started.db")
@@ -61,8 +59,7 @@ func TestServe_EmitsServeStarted(t *testing.T) {
 	}
 }
 
-// TestServe_EmitsServeStarted_NilDBStillLogs asserts a nil-DB call still
-// emits the INFO log so a degraded boot still surfaces the marker.
+// TestServe_EmitsServeStarted_NilDBStillLogs asserts nil-DB still emits the INFO marker (R-MEGA-2 P6).
 func TestServe_EmitsServeStarted_NilDBStillLogs(t *testing.T) {
 	var buf bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&buf, nil))
