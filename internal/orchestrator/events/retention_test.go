@@ -43,10 +43,7 @@ func TestRetention_DeletesOldRows(t *testing.T) {
 	go func() { r.Run(ctx); close(done) }()
 
 	deadline := time.After(time.Second)
-	for {
-		if d.calls.Load() >= 1 {
-			break
-		}
+	for d.calls.Load() < 1 {
 		select {
 		case <-deadline:
 			t.Fatalf("DeleteEventsOlderThan never called")
