@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -53,6 +54,10 @@ type Pricing interface {
 }
 
 // Gate — cost-governor pre-call deny primitive (spec §3.2 lines 138-145).
+// mu serialises Evaluate so concurrent spawners cannot each read a
+// stale recorded-spend and collectively breach the cap (R-MEGA-2 C1
+// TOCTOU). The scheduler L4 gate runs at a 5-tick cadence and the
+// spawner is the only other caller, so the contention is bounded.
 type Gate struct {
 	cfg     Config
 	pricing Pricing
@@ -60,6 +65,7 @@ type Gate struct {
 	estim   Estimator
 	tracer  trace.Tracer
 	log     *slog.Logger
+	mu      sync.Mutex
 }
 
 // New constructs a Gate; cfg.Tracer / cfg.Logger nil-defaults apply
@@ -93,6 +99,8 @@ func (g *Gate) Evaluate(ctx context.Context, w WorkItemScope) (Verdict, error) {
 		// read + span emission.
 		return Verdict{Allow: true}, nil
 	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
 
 	// Estimate once; reused across every cap. OperatorID through hint
 	// lets the History estimator (opt-in, spec §10 S1) scope cohort
