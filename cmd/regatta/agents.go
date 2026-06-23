@@ -68,7 +68,12 @@ func runAgentsList(args []string) int {
 	stateFlag := fs.String("state", "", "Filter by agent state (eg running,pr_open). Comma-separated for multiple.")
 	laneFlag := fs.String("lane", "", "Filter by lane")
 	format := fs.String("format", formatTable, "Output format: table | json")
+	// --json is sugar for --format=json (matches `gh pr list --json` muscle memory; R31-Bug-D).
+	jsonFlag := fs.Bool("json", false, "Shorthand for --format=json")
 	_ = fs.Parse(args)
+	if *jsonFlag {
+		*format = logFormatJSON
+	}
 
 	resolved := *dbPath
 	// Legacy REGATTA_DB env fallback (pre-MAY-R3 alias); REGATTA_STATE_DB

@@ -30,6 +30,7 @@ const (
 	subcmdProgram          = "program"
 	subcmdServe            = "serve"
 	subcmdValidateConfig   = "validate-config"
+	subcmdConfigValidate   = "config-validate" // R31-Bug-C alias.
 	subcmdInit             = "init"
 	subcmdVerifyRepoConfig = "verify-repo-config"
 	subcmdApproval         = "approval"
@@ -38,6 +39,8 @@ const (
 	subcmdInstallService   = "install-service"
 	subcmdUninstallService = "uninstall-service"
 	// subcmdDoctor is declared in doctor.go.
+
+	flagLongHelp = "--help"
 )
 
 // subcmdAudit is declared in audit.go (its run function lives there).
@@ -58,6 +61,8 @@ var subcommands = []subcommand{
 	{subcmdProgram, runProgram},
 	{subcmdServe, runServe},
 	{subcmdValidateConfig, runValidateConfig},
+	// Alias: docs + operator muscle memory invoke `config-validate` (R31-Bug-C).
+	{subcmdConfigValidate, runValidateConfig},
 	{subcmdInit, runInit},
 	{subcmdApproval, runApproval},
 	{subcmdKeys, runKeys},
@@ -93,7 +98,7 @@ func main() {
 	switch arg {
 	case "version", "-v", "--version":
 		fmt.Println("regatta", version)
-	case "help", "-h", "--help":
+	case "help", "-h", flagLongHelp:
 		usage(os.Stdout)
 	default:
 		fmt.Fprintf(os.Stderr, "regatta: unknown subcommand %q\n", arg)
@@ -133,8 +138,8 @@ func usage(w io.Writer) {
   regatta install-service [--user|--system]           Install OS-native supervisor (launchd or systemd)
   regatta uninstall-service [--user|--system]         Reverse install-service (idempotent)
   regatta doctor [--json] [--skip <name>]             Preflight: secrets, binaries, gh auth, git, config, branch protection
-  regatta agents list [--state=<s>] [--lane=<l>] [--format=table|json]  List agents from state.db (read-only; closes #1078)
-  regatta events tail [--db PATH] [--agent N] [--kind K] [--since DUR] [-f]  Read-only tail of substrate events (table | json; closes #1078 c2)
+  regatta agents list [--state=<s>] [--lane=<l>] [--format=table|json|--json]  List agents from state.db (read-only; closes #1078)
+  regatta events tail [--db PATH] [--agent N] [--kind K] [--since DUR] [-n N] [-f]  Read-only tail of substrate events (table | json; closes #1078 c2)
   regatta version                                     Print build info
   regatta help                                        This message
 

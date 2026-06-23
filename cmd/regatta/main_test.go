@@ -12,6 +12,7 @@ func TestMain_DispatchTableCoversAllCommands(t *testing.T) {
 		subcmdProgram,
 		subcmdServe,
 		subcmdValidateConfig,
+		subcmdConfigValidate, // R31-Bug-C alias for subcmdValidateConfig.
 		subcmdInit,
 		subcmdApproval,
 		subcmdKeys,
