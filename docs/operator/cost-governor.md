@@ -140,7 +140,7 @@ Recovery walks via the cost-governor-incidents playbook
 fails closed on the first bucket missing a `budget_reconciled` row.
 Run it from cron (or pre-merge CI) to catch reconciler silence before
 the 30-day-green graduation window (#727) resets. Default DB path
-`regatta.db`; override via `REGATTA_DB=/path/to/regatta.db`. Exit 0 =
+`regatta.db`; override via `REGATTA_STATE_DB=/path/to/regatta.db` (or legacy `REGATTA_DB` alias). Exit 0 =
 all 7 buckets covered; exit 1 = at least one bucket empty (stderr
 names the gap date); exit 2 = DB/sqlite3 access error. Fixtures in
 `scripts/cost_governor_soak_test.sh`.
