@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/web/internalerror"
 )
 
 func loadAgentsView(ctx context.Context, deps Dependencies) any {
@@ -76,7 +77,7 @@ func serveAgentDrawer(w http.ResponseWriter, r *http.Request, deps Dependencies)
 		CreatedAt: a.CreatedAt, UpdatedAt: a.UpdatedAt,
 	}
 	if err := deps.Templates.Render(w, "_drawer_agent", view); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalerror.Write(w, nil, "web.drawer_agent_render", err)
 	}
 }
 

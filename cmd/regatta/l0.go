@@ -15,11 +15,13 @@ import (
 )
 
 func runL0(args []string) int {
-	fs := flag.NewFlagSet("l0", flag.ExitOnError)
+	fs := flag.NewFlagSet("l0", flag.ContinueOnError)
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta l0 <diff-file>  ('-' for stdin)")
 	}
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 	if fs.NArg() != 1 {
 		fs.Usage()
 		return 2
@@ -40,11 +42,13 @@ func runL0(args []string) int {
 }
 
 func runL0Refs(args []string) int {
-	fs := flag.NewFlagSet("l0-refs", flag.ExitOnError)
+	fs := flag.NewFlagSet("l0-refs", flag.ContinueOnError)
 	repoDir := fs.String("repo", ".", "Path to the git repository")
 	baseRef := fs.String("base", "", "Base ref (branch, tag, or sha)")
 	headRef := fs.String("head", "", "Head ref (branch, tag, or sha)")
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 	if *baseRef == "" || *headRef == "" {
 		fs.Usage()
 		fmt.Fprintln(os.Stderr, "regatta l0-refs: -base and -head required")
@@ -59,10 +63,12 @@ func runL0Refs(args []string) int {
 }
 
 func runL0Merge(args []string) int {
-	fs := flag.NewFlagSet("l0-merge", flag.ExitOnError)
+	fs := flag.NewFlagSet("l0-merge", flag.ContinueOnError)
 	repoDir := fs.String("repo", ".", "Path to the git repository")
 	commit := fs.String("commit", "", "Merge commit sha")
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 	if *commit == "" {
 		fs.Usage()
 		fmt.Fprintln(os.Stderr, "regatta l0-merge: -commit required")

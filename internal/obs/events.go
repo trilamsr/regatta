@@ -360,6 +360,7 @@ func AllAttrKeys() []AttrKey {
 		KeyReason,
 		KeyErr,
 		KeyExitCode,
+		KeyExitReason,
 		KeyLastTextFingerprint,
 		KeyWorkItemsEvaluated,
 		KeyAgentsReserved,

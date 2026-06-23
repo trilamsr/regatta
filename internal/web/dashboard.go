@@ -12,6 +12,7 @@ import (
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/web/etag"
+	"github.com/trilamsr/regatta/internal/web/internalerror"
 )
 
 type dashboardSpendView struct {
@@ -259,7 +260,7 @@ func serveDashboardPanel(w http.ResponseWriter, r *http.Request, deps Dependenci
 		w.Header().Set("ETag", quoted)
 	}
 	if err := deps.Templates.Render(w, name, data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalerror.Write(w, nil, "web.panel_render."+name, err)
 	}
 }
 

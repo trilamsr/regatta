@@ -35,6 +35,10 @@ echo "REPO_PATH=$PWD" >> .env # the repo bind-mount target
 docker compose up -d
 ```
 
+Run `docker compose` from the primary checkout, not from a `.claude/worktrees/*`
+working tree — `.env` only lives in the primary path. Worktrees inherit
+`.gitignore` but not the `.env` file (R-MEGA-3 LIVE-19).
+
 The first `up` pulls the three external images, builds the `regatta`
 image from the in-tree `Dockerfile`, and starts all four services.
 Initial start takes ~30 s on a warm Docker daemon (Prometheus health

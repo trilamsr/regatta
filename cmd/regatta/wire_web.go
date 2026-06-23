@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"net/http"
@@ -15,6 +16,14 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/web"
 )
+
+// readyzProbeTimeout caps the DB ping the readiness probe runs so a
+// hung connection cannot stall a load-balancer poll loop (LIVE-2).
+const readyzProbeTimeout = 2 * time.Second
+
+func contextWithReadyzTimeout(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(parent, readyzProbeTimeout)
+}
 
 // listenerConfig is the bootListener seam; the test harness drives it directly so integration tests exercise the real boot path.
 type listenerConfig struct {
@@ -105,6 +114,33 @@ func bootListener(cfg listenerConfig) (*http.Server, error) {
 			return
 		}
 		healthHandler(w, r)
+	})
+	// /readyz is the K8s-convention readiness probe: 200 only once the DB
+	// can be pinged AND the orchestrator heartbeat has been touched at
+	// least once (i.e. the first scheduler tick fired). Lighter than
+	// /healthz, which carries the full JSON envelope (LIVE-2).
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			w.Header().Set("Allow", "GET, HEAD")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if healthDB == nil {
+			http.Error(w, "db not wired", http.StatusServiceUnavailable)
+			return
+		}
+		ctx, cancel := contextWithReadyzTimeout(r.Context())
+		defer cancel()
+		if err := healthDB.PingContext(ctx); err != nil {
+			http.Error(w, "db unreachable", http.StatusServiceUnavailable)
+			return
+		}
+		if hb == nil || hb.Age() == 0 || hb.NeverTouched() {
+			http.Error(w, "first tick not seen", http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = w.Write([]byte("ok\n"))
 	})
 	cbPath, cbHandler := approval.NewHTTPCallback(approval.Dependencies{
 		DB:      cfg.DB,

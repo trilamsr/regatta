@@ -50,7 +50,7 @@ func runKeys(args []string) int {
 // cohort) are skipped without error so one rotation does not bleed
 // across cohorts.
 func runKeysResignBriefs(args []string) int {
-	fs := flag.NewFlagSet("keys re-sign-briefs", flag.ExitOnError)
+	fs := flag.NewFlagSet("keys re-sign-briefs", flag.ContinueOnError)
 	oldKeyID := fs.String("old-key-id", "", "key_id of the retiring key to re-sign FROM (required)")
 	oldKeyEnv := fs.String("old-key-env", "", "Env var holding the retiring key material (required)")
 	newKeyID := fs.String("new-key-id", "", "key_id to stamp into the re-signed brief (required)")
@@ -61,7 +61,9 @@ func runKeysResignBriefs(args []string) int {
 		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta keys re-sign-briefs -old-key-id ID -old-key-env ENV -new-key-id ID -new-key-env ENV [-dir DIR] [-dry-run]")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 
 	if *oldKeyID == "" || *newKeyID == "" || *oldKeyEnv == "" || *newKeyEnv == "" {
 		fs.Usage()

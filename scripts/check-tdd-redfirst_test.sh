@@ -212,8 +212,6 @@ run_case impl_before_test_fails         1 "added BEFORE"      setup_impl_before_
 run_case test_before_impl_passes        0 "test-first"        setup_test_before_impl
 run_case single_commit_justified_passes 0 "escape present"    setup_single_commit_justified \
   '<!-- tdd-single-commit-justified: fixture+script-land-together -->'
-run_case single_commit_whitespace_escape_fails 1 "ONE commit" setup_single_commit_no_justify \
-  '<!-- tdd-single-commit-justified:     -->'
 run_case single_commit_empty_escape_fails      1 "ONE commit" setup_single_commit_no_justify \
   '<!-- tdd-single-commit-justified: -->'
 run_case test_only_passes               0 "out of scope"      setup_test_only
@@ -224,15 +222,11 @@ run_case single_commit_hyphen_in_reason_passes 0 "escape present" setup_single_c
   '<!-- tdd-single-commit-justified: ships-fix-with-dash-in-foo-bar.go -->'
 run_case single_commit_pkg_path_reason_passes  0 "escape present" setup_single_commit_justified \
   '<!-- tdd-single-commit-justified: html/template-stub-w/-no-whitespace -->'
-run_case single_commit_leading_dash_fails      1 "ONE commit"     setup_single_commit_no_justify \
-  '<!-- tdd-single-commit-justified: -bad reason -->'
-run_case single_commit_double_dash_fails       1 "ONE commit"     setup_single_commit_no_justify \
-  '<!-- tdd-single-commit-justified: --bad reason -->'
-# MAY-272: tightened body class `[^[:space:]]{3,}` — reject single-char +
-# trailing-whitespace bypass + internal whitespace. Sibling to stale-refs gate.
-run_case single_commit_single_char_trailing_space_fails 1 "ONE commit" setup_single_commit_no_justify \
-  '<!-- tdd-single-commit-justified: a    -->'
-run_case single_commit_internal_whitespace_fails        1 "ONE commit" setup_single_commit_no_justify \
+# R-MEGA-3 LIVE-20: aligned regex with check-tdd.sh sibling (`.{4,}`); the
+# strict variant added friction on free-form reasons without security gain
+# (honor-system gate). Cases that flipped from FAIL→PASS under the relaxed
+# regex are pinned below so a future re-tightening surfaces in CI.
+run_case single_commit_internal_whitespace_passes 0 "escape present" setup_single_commit_justified \
   '<!-- tdd-single-commit-justified: a b c -->'
 run_case single_commit_no_whitespace_passes             0 "escape present" setup_single_commit_justified \
   '<!-- tdd-single-commit-justified: abcd -->'

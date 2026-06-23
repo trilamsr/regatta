@@ -16,12 +16,14 @@ import (
 )
 
 func runVerifyRepoConfig(args []string) int {
-	fs := flag.NewFlagSet(subcmdVerifyRepoConfig, flag.ExitOnError)
+	fs := flag.NewFlagSet(subcmdVerifyRepoConfig, flag.ContinueOnError)
 	owner := fs.String("owner", "", "GitHub repo owner (default: regatta.yaml repo.owner)")
 	repo := fs.String("repo", "", "GitHub repo name (default: regatta.yaml repo.name)")
 	branch := fs.String("branch", "", "Protected branch name (default: regatta.yaml repo.default_branch, then main)")
 	asJSON := fs.Bool("json", false, "Emit JSON instead of human-readable summary")
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 
 	if cfg, _ := validateconfig.LoadConfigFile("regatta.yaml"); cfg != nil && cfg.Repo != nil {
 		if *owner == "" {

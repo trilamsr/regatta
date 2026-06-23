@@ -13,6 +13,7 @@ import (
 
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/web/internalerror"
 )
 
 func loadWorkItemsView(ctx context.Context, deps Dependencies) any {
@@ -114,7 +115,7 @@ func serveWorkItemDrawer(w http.ResponseWriter, r *http.Request, deps Dependenci
 		BodyPreview:  buildBodyPreview(wi.AcceptanceJSON, bodyPreviewMaxRunes),
 	}
 	if err := deps.Templates.Render(w, "_drawer_workitem", view); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		internalerror.Write(w, nil, "web.drawer_workitem_render", err)
 	}
 }
 

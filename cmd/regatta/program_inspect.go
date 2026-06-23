@@ -45,14 +45,16 @@ type programShowReport struct {
 // fields so `regatta program show <path> | jq .engine_version` is the
 // audit-inspect UX called out by #549.
 func runProgramShow(args []string) int {
-	fs := flag.NewFlagSet("program show", flag.ExitOnError)
+	fs := flag.NewFlagSet("program show", flag.ContinueOnError)
 	keyEnv := fs.String("hmac-key-env", "", "Env var holding the HMAC key (if set, verify brief signature)")
 	keyID := fs.String("hmac-key-id", "k1", "key_id to expect in the signature")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta program show <brief.json>")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 	if fs.NArg() != 1 {
 		fs.Usage()
 		return 2
@@ -121,14 +123,16 @@ type programSkewReport struct {
 // call time so the same binary that's about to RE-RUN the engine is
 // the one whose SHA the brief is compared against.
 func runProgramReplaySkewCheck(args []string) int {
-	fs := flag.NewFlagSet("program replay-skew-check", flag.ExitOnError)
+	fs := flag.NewFlagSet("program replay-skew-check", flag.ContinueOnError)
 	strict := fs.Bool("strict", false,
 		"refuse replay on engine-version skew (exit 1). Default is WARN: emit a tag and continue.")
 	fs.Usage = func() {
 		_, _ = fmt.Fprintln(fs.Output(), "Usage: regatta program replay-skew-check [--strict] <brief.json>")
 		fs.PrintDefaults()
 	}
-	_ = fs.Parse(args)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
 	if fs.NArg() != 1 {
 		fs.Usage()
 		return 2

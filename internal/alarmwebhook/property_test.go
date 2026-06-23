@@ -58,6 +58,7 @@ func genPayload() *rapid.Generator[[]byte] {
 func postRapid(rt *rapid.T, h http.Handler, body []byte) *httptest.ResponseRecorder {
 	rt.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/webhook", strings.NewReader(string(body)))
+	req.Header.Set(WebhookAuthHeader, "property-test-token")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	return rr
@@ -65,6 +66,7 @@ func postRapid(rt *rapid.T, h http.Handler, body []byte) *httptest.ResponseRecor
 
 // TestAlarmWebhook_PropertyTest_NoDoubleIssueOnReplay asserts no random AlertManager payload produces two CreateIssue calls when replayed twice.
 func TestAlarmWebhook_PropertyTest_NoDoubleIssueOnReplay(t *testing.T) {
+	t.Setenv(WebhookAuthEnv, "property-test-token")
 	rapid.Check(t, func(rt *rapid.T) {
 		body := genPayload().Draw(rt, "payload")
 		fake := &fakeGitHub{}
