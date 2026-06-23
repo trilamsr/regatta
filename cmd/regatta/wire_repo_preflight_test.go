@@ -117,3 +117,26 @@ func TestCheckRepoRootExists_RealDirPasses(t *testing.T) {
 		t.Fatalf("checkRepoRootExists(tempdir) = %v; want nil", err)
 	}
 }
+
+// TestPreflight_AcceptsWorktreeRepo asserts relative gitdir pointer resolves against repoRoot (R-MEGA-2 P1).
+func TestPreflight_AcceptsWorktreeRepo(t *testing.T) {
+	root := t.TempDir()
+	mainGit := filepath.Join(root, "..", "main-git")
+	if err := os.MkdirAll(mainGit, 0o755); err != nil {
+		t.Fatalf("mkdir main: %v", err)
+	}
+	wtDir := filepath.Join(mainGit, "worktrees", "agent-1")
+	if err := os.MkdirAll(wtDir, 0o755); err != nil {
+		t.Fatalf("mkdir worktree dir: %v", err)
+	}
+	rel, err := filepath.Rel(root, wtDir)
+	if err != nil {
+		t.Fatalf("rel: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: "+rel+"\n"), 0o600); err != nil {
+		t.Fatalf("write .git: %v", err)
+	}
+	if err := checkGitdirReachable(root); err != nil {
+		t.Fatalf("worktree pointer with reachable relative gitdir should pass: %v", err)
+	}
+}

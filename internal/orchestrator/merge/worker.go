@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 )
 
 // MergeRequest is the queue payload from "gates pass" → ExecuteMerge.
@@ -29,6 +30,9 @@ type Worker struct {
 
 	wg     sync.WaitGroup
 	closed sync.Once
+	// shut flips before close(w.in) so Enqueue can refuse a send to a
+	// closed channel and avoid the panic that races Stop (R-MEGA-2 C2).
+	shut atomic.Bool
 }
 
 // NewWorker constructs a Worker bound to coord. bufSize caps in-flight
@@ -54,6 +58,9 @@ func NewWorker(coord *Coordinator, bufSize int, log *slog.Logger) *Worker {
 // pre-PrepareMerge; the worker calls ExecuteMerge which calls
 // PrepareMerge inside its own tx.
 func (w *Worker) Enqueue(req MergeRequest) bool {
+	if w.shut.Load() {
+		return false
+	}
 	select {
 	case w.in <- req:
 		return true
@@ -92,9 +99,13 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 
-// Stop closes the input channel; subsequent Enqueue panics. Callers
-// should Stop only after the scheduler has stopped emitting requests.
+// Stop closes the input channel and waits for Run to drain. Enqueue
+// after Stop returns false; the shut flag is set BEFORE close so
+// concurrent Enqueue cannot select-send on a closed channel.
 func (w *Worker) Stop() {
-	w.closed.Do(func() { close(w.in) })
+	w.closed.Do(func() {
+		w.shut.Store(true)
+		close(w.in)
+	})
 	w.wg.Wait()
 }

@@ -382,7 +382,7 @@ func (w *Watcher) transitionToPROpen(ctx context.Context, a state.Agent, pr Pull
 		PRNumber int    `json:"pr_number"`
 		PRSHA    string `json:"pr_sha"`
 	}{pr.Number, sha})
-	err := w.db.RecordEvent(ctx, a.ID, "agent_pr_opened", string(payload))
+	err := w.db.RecordEvent(ctx, a.ID, string(obs.EventAgentPROpened), string(payload))
 	if err == nil {
 		w.log.Info("prwatch.agent_pr_opened",
 			string(obs.KeyAgentID), a.ID,
@@ -424,7 +424,7 @@ func (w *Watcher) observeHeadChanged(ctx context.Context, a state.Agent, pr Pull
 		PRSHA    string `json:"pr_sha"`
 		PrevSHA  string `json:"prev_sha"`
 	}{pr.Number, sha, a.PRSHA})
-	if err := w.db.RecordEvent(ctx, a.ID, "agent_pr_head_changed", string(payload)); err != nil {
+	if err := w.db.RecordEvent(ctx, a.ID, string(obs.EventAgentPRHeadChanged), string(payload)); err != nil {
 		w.log.Warn("prwatch.record_event_failed",
 			string(obs.KeyAgentID), a.ID,
 			"kind", "agent_pr_head_changed",
@@ -447,7 +447,7 @@ func (w *Watcher) observeBranchLost(ctx context.Context, a state.Agent) {
 		PrevSHA   string `json:"prev_sha"`
 		Threshold int    `json:"miss_threshold"`
 	}{a.PRSHA, w.branchRenameThreshold})
-	if err := w.db.RecordEvent(ctx, a.ID, "agent_branch_renamed", string(payload)); err != nil {
+	if err := w.db.RecordEvent(ctx, a.ID, string(obs.EventAgentBranchRenamed), string(payload)); err != nil {
 		w.log.Warn("prwatch.record_event_failed",
 			string(obs.KeyAgentID), a.ID,
 			"kind", "agent_branch_renamed",
@@ -481,7 +481,7 @@ func (w *Watcher) observeMergeStateStatus(ctx context.Context, a state.Agent, pr
 		PRNumber         int    `json:"pr_number"`
 		MergeStateStatus string `json:"merge_state_status"`
 	}{pr.Number, pr.MergeStateStatus})
-	if err := w.db.RecordEvent(ctx, a.ID, "agent_pr_dirty", string(payload)); err != nil {
+	if err := w.db.RecordEvent(ctx, a.ID, string(obs.EventAgentPRDirty), string(payload)); err != nil {
 		w.log.Warn("prwatch.record_event_failed",
 			string(obs.KeyAgentID), a.ID,
 			"kind", "agent_pr_dirty",

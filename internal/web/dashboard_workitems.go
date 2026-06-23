@@ -85,19 +85,19 @@ func loadFlowView(ctx context.Context, deps Dependencies) any {
 func serveWorkItemDrawer(w http.ResponseWriter, r *http.Request, deps Dependencies) {
 	w.Header().Set("Cache-Control", noStoreCacheControl)
 	if deps.Templates == nil || deps.DB == nil {
-		http.NotFound(w, r)
+		writeDrawerNotFound(w)
 		return
 	}
 	id := strings.TrimPrefix(r.URL.Path, "/ui/drawer/work-item/")
 	if id == "" {
-		http.NotFound(w, r)
+		writeDrawerNotFound(w)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), dashboardPanelTimeoutSeconds*time.Second)
 	defer cancel()
 	wi, err := deps.DB.GetWorkItem(ctx, id)
 	if err != nil {
-		http.NotFound(w, r)
+		writeDrawerNotFound(w)
 		return
 	}
 	var agentState state.AgentState

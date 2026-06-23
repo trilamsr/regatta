@@ -178,8 +178,12 @@ func emitMetrics(ctx context.Context, cfg Config, r CallRecord, usd float64) {
 // float→int boundary at the end. Per-Mtok rate × tokens stays in the
 // mantissa-exact band for prod magnitudes (rates < $100/Mtok, tokens
 // < 1e8); dividing by 1e6 last lands every charge on an exact
-// micro-USD count (#554).
+// micro-USD count (#554). Negative tokens clamp to 0 — a refund-shaped
+// call must not let later spawns slip past the cap (R-MEGA-2 C4).
 func tokensToMicro(tokens int64, usdPerMTok float64) USDMicro {
+	if tokens < 0 {
+		return 0
+	}
 	return FromUSD(float64(tokens) * usdPerMTok / 1_000_000.0)
 }
 

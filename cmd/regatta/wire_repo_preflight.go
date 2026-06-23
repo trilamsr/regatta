@@ -83,11 +83,19 @@ func checkGitdirReachable(repoRoot string) error {
 		return nil
 	}
 	target := strings.TrimSpace(string(m[1]))
-	if _, err := os.Stat(target); err != nil {
+	// gitdir pointers in worktree .git files are relative to the
+	// directory holding the .git file. Resolve against repoRoot so a
+	// mounted worktree (e.g. `gitdir: ../.git/worktrees/X`) is judged
+	// reachable when the resolved path stats clean (R-MEGA-2 P1).
+	resolved := target
+	if !filepath.IsAbs(target) {
+		resolved = filepath.Join(repoRoot, target)
+	}
+	if _, err := os.Stat(resolved); err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("repo root %s is a git worktree whose gitdir %q is not reachable from this process; mount the main repo path, not a worktree", repoRoot, target)
+			return fmt.Errorf("repo root %s is a git worktree whose gitdir %q (resolved to %s) is not reachable from this process; mount the main repo path, not a worktree", repoRoot, target, resolved)
 		}
-		return fmt.Errorf("stat gitdir target %s: %w", target, err)
+		return fmt.Errorf("stat gitdir target %s: %w", resolved, err)
 	}
 	return nil
 }

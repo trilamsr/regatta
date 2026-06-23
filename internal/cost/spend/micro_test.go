@@ -19,7 +19,8 @@ func TestMicroUSD_FromUSD_RoundsHalfAwayFromZero(t *testing.T) {
 		{0.000001, 1},     // 1 micro-USD
 		{0.0000005, 1},    // half rounds up
 		{0.0000004, 0},    // below-half rounds down
-		{-0.0000005, -1},  // half away from zero (negative half rounds DOWN)
+		{-0.0000005, 0},   // R-MEGA-2 C4: negatives clamp so refunds can't shrink the cap-defending budget
+		{-1.0, 0},
 		{99.99, 99_990_000},
 		{1234.567891, 1_234_567_891},
 		{math.NaN(), 0},               // non-finite collapses to 0

@@ -25,20 +25,20 @@ func loadEventsView(ctx context.Context, deps Dependencies) any {
 func serveEventDrawer(w http.ResponseWriter, r *http.Request, deps Dependencies) {
 	w.Header().Set("Cache-Control", noStoreCacheControl)
 	if deps.Templates == nil || deps.DB == nil {
-		http.NotFound(w, r)
+		writeDrawerNotFound(w)
 		return
 	}
 	idStr := strings.TrimPrefix(r.URL.Path, "/ui/drawer/event/")
 	id, err := strconv.ParseInt(idStr, strconvBase10, strconvBitSize64)
 	if err != nil {
-		http.NotFound(w, r)
+		writeDrawerNotFound(w)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), dashboardPanelTimeoutSeconds*time.Second)
 	defer cancel()
 	ev, err := deps.DB.GetEvent(ctx, id)
 	if err != nil {
-		http.NotFound(w, r)
+		writeDrawerNotFound(w)
 		return
 	}
 	ev.PayloadJSON = prettyJSON(ev.PayloadJSON)

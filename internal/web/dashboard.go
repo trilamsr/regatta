@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+	"github.com/trilamsr/regatta/internal/web/etag"
 )
 
 type dashboardSpendView struct {
@@ -246,6 +247,17 @@ func serveDashboardPanel(w http.ResponseWriter, r *http.Request, deps Dependenci
 	ctx, cancel := context.WithTimeout(r.Context(), dashboardPanelTimeoutSeconds*time.Second)
 	defer cancel()
 	data := loader(ctx, deps)
+	// Weak ETag over the view bytes so htmx 5s polls return 304 when
+	// the row-set is unchanged. Template render still emits the
+	// fragment on first-paint AND on every body diff (R-MEGA-2 P2).
+	if tag := etag.Hash(data); tag != "" {
+		quoted := `"` + tag + `"`
+		if r.Header.Get("If-None-Match") == quoted {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", quoted)
+	}
 	if err := deps.Templates.Render(w, name, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}

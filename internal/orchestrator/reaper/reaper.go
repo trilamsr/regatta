@@ -168,7 +168,7 @@ func (r *Reaper) Reap(ctx context.Context, agentID int64) error {
 	if _, err := r.db.ReleaseAgentLocks(ctx, agentID); err != nil {
 		return fmt.Errorf("reaper: release locks for agent %d: %w", agentID, err)
 	}
-	_ = r.db.RecordEvent(ctx, agentID, "reaped", "{}")
+	_ = r.db.RecordEvent(ctx, agentID, string(obs.EventReaped), "{}")
 	return nil
 }
 

@@ -78,7 +78,7 @@ func runAgentsList(args []string) int {
 	resolved := *dbPath
 	// Legacy REGATTA_DB env fallback (pre-MAY-R3 alias); REGATTA_STATE_DB
 	// is the canonical name + already flows through defaultStateDB().
-	if envDB := os.Getenv("REGATTA_DB"); resolved == stateDBDefaultLiteral && envDB != "" {
+	if envDB := os.Getenv("REGATTA_DB"); resolved == stateDBDefaultLiteral && envDB != "" { // canonical-env-skip: MAY-R3 back-compat fallback to legacy REGATTA_DB; canonical is REGATTA_STATE_DB
 		resolved = envDB
 	}
 	ctx := context.Background()

@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/config/validate"
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/secrets"
 )
@@ -28,7 +29,7 @@ import (
 func startSecretsRotationLoop(ctx context.Context, cache *secrets.Cache, fetcher secrets.Fetcher, slogger *slog.Logger, db *state.DB) {
 	go cache.Run(ctx, fetcher, slogger, func(eventCtx context.Context, chain string, keys int) {
 		payload := fmt.Sprintf(`{"chain":%q,"keys":%d}`, chain, keys)
-		if recErr := db.RecordEvent(eventCtx, 0, "secrets_rotated", payload); recErr != nil {
+		if recErr := db.RecordEvent(eventCtx, 0, string(obs.EventSecretsRotated), payload); recErr != nil {
 			slogger.Warn("secrets_rotated.event_record_failed", "err", recErr)
 		}
 	})

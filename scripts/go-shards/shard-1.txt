@@ -15,6 +15,7 @@ github.com/trilamsr/regatta/internal/obs/dispatch
 github.com/trilamsr/regatta/internal/obs/failtaxonomy
 github.com/trilamsr/regatta/internal/orchestrator/adapter/linear
 github.com/trilamsr/regatta/internal/orchestrator/checks
+github.com/trilamsr/regatta/internal/orchestrator/events
 github.com/trilamsr/regatta/internal/orchestrator/reaper
 github.com/trilamsr/regatta/internal/orchestrator/scheduler
 github.com/trilamsr/regatta/internal/orchestrator/state/cycle

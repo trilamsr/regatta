@@ -22,6 +22,12 @@ const (
 	EventTickCompleted EventName = "tick.completed"
 	EventTickSlow      EventName = "tick.slow"
 
+	// EventServeStarted fires once after the daemon's secrets + DB +
+	// supervisor reach ready so the operator's journal carries an
+	// explicit boot-completion marker with version + boot-duration
+	// payload (R-MEGA-2 P6).
+	EventServeStarted EventName = "serve.started"
+
 	EventEdgeFired                   EventName = "edge.fired"
 	EventEdgeSkipped                 EventName = "edge.skipped"
 	EventEdgeDefaultFallback         EventName = "edge.default_fallback"
@@ -245,6 +251,7 @@ func AllEventNames() []EventName {
 		EventTickStarted,
 		EventTickCompleted,
 		EventTickSlow,
+		EventServeStarted,
 		EventEdgeFired,
 		EventEdgeSkipped,
 		EventEdgeDefaultFallback,
