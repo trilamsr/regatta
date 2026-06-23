@@ -150,7 +150,7 @@ func New(cfg Config) (*Enforcer, error) {
 	stateGauge, _ := meter.Int64Gauge("regatta_cost_cap_state")
 	spendGauge, _ := meter.Float64Gauge("regatta_cost_cap_24h_spend_usd")
 
-	return &Enforcer{
+	e := &Enforcer{
 		cfg:              cfg,
 		clock:            clock,
 		log:              log,
@@ -162,7 +162,14 @@ func New(cfg Config) (*Enforcer, error) {
 		stateGauge:       stateGauge,
 		spendGauge:       spendGauge,
 		lastState:        Active,
-	}, nil
+	}
+	if cfg.CapMicro == 0 {
+		log.Warn("cap.disabled",
+			"reason", "cost cap disabled; set cost.cap_micro > 0 to enforce",
+			"tenant_id", cfg.TenantID,
+		)
+	}
+	return e, nil
 }
 
 // dayAnchor returns wall-clock midnight in tz that is <= now. time.Date
