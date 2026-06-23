@@ -193,6 +193,22 @@ func (d *DB) ListEventsSince(ctx context.Context, sinceID int64, cutoffUnix int6
 	return out, rows.Err()
 }
 
+// DeleteEventsOlderThan removes rows from events whose created_at is
+// strictly less than the supplied cutoff. Returns the affected row
+// count so the retention loop can log progress (R-MEGA-2 P3).
+func (d *DB) DeleteEventsOlderThan(ctx context.Context, cutoff time.Time) (int64, error) {
+	res, err := d.sql.ExecContext(ctx,
+		`DELETE FROM events WHERE created_at < ?`, cutoff.UTC().Unix())
+	if err != nil {
+		return 0, fmt.Errorf("state: delete old events: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 // ListEvents returns events ordered by id ascending. Used by tests and
 // the audit log writer.
 func (d *DB) ListEvents(ctx context.Context, limit int) ([]Event, error) {
