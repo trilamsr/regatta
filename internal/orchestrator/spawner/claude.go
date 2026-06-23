@@ -147,6 +147,7 @@ func NewClaudeSpawner(wm *WorktreeManager, cfg ClaudeSpawnerConfig) (*ClaudeSpaw
 	if cfg.Clock == nil {
 		cfg.Clock = time.Now
 	}
+	warnIfPidfdFallbackPossible(cfg.Logger)
 	return &ClaudeSpawner{
 		wm:       wm,
 		cfg:      cfg,
