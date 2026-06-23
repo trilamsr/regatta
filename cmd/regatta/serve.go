@@ -102,6 +102,7 @@ func (l laneCapsFlag) Set(s string) error {
 }
 
 func runServe(args []string) int {
+	bootStart := time.Now()
 	f, ferr := parseServeFlagsValidated(args)
 	if ferr != nil {
 		fmt.Fprintln(os.Stderr, "regatta serve:", ferr)
@@ -349,6 +350,8 @@ func runServe(args []string) int {
 			}
 		}()
 	}
+
+	emitServeStarted(ctx, db, bootStart, slogger)
 
 	// Cost-reconciler goroutine: opt-in per safety.cost.reconcile_interval.
 	// Run() loops forever swallowing tick errors (R6), so startup never
