@@ -184,6 +184,11 @@ func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) 
 	if s.cfg.OnResultEventFor != nil {
 		cb = s.cfg.OnResultEventFor(req)
 	}
+	// ParseStream launches before the starter so a real claude binary
+	// can write into pw without blocking on a missing reader (#883). On
+	// the error paths below pw.Close() sends EOF, ParseStream returns,
+	// and the goroutine exits — closing pr too is defensive against any
+	// future starter that grabs pw and forgets to close (R-MEGA-2 C6).
 	go func() {
 		_ = ParseStream(spanCtx, s.cfg.Tracer, pr, cb)
 	}()
@@ -193,12 +198,14 @@ func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) 
 	cmd, err := s.starter(ctx, s.cfg.Command, args, strings.NewReader(prompt), io.MultiWriter(pw, ring), path)
 	if err != nil {
 		_ = pw.Close()
+		_ = pr.Close()
 		span.End()
 		_ = s.wm.Remove(context.WithoutCancel(ctx), req.AgentID)
 		return Result{}, fmt.Errorf("spawner: start claude: %w", err)
 	}
 	if cmd.Process == nil {
 		_ = pw.Close()
+		_ = pr.Close()
 		span.End()
 		_ = s.wm.Remove(context.WithoutCancel(ctx), req.AgentID)
 		return Result{}, errors.New("spawner: starter returned cmd with nil Process")
