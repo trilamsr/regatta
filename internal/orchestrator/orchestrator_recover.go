@@ -34,11 +34,16 @@ func (o *Orchestrator) Recover(ctx context.Context) error {
 		return fmt.Errorf("orchestrator: expire stale locks: %w", err)
 	}
 	// AwaitingMerge intentionally excluded: agent has a PR open with no live worktree PID — pidAlive would force-crash a healthy agent.
+	// AgentCrashed IS included: a daemon crash between the Crashed
+	// transition and the requeue leaves the row stuck Crashed with locks
+	// held. Re-running the same recovery branch finishes the transition
+	// idempotently (R-MEGA-2 C3).
 	pidBound := []state.AgentState{
 		state.AgentSpawning,
 		state.AgentRunning,
 		state.AgentPROpen,
 		state.AgentGatesRunning,
+		state.AgentCrashed,
 	}
 	agents, err := o.db.ListAgentsByState(ctx, pidBound...)
 	if err != nil {
@@ -54,20 +59,24 @@ func (o *Orchestrator) Recover(ctx context.Context) error {
 			}
 			continue
 		}
-		if pidAlive(a.PID) {
-			continue
-		}
-		if _, err := o.db.TransitionAgent(ctx, a.ID, state.AgentCrashed, state.AgentMutation{}); err != nil {
-			if errors.Is(err, state.ErrInvalidTransition) {
+		if a.State != state.AgentCrashed {
+			if pidAlive(a.PID) {
 				continue
 			}
-			return fmt.Errorf("orchestrator: mark agent %d crashed: %w", a.ID, err)
+			if _, err := o.db.TransitionAgent(ctx, a.ID, state.AgentCrashed, state.AgentMutation{}); err != nil {
+				if errors.Is(err, state.ErrInvalidTransition) {
+					continue
+				}
+				return fmt.Errorf("orchestrator: mark agent %d crashed: %w", a.ID, err)
+			}
 		}
 		if _, err := o.db.ReleaseAgentLocks(ctx, a.ID); err != nil {
 			return fmt.Errorf("orchestrator: release locks for crashed agent %d: %w", a.ID, err)
 		}
 		if _, err := o.db.TransitionAgent(ctx, a.ID, state.AgentPending, state.AgentMutation{}); err != nil {
-			return fmt.Errorf("orchestrator: requeue agent %d: %w", a.ID, err)
+			if errors.Is(err, state.ErrInvalidTransition) {
+				return fmt.Errorf("orchestrator: requeue agent %d: %w", a.ID, err)
+			}
 		}
 		_ = o.db.RecordEvent(ctx, a.ID, "recovered_crashed", "{}")
 		o.log.Info("orchestrator.recovered_crashed",
