@@ -75,14 +75,17 @@ import "list"
 }
 
 // Spec adapter selector. The `type` field discriminates between the per-type
-// schemas below.
+// schemas below. Only implemented adapters are accepted; jira, gitlab_issues,
+// and custom are Phase-X forward-fits with no wired consumer and are rejected
+// at CUE-validate time so a mistyped regatta.yaml fails fast instead of
+// silently falling back to markdown_catalog at boot.
 #SpecAdapter: {
-	type: "github_issues" | "gitlab_issues" | "markdown_catalog" | "jira" | "linear" | "custom"
+	type: "github_issues" | "markdown_catalog" | "linear"
 
-	if type == "github_issues" || type == "gitlab_issues" {
+	if type == "github_issues" {
 		selector:            string                  // e.g. "label:autonomous"
 		acceptance_section?: *"## Acceptance criteria" | string
-		// default_lane backfills WorkItem.Lane when body has no `lane:` metadata (#1117). Shared schema between github_issues + gitlab_issues; gitlab_issues adapter is Phase-X (no implementation today), so this is a schema-side forward-fit with no wired consumer yet.
+		// default_lane backfills WorkItem.Lane when body has no `lane:` metadata.
 		default_lane?: string
 	}
 	if type == "markdown_catalog" {
@@ -92,17 +95,9 @@ import "list"
 		root:    *"." | string
 		format:  *"github_checkbox" | "rubric"   // - [ ] / - [x]  vs.  ☐/⧗/☑
 	}
-	if type == "jira" {
-		project: string
-		jql:     string
-	}
 	if type == "linear" {
 		team:    string
 		states:  [...string]
-	}
-	if type == "custom" {
-		command:          string                // executable on PATH
-		timeout_seconds?: *30 | int & >0 & <=300
 	}
 }
 

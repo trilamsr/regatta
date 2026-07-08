@@ -105,8 +105,7 @@ func runServe(args []string) int {
 	bootStart := captureBootStart()
 	f, ferr := parseServeFlagsValidated(args)
 	if ferr != nil {
-		fmt.Fprintln(os.Stderr, "regatta serve:", ferr)
-		return 2
+		return reportServeFlagError(ferr)
 	}
 	publicHost, publicURLErr := parsePublicURL(f.PublicURL)
 

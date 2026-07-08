@@ -13,8 +13,7 @@ import (
 )
 
 // SpecAdapter abstracts every supported source of planned work
-// (github_issues, gitlab_issues, markdown_catalog, jira, linear,
-// custom). Implementations MUST honor context cancellation, be
+// (github_issues, markdown_catalog, linear). Implementations MUST honor context cancellation, be
 // idempotent across identical inputs, paginate internally, surface
 // rate-limit signals as ErrRateLimited wrapping RateLimitHint, and
 // never expose a write path for Criterion.Text (L0 enforces immutable

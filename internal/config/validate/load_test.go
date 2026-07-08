@@ -282,7 +282,10 @@ func TestLoad_AIGate_RequiresModel(t *testing.T) {
 	}
 }
 
-func TestLoad_CustomAdapter_Valid(t *testing.T) {
+func TestLoad_CustomAdapter_Rejected(t *testing.T) {
+	// W8: the CUE enum narrowed to only implemented types (github_issues,
+	// markdown_catalog, linear); `custom` was a Phase-X forward-fit that
+	// never got a wired consumer, so accepting it silently was a footgun.
 	yaml := strings.Replace(minimalValid, `spec_adapter:
   type: github_issues
   selector: "label:planned"
@@ -290,8 +293,8 @@ func TestLoad_CustomAdapter_Valid(t *testing.T) {
   type: custom
   command: /usr/local/bin/my-adapter
 `, 1)
-	if err := LoadBytes([]byte(yaml)); err != nil {
-		t.Fatalf("expected nil error for custom adapter with command; got %v", err)
+	if err := LoadBytes([]byte(yaml)); err == nil {
+		t.Fatal("expected error for custom adapter (Phase-X, not implemented); got nil")
 	}
 }
 
