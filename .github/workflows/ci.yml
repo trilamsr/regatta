@@ -216,4 +216,9 @@ jobs:
           # posture — spawner never runs during HTTP-surface integration
           # (the test only probes /healthz, /readyz, /ui/* routes).
           CLAUDE_CODE_OAUTH_TOKEN: ci-preflight-fake-boundary-token
+          # regatta.yaml has spec_adapter.type=github_issues → adapter init
+          # requires GH_TOKEN. HTTP integration tests do not exercise the
+          # adapter (only /healthz, /readyz, /ui/* routes), so the built-in
+          # workflow token (read-only for public repos) is sufficient.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: make integration
