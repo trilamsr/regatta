@@ -1,6 +1,15 @@
 // Package approval implements the HITL approval gate. The gate pauses
 // a work_item until the reviewer set decides (allow/deny) via signed
-// callback token. See docs/superpowers/specs/2026-05-31-mvp-approval-gates.md.
+// callback token.
+//
+// Why the shape: (1) event-sourced canonical truth — approval_events
+// is the log, approvals.status is fold(events) and property-tested
+// byte-equal, so replay is deterministic and audit is append-only.
+// (2) HMAC constant-time verify BEFORE JSON unmarshal — closes the
+// parser-oracle class where a crafted payload triggers behaviour pre-
+// auth. (3) Reviewer set snapshotted at request time, not decide time —
+// mutating regatta.yaml after an approval opens cannot change who can
+// approve it.
 package approval
 
 import (
