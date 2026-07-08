@@ -1,17 +1,9 @@
 package docker_test
 
 import (
-	"context"
 	"fmt"
-	"os/exec"
-	"path/filepath"
 	"strings"
-	"time"
 )
-
-// coreServices is the docker-compose service list whose logs get appended
-// on up-failure. Ordering controls the section order in the error message.
-var coreServices = []string{"regatta", "regatta-init", "prometheus", "alertmanager", "grafana"}
 
 // composeUpError wraps a compose-up failure with the captured combined
 // output so infra breakage is diagnosable at test-fail time (obs 18471).
@@ -50,17 +42,3 @@ func composeUpErrorWithLogs(base error, output []byte, fetcher func(service stri
 	return fmt.Errorf("%w%s", err, tail.String())
 }
 
-// composeLogFetcher returns a fetcher that shells `docker compose logs <svc>
-// --no-color --tail=200` bounded by a 15s per-service timeout.
-func composeLogFetcher(parent context.Context, repoRoot string) func(string) []byte {
-	return func(service string) []byte {
-		ctx, cancel := context.WithTimeout(parent, 15*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(ctx, "docker", "compose",
-			"-f", filepath.Join(repoRoot, "docker-compose.yml"),
-			"logs", service, "--no-color", "--tail=200")
-		cmd.Dir = repoRoot
-		out, _ := cmd.CombinedOutput()
-		return out
-	}
-}
