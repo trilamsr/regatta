@@ -12,7 +12,9 @@ import (
 
 // countingFailGetterDB embeds *state.DB and counts GetWorkItem calls,
 // returning a forced error so fetchWorkItemForRecheck's getter.GetWorkItem
-// path always fails. Used to drive the wired recheckBackoff.
+// path always fails. GetWorkItemsBatch also fails so snapshotWorkItems
+// leaves tc.workItems nil and the per-orphan fallback exercises the
+// backoff (#1359 preserves the pre-batch failure mode).
 type countingFailGetterDB struct {
 	*state.DB
 	calls int
@@ -22,6 +24,10 @@ type countingFailGetterDB struct {
 func (d *countingFailGetterDB) GetWorkItem(ctx context.Context, id string) (state.WorkItem, error) {
 	d.calls++
 	return state.WorkItem{}, d.err
+}
+
+func (d *countingFailGetterDB) GetWorkItemsBatch(ctx context.Context, ids []string) (map[string]state.WorkItem, error) {
+	return nil, d.err
 }
 
 // TestScheduler_OrphanRecheck_BackoffKicksIn asserts the wired recheckBackoff suppresses GetWorkItem after K=3 consecutive fetch failures for the same orphan id (#793).
