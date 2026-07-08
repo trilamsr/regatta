@@ -73,6 +73,14 @@ type BriefLoaderConfig struct {
 	// (#80). Zero value disables — an operator without REGATTA_HMAC_KEY
 	// keeps slog-only behaviour.
 	Audit BriefAuditConfig
+
+	// RequireSigning turns brief-signature enforcement fail-closed at
+	// Sync time (#1364). Default OFF: a brief whose signature is missing
+	// or invalid emits EventBriefRejected and is skipped (current
+	// behaviour). ON: the same rejection aborts Sync with an error whose
+	// message contains "signing required" so the operator sees the
+	// enforcement outcome instead of a silent-skip warn.
+	RequireSigning bool
 }
 
 // ResolveMeter returns the configured meter or falls back lazily.
@@ -86,14 +94,15 @@ func (c BriefLoaderConfig) ResolveMeter() metric.Meter {
 // rebuilt from scratch on every Sync so a re-plan that drops feature
 // F-X removes F-X's schema entry by next tick.
 type BriefLoader struct {
-	fsys      fs.FS
-	db        *state.DB
-	keyring   map[string][]byte
-	evaluator *EdgeEvaluator
-	log       *slog.Logger
-	tracer    trace.Tracer
-	audit    BriefAuditConfig
-	auditNow auditNowFunc
+	fsys           fs.FS
+	db             *state.DB
+	keyring        map[string][]byte
+	evaluator      *EdgeEvaluator
+	log            *slog.Logger
+	tracer         trace.Tracer
+	audit          BriefAuditConfig
+	auditNow       auditNowFunc
+	requireSigning bool
 
 	mu               sync.RWMutex
 	outputsSchemas   map[FeatureID]*OutputsSchema
@@ -132,6 +141,7 @@ func NewBriefLoader(cfg BriefLoaderConfig) (*BriefLoader, error) {
 		tracer:           tracer,
 		audit:            cfg.Audit,
 		auditNow:         time.Now,
+		requireSigning:   cfg.RequireSigning,
 		outputsSchemas:   map[FeatureID]*OutputsSchema{},
 		programByFeature: map[FeatureID]string{},
 	}, nil
@@ -196,6 +206,9 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		if err != nil {
 			b.log.Warn(string(obs.EventBriefRejected), "path", path, "reason", err.Error())
 			b.recordBriefRejection(ctx, path, err.Error())
+			if b.requireSigning && isSignatureError(err) {
+				return fmt.Errorf("brief_loader: signing required but signature missing/invalid for %s: %w", path, err)
+			}
 			continue
 		}
 		if _, err := b.db.GetWorkItem(ctx, brief.ParentWorkItemID); err != nil {
