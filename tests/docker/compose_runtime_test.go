@@ -20,7 +20,7 @@ func TestComposeRuntimeHTTPMatrix(t *testing.T) {
 	defer cancel()
 
 	out, err := compose(ctx, repoRoot, "up", "-d", "--wait").CombinedOutput()
-	if err := composeUpError(err, out); err != nil {
+	if err := composeUpErrorWithLogs(err, out, composeLogFetcher(ctx, repoRoot), coreServices); err != nil {
 		t.Fatalf("compose up: %v", err)
 	}
 	t.Cleanup(func() {

@@ -22,7 +22,8 @@ func TestComposeAlertmanagerRoundTrip(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	if err := compose(ctx, repoRoot, "up", "-d", "--wait").Run(); err != nil {
+	out, upErr := compose(ctx, repoRoot, "up", "-d", "--wait").CombinedOutput()
+	if err := composeUpErrorWithLogs(upErr, out, composeLogFetcher(ctx, repoRoot), coreServices); err != nil {
 		t.Fatalf("compose up: %v", err)
 	}
 	t.Cleanup(func() {
@@ -96,7 +97,8 @@ func TestComposePrometheusOTLPSample(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
-	if err := compose(ctx, repoRoot, "up", "-d", "--wait").Run(); err != nil {
+	out, upErr := compose(ctx, repoRoot, "up", "-d", "--wait").CombinedOutput()
+	if err := composeUpErrorWithLogs(upErr, out, composeLogFetcher(ctx, repoRoot), coreServices); err != nil {
 		t.Fatalf("compose up: %v", err)
 	}
 	t.Cleanup(func() {
