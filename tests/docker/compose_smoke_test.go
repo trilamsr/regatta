@@ -48,8 +48,9 @@ func TestComposeStackSmoke(t *testing.T) {
 	})
 
 	upCmd := compose(ctx, repoRoot, "up", "-d", "--wait", "--wait-timeout", "120")
-	if out, err := upCmd.CombinedOutput(); err != nil {
-		t.Fatalf("compose up -d --wait: %v\n%s", err, out)
+	out, upErr := upCmd.CombinedOutput()
+	if err := composeUpErrorWithLogs(upErr, out, composeLogFetcher(ctx, repoRoot), coreServices); err != nil {
+		t.Fatalf("compose up -d --wait: %v", err)
 	}
 
 	assertServicesHealthy(ctx, t, repoRoot, []string{"regatta", "prometheus", "grafana", "alertmanager"})
