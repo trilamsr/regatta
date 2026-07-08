@@ -12,7 +12,7 @@ import (
 
 // preflightSpawnerAuth refuses to boot the orchestrator when the configured spawner has no reachable credential path — boundary presence check only, never probes the credential itself (#1166 fix 3). The subscription branch accepts either a mounted ~/.claude OR a long-lived CLAUDE_CODE_OAUTH_TOKEN (issued by `claude setup-token`); the latter unblocks macOS Docker Desktop where the Keychain is not mountable into a Linux container.
 func preflightSpawnerAuth(spawnerName string) error {
-	if spawnerName != "claude" {
+	if spawnerName != spawnerNameClaude {
 		return nil
 	}
 	if spawner.IsFalsyEnv(os.Getenv("REGATTA_SPAWNER_STRIP_API_KEY")) {

@@ -208,7 +208,7 @@ func secretEnvVar(canonicalKey string) string {
 // agents against a real repo: spawner, GitHub CLI for PR + checks,
 // git for worktree ops. They MUST be on PATH on every host that
 // boots `regatta serve`.
-var runtimeBinaries = []string{"claude", "gh", "git"}
+var runtimeBinaries = []string{spawnerNameClaude, "gh", "git"}
 
 const (
 	binMake     = "make"

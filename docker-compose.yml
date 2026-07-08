@@ -113,7 +113,7 @@ services:
       # this every sibling verb falls back to "regatta.db" in cwd and
       # opens a fresh empty sqlite (or panics on "no such table").
       REGATTA_STATE_DB: "/data/regatta.db"
-    command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=${REGATTA_UI:-true}", "--spawner=claude"]
+    command: ["serve", "--repo", "/repo", "--db", "/data/regatta.db", "--ui=${REGATTA_UI:-false}", "--spawner=claude"]
     volumes:
       - ${REPO_PATH:-.}:/repo
       - regatta-data:/data
