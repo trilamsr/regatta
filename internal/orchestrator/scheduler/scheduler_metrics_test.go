@@ -15,7 +15,8 @@ import (
 )
 
 // expectedSteps pins the spec §3 row 4 / §10 brief A-T3 enum to one place.
-// gate_parallel_cap added by spec 2026-06-09 §3.1 (#1169).
+// gate_parallel_cap added by spec 2026-06-09 §3.1 (#1169). snapshot_work_items
+// added by #1359 — batches WorkItem fetches for the dispatch + persist steps.
 var expectedSteps = []string{
 	"dispatch",
 	"fold",
@@ -27,6 +28,7 @@ var expectedSteps = []string{
 	"gate_parallel_cap",
 	"persist",
 	"reaper",
+	"snapshot_work_items",
 }
 
 func newReaderProvider(t *testing.T) (*sdkmetric.ManualReader, *sdkmetric.MeterProvider) {

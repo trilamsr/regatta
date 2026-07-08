@@ -113,11 +113,11 @@ func (s *Scheduler) costCapDeniesOrphans(ctx context.Context, n int) bool {
 // fetchWorkItemForRecheck result; when gates are unwired the guard
 // does its own light fetch so the safety net still fires.
 func (s *Scheduler) recheckGates(ctx context.Context, tc *tickCtx, workItemID string) (skip bool, err error) {
-	wi, fetched, ok := s.fetchWorkItemForRecheck(ctx, workItemID)
+	wi, fetched, ok := s.fetchWorkItemForRecheck(ctx, tc, workItemID)
 	if !ok {
 		// Gates unwired: still run the archived safety-net so the
 		// scheduler does not dispatch ghosts on a missed cascade.
-		if s.orphanArchivedNoGates(ctx, workItemID) {
+		if s.orphanArchivedNoGates(ctx, tc, workItemID) {
 			return true, nil
 		}
 		return false, nil
@@ -150,8 +150,22 @@ func (s *Scheduler) recheckGates(ctx context.Context, tc *tickCtx, workItemID st
 // path. Returns false (do not skip) when the upcast or fetch fails so
 // the guard never blocks reservation on a misconfigured wiring or a
 // transient DB hiccup — the production scheduler always exposes
-// GetWorkItem so this only matters in tests.
-func (s *Scheduler) orphanArchivedNoGates(ctx context.Context, workItemID string) bool {
+// GetWorkItem so this only matters in tests. Consults tc.workItems
+// first so the tick-scoped snapshot serves the archived check without
+// a per-orphan round-trip (#1359).
+func (s *Scheduler) orphanArchivedNoGates(ctx context.Context, tc *tickCtx, workItemID string) bool {
+	if tc != nil && tc.workItems != nil {
+		if wi, ok := tc.workItems[workItemID]; ok {
+			if wi.Status != state.WorkStatusArchived {
+				return false
+			}
+			s.log.Info("scheduler.orphan_skipped_archived",
+				string(obs.KeyWorkItemID), workItemID,
+				string(obs.KeyReason), "work_item_archived",
+			)
+			return true
+		}
+	}
 	getter, ok := s.db.(workItemGetter)
 	if !ok {
 		return false
@@ -174,7 +188,7 @@ func (s *Scheduler) orphanArchivedNoGates(ctx context.Context, workItemID string
 // fetch. ok=false means no gate is wired so the caller short-circuits;
 // fetched=false means the upcast succeeded but the row read failed and
 // the orphan must pause (fail-closed).
-func (s *Scheduler) fetchWorkItemForRecheck(ctx context.Context, workItemID string) (wi state.WorkItem, fetched, ok bool) {
+func (s *Scheduler) fetchWorkItemForRecheck(ctx context.Context, tc *tickCtx, workItemID string) (wi state.WorkItem, fetched, ok bool) {
 	gatesWired := (s.cfg.Gate != nil && s.cfg.GateResolver != nil) ||
 		(s.cfg.CostGate != nil && s.cfg.CostGateResolver != nil) ||
 		(s.cfg.L4Gate != nil && s.cfg.L4GateResolver != nil)
@@ -183,6 +197,17 @@ func (s *Scheduler) fetchWorkItemForRecheck(ctx context.Context, workItemID stri
 	}
 	if s.backoff != nil && !s.backoff.Admit(workItemID) {
 		return state.WorkItem{}, false, true
+	}
+	// Serve out of the tick-scoped snapshot when populated so N pending
+	// orphans cost ONE SELECT, not N (#1359). Backoff RecordSuccess still
+	// fires so the recheck window resets identically to the fetched path.
+	if tc != nil && tc.workItems != nil {
+		if hit, ok := tc.workItems[workItemID]; ok {
+			if s.backoff != nil {
+				s.backoff.RecordSuccess(workItemID)
+			}
+			return hit, true, true
+		}
 	}
 	getter, isGetter := s.db.(workItemGetter)
 	if !isGetter {

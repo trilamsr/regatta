@@ -21,10 +21,7 @@ func (d *countingGetterDB) GetWorkItem(ctx context.Context, id string) (state.Wo
 	return d.DB.GetWorkItem(ctx, id)
 }
 
-// TestScheduler_OrphanRecheck_BatchesGetWorkItem_1359 asserts one Tick over
-// N pending orphans issues zero per-orphan GetWorkItem calls — the tick-
-// scoped WorkItem snapshot serves the gate re-check + archived safety-net
-// out of a single batch fetch.
+// TestScheduler_OrphanRecheck_BatchesGetWorkItem_1359 asserts tick-scoped snapshot serves N orphan re-checks with 0 per-id GetWorkItem calls (#1359).
 func TestScheduler_OrphanRecheck_BatchesGetWorkItem_1359(t *testing.T) {
 	ctx := context.Background()
 	realDB := statetest.OpenDB(t)

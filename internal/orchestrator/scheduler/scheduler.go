@@ -374,6 +374,14 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 			l0Count = len(sp)
 			return nil
 		}},
+		// snapshot_work_items batches the WorkItem fetches that
+		// buildActiveFileScopes (dispatch) and recheckGates (persist)
+		// otherwise issue per-agent, collapsing an N+1 GetWorkItem loop
+		// into ONE SELECT per tick (#1359, R31-I5).
+		{"snapshot_work_items", func() error {
+			s.snapshotWorkItems(ctx, tc, spawnable)
+			return nil
+		}},
 		// gate_parallel_cap: aggregate ceiling across ALL lanes (#1169).
 		// Pulled BEFORE gate_cost_cap / gate_cost / gate_l4 so the gate
 		// chain only pays per-candidate work for at most ParallelCap
@@ -507,10 +515,16 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 // writes; heap-once cost is negligible vs sqlite-tx overhead.
 // laneCaps is a snapshot of s.cfg.LaneCaps taken at Tick start so a
 // concurrent config mutation cannot oversubscribe a lane mid-tick
-// (R31-I5, #1362).
+// (R31-I5, #1362). workItems is the tick-scoped WorkItem snapshot
+// (id → WorkItem) populated by snapshotWorkItems so orphan re-check +
+// file-scope collision look-ups do not issue per-agent GetWorkItem
+// round-trips (R31-I5, #1359). nil = snapshot not yet built or the
+// underlying DB does not implement the batch seam; callers fall back
+// to per-id GetWorkItem.
 type tickCtx struct {
 	writeIndex int
 	laneCaps   map[string]int
+	workItems  map[string]state.WorkItem
 }
 
 // writeHookErr wraps a WriteHook return so per-item err swallow inside

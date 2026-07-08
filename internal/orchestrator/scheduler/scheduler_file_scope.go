@@ -94,13 +94,14 @@ func parentDir(p string) string {
 	return path.Dir(p)
 }
 
-// buildActiveFileScopes maps in-flight agents to their predicted file scopes; nil when the extractor is unwired or schedulerDB lacks GetWorkItem.
-func (s *Scheduler) buildActiveFileScopes(ctx context.Context) map[int64]activeScope {
+// buildActiveFileScopes maps in-flight agents to their predicted file scopes; nil when the extractor is unwired or no WorkItem source is available. Consults tc.workItems first so N active agents cost 0 GetWorkItem calls when the tick-scoped snapshot is populated (#1359); falls back to per-id GetWorkItem otherwise.
+func (s *Scheduler) buildActiveFileScopes(ctx context.Context, tc *tickCtx) map[int64]activeScope {
 	if s.cfg.FileScopeExtractor == nil {
 		return nil
 	}
-	getter, ok := s.db.(workItemGetter)
-	if !ok {
+	getter, hasGetter := s.db.(workItemGetter)
+	snapshotOnly := tc != nil && tc.workItems != nil
+	if !hasGetter && !snapshotOnly {
 		return nil
 	}
 	agents, err := s.db.ListAgentsByState(ctx, activeStates...)
@@ -110,8 +111,8 @@ func (s *Scheduler) buildActiveFileScopes(ctx context.Context) map[int64]activeS
 	}
 	out := make(map[int64]activeScope, len(agents))
 	for _, a := range agents {
-		wi, err := getter.GetWorkItem(ctx, a.WorkItemID)
-		if err != nil {
+		wi, ok := lookupWorkItem(ctx, tc, getter, hasGetter, a.WorkItemID)
+		if !ok {
 			continue
 		}
 		paths := s.cfg.FileScopeExtractor(wi)
@@ -121,6 +122,23 @@ func (s *Scheduler) buildActiveFileScopes(ctx context.Context) map[int64]activeS
 		out[a.ID] = activeScope{workItemID: a.WorkItemID, paths: paths}
 	}
 	return out
+}
+
+// lookupWorkItem returns the tc.workItems hit when present, otherwise falls back to getter.GetWorkItem — the per-id path the snapshot replaces (#1359). ok=false when both miss so the caller drops the agent from downstream sets.
+func lookupWorkItem(ctx context.Context, tc *tickCtx, getter workItemGetter, hasGetter bool, id string) (state.WorkItem, bool) {
+	if tc != nil && tc.workItems != nil {
+		if wi, hit := tc.workItems[id]; hit {
+			return wi, true
+		}
+	}
+	if !hasGetter {
+		return state.WorkItem{}, false
+	}
+	wi, err := getter.GetWorkItem(ctx, id)
+	if err != nil {
+		return state.WorkItem{}, false
+	}
+	return wi, true
 }
 
 type activeScope struct {

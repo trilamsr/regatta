@@ -21,7 +21,7 @@ import (
 func (s *Scheduler) reserveFromSpawnable(ctx context.Context, tc *tickCtx, spawnable []state.WorkItem, occupancy map[string]int) (reserved []int64, attempted map[int64]struct{}, err error) {
 	attempted = map[int64]struct{}{}
 	var failures int
-	activeScopes := s.buildActiveFileScopes(ctx)
+	activeScopes := s.buildActiveFileScopes(ctx, tc)
 	// reservedScopes captures scopes committed earlier in THIS tick so a
 	// second same-tick candidate sees the first as in-flight; without it
 	// 3 same-lane same-file candidates would all spawn on a cold start.
