@@ -102,6 +102,11 @@ services:
       # so the container boots without the ~/.claude mount (CI + macOS Docker Desktop where
       # the Keychain-backed mount arrives empty).
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
+      # Spec-adapter credential — required when regatta.yaml has
+      # spec_adapter.type=github_issues. CI + local operators pass a
+      # real token; empty default keeps zero-config boot working when
+      # the adapter is configured to markdown_catalog instead.
+      GH_TOKEN: ${GH_TOKEN:-}
       # Pin the sibling-CLI default-db path so `docker exec ... regatta
       # reload-secrets / status / agents / events` resolve the same
       # /data/regatta.db the daemon serve was launched against. Without
