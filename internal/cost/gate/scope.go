@@ -13,7 +13,7 @@ type WorkItemScope struct {
 	TenantID       string  // substrate.DefaultTenantID until W8
 	Model          string  // request-target model
 	AllowDowngrade bool    // opt-in soft-cap downgrade gate (R10)
-	EstHint        EstHint // zero value → upper-bound default
+	EstHint        EstHint // zero-valued hint is rejected by UpperBound.Estimate as ErrEmptyHint
 }
 
 // EstHint is the planner-side cost hint. USD set → use as upper-bound

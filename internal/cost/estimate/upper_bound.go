@@ -7,16 +7,24 @@ package estimate
 
 import (
 	"context"
+	"errors"
 
 	"github.com/trilamsr/regatta/internal/cost/gate"
 	"github.com/trilamsr/regatta/internal/cost/pricing"
 )
 
+// ErrEmptyHint fails-closed on a fully-empty EstHint so the pre-call cost
+// gate can't be silently bypassed by a zero-cost estimate (#1360 review).
+var ErrEmptyHint = errors.New("estimate: empty EstHint (InputTokens+MaxTokens both zero)")
+
 // UpperBound is the conservative-cap pricing estimator picked pre-call to fail-fast on runaway-spend risk: est_usd = (input·price_in + max·price_out) / 1e6.
 type UpperBound struct{}
 
-// Estimate returns ErrPricingMissing for unknown SKUs (Portkey-trap defense at the estimator seam).
+// Estimate returns ErrPricingMissing for unknown SKUs (Portkey-trap defense at the estimator seam) and ErrEmptyHint for zero InputTokens+MaxTokens (money-gate bypass defense).
 func (UpperBound) Estimate(_ context.Context, hint gate.EstHint, model string) (float64, error) {
+	if hint.InputTokens == 0 && hint.MaxTokens == 0 {
+		return 0, ErrEmptyHint
+	}
 	row, err := pricing.Lookup(model)
 	if err != nil {
 		return 0, err
