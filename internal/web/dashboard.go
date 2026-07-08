@@ -158,30 +158,14 @@ const (
 	bucketLabelRunning  = "Running"
 )
 
-const (
-	healthGreen         = "green"
-	healthAmber         = "amber"
-	healthRed           = "red"
-	exitReasonCompleted = "completed"
-)
+const exitReasonCompleted = "completed"
 
 // emptyHint* constants pin the operator-facing copy for blank dashboard panels so a future palette / cadence change edits one source instead of N templates. WHY: a blank "loading…" or empty div leaves the operator guessing whether the scheduler is wedged or simply idle.
 const (
-	emptyHintAgents    = "No agents in flight. Scheduler ticks every 5s."
-	emptyHintWorkItems = "No work-items found. Adapter polls every 30s; check spec_adapter.selector in regatta.yaml."
-	emptyHintEvents    = "No events recorded yet."
+	emptyHintAgents    = "No agents in flight. Add a work-item or run `regatta serve`; scheduler ticks every 5s."
+	emptyHintWorkItems = "No work-items found. Drop a markdown file into .regatta/items/ or set spec_adapter.type=github_issues and spec_adapter.selector in regatta.yaml."
+	emptyHintEvents    = "No activity yet. Events land here as agents spawn, tick, and exit."
 )
-
-type dashboardDockerSoakView struct {
-	Uptime         string
-	SpawnsLast1m   int
-	ExitedLast1m   int
-	LastExitReason string
-	LastExitBadge  template.HTML
-	Health         string
-	HealthLabel    string
-	HasLastExit    bool
-}
 
 func registerDashboardRoutes(mux *http.ServeMux, deps Dependencies) {
 	mux.HandleFunc("/ui/panels/agents", getOnly(func(w http.ResponseWriter, r *http.Request) {
@@ -198,9 +182,6 @@ func registerDashboardRoutes(mux *http.ServeMux, deps Dependencies) {
 	}))
 	mux.HandleFunc("/ui/panels/flow", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveDashboardPanel(w, r, deps, "_flow", loadFlowView)
-	}))
-	mux.HandleFunc("/ui/panels/docker-soak", getOnly(func(w http.ResponseWriter, r *http.Request) {
-		serveDashboardPanel(w, r, deps, "_docker_soak", loadDockerSoakView)
 	}))
 	mux.HandleFunc("/ui/panels/pipeline", getOnly(func(w http.ResponseWriter, r *http.Request) {
 		serveDashboardPanel(w, r, deps, "_pipeline", loadPipelineView)

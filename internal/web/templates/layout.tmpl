@@ -18,11 +18,10 @@
   <div class="dash-main mx-auto flex items-center justify-between px-6 py-3">
     <div class="flex items-baseline gap-4">
       <span class="brand text-xl">regatta</span>
-      <span class="ticker text-slate-500">OPERATOR · STAGE 2 · {{formatTime .Now}}</span>
+      <span class="ticker text-slate-500">operator · {{formatTime .Now}}</span>
     </div>
     <div class="ticker text-slate-600 flex gap-4">
       <span>STATUS: <span class="text-emerald-700">●&nbsp;LIVE</span></span>
-      <span>POLL: 5s</span>
     </div>
   </div>
 </header>
@@ -31,10 +30,7 @@
 
   <section>
     <div class="section-head">
-      <div class="flex items-baseline gap-3">
-        <span class="num">01 / PIPELINE</span>
-        <span class="title">dispatch flow</span>
-      </div>
+      <span class="title">Pipeline</span>
       <span class="meta">click stage for items</span>
     </div>
     <div id="pipeline-panel" hx-get="/ui/panels/pipeline" hx-trigger="load, every 5s" hx-swap="innerHTML">
@@ -44,10 +40,7 @@
 
   <section>
     <div class="section-head">
-      <div class="flex items-baseline gap-3">
-        <span class="num">01b / HEALTH</span>
-        <span class="title">scheduler liveness</span>
-      </div>
+      <span class="title">Health</span>
       <span class="meta">tick + exit reasons</span>
     </div>
     <div id="health-panel" hx-get="/ui/panels/health" hx-trigger="load, every 5s" hx-swap="innerHTML">
@@ -57,10 +50,7 @@
 
   <section>
     <div class="section-head">
-      <div class="flex items-baseline gap-3">
-        <span class="num">02 / AGENTS</span>
-        <span class="title">in flight</span>
-      </div>
+      <span class="title">Agents</span>
       <span class="meta">click row for detail</span>
     </div>
     <div id="agents-panel" hx-get="/ui/panels/agents" hx-trigger="load, every 5s" hx-swap="innerHTML">
@@ -70,10 +60,7 @@
 
   <section>
     <div class="section-head">
-      <div class="flex items-baseline gap-3">
-        <span class="num">03 / FLOW</span>
-        <span class="title">work in transit</span>
-      </div>
+      <span class="title">Flow</span>
       <span class="meta">stage → stage</span>
     </div>
     <div id="flow-panel" hx-get="/ui/panels/flow" hx-trigger="load, every 10s" hx-swap="innerHTML">
@@ -83,10 +70,7 @@
 
   <section>
     <div class="section-head">
-      <div class="flex items-baseline gap-3">
-        <span class="num">04 / BACKLOG</span>
-        <span class="title">work items</span>
-      </div>
+      <span class="title">Backlog</span>
       <span class="meta">click for body</span>
     </div>
     <div id="work-items-panel" hx-get="/ui/panels/work-items" hx-trigger="load, every 10s" hx-swap="innerHTML">
@@ -96,10 +80,7 @@
 
   <section>
     <div class="section-head">
-      <div class="flex items-baseline gap-3">
-        <span class="num">05 / LOG</span>
-        <span class="title">recent activity</span>
-      </div>
+      <span class="title">Activity</span>
       <span class="meta">live</span>
     </div>
     <div id="events-panel" hx-get="/ui/panels/events" hx-trigger="load, every 5s" hx-swap="innerHTML">
@@ -109,23 +90,7 @@
 
   <section>
     <div class="section-head">
-      <div class="flex items-baseline gap-3">
-        <span class="num">06 / DOCKER SOAK</span>
-        <span class="title">daemon health</span>
-      </div>
-      <span class="meta">last 60s</span>
-    </div>
-    <div id="docker-soak-panel" hx-get="/ui/panels/docker-soak" hx-trigger="load, every 2s" hx-swap="innerHTML">
-      <div class="panel p-6 text-sm text-slate-500">loading…</div>
-    </div>
-  </section>
-
-  <section>
-    <div class="section-head">
-      <div class="flex items-baseline gap-3">
-        <span class="num">07 / SPEND</span>
-        <span class="title">token cost</span>
-      </div>
+      <span class="title">Spend today</span>
       <span class="meta">substrate · usd</span>
     </div>
     <div id="spend-panel" hx-get="/ui/panels/spend" hx-trigger="load, every 30s" hx-swap="innerHTML">
