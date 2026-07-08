@@ -97,6 +97,11 @@ services:
       REGATTA_HMAC_KEY: ${REGATTA_HMAC_KEY:-}
       # Spawner billing mode: 1 strips parent ANTHROPIC_API_KEY → subscription via ~/.claude (operator-mounted via docker-compose.override.yml); 0 passes the token → pay-as-you-go. See docs/operator/docker-compose.md §Spawner billing mode.
       REGATTA_SPAWNER_STRIP_API_KEY: ${REGATTA_SPAWNER_STRIP_API_KEY:-1}
+      # Subscription-path credential — long-lived OAuth token from `claude
+      # setup-token`. Satisfies preflight path #1 in cmd/regatta/wire_spawner_auth_preflight.go
+      # so the container boots without the ~/.claude mount (CI + macOS Docker Desktop where
+      # the Keychain-backed mount arrives empty).
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       # Pin the sibling-CLI default-db path so `docker exec ... regatta
       # reload-secrets / status / agents / events` resolve the same
       # /data/regatta.db the daemon serve was launched against. Without
