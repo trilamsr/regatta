@@ -1,0 +1,173 @@
+name: nightly
+
+# Consolidated nightly workflow. Prior split (4 files: check-meta-nightly,
+# cross-platform-nightly, crash-recovery-property-full, verify-property-nightly)
+# collapsed into per-purpose jobs sharing schedule + workflow_dispatch
+# triggers. Cron windows preserved per-job via `if:` gates on
+# github.event.schedule (see each job).
+#
+# check-meta additionally runs on push/pull_request when gate/generator
+# scripts change (path-filter), so gate edits still get exercised
+# pre-merge — the other 3 jobs skip on non-schedule/non-dispatch events.
+#
+# PHASE-S-RELAX (cross-platform): windows-latest dropped from the matrix
+# during the self-host-first window
+# (docs/engineer/briefs/2026-06-01-self-host-first.md). Restore alongside
+# `os: [ubuntu-latest, macos-latest, windows-latest]` at the 30-day-green
+# trigger or first external-customer ask.
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # 04:00 UTC — cross-platform test
+    - cron: '0 5 * * *'  # 05:00 UTC — verify-property (50-case)
+    - cron: '0 6 * * *'  # 06:00 UTC — check-meta + crash-recovery-property (2000-case)
+  push:
+    paths:
+      - 'scripts/check-*.sh'
+      - 'scripts/check-*_test.sh'
+      - 'scripts/check_state_tier_order_test.sh'
+      - 'scripts/doc-check.sh'
+      - 'scripts/doc-check_test.sh'
+      - 'scripts/gen-*.sh'
+      - 'scripts/gen-*_test.sh'
+      - 'Makefile.d/ci.mk'
+      - 'Makefile.d/lint.mk'
+      - 'Makefile.d/specs.mk'
+      - 'Makefile.d/boot-status.mk'
+      - '.github/workflows/nightly.yml'
+  pull_request:
+    paths:
+      - 'scripts/check-*.sh'
+      - 'scripts/check-*_test.sh'
+      - 'scripts/check_state_tier_order_test.sh'
+      - 'scripts/doc-check.sh'
+      - 'scripts/doc-check_test.sh'
+      - 'scripts/gen-*.sh'
+      - 'scripts/gen-*_test.sh'
+      - 'Makefile.d/ci.mk'
+      - 'Makefile.d/lint.mk'
+      - 'Makefile.d/specs.mk'
+      - 'Makefile.d/boot-status.mk'
+      - '.github/workflows/nightly.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check-meta:
+    # Gate + generator self-tests. Fires on 06:00 UTC schedule, any
+    # workflow_dispatch, and path-filtered push/pull_request events.
+    name: gate-and-generator-self-tests
+    if: github.event_name != 'schedule' || github.event.schedule == '0 6 * * *'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          fetch-depth: 0  # check-stale-refs_test.sh + check-tdd_test.sh fixture-replay needs full history
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: run gate + generator self-tests
+        run: make check-meta
+
+  cross-platform-test:
+    # Nightly cross-platform Go test sweep. macOS dropped from per-PR
+    # ci.yml (saves ~85s runner quota + queue time). Linux+macOS still
+    # validated daily here + on request via workflow_dispatch. ALSO runs
+    # `go test -race ./...` across ALL packages (vs the per-PR ci.yml
+    # verify-go shards which restrict `-race` to the
+    # scripts/race-pkgs.txt allowlist). Catches any race in a package
+    # whose prod code looked single-threaded but whose tests fan out
+    # goroutines.
+    name: test (${{ matrix.os }})
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 4 * * *')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: make go-check-full
+        run: make go-check-full
+
+  verify-property:
+    # Property tests (rapid.checks=50) moved from per-PR blocking to
+    # nightly + manual dispatch. Per-PR feedback saves ~100s wall-clock.
+    # Property coverage still runs daily against main + on request via
+    # workflow_dispatch. Why demote: the property suite shrinks
+    # shrink-driven regressions over weeks, not per-PR. A property
+    # regression that lands in a PR fires within 24h here and is
+    # back-fixable at low cost. Failure mode: rapid-shrunk seed prints
+    # in the test log; uploaded artifact preserves the full output for
+    # triage.
+    name: rapid 50-case property sweep
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 5 * * *')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: run property sweep
+        run: |
+          set -o pipefail
+          mkdir -p "${{ runner.temp }}/property-reports"
+          make check-property 2>&1 | tee "${{ runner.temp }}/property-reports/test-output.log"
+
+      - name: upload test output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: property-test-output
+          path: ${{ runner.temp }}/property-reports
+          retention-days: 30
+
+  crash-recovery-property-full:
+    # 2000-case crash-recovery property sweep. Spec:
+    # docs/engineer/specs/2026-06-02-s3-t4-crash-recovery-property.md
+    # §3.4 + §3.6 (T3). Per-PR runs use 200-case quick-mode via
+    # `make property-test` (PHASE-S-RELAX); the 2000-case sweep stays
+    # nightly because GitHub-hosted runners are noisy and the ≤90s
+    # wallclock budget can flip flaky under contention. Failure mode:
+    # on red, the rapid-shrunk seed prints in the test log; the
+    # uploaded artifact preserves the full test output for triage.
+    name: rapid 2000-case sweep
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.event.schedule == '0 6 * * *')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: run crash-recovery property sweep
+        run: |
+          set -o pipefail
+          mkdir -p "${{ runner.temp }}/crash-recovery-reports"
+          make crash-recovery-property-full 2>&1 | tee "${{ runner.temp }}/crash-recovery-reports/test-output.log"
+
+      - name: upload test output
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: crash-recovery-property-output
+          path: ${{ runner.temp }}/crash-recovery-reports
+          retention-days: 30
