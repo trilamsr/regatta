@@ -31,9 +31,11 @@ Scope: `docs/engineer/specs/` + `docs/engineer/briefs/`. Phase-X exploratory spe
 - BudgetReconciledPayload float-field deprecation (#709): sequenced cutover from `float64` cost fields to fixed-point `int64` cents; two-release deprecation with byte-equal replay parity.
 - MVR-1-T4 github_issues spec adapter impl (#850): first tier-B adapter under the SpecAdapter interface; consumed by cross-repo roadmap discovery.
 - Operator Console Phase-S UI roadmap: S1→S2→S3 sequence for the operator dashboard alongside the substrate cutover.
+- Scheduler `filter.Apply` monomorphization bench (#753): ns/op + B/op + allocs/op captured across the 3 instantiation sites with stripped `cmd/regatta` binary-size baseline for the monomorphization cost debate.
 
 ## 2026-06-03
 
+- Scheduler filter-helper consolidation (#251 #698): the divergent per-scope filter helpers collapse to a single `filter.Apply[Scope]` seam.
 - MVR-2 T2 W8 multi-tenant `tenant_id` routing skeleton: routes carry tenant scope end-to-end; single-tenant self-host mode default.
 - MVR-2 T4 P3.8 LLM-gateway adapter skeleton: pluggable LLM provider behind adapter interface; foundation for BYOM.
 - MVR-3-T1 Sigstore skeleton: cosign behind signer adapter; skeleton pre-fetch tier.
@@ -42,6 +44,7 @@ Scope: `docs/engineer/specs/` + `docs/engineer/briefs/`. Phase-X exploratory spe
 
 ## 2026-06-02
 
+- Approval-gate per-JTI persistence (#195 / #332): reaper revocation branch reaches the event log because token-mint rows persist per JTI; closes the silent-drop where a revoked token left no audit trace.
 - MVR-1 T1 W7 Wave-1 htmx UI MVP: first operator web surface; htmx-only, no SPA.
 - Phase OBS-D operator surface (D-T1 + D-T2 + D-T3): dashboard event-vocabulary + slow-poll widget stack.
 - Orchestrator PR Watcher (#15 #520 #527): first-class PR-status watch loop feeding scheduler + reaper.
