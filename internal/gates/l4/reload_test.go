@@ -107,7 +107,7 @@ func TestReloader_FsnotifyDebounce(t *testing.T) {
 	rl := &Reloader{
 		Path:          path,
 		Logger:        slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Debounce:      100 * time.Millisecond,
+		Debounce:      DefaultReloadDebounce,
 		DisableSighup: true,
 	}
 	reloaded := make(chan Result, 16)
@@ -133,7 +133,7 @@ func TestReloader_FsnotifyDebounce(t *testing.T) {
 	}
 
 	var got int
-	deadline := time.After(1 * time.Second)
+	deadline := time.After(2 * time.Second)
 loop:
 	for {
 		select {

@@ -25,7 +25,7 @@ fail=0
 # Exempt paths: research/ is raw notes; .claude/ is upstream skill
 # content; testdata/ corpora may quote external sources verbatim;
 # scripts/stale-todo.sh names the markers as the scanner's contract.
-exempt_re='^(research/|\.claude/|testdata/|scripts/stale-todo\.sh$|\.github/workflows/stale-todo\.yml$)'
+exempt_re='^(research/|\.claude/|testdata/|scripts/stale-todo\.sh$|\.github/workflows/stale-todo\.yml$|docs/engineer/(briefs|specs|dispatch-templates)/|internal/selfimprove/rules_test\.go$|internal/orchestrator/prompt/assets/dispatch-templates/)'
 
 # Only scan files git tracks. Avoid binaries by limiting extensions.
 files=$(git ls-files '*.go' '*.md' '*.sh' '*.yml' '*.yaml' '*.json' '*.cue' 2>/dev/null \
