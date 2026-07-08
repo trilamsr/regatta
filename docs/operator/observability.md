@@ -30,7 +30,7 @@ program
 Every span carries the resource attributes `service.name=regatta`,
 `service.version=<build>`, and `regatta.tenant_id=default`. The
 `gen_ai.*` attribute set on the `chat` span follows the OpenTelemetry
-GenAI semantic conventions; see [the W6 design spec](../engineer/specs/phase-x/2026-05-31-mvp-3-w6-otel-backbone.md)
+GenAI semantic conventions; see `../engineer/specs/phase-x/2026-05-31-mvp-3-w6-otel-backbone.md`
 §3.4 for the full attribute table.
 
 ## Local demo: Jaeger in five seconds
@@ -132,7 +132,7 @@ are sourced from the slog event stream, which is unsampled — the
 slog→OTel bridge fans every record through the bridge handler, and
 the bridge does not consult the sampler. Spans correlate cost events
 to causal context but do not carry the canonical count. See
-[the W6 spec](../engineer/specs/phase-x/2026-05-31-mvp-3-w6-otel-backbone.md)
+`../engineer/specs/phase-x/2026-05-31-mvp-3-w6-otel-backbone.md`
 §9 R6 for the contract.
 
 ## Swapping the exporter
@@ -248,6 +248,6 @@ trace head-sampling knobs) lives in
 
 The single source of truth for what regatta emits, what env vars it
 reads, and what attributes appear on which span is the W6 design
-spec: [docs/engineer/specs/phase-x/2026-05-31-mvp-3-w6-otel-backbone.md](../engineer/specs/phase-x/2026-05-31-mvp-3-w6-otel-backbone.md).
+spec: `../engineer/specs/phase-x/2026-05-31-mvp-3-w6-otel-backbone.md`.
 
 When this doc drifts from the spec, the spec wins; file an issue.

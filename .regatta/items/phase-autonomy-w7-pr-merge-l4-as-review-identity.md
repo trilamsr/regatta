@@ -16,7 +16,7 @@ Source brief: PHASE AUTONOMY amendment §11 W7 (Landing 3, depends on W2 — the
 
 L4 gate's ADOPT verdict becomes an actual GitHub PR review with `event=APPROVED`, so branch-protection's "≥1 approving review" count is satisfied. L4 REJECT becomes `event=REQUEST_CHANGES` with the failed-criteria list. Review body is deterministic: same PR + same gate state = byte-identical body.
 
-**Two-identity model** (reconciled with [`docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md`](../../docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md) §3 per `feedback_spec_pattern_authority`; closes #610): the original item-file framing ("operator's PAT signs the review", "no bot account introduced") was unsafe — GitHub returns 422 when `reviewer.login == pr.user.login`, and regatta opens PRs under a bot identity. The design subagent owns the deviation: a dedicated `regatta-reviewer-bot` PAT signs reviews, distinct from the author-side `regatta-bot` PAT. Both tokens flow through W6's credential store. Setup is encoded in `regatta install-service`.
+**Two-identity model** (reconciled with `../../docs/engineer/specs/phase-x/2026-06-02-phase-autonomy-w7-l4-as-review-identity.md` §3 per `feedback_spec_pattern_authority`; closes #610): the original item-file framing ("operator's PAT signs the review", "no bot account introduced") was unsafe — GitHub returns 422 when `reviewer.login == pr.user.login`, and regatta opens PRs under a bot identity. The design subagent owns the deviation: a dedicated `regatta-reviewer-bot` PAT signs reviews, distinct from the author-side `regatta-bot` PAT. Both tokens flow through W6's credential store. Setup is encoded in `regatta install-service`.
 
 ## Approach
 
