@@ -6,11 +6,32 @@ import (
 	"strings"
 )
 
-// GetWorkItemsBatch returns id->WorkItem for every id in ids that exists. Missing ids drop from the map. Single SELECT replaces the scheduler's per-orphan + per-active-agent GetWorkItem loop (#1359).
+// workItemsBatchChunkSize caps ids-per-SELECT below sqlite's SQLITE_MAX_VARIABLE_NUMBER (default 999) with margin.
+const workItemsBatchChunkSize = 900
+
+// GetWorkItemsBatch returns id->WorkItem for every id in ids that exists. Missing ids drop from the map. Chunks internally to stay below SQLite SQLITE_MAX_VARIABLE_NUMBER (default 999) with margin. Single SELECT replaces the scheduler's per-orphan + per-active-agent GetWorkItem loop (#1359).
 func (d *DB) GetWorkItemsBatch(ctx context.Context, ids []string) (map[string]WorkItem, error) {
 	if len(ids) == 0 {
 		return map[string]WorkItem{}, nil
 	}
+	out := make(map[string]WorkItem, len(ids))
+	for start := 0; start < len(ids); start += workItemsBatchChunkSize {
+		end := start + workItemsBatchChunkSize
+		if end > len(ids) {
+			end = len(ids)
+		}
+		chunk, err := d.getWorkItemsBatchOne(ctx, ids[start:end])
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range chunk {
+			out[k] = v
+		}
+	}
+	return out, nil
+}
+
+func (d *DB) getWorkItemsBatchOne(ctx context.Context, ids []string) (map[string]WorkItem, error) {
 	placeholders := strings.Repeat("?,", len(ids))
 	placeholders = placeholders[:len(placeholders)-1]
 	args := make([]any, len(ids))
