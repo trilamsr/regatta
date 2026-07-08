@@ -506,19 +506,66 @@ func (s *ClaudeSpawner) emitAgentExited(req Request, cmd *exec.Cmd, waitErr erro
 // execStarterStderr is the ultimate stderr sink; overridable in tests.
 var execStarterStderr io.Writer = os.Stderr
 
-// execStarter is the production ProcessStarter. Stderr forwards to
-// os.Stderr so operators can tail; stdout is teed between os.Stdout
-// (operator tail) and the caller-supplied writer (Spawn pipes that
-// side into genai.ParseStream).
+// stderrForwardQueueDepth = 64 chunks × 4096 B ≈ 256KB, roughly 4× a
+// typical Linux pipe kernel buffer (65KB) — enough headroom for a
+// burst spike while the sink recovers, but small enough that a wedged
+// sink drops promptly instead of ballooning process memory.
+const stderrForwardQueueDepth = 64
+
+// execStarter is the production ProcessStarter. Stderr is drained via
+// StderrPipe + non-blocking forwarder so the child never blocks in
+// write(2) when execStarterStderr's downstream wedges (R-MEGA-2 C7,
+// #1361).
 func execStarter(ctx context.Context, name string, args []string, stdin io.Reader, stdout io.Writer, dir string) (*exec.Cmd, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
 	cmd.Stdin = stdin
 	cmd.Stdout = io.MultiWriter(os.Stdout, stdout)
-	cmd.Stderr = execStarterStderr
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return nil, err
+	}
 	cmd.Env = scrubChildEnv(os.Environ())
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
+	go forwardStderrNonblocking(stderrPipe, execStarterStderr)
 	return cmd, nil
+}
+
+// forwardStderrNonblocking drains src into dst best-effort; overflow
+// chunks are dropped (not queued) so a wedged dst never backpressures
+// src. Logs one warning the first time a drop happens per invocation.
+func forwardStderrNonblocking(src io.ReadCloser, dst io.Writer) {
+	defer func() { _ = src.Close() }()
+	q := make(chan []byte, stderrForwardQueueDepth)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for chunk := range q {
+			_, _ = dst.Write(chunk)
+		}
+	}()
+	buf := make([]byte, 4096)
+	dropped := false
+	for {
+		n, err := src.Read(buf)
+		if n > 0 {
+			out := make([]byte, n)
+			copy(out, buf[:n])
+			select {
+			case q <- out:
+			default:
+				if !dropped {
+					dropped = true
+					log.Printf("spawner.stderr_forwarder: sink wedged, dropping child stderr chunks (#1361)")
+				}
+			}
+		}
+		if err != nil {
+			break
+		}
+	}
+	close(q)
+	<-done
 }
