@@ -45,7 +45,7 @@ func (s *Scheduler) reserveOrphans(ctx context.Context, tc *tickCtx, occupancy m
 			// one-per-agent-per-tick.
 			continue
 		}
-		if !s.laneHasCapacity(a.Lane, occupancy) {
+		if !s.laneHasCapacity(a.Lane, tc.laneCaps, occupancy) {
 			continue
 		}
 		if skip, err := s.recheckGates(ctx, tc, a.WorkItemID); err != nil {

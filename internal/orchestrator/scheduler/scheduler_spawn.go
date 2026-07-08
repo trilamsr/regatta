@@ -66,7 +66,7 @@ func (s *Scheduler) reserveFromSpawnable(ctx context.Context, tc *tickCtx, spawn
 				attribute.String(string(obs.KeyLane), w.Lane),
 				attribute.String("regatta.kind", string(w.Kind)),
 			))
-		hasCap := s.laneHasCapacity(w.Lane, occupancy)
+		hasCap := s.laneHasCapacity(w.Lane, tc.laneCaps, occupancy)
 		agentID, transitioned, err := s.reserveOne(itemCtx, tc, w.ID, w.Lane, hasCap)
 		itemSpan.End()
 		if err != nil {

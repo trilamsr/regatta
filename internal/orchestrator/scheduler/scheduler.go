@@ -333,7 +333,7 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 		s.tickLatency.Record(ctx, float64(s.cfg.Clock().Sub(tickStart).Microseconds())/1000.0)
 	}()
 
-	tc := &tickCtx{}
+	tc := &tickCtx{laneCaps: s.snapshotLaneCaps()}
 	var spawnable []state.WorkItem
 	var occupancy map[string]int
 	var attempted map[int64]struct{}
@@ -505,7 +505,13 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 
 // tickCtx threads the per-tick WriteHook counter through substrate
 // writes; heap-once cost is negligible vs sqlite-tx overhead.
-type tickCtx struct{ writeIndex int }
+// laneCaps is a snapshot of s.cfg.LaneCaps taken at Tick start so a
+// concurrent config mutation cannot oversubscribe a lane mid-tick
+// (R31-I5, #1362).
+type tickCtx struct {
+	writeIndex int
+	laneCaps   map[string]int
+}
 
 // writeHookErr wraps a WriteHook return so per-item err swallow inside
 // reserveFromSpawnable can errors.Is-detect the crash-sim path.
