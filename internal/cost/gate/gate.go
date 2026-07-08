@@ -42,7 +42,7 @@ type Config struct {
 }
 
 // Estimator decouples gate from internal/cost/estimate.
-// *estimate.UpperBound satisfies without an adapter type.
+// estimate.UpperBound and *estimate.History satisfy without an adapter.
 type Estimator interface {
 	Estimate(ctx context.Context, hint EstHint, model string) (float64, error)
 }

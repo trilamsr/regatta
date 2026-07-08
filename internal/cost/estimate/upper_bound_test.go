@@ -2,11 +2,13 @@ package estimate_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"pgregory.net/rapid"
 
 	"github.com/trilamsr/regatta/internal/cost/estimate"
+	"github.com/trilamsr/regatta/internal/cost/gate"
 	"github.com/trilamsr/regatta/internal/cost/pricing"
 )
 
@@ -15,13 +17,14 @@ func TestEstimate_UpperBound_Deterministic(t *testing.T) {
 	ub := estimate.UpperBound{}
 	ctx := context.Background()
 	const model = "claude-sonnet-4-7"
+	hint := gate.EstHint{InputTokens: 1000, MaxTokens: 4096}
 
-	first, err := ub.Estimate(ctx, model, 1000, 4096, estimate.Hint{})
+	first, err := ub.Estimate(ctx, hint, model)
 	if err != nil {
 		t.Fatalf("Estimate first call: %v", err)
 	}
 	for i := 0; i < 100; i++ {
-		got, err := ub.Estimate(ctx, model, 1000, 4096, estimate.Hint{})
+		got, err := ub.Estimate(ctx, hint, model)
 		if err != nil {
 			t.Fatalf("Estimate iter %d: %v", i, err)
 		}
@@ -46,7 +49,7 @@ func TestEstimate_UpperBound_NeverUndercountsActual(t *testing.T) {
 		maxTok := rapid.Int64Range(1, 200_000).Draw(rt, "max")
 		actualOut := rapid.Int64Range(0, maxTok).Draw(rt, "actual_out")
 
-		est, err := ub.Estimate(ctx, model, input, maxTok, estimate.Hint{})
+		est, err := ub.Estimate(ctx, gate.EstHint{InputTokens: input, MaxTokens: maxTok}, model)
 		if err != nil {
 			rt.Fatalf("Estimate: %v", err)
 		}
@@ -62,44 +65,65 @@ func TestEstimate_UpperBound_NeverUndercountsActual(t *testing.T) {
 	})
 }
 
-// TestEstimate_UpperBound_HintOverridesInputTokens pins planner-supplied Hint precedence (T1 Request.EstHint path).
-func TestEstimate_UpperBound_HintOverridesInputTokens(t *testing.T) {
+// TestEstimate_UpperBound_HintTokenFieldsDrive pins planner-supplied EstHint precedence (T1 Request.EstHint path).
+func TestEstimate_UpperBound_HintTokenFieldsDrive(t *testing.T) {
 	ub := estimate.UpperBound{}
 	ctx := context.Background()
 	const model = "claude-sonnet-4-7"
 
-	base, err := ub.Estimate(ctx, model, 1000, 4096, estimate.Hint{})
+	base, err := ub.Estimate(ctx, gate.EstHint{InputTokens: 1000, MaxTokens: 4096}, model)
 	if err != nil {
 		t.Fatalf("Estimate base: %v", err)
 	}
-	withHint, err := ub.Estimate(ctx, model, 1000, 4096, estimate.Hint{InputTokens: 50_000, MaxTokens: 8192})
+	bigger, err := ub.Estimate(ctx, gate.EstHint{InputTokens: 50_000, MaxTokens: 8192}, model)
 	if err != nil {
-		t.Fatalf("Estimate with hint: %v", err)
+		t.Fatalf("Estimate bigger: %v", err)
 	}
-	if withHint <= base {
-		t.Fatalf("Hint did not override: base=%v withHint=%v (expected withHint > base)", base, withHint)
-	}
-
-	hintOnlyInput, err := ub.Estimate(ctx, model, 1000, 4096, estimate.Hint{InputTokens: 50_000})
-	if err != nil {
-		t.Fatalf("Estimate hint-input-only: %v", err)
-	}
-	hintOnlyMax, err := ub.Estimate(ctx, model, 1000, 4096, estimate.Hint{MaxTokens: 8192})
-	if err != nil {
-		t.Fatalf("Estimate hint-max-only: %v", err)
-	}
-	if hintOnlyInput <= base {
-		t.Fatalf("Hint.InputTokens did not override: base=%v hint=%v", base, hintOnlyInput)
-	}
-	if hintOnlyMax <= base {
-		t.Fatalf("Hint.MaxTokens did not override: base=%v hint=%v", base, hintOnlyMax)
+	if bigger <= base {
+		t.Fatalf("bigger hint did not raise estimate: base=%v bigger=%v", base, bigger)
 	}
 }
 
 // TestEstimate_UpperBound_UnknownModelErrors covers the Portkey-trap path at the estimator seam.
 func TestEstimate_UpperBound_UnknownModelErrors(t *testing.T) {
 	ub := estimate.UpperBound{}
-	if _, err := ub.Estimate(context.Background(), "gpt-4", 100, 100, estimate.Hint{}); err == nil {
+	if _, err := ub.Estimate(context.Background(), gate.EstHint{InputTokens: 100, MaxTokens: 100}, "gpt-4"); err == nil {
 		t.Fatal("Estimate(unknown) returned no error")
+	}
+}
+
+// TestUpperBound_ZeroHint_ReturnsErrEmptyHint pins fail-closed on empty hint (money-gate bypass, #1360 review).
+func TestUpperBound_ZeroHint_ReturnsErrEmptyHint(t *testing.T) {
+	ub := estimate.UpperBound{}
+	got, err := ub.Estimate(context.Background(), gate.EstHint{}, "claude-sonnet-4-7")
+	if !errors.Is(err, estimate.ErrEmptyHint) {
+		t.Fatalf("Estimate(zero-hint) err = %v, want ErrEmptyHint", err)
+	}
+	if got != 0 {
+		t.Fatalf("Estimate(zero-hint) cost = %v, want 0", got)
+	}
+}
+
+// TestUpperBound_PartialHint_InputTokensOnly asserts non-zero cost when only InputTokens set.
+func TestUpperBound_PartialHint_InputTokensOnly(t *testing.T) {
+	ub := estimate.UpperBound{}
+	got, err := ub.Estimate(context.Background(), gate.EstHint{InputTokens: 1000}, "claude-sonnet-4-7")
+	if err != nil {
+		t.Fatalf("Estimate(input-only) err = %v", err)
+	}
+	if got <= 0 {
+		t.Fatalf("Estimate(input-only) cost = %v, want >0", got)
+	}
+}
+
+// TestUpperBound_PartialHint_MaxTokensOnly asserts non-zero cost when only MaxTokens set.
+func TestUpperBound_PartialHint_MaxTokensOnly(t *testing.T) {
+	ub := estimate.UpperBound{}
+	got, err := ub.Estimate(context.Background(), gate.EstHint{MaxTokens: 4096}, "claude-sonnet-4-7")
+	if err != nil {
+		t.Fatalf("Estimate(max-only) err = %v", err)
+	}
+	if got <= 0 {
+		t.Fatalf("Estimate(max-only) cost = %v, want >0", got)
 	}
 }
