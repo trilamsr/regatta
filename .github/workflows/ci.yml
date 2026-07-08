@@ -197,6 +197,16 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      - name: Build regatta image
+        # docker-compose.yml carries BOTH `image: regatta:stage2` AND
+        # `build: context: .`. `compose up --wait` treats the `image:` field
+        # as a pullable ref first, tries Docker Hub, and gets `pull access
+        # denied for regatta, repository does not exist`; the ensuing
+        # fallback-build races the health-check window and reports
+        # `container regatta-regatta-1 is unhealthy`. Pre-build the
+        # regatta service so the tag exists locally before compose runs
+        # (regatta-init is `image: busybox` — no build stanza).
+        run: docker compose -f docker-compose.yml build regatta
       - name: make integration
         env:
           # Preflight (cmd/regatta/wire_spawner_auth_preflight.go line 13) is a
