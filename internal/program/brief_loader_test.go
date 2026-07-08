@@ -988,6 +988,107 @@ func TestNewBriefLoader_Config_RequiresDB(t *testing.T) {
 	}
 }
 
+// mustUnsignedBriefRaw returns a well-formed brief JSON with no signature block for require-signing tests (#1364).
+func mustUnsignedBriefRaw(t *testing.T) []byte {
+	t.Helper()
+	b := &ProgramBrief{
+		SchemaVersion:    1,
+		ProgramID:        "m-1234567890ab",
+		ParentWorkItemID: "PROG-1",
+		ParentCriteria:   []PlanCriterion{{ID: "c1", Text: "add foo"}},
+		PlannerModelID:   "claude-test",
+		Features:         []PlannedFeature{{ID: "F-1", Title: "foo", Fulfills: []string{"c1"}}},
+		ProducedAt:       time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC),
+	}
+	raw, err := json.Marshal(b)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+	return raw
+}
+
+// TestBriefLoaderSync_RequireSigning_OffAllowsUnsigned asserts flag OFF preserves warn+skip semantics on an unsigned brief (#1364).
+func TestBriefLoaderSync_RequireSigning_OffAllowsUnsigned(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	raw := mustUnsignedBriefRaw(t)
+	fsys := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", now)
+
+	loader := mustNewLoader(t, BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}, RequireSigning: false})
+	if err := loader.Sync(context.Background(), now); err != nil {
+		t.Fatalf("Sync with RequireSigning=false must not fail on unsigned brief: %v", err)
+	}
+}
+
+// TestBriefLoaderSync_RequireSigning_OnAcceptsValidSigned asserts flag ON accepts a valid-signature brief without error (#1364).
+func TestBriefLoaderSync_RequireSigning_OnAcceptsValidSigned(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	_, raw := mustSignedBrief(t, key)
+	fsys := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", now)
+
+	loader := mustNewLoader(t, BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}, RequireSigning: true})
+	if err := loader.Sync(context.Background(), now); err != nil {
+		t.Fatalf("Sync with RequireSigning=true + valid signed brief must succeed: %v", err)
+	}
+	children, err := db.ListByParent(context.Background(), "PROG-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(children) != 3 {
+		t.Fatalf("children=%d want 3", len(children))
+	}
+}
+
+// TestBriefLoaderSync_RequireSigning_OnRejectsUnsigned asserts flag ON returns an error containing "signing required" on an unsigned brief (#1364).
+func TestBriefLoaderSync_RequireSigning_OnRejectsUnsigned(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	raw := mustUnsignedBriefRaw(t)
+	fsys := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: raw}}
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", now)
+
+	loader := mustNewLoader(t, BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}, RequireSigning: true})
+	err := loader.Sync(context.Background(), now)
+	if err == nil {
+		t.Fatal("Sync with RequireSigning=true + unsigned brief must error")
+	}
+	if !strings.Contains(err.Error(), "signing required") {
+		t.Fatalf("error %q missing 'signing required' phrase", err.Error())
+	}
+}
+
+// TestBriefLoaderSync_RequireSigning_OnRejectsTampered asserts flag ON rejects an invalid-signature (tampered) brief with the signing-required phrase (#1364).
+func TestBriefLoaderSync_RequireSigning_OnRejectsTampered(t *testing.T) {
+	db := newBriefTestDB(t)
+	key := []byte("test-key-32-bytes-aaaaaaaaaaaaaaa")
+	_, raw := mustSignedBrief(t, key)
+	tampered := append([]byte{}, raw...)
+	for i, b := range tampered {
+		if b == 'f' {
+			tampered[i] = 'x'
+			break
+		}
+	}
+	fsys := fstest.MapFS{"PROG-1.json": &fstest.MapFile{Data: tampered}}
+	now := time.Date(2026, 5, 30, 12, 0, 0, 0, time.UTC)
+	seedParent(t, db, "PROG-1", now)
+
+	loader := mustNewLoader(t, BriefLoaderConfig{FS: fsys, DB: db, Keyring: map[string][]byte{"key-1": key}, RequireSigning: true})
+	err := loader.Sync(context.Background(), now)
+	if err == nil {
+		t.Fatal("Sync with RequireSigning=true + tampered brief must error")
+	}
+	if !strings.Contains(err.Error(), "signing required") {
+		t.Fatalf("error %q missing 'signing required' phrase", err.Error())
+	}
+}
+
 // TestNewBriefLoader_Config_RequiresKeyring — nil Keyring rejected at New, not deferred to LoadAndVerifyBrief.
 func TestNewBriefLoader_Config_RequiresKeyring(t *testing.T) {
 	db := newBriefTestDB(t)
