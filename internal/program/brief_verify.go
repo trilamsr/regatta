@@ -2,11 +2,25 @@ package program
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 
+	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/orchestrator"
 )
+
+// isSignatureError reports whether err arose from HMAC verification
+// (missing signature, tampered payload, unknown/weak key). Drives the
+// RequireSigning fail-closed branch in BriefLoader.Sync (#1364); other
+// error classes — parse, size cap, validate — stay warn+skip regardless
+// of the flag because they are not the signature-enforcement contract.
+func isSignatureError(err error) bool {
+	return errors.Is(err, orchestrator.ErrHMACInvalid) ||
+		errors.Is(err, schemas.ErrUnverifiable) ||
+		errors.Is(err, schemas.ErrUnknownKeyID) ||
+		errors.Is(err, schemas.ErrWeakKey)
+}
 
 // maxBriefSize caps the bytes read for any single brief. 1 MiB is ~3
 // orders of magnitude above realistic and bounds the OOM blast radius
