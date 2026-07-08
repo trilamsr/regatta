@@ -24,8 +24,8 @@ jobs:
   #                       use concurrency in prod code).
   #   verify-stale-todo   cross-tree TODO age scan (~30s)
   #
-  # `verify-property` was demoted to nightly verify-property-nightly.yml.
-  # `cross-platform-test (macos)` was demoted to nightly cross-platform-nightly.yml.
+  # `verify-property` was demoted to the property-full job in nightly.yml.
+  # `cross-platform-test (macos)` was demoted to the cross-platform-test job in nightly.yml.
   # See PR body for before/after wall-clock measurements.
   verify-docs:
     name: verify-docs

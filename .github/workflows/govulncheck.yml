@@ -39,7 +39,7 @@ jobs:
         with:
           # go-version-input overrides go-version-file in setup-go; pin to a patched
           # release (GO-2026-5037, GO-2026-5039, GO-2026-5856) so the scan reflects
-          # the toolchain ci.yml/release.yml/mutation-testing.yml resolve from go.mod.
+          # the toolchain ci.yml and release.yml resolve from go.mod.
           go-version-input: 1.25.12
           go-version-file: go.mod
           repo-checkout: false
