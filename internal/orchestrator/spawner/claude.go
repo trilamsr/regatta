@@ -503,6 +503,9 @@ func (s *ClaudeSpawner) emitAgentExited(req Request, cmd *exec.Cmd, waitErr erro
 	}
 }
 
+// execStarterStderr is the ultimate stderr sink; overridable in tests.
+var execStarterStderr io.Writer = os.Stderr
+
 // execStarter is the production ProcessStarter. Stderr forwards to
 // os.Stderr so operators can tail; stdout is teed between os.Stdout
 // (operator tail) and the caller-supplied writer (Spawn pipes that
@@ -512,7 +515,7 @@ func execStarter(ctx context.Context, name string, args []string, stdin io.Reade
 	cmd.Dir = dir
 	cmd.Stdin = stdin
 	cmd.Stdout = io.MultiWriter(os.Stdout, stdout)
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = execStarterStderr
 	cmd.Env = scrubChildEnv(os.Environ())
 	if err := cmd.Start(); err != nil {
 		return nil, err
