@@ -24,6 +24,10 @@ func composeLogFetcher(parent context.Context, repoRoot string) func(string) []b
 			"-f", filepath.Join(repoRoot, "docker-compose.yml"),
 			"logs", service, "--no-color", "--tail=200")
 		cmd.Dir = repoRoot
+		// Diagnostic best-effort: any docker-CLI error (timeout, missing
+		// service, no logs) is intentionally discarded — partial output
+		// still helps triage; a hard error here would mask the compose
+		// failure the caller is already reporting.
 		out, _ := cmd.CombinedOutput()
 		return out
 	}
