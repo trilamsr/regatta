@@ -64,9 +64,6 @@ ADVERSARIAL REVIEW
 - After green, spawn reviewer subagent against this template's sibling `reviewer.md`. Address Risk-tier+ findings (inline-fix OR file `[followup]` issue + cite #).
 - PHASE-S-RELAX: auto-skip reviewer when `git diff --name-only origin/main...HEAD | grep -vE '^(docs/|\.github/|scripts/|.*\.md$)'` returns empty. Per `feedback_review_proportional`.
 
-SELF-GRADE (voluntary, no CI gate)
-- Operator may self-rate against the spec's B/A/A+ rubric for own visibility. No required format. No token shape enforced. No `## A+ Rubric Scorecard` section required. Per `feedback_grade_rubric` (deprecated MAY-32 — scorecard voluntary; reviewer subagent provides equivalent adversarial check).
-
 DOC-CHECK
 - Reword vague marketing language to falsifiable claims (version pin, benchmark, named reference). Reviewer subagent catches drift.
 
@@ -123,7 +120,7 @@ GREP FIRST, READ TARGETED
 - Default to `Grep` + `Read` with `offset + limit` (max 200 lines). Full-file Read only when about to Edit AND the file is ≤300 lines. Audit 2026-06-21 found 45-73% of implementer Reads were unnecessary full-file pulls on 800-1500 LOC files. Per `feedback_grep_first_read_targeted`.
 
 SHARED-PRIMITIVE OWNERSHIP
-- Before edit, scan composition roots (`cmd/regatta/serve.go`, `internal/orchestrator/state/machine.go`, `Makefile`) for sibling-touch. Defer to named OWNER if assigned. `docs/engineer/specs/README.md` used to belong here but is now gitignored + regenerated locally. (`feedback_parallel_safety`, `feedback_conflict_anticipation`)
+- Before edit, scan composition roots (`cmd/regatta/serve.go`, `internal/orchestrator/state/machine.go`, `Makefile`) for sibling-touch. Defer to named OWNER if assigned. `docs/engineer/specs/README.md` used to belong here but is now gitignored + regenerated locally. Fleet-scope handling (parallel-implementer cap, file-disjoint parallel policy) lives in `docs/engineer/autonomous-loop.md` — see `feedback_parallel_safety` + `feedback_conflict_anticipation` there.
 
 WINDOWS PATH TESTS
 - When asserting paths against error messages or production output, canonicalize BOTH sides the same way production code does — OR platform-branch the test inputs. 8.3 short-names + `/etc`-literal paths break Windows CI silently post-merge. (`feedback_windows_path_tests`)

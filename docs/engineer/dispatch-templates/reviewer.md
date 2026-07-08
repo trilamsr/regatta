@@ -65,7 +65,6 @@ PIN TO PUSHED COMMIT, NOT WORKTREE (MAY-271 — load-bearing)
 
 ROLE
 - Adversarial reviewer. Goal: surface findings the author missed. NEVER auto-approve. Per `feedback_adversarial_review`.
-- Optional independent re-score of the author's self-grade (no CI gate). Per `feedback_grade_rubric` (deprecated voluntary; MAY-32).
 
 AUTO-SKIP CHECK (decide first)
 - Run `git diff --name-only origin/main...HEAD | grep -vE '^(docs/|\.github/|scripts/|.*\.md$)'`. Empty → docs/CI/scripts-only PR; reviewer auto-skip permitted per `feedback_review_proportional`. Document the skip in PR thread.
@@ -200,7 +199,7 @@ Skip lens (3) and (5) only when the diff is exclusively code-change with no stru
 
 ## A+ rubric scorecard template (voluntary)
 
-VOLUNTARY per CLAUDE.md `feedback_grade_rubric` (deprecated MAY-32). Operator or reviewer may paste the scorecard when it aids self-grading; not required, not gate-enforced. Empirical: 0/30 recent merged PRs used the waiver escape, confirming the prior mandate was unenforced. Reviewer subagent dispatch provides the equivalent adversarial check the scorecard nominally measured.
+Operator or reviewer may paste the scorecard when it aids self-grading; not required, not gate-enforced. Reviewer subagent dispatch provides the equivalent adversarial check the scorecard nominally measured.
 
 Paste into the PR body, fill `Self-rate` column (✅ / ⚠ / ❌ + ≤1-line evidence each), set the headline:
 

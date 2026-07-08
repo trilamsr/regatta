@@ -53,6 +53,7 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 - **PR body hygiene**: `gh pr create`/`gh pr edit` MUST use `--body-file <path>` (HEREDOC escapes backticks + silently breaks release-notes fence). Pre-push grep for triple-fence ` ```release-notes ` block presence. (`feedback_pr_body_hygiene`)
 - **Bounded CI poll**: every `gh pr` watch loop MUST have an explicit failure-exit branch + iteration cap (default 10). Forbidden: `until [SUCCESS]; do sleep N; done` — silently hangs on BLOCKED/FAILED CI. Pattern: check `gh pr checks <N>` for `fail` conclusion EACH tick; break on first failure with summary line. (`feedback_bounded_ci_poll`)
 - **Windows path tests**: when test assertions compare path strings, canonicalize BOTH sides the same way production code does — or platform-branch the test inputs. 8.3 short-names + `/etc`-literal paths break Windows CI. (`feedback_windows_path_tests`)
+- **Byte-equal-refactor pin**: any refactor whose correctness story is "target/gate/route set is byte-equal pre/post" MUST ship a mechanical drift gate (template: `scripts/check-prompt-parity.sh`). PR-body claim alone is rejected — drift surfaces in the next sibling PR, not in this one. `scripts/check-byte-equal-pin.sh` runs as a `make pre-push-check` hint (informational, never fails the push); reviewer-subagent dispatch (per `feedback_adversarial_review`) covers the drift class. Closes #985 #1031.
 
 ## TDD + review
 
