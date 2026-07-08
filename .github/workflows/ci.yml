@@ -198,4 +198,12 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: make integration
+        env:
+          # Preflight (cmd/regatta/wire_spawner_auth_preflight.go line 13) is a
+          # boundary-presence check only — never probes the credential itself.
+          # CI runners have no real ~/.claude mount and no real subscription
+          # token; a fake non-empty token satisfies the gate without weakening
+          # posture — spawner never runs during HTTP-surface integration
+          # (the test only probes /healthz, /readyz, /ui/* routes).
+          CLAUDE_CODE_OAUTH_TOKEN: ci-preflight-fake-boundary-token
         run: make integration
