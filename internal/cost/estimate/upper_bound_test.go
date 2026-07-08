@@ -2,6 +2,7 @@ package estimate_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"pgregory.net/rapid"
@@ -88,5 +89,41 @@ func TestEstimate_UpperBound_UnknownModelErrors(t *testing.T) {
 	ub := estimate.UpperBound{}
 	if _, err := ub.Estimate(context.Background(), gate.EstHint{InputTokens: 100, MaxTokens: 100}, "gpt-4"); err == nil {
 		t.Fatal("Estimate(unknown) returned no error")
+	}
+}
+
+// TestUpperBound_ZeroHint_ReturnsErrEmptyHint pins fail-closed on empty hint (money-gate bypass, #1360 review).
+func TestUpperBound_ZeroHint_ReturnsErrEmptyHint(t *testing.T) {
+	ub := estimate.UpperBound{}
+	got, err := ub.Estimate(context.Background(), gate.EstHint{}, "claude-sonnet-4-7")
+	if !errors.Is(err, estimate.ErrEmptyHint) {
+		t.Fatalf("Estimate(zero-hint) err = %v, want ErrEmptyHint", err)
+	}
+	if got != 0 {
+		t.Fatalf("Estimate(zero-hint) cost = %v, want 0", got)
+	}
+}
+
+// TestUpperBound_PartialHint_InputTokensOnly asserts non-zero cost when only InputTokens set.
+func TestUpperBound_PartialHint_InputTokensOnly(t *testing.T) {
+	ub := estimate.UpperBound{}
+	got, err := ub.Estimate(context.Background(), gate.EstHint{InputTokens: 1000}, "claude-sonnet-4-7")
+	if err != nil {
+		t.Fatalf("Estimate(input-only) err = %v", err)
+	}
+	if got <= 0 {
+		t.Fatalf("Estimate(input-only) cost = %v, want >0", got)
+	}
+}
+
+// TestUpperBound_PartialHint_MaxTokensOnly asserts non-zero cost when only MaxTokens set.
+func TestUpperBound_PartialHint_MaxTokensOnly(t *testing.T) {
+	ub := estimate.UpperBound{}
+	got, err := ub.Estimate(context.Background(), gate.EstHint{MaxTokens: 4096}, "claude-sonnet-4-7")
+	if err != nil {
+		t.Fatalf("Estimate(max-only) err = %v", err)
+	}
+	if got <= 0 {
+		t.Fatalf("Estimate(max-only) cost = %v, want >0", got)
 	}
 }
