@@ -3,10 +3,12 @@ package spawner
 import (
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -283,5 +285,54 @@ func TestParseStream_OnResultErrorMarksSpanError(t *testing.T) {
 	}
 	if v.AsString() != "record_call_failed" {
 		t.Fatalf("error.type=%q, want record_call_failed", v.AsString())
+	}
+}
+
+// blockingReader emits initLine on the first Read, then blocks subsequent
+// Reads until stop is closed — models a wedged claude subprocess whose
+// stdout has flushed the init event but produces no further output.
+type blockingReader struct {
+	initLine []byte
+	sent     bool
+	stop     <-chan struct{}
+}
+
+func (b *blockingReader) Read(p []byte) (int, error) {
+	if !b.sent {
+		b.sent = true
+		n := copy(p, b.initLine)
+		return n, nil
+	}
+	<-b.stop
+	return 0, io.EOF
+}
+
+// TestParseStream_HonorsCtxCancel_OnWedgedReader asserts ParseStream returns ctx.Err() when the reader wedges past init (W-BUG10).
+func TestParseStream_HonorsCtxCancel_OnWedgedReader(t *testing.T) {
+	_, tracer := newRecorder(t)
+	stop := make(chan struct{})
+	t.Cleanup(func() { close(stop) })
+	r := &blockingReader{
+		initLine: []byte(`{"type":"system","subtype":"init","session_id":"s","model":"m"}` + "\n"),
+		stop:     stop,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() { done <- ParseStream(ctx, tracer, r, nil) }()
+
+	select {
+	case err := <-done:
+		elapsed := time.Since(start)
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("ParseStream err=%v, want context.DeadlineExceeded", err)
+		}
+		if elapsed > 500*time.Millisecond {
+			t.Fatalf("ParseStream returned after %v, want <500ms", elapsed)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("ParseStream did not return within 2s of ctx deadline — scanner wedged")
 	}
 }
