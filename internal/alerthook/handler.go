@@ -142,10 +142,16 @@ func (h *Handler) resolveLogger() *slog.Logger {
 func (h *Handler) init() {
 	h.initOnce.Do(func() {
 		h.cache = newDedupCache(h.Now, h.CacheTTL)
+		log := h.resolveLogger()
 		m := h.resolveMeter()
 		c, err := m.Int64Counter("regatta.alerthook.alerts.total")
 		if err != nil {
-			c, _ = obs.Meter(obs.MeterScopeAlerthookFallback).Int64Counter("regatta.alerthook.alerts.total")
+			log.Warn("alerthook.meter_primary_failed", "err", err)
+			var ferr error
+			c, ferr = obs.Meter(obs.MeterScopeAlerthookFallback).Int64Counter("regatta.alerthook.alerts.total")
+			if ferr != nil {
+				log.Error("alerthook.meter_fallback_failed", "err", ferr)
+			}
 		}
 		h.alertCounter = c
 	})
