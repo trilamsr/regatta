@@ -37,7 +37,7 @@ func (s *Scheduler) reserveFromSpawnable(ctx context.Context, tc *tickCtx, spawn
 			collisions++
 			continue
 		}
-		abort, failed := s.attemptReserveAndBook(ctx, tc, w, occupancy, attempted, reservedScopes, &reserved)
+		failed, abort := s.attemptReserveAndBook(ctx, tc, w, occupancy, attempted, reservedScopes, &reserved)
 		if abort != nil {
 			return reserved, attempted, abort
 		}
@@ -104,7 +104,7 @@ func (s *Scheduler) attemptReserveAndBook(
 	attempted map[int64]struct{},
 	reservedScopes map[int64]activeScope,
 	reserved *[]int64,
-) (abort error, failed bool) {
+) (failed bool, abort error) {
 	// W6 spec §3.5: one `work_item` span per work_item lifecycle
 	// under the active `tick` span. Attrs match spec §4.1.
 	itemCtx, itemSpan := s.tracer.Start(ctx, "work_item",
@@ -119,7 +119,7 @@ func (s *Scheduler) attemptReserveAndBook(
 	if err != nil {
 		var hookErr *writeHookErr
 		if errors.As(err, &hookErr) {
-			return err, false
+			return false, err
 		}
 		if errors.Is(err, state.ErrLockHeld) {
 			// The reservation tx rolled back; re-upsert without
@@ -128,7 +128,7 @@ func (s *Scheduler) attemptReserveAndBook(
 			// agent already-attempted so reserveOrphans does not
 			// re-try the same lock acquisition this same tick.
 			if hErr := s.fireWriteHook(tc); hErr != nil {
-				return hErr, false
+				return false, hErr
 			}
 			if a, upErr := s.db.UpsertPending(ctx, w.ID, w.Lane); upErr == nil {
 				agentID = a.ID
@@ -145,7 +145,7 @@ func (s *Scheduler) attemptReserveAndBook(
 				string(obs.KeyWorkItemID), w.ID,
 				string(obs.KeyReason), "hotspot_locked",
 			)
-			return nil, false
+			return false, nil
 		}
 		// Per-item failure: log + skip rather than abort the
 		// batch so one bad row cannot stall the queue.
@@ -154,7 +154,7 @@ func (s *Scheduler) attemptReserveAndBook(
 			string(obs.KeyReason), "reserve_failed",
 			string(obs.KeyErr), err.Error(),
 		)
-		return nil, true
+		return true, nil
 	}
 	if agentID != 0 {
 		attempted[agentID] = struct{}{}
@@ -168,7 +168,7 @@ func (s *Scheduler) attemptReserveAndBook(
 			}
 		}
 	}
-	return nil, false
+	return false, nil
 }
 
 // reserveOne wraps the per-work-item reservation in a single tx. When
