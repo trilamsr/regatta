@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,7 +46,15 @@ type AnthropicPlanner struct {
 	// is no longer honored: Plan reads ctx.Deadline() only. Remove
 	// callers assigning this and drop the field on the next major.
 	Timeout time.Duration
+	// RetryBase is the exponential-backoff floor between 429/503 retries.
+	// Defaults to 1s in NewAnthropicPlanner; tests inject microseconds
+	// to keep the suite deterministic without time.Sleep drift.
+	RetryBase time.Duration
 }
+
+// maxAnthropicRetries caps retry attempts against Anthropic 429/503
+// responses. Matches the 5-attempt precedent set by internal/cost/reconcile.
+const maxAnthropicRetries = 5
 
 // NewAnthropicPlanner resolves ANTHROPIC_API_KEY via the secrets
 // Fetcher chain (keychain → legacy env → canonical env) and returns a
@@ -65,11 +74,12 @@ func NewAnthropicPlanner(model string) (*AnthropicPlanner, error) {
 		return nil, errors.New("model is required (e.g. claude-opus-4-7)")
 	}
 	return &AnthropicPlanner{
-		APIKey:  key,
-		Model:   model,
-		BaseURL: "https://api.anthropic.com",
-		Version: "2023-06-01",
-		Prompt:  defaultPlannerPrompt,
+		APIKey:    key,
+		Model:     model,
+		BaseURL:   "https://api.anthropic.com",
+		Version:   "2023-06-01",
+		Prompt:    defaultPlannerPrompt,
+		RetryBase: time.Second,
 	}, nil
 }
 
@@ -82,42 +92,129 @@ func (a *AnthropicPlanner) ModelID() string {
 // Plan invokes the Anthropic Messages API with a tool_use schema
 // mirroring ProgramBrief. The model is required to call the tool
 // (`tool_choice: {type: "tool", name: "emit_feature_plan"}`),
-// which gives us server-enforced JSON Schema output.
+// which gives us server-enforced JSON Schema output. 429 (rate limit)
+// and 503 (overload) are documented Anthropic transient responses —
+// retry up to maxAnthropicRetries times with exponential backoff,
+// honouring Retry-After when present. Other 4xx fail immediately.
+//
+// Deadline is caller-owned via req.WithContext(ctx). A client-level
+// Timeout would race the caller's ctx and silently pre-empt a longer
+// or absent deadline; callers wanting a backstop wrap ctx with
+// context.WithTimeout themselves.
 func (a *AnthropicPlanner) Plan(ctx context.Context, parent schemas.WorkItem) (*ProgramBrief, error) {
 	body, err := a.buildRequest(parent)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		a.BaseURL+"/v1/messages", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-api-key", a.APIKey)
-	req.Header.Set("anthropic-version", a.Version)
-
-	// Deadline is caller-owned via req.WithContext(ctx). A client-level
-	// Timeout would race the caller's ctx and silently pre-empt a longer
-	// or absent deadline; callers wanting a backstop wrap ctx with
-	// context.WithTimeout themselves.
 	client := a.HTTPClient
 	if client == nil {
 		client = &http.Client{}
 	}
+	base := a.RetryBase
+	if base <= 0 {
+		base = time.Second
+	}
+
+	var lastStatus int
+	var lastBody []byte
+	for attempt := 0; attempt < maxAnthropicRetries; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+			a.BaseURL+"/v1/messages", bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-api-key", a.APIKey)
+		req.Header.Set("anthropic-version", a.Version)
+
+		status, raw, retryAfter, err := a.doOnce(client, req)
+		if err != nil {
+			return nil, fmt.Errorf("anthropic: http: %w", err)
+		}
+		if status == http.StatusOK {
+			return a.parseResponse(raw)
+		}
+		lastStatus, lastBody = status, raw
+		if status != http.StatusTooManyRequests && status != http.StatusServiceUnavailable {
+			// Non-retryable 4xx/5xx — surface immediately.
+			return nil, fmt.Errorf("anthropic: status %d: %s", status, strutil.Truncate(string(raw), 500))
+		}
+		if attempt == maxAnthropicRetries-1 {
+			break
+		}
+		delay := backoffDelay(base, attempt)
+		if retryAfter > delay {
+			delay = retryAfter
+		}
+		if err := sleepCtx(ctx, delay); err != nil {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("anthropic: status %d after %d retries: %s",
+		lastStatus, maxAnthropicRetries, strutil.Truncate(string(lastBody), 500))
+}
+
+// doOnce performs a single HTTP round-trip and returns status, body,
+// parsed Retry-After (zero if absent/malformed), and any transport
+// error. Body is fully drained so the connection can be reused.
+func (a *AnthropicPlanner) doOnce(client *http.Client, req *http.Request) (int, []byte, time.Duration, error) {
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("anthropic: http: %w", err)
+		return 0, nil, 0, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("anthropic: read body: %w", err)
+		return resp.StatusCode, nil, 0, fmt.Errorf("read body: %w", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("anthropic: status %d: %s", resp.StatusCode, strutil.Truncate(string(raw), 500))
+	return resp.StatusCode, raw, parseRetryAfter(resp.Header.Get("Retry-After")), nil
+}
+
+// parseRetryAfter accepts the Anthropic-documented seconds form. The
+// HTTP-date form is rare from Anthropic and adds parser surface for
+// no measured benefit; treat unparseable values as zero and fall
+// through to plain exponential backoff.
+func parseRetryAfter(v string) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
 	}
-	return a.parseResponse(raw)
+	if secs, err := strconv.Atoi(v); err == nil && secs >= 0 {
+		return time.Duration(secs) * time.Second
+	}
+	return 0
+}
+
+// backoffDelay returns base<<attempt, capped so overflow cannot produce
+// a negative duration.
+func backoffDelay(base time.Duration, attempt int) time.Duration {
+	const maxShift = 20 // base<<20 dominates any sane per-request wait
+	if attempt > maxShift {
+		attempt = maxShift
+	}
+	d := base << attempt
+	if d <= 0 {
+		return base
+	}
+	return d
+}
+
+// sleepCtx blocks for d or until ctx cancels, whichever fires first.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // buildRequest constructs the Messages API payload.
