@@ -181,111 +181,10 @@ func (r *Reaper) sweepOne(ctx context.Context, a state.Approval, now time.Time) 
 				return fmt.Errorf("approval/reaper: txHook abort: %w", err)
 			}
 		}
-		switch policy {
-		case policyFail:
-			if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusTimedOut, []string{}, now); err != nil {
-				return fmt.Errorf("approval/reaper: mark timed_out: %w", err)
-			}
-			return nil
-		case policyAutoApprove:
-			// Row payload kept identical to the pre-WithTx shape so any
-			// downstream consumer parsing approval_events.payload_json
-			// sees no behavior change.
-			if err := recordEvent(ctx, recordEventOpts{
-				Tx: tx, Logger: r.log, ApprovalID: a.ID,
-				Event: obs.EventApprovalAutoApproved, Kind: EventKindApproved,
-				Actor: "system:timeout-default", Now: now,
-				Attrs: map[string]any{"reason": "timeout_default"},
-			}); err != nil {
-				return fmt.Errorf("approval/reaper: append approved: %w", err)
-			}
-			if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusApproved, []string{"system:timeout-default"}, now); err != nil {
-				return fmt.Errorf("approval/reaper: mark approved: %w", err)
-			}
-			return nil
-		case policyEscalate:
-			priorIdx, newIdx, nextTier, ok := nextChainTier(a, prior)
-			if !ok {
-				// Chain exhausted — degrade to fail semantics so the row
-				// still terminates and the audit trail records why.
-				if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusTimedOut, []string{}, now); err != nil {
-					return fmt.Errorf("approval/reaper: mark exhausted: %w", err)
-				}
-				chainExhausted = true
-				return nil
-			}
-			replayed := replayVotes(priorInTx, nextTier.Reviewers)
-			revoked := outstandingJTIs(priorInTx)
-			// Token revocation: one token_consumed row per outstanding JTI,
-			// payload.reason='escalated'. UNIQUE(approval_id, kind, token_jti)
-			// turns a later genuine use into ErrTokenReplay.
-			for _, jti := range revoked {
-				if err := recordEvent(ctx, recordEventOpts{
-					Tx: tx, Logger: nil, ApprovalID: a.ID,
-					Event: obs.EventApprovalEscalated, Kind: EventKindTokenConsumed,
-					Actor: systemActor, Now: now,
-					Attrs:    map[string]any{string(obs.KeyReason): reasonEscalated},
-					TokenJTI: jti,
-				}); err != nil {
-					return fmt.Errorf("approval/reaper: revoke token %q: %w", jti, err)
-				}
-			}
-			newSnap := state.ReviewerSet{
-				Reviewers:         nextTier.Reviewers,
-				Quorum:            nextTier.Quorum,
-				PreventSelfReview: nextTier.PreventSelfReview,
-			}
-			if err := advanceTier(ctx, tx, a.ID, newSnap, nextTier.Quorum, now.Add(nextTier.Timeout), now); err != nil {
-				return fmt.Errorf("approval/reaper: advance tier: %w", err)
-			}
-			if err := recordEvent(ctx, recordEventOpts{
-				Tx: tx, Logger: r.log, ApprovalID: a.ID,
-				Event: obs.EventApprovalEscalated, Kind: EventKindEscalated,
-				Actor: systemActor, Now: now,
-				Attrs: map[string]any{
-					"prior_chain_index": priorIdx,
-					"new_chain_index":   newIdx,
-					"prior_quorum":      a.Quorum,
-					"new_quorum":        nextTier.Quorum,
-					"replayed_votes":    replayed,
-					"revoked_jtis":      revoked,
-				},
-			}); err != nil {
-				return fmt.Errorf("approval/reaper: append escalated: %w", err)
-			}
-			// Tier-n+1 quorum already satisfied by replays alone: emit the
-			// terminal in the SAME tx so the scheduler picks up resolution
-			// next tick — no second sweep.
-			allow, deny, deciders := tallyReplay(replayed)
-			switch {
-			case allow >= nextTier.Quorum:
-				if err := recordEvent(ctx, recordEventOpts{
-					Tx: tx, Logger: nil, ApprovalID: a.ID,
-					Event: obs.EventApprovalAutoApproved, Kind: EventKindApproved,
-					Actor: "system:escalation-replay", Now: now,
-				}); err != nil {
-					return fmt.Errorf("approval/reaper: append replay-approved: %w", err)
-				}
-				if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusApproved, deciders, now); err != nil {
-					return fmt.Errorf("approval/reaper: mark replay-approved: %w", err)
-				}
-			case deny >= nextTier.Quorum:
-				if err := recordEvent(ctx, recordEventOpts{
-					Tx: tx, Logger: nil, ApprovalID: a.ID,
-					Event: obs.EventApprovalEscalated, Kind: EventKindRejected,
-					Actor: "system:escalation-replay", Now: now,
-				}); err != nil {
-					return fmt.Errorf("approval/reaper: append replay-rejected: %w", err)
-				}
-				if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusRejected, deciders, now); err != nil {
-					return fmt.Errorf("approval/reaper: mark replay-rejected: %w", err)
-				}
-			}
-			escalateOK = true
-			return nil
-		default:
-			return fmt.Errorf("%w: %q for approval %q", ErrUnknownTimeoutPolicy, policy, a.ID)
-		}
+		ce, eo, err := r.applyTimeoutPolicy(ctx, tx, a, policy, prior, priorInTx, now)
+		chainExhausted = ce
+		escalateOK = eo
+		return err
 	}); err != nil {
 		if errors.Is(err, errSweepSkip) {
 			return nil
@@ -321,6 +220,128 @@ func (r *Reaper) sweepOne(ctx context.Context, a state.Approval, now time.Time) 
 		)
 	}
 	return nil
+}
+
+// applyTimeoutPolicy dispatches the per-row on_timeout branch so sweepOne
+// stays a linear tx skeleton — chainExhausted / escalateOK steer the
+// post-commit slog parity emit in sweepOne.
+func (r *Reaper) applyTimeoutPolicy(
+	ctx context.Context, tx *sql.Tx, a state.Approval, policy string,
+	prior, priorInTx []state.ApprovalEvent, now time.Time,
+) (chainExhausted, escalateOK bool, err error) {
+	switch policy {
+	case policyFail:
+		if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusTimedOut, []string{}, now); err != nil {
+			return false, false, fmt.Errorf("approval/reaper: mark timed_out: %w", err)
+		}
+		return false, false, nil
+	case policyAutoApprove:
+		// Row payload kept identical to the pre-WithTx shape so any
+		// downstream consumer parsing approval_events.payload_json
+		// sees no behavior change.
+		if err := recordEvent(ctx, recordEventOpts{
+			Tx: tx, Logger: r.log, ApprovalID: a.ID,
+			Event: obs.EventApprovalAutoApproved, Kind: EventKindApproved,
+			Actor: "system:timeout-default", Now: now,
+			Attrs: map[string]any{"reason": "timeout_default"},
+		}); err != nil {
+			return false, false, fmt.Errorf("approval/reaper: append approved: %w", err)
+		}
+		if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusApproved, []string{"system:timeout-default"}, now); err != nil {
+			return false, false, fmt.Errorf("approval/reaper: mark approved: %w", err)
+		}
+		return false, false, nil
+	case policyEscalate:
+		return r.applyEscalatePolicy(ctx, tx, a, prior, priorInTx, now)
+	default:
+		return false, false, fmt.Errorf("%w: %q for approval %q", ErrUnknownTimeoutPolicy, policy, a.ID)
+	}
+}
+
+// applyEscalatePolicy advances the reviewer chain (or degrades to fail
+// semantics on chain-exhaustion) — split out so sweepOne isn't dominated
+// by the token-revocation + replay-tally block.
+func (r *Reaper) applyEscalatePolicy(
+	ctx context.Context, tx *sql.Tx, a state.Approval,
+	prior, priorInTx []state.ApprovalEvent, now time.Time,
+) (chainExhausted, escalateOK bool, err error) {
+	priorIdx, newIdx, nextTier, ok := nextChainTier(a, prior)
+	if !ok {
+		// Chain exhausted — degrade to fail semantics so the row
+		// still terminates and the audit trail records why.
+		if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusTimedOut, []string{}, now); err != nil {
+			return false, false, fmt.Errorf("approval/reaper: mark exhausted: %w", err)
+		}
+		return true, false, nil
+	}
+	replayed := replayVotes(priorInTx, nextTier.Reviewers)
+	revoked := outstandingJTIs(priorInTx)
+	// Token revocation: one token_consumed row per outstanding JTI,
+	// payload.reason='escalated'. UNIQUE(approval_id, kind, token_jti)
+	// turns a later genuine use into ErrTokenReplay.
+	for _, jti := range revoked {
+		if err := recordEvent(ctx, recordEventOpts{
+			Tx: tx, Logger: nil, ApprovalID: a.ID,
+			Event: obs.EventApprovalEscalated, Kind: EventKindTokenConsumed,
+			Actor: systemActor, Now: now,
+			Attrs:    map[string]any{string(obs.KeyReason): reasonEscalated},
+			TokenJTI: jti,
+		}); err != nil {
+			return false, false, fmt.Errorf("approval/reaper: revoke token %q: %w", jti, err)
+		}
+	}
+	newSnap := state.ReviewerSet{
+		Reviewers:         nextTier.Reviewers,
+		Quorum:            nextTier.Quorum,
+		PreventSelfReview: nextTier.PreventSelfReview,
+	}
+	if err := advanceTier(ctx, tx, a.ID, newSnap, nextTier.Quorum, now.Add(nextTier.Timeout), now); err != nil {
+		return false, false, fmt.Errorf("approval/reaper: advance tier: %w", err)
+	}
+	if err := recordEvent(ctx, recordEventOpts{
+		Tx: tx, Logger: r.log, ApprovalID: a.ID,
+		Event: obs.EventApprovalEscalated, Kind: EventKindEscalated,
+		Actor: systemActor, Now: now,
+		Attrs: map[string]any{
+			"prior_chain_index": priorIdx,
+			"new_chain_index":   newIdx,
+			"prior_quorum":      a.Quorum,
+			"new_quorum":        nextTier.Quorum,
+			"replayed_votes":    replayed,
+			"revoked_jtis":      revoked,
+		},
+	}); err != nil {
+		return false, false, fmt.Errorf("approval/reaper: append escalated: %w", err)
+	}
+	// Tier-n+1 quorum already satisfied by replays alone: emit the
+	// terminal in the SAME tx so the scheduler picks up resolution
+	// next tick — no second sweep.
+	allow, deny, deciders := tallyReplay(replayed)
+	switch {
+	case allow >= nextTier.Quorum:
+		if err := recordEvent(ctx, recordEventOpts{
+			Tx: tx, Logger: nil, ApprovalID: a.ID,
+			Event: obs.EventApprovalAutoApproved, Kind: EventKindApproved,
+			Actor: "system:escalation-replay", Now: now,
+		}); err != nil {
+			return false, false, fmt.Errorf("approval/reaper: append replay-approved: %w", err)
+		}
+		if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusApproved, deciders, now); err != nil {
+			return false, false, fmt.Errorf("approval/reaper: mark replay-approved: %w", err)
+		}
+	case deny >= nextTier.Quorum:
+		if err := recordEvent(ctx, recordEventOpts{
+			Tx: tx, Logger: nil, ApprovalID: a.ID,
+			Event: obs.EventApprovalEscalated, Kind: EventKindRejected,
+			Actor: "system:escalation-replay", Now: now,
+		}); err != nil {
+			return false, false, fmt.Errorf("approval/reaper: append replay-rejected: %w", err)
+		}
+		if err := markDecided(ctx, tx, a.ID, state.ApprovalStatusRejected, deciders, now); err != nil {
+			return false, false, fmt.Errorf("approval/reaper: mark replay-rejected: %w", err)
+		}
+	}
+	return false, true, nil
 }
 
 // errSweepSkip is the sentinel sweepOne uses to short-circuit the WithTx
