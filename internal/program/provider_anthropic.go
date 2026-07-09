@@ -56,6 +56,15 @@ type AnthropicPlanner struct {
 // responses. Matches the 5-attempt precedent set by internal/cost/reconcile.
 const maxAnthropicRetries = 5
 
+// newSecretsFetcher returns the platform secrets chain used to
+// resolve the Anthropic key; overridden by tests to inject a blocking
+// stub without patching os.Setenv or the composite chain.
+var newSecretsFetcher = secrets.Default
+
+// keyResolveTimeout is scaffolding for W-BUG9; wiring lands in the
+// impl commit so the RED test observes an unbounded key resolve.
+var keyResolveTimeout = 5 * time.Second
+
 // NewAnthropicPlanner resolves ANTHROPIC_API_KEY via the secrets
 // Fetcher chain (keychain → legacy env → canonical env) and returns a
 // configured client. The model id is required so callers explicitly
@@ -64,7 +73,8 @@ const maxAnthropicRetries = 5
 func NewAnthropicPlanner(model string) (*AnthropicPlanner, error) {
 	ctx := context.Background()
 	var key string
-	if v, err := secrets.Default(ctx).Get(ctx, secrets.KeyAnthropic); err == nil {
+	f := newSecretsFetcher(ctx)
+	if v, err := f.Get(ctx, secrets.KeyAnthropic); err == nil {
 		key = strings.TrimSpace(string(v.Bytes()))
 	}
 	if key == "" {

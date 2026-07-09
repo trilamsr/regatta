@@ -3,6 +3,7 @@ package program
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,7 +13,18 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
+	"github.com/trilamsr/regatta/internal/secrets"
 )
+
+// blockingFetcher simulates a wedged keychain/pass agent: Get returns
+// only when ctx cancels, so an unbounded caller hangs forever (W-BUG9).
+type blockingFetcher struct{ name string }
+
+func (b blockingFetcher) Name() string { return b.name }
+func (b blockingFetcher) Get(ctx context.Context, _ string) (secrets.Value, error) {
+	<-ctx.Done()
+	return secrets.Value{}, ctx.Err()
+}
 
 // stubAnthropicServer returns a fake Anthropic Messages API.
 func stubAnthropicServer(t *testing.T, respJSON string) *httptest.Server {
@@ -265,6 +277,39 @@ func TestAnthropicPlanner_ModelIDStamped(t *testing.T) {
 	a := &AnthropicPlanner{Model: "claude-sonnet-4-6"}
 	if got, want := a.ModelID(), "anthropic:claude-sonnet-4-6"; got != want {
 		t.Fatalf("ModelID=%q, want %q", got, want)
+	}
+}
+
+// TestAnthropicPlanner_NewBoundsKeyResolveOnWedgedFetcher asserts NewAnthropicPlanner returns a ctx.DeadlineExceeded error within a short deadline when the secrets fetcher blocks forever (W-BUG9).
+func TestAnthropicPlanner_NewBoundsKeyResolveOnWedgedFetcher(t *testing.T) {
+	prev := newSecretsFetcher
+	t.Cleanup(func() { newSecretsFetcher = prev })
+	newSecretsFetcher = func(_ context.Context) secrets.Fetcher {
+		return blockingFetcher{name: "wedged-keychain"}
+	}
+	prevTimeout := keyResolveTimeout
+	t.Cleanup(func() { keyResolveTimeout = prevTimeout })
+	keyResolveTimeout = 50 * time.Millisecond
+
+	done := make(chan error, 1)
+	start := time.Now()
+	go func() {
+		_, err := NewAnthropicPlanner("claude-opus-4-7")
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("expected timeout error, got nil")
+		}
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("expected DeadlineExceeded, got %v", err)
+		}
+		if !strings.Contains(err.Error(), "wedged-keychain") {
+			t.Fatalf("expected error to name the wedged source, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("NewAnthropicPlanner did not return within 2s (elapsed %v) — key resolve is unbounded", time.Since(start))
 	}
 }
 
