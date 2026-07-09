@@ -34,6 +34,11 @@ var ErrUpstreamPersistent5xx = errors.New("upstream 5xx persistent")
 // failures. Same dispatch contract as ErrUpstreamPersistent5xx.
 var ErrUpstreamPersistent429 = errors.New("upstream 429 persistent")
 
+// apiSourceFailed is the api_source span-attr label for both persistent
+// upstream failure and Usage-API fallback errors; hoisted so the helper's
+// three error-path returns share one literal (goconst).
+const apiSourceFailed = "failed"
+
 // defaultRetryAttempts is the persistent-failure threshold from spec
 // §3.4 line 247-248. Hard-coded rather than configured because the
 // number drives operator-facing failure semantics and is part of the
@@ -202,9 +207,45 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	)
 	defer span.End()
 
-	// Try Cost API (preferred). On 403/404 fall back to Usage API.
-	apiSource := "cost"
-	costResp, body, attempts, err := r.fetchWithBackoff(spanCtx, func(c context.Context) ([]byte, *bytes.Buffer, error) {
+	actualUSD, modelBreakdown, body, apiSource, err := r.fetchActualUSD(spanCtx, span, start, end)
+	if err != nil {
+		return err
+	}
+
+	recordedMicro, rerr := r.cfg.RecordedReader(spanCtx, r.cfg.TenantID, start, end)
+	if rerr != nil {
+		return fmt.Errorf("recorded reader: %w", rerr)
+	}
+	recordedUSD := recordedMicro.USD()
+
+	deltaUSD := actualUSD - recordedUSD
+	driftPct := computeDriftPct(actualUSD, recordedUSD)
+
+	span.SetAttributes(
+		attribute.String("regatta.cost.api_source", apiSource),
+		attribute.Float64("regatta.cost.drift_pct", driftPct),
+	)
+
+	payload, err := r.appendReconciliationEvent(spanCtx, start, end, actualUSD, recordedUSD, deltaUSD, driftPct, recordedMicro, modelBreakdown, body)
+	if err != nil {
+		return err
+	}
+
+	if driftPct*100 > r.cfg.DriftAlertThresholdPct {
+		r.maybeEmitDriftAlert(spanCtx, payload)
+	}
+	return nil
+}
+
+// fetchActualUSD resolves the Anthropic-reported spend for the window,
+// preferring the Cost API and falling back to Usage API + local pricing on
+// 403/404. Returns the canonical response body so the caller can hash it
+// into api_response_sig, and the api_source label so the caller can pin
+// the span attr in one place. On ErrAdminKeyUnset / persistent-failure
+// paths this helper owns the span attr because those paths short-circuit
+// before the caller's attr-set.
+func (r *Reconciler) fetchActualUSD(ctx context.Context, span trace.Span, start, end time.Time) (float64, []spend.ModelBreakdownRow, []byte, string, error) {
+	costResp, body, attempts, err := r.fetchWithBackoff(ctx, func(c context.Context) ([]byte, *bytes.Buffer, error) {
 		resp, b, e := r.client.FetchCost(c, start, end, r.cfg.BucketWidth)
 		if e != nil {
 			return nil, nil, e
@@ -213,84 +254,71 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 		_ = json.NewEncoder(buf).Encode(resp) // unused; preserve shape
 		return b, buf, nil
 	})
-	var actualUSD float64
-	var modelBreakdown []spend.ModelBreakdownRow
 
 	switch {
 	case errors.Is(err, ErrAdminKeyUnset):
-		r.log.WarnContext(spanCtx, string(obs.EventCostReconcileSkipped),
+		r.log.WarnContext(ctx, string(obs.EventCostReconcileSkipped),
 			slog.String(string(obs.KeyReason), "no_admin_key"),
 			slog.String(string(obs.KeyEventName), string(obs.EventCostReconcileSkipped)),
 		)
 		span.SetAttributes(attribute.String("regatta.cost.api_source", "skipped"))
-		return ErrAdminKeyUnset
+		return 0, nil, nil, "skipped", ErrAdminKeyUnset
 
 	case errors.Is(err, ErrCostAPIUnavailable):
-		r.log.WarnContext(spanCtx, string(obs.EventCostReconcileFallback),
+		r.log.WarnContext(ctx, string(obs.EventCostReconcileFallback),
 			slog.String(string(obs.KeyReason), "cost_api_unavailable"),
 			slog.String(string(obs.KeyEventName), string(obs.EventCostReconcileFallback)),
 		)
-		apiSource = "usage_fallback"
-		usageResp, ub, uAttempts, ferr := r.fetchUsageWithBackoff(spanCtx, start, end)
+		usageResp, ub, uAttempts, ferr := r.fetchUsageWithBackoff(ctx, start, end)
 		if ferr != nil {
-			return r.persistentFailure(spanCtx, span, start, uAttempts, ferr)
+			return 0, nil, nil, apiSourceFailed, r.persistentFailure(ctx, span, start, uAttempts, ferr)
 		}
-		body = ub
-		actualUSD, modelBreakdown, err = r.usageToActualUSD(spanCtx, usageResp)
-		if err != nil {
-			return err
+		actualUSD, modelBreakdown, uerr := r.usageToActualUSD(ctx, usageResp)
+		if uerr != nil {
+			return 0, nil, nil, apiSourceFailed, uerr
 		}
+		return actualUSD, modelBreakdown, ub, "usage_fallback", nil
 
 	case err != nil:
-		return r.persistentFailure(spanCtx, span, start, attempts, err)
-
-	default:
-		// Cost API happy path — Anthropic returned USD directly.
-		for _, row := range costResp.Data {
-			actualUSD += row.CostUSD
-			modelBreakdown = append(modelBreakdown, spend.ModelBreakdownRow{
-				Model:    row.Model,
-				USDMicro: spend.FromUSD(row.CostUSD),
-				USD:      row.CostUSD,
-			})
-		}
+		return 0, nil, nil, apiSourceFailed, r.persistentFailure(ctx, span, start, attempts, err)
 	}
 
-	// Locally-recorded spend over the same window. Returned in
-	// micro-USD (#554); convert at the diff-math boundary here — the
-	// reconciler's drift_pct is a float ratio and the substrate row
-	// dual-emits both.
-	recordedMicro, rerr := r.cfg.RecordedReader(spanCtx, r.cfg.TenantID, start, end)
-	if rerr != nil {
-		return fmt.Errorf("recorded reader: %w", rerr)
+	var actualUSD float64
+	var modelBreakdown []spend.ModelBreakdownRow
+	for _, row := range costResp.Data {
+		actualUSD += row.CostUSD
+		modelBreakdown = append(modelBreakdown, spend.ModelBreakdownRow{
+			Model:    row.Model,
+			USDMicro: spend.FromUSD(row.CostUSD),
+			USD:      row.CostUSD,
+		})
 	}
-	recordedUSD := recordedMicro.USD()
+	return actualUSD, modelBreakdown, body, "cost", nil
+}
 
-	deltaUSD := actualUSD - recordedUSD
-	driftPct := 0.0
+// computeDriftPct is the |delta|/max(actual,0.01) ratio with the
+// actual==0 && recorded>0 clamp to 1.0 — Anthropic reporting zero while
+// we recorded spend is real signal, but the denominator would be undefined,
+// so we surface it as 100% drift for the alert path.
+func computeDriftPct(actualUSD, recordedUSD float64) float64 {
 	if actualUSD > 0 {
-		driftPct = math.Abs(deltaUSD) / math.Max(actualUSD, 0.01)
-	} else if recordedUSD > 0 {
-		// Anthropic says 0, we say >0 — drift is undefined but the
-		// signal still matters; force a non-zero drift so the alert
-		// fires. Clamp to 1.0 (100%) so the dashboard math stays sane.
-		driftPct = 1.0
+		return math.Abs(actualUSD-recordedUSD) / math.Max(actualUSD, 0.01)
 	}
+	if recordedUSD > 0 {
+		return 1.0
+	}
+	return 0
+}
 
-	span.SetAttributes(
-		attribute.String("regatta.cost.api_source", apiSource),
-		attribute.Float64("regatta.cost.drift_pct", driftPct),
-	)
-
-	// Compute the canonical sha256 of the response body for audit
-	// replay. Canonical = decode then re-encode with sorted keys
-	// (encoding/json sorts map keys alphabetically by default — we
-	// pass through a generic map to force the canonical shape).
+// appendReconciliationEvent hashes the upstream response body into the
+// audit sig, marshals the BudgetReconciledPayload per spec §3.5, and
+// writes it via the Appender seam. Returns the payload so the caller can
+// pass it into the drift-alert dedup gate without re-materialising.
+func (r *Reconciler) appendReconciliationEvent(ctx context.Context, start, end time.Time, actualUSD, recordedUSD, deltaUSD, driftPct float64, recordedMicro spend.USDMicro, modelBreakdown []spend.ModelBreakdownRow, body []byte) (spend.BudgetReconciledPayload, error) {
 	sig, sigErr := canonicalHashHex(body)
 	if sigErr != nil {
-		return fmt.Errorf("canonicalise response: %w", sigErr)
+		return spend.BudgetReconciledPayload{}, fmt.Errorf("canonicalise response: %w", sigErr)
 	}
-
 	payload := spend.BudgetReconciledPayload{
 		PeriodStart:      start.UnixMilli(),
 		PeriodEnd:        end.UnixMilli(),
@@ -306,17 +334,12 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("marshal payload: %w", err)
+		return spend.BudgetReconciledPayload{}, fmt.Errorf("marshal payload: %w", err)
 	}
-	if err := r.cfg.Appender.Append(spanCtx, r.cfg.TenantID, "budget_reconciled", raw, r.cfg.Clock()); err != nil {
-		return fmt.Errorf("append budget_reconciled: %w", err)
+	if err := r.cfg.Appender.Append(ctx, r.cfg.TenantID, "budget_reconciled", raw, r.cfg.Clock()); err != nil {
+		return spend.BudgetReconciledPayload{}, fmt.Errorf("append budget_reconciled: %w", err)
 	}
-
-	// Drift alert: emit at most one per (period_start, drift_pct@2dp).
-	if driftPct*100 > r.cfg.DriftAlertThresholdPct {
-		r.maybeEmitDriftAlert(spanCtx, payload)
-	}
-	return nil
+	return payload, nil
 }
 
 // Run is the long-loop driver. Sleeps until the next aligned tick,
@@ -480,7 +503,7 @@ func (r *Reconciler) persistentFailure(ctx context.Context, span trace.Span, per
 		slog.Int64(string(obs.KeyAttemptCount), int64(attempts)),
 		slog.String(string(obs.KeyEventName), string(obs.EventCostReconcileFailing)),
 	)
-	span.SetAttributes(attribute.String("regatta.cost.api_source", "failed"))
+	span.SetAttributes(attribute.String("regatta.cost.api_source", apiSourceFailed))
 	return sentinel
 }
 
