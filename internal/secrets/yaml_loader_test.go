@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -140,6 +141,34 @@ func TestSecrets_BuildFromConfig_UnknownSourceRejected(t *testing.T) {
 	_, err := BuildFromConfig(context.Background(), cfg)
 	if err == nil {
 		t.Fatalf("want error for unknown source, got nil")
+	}
+}
+
+// TestSecrets_BuildFromConfig_EnvSource_MissingNameRejected asserts source=env with empty name is rejected.
+func TestSecrets_BuildFromConfig_EnvSource_MissingNameRejected(t *testing.T) {
+	cfg := &Config{
+		AnthropicAPIKey: &SecretSpec{Source: SourceEnv},
+	}
+	_, err := BuildFromConfig(context.Background(), cfg)
+	if err == nil {
+		t.Fatalf("want error for source=env with empty name, got nil")
+	}
+	if !strings.Contains(err.Error(), "source=env requires name") {
+		t.Fatalf("err %q missing %q", err, "source=env requires name")
+	}
+}
+
+// TestSecrets_BuildFromConfig_FileSource_MissingPathRejected asserts source=file with empty path is rejected.
+func TestSecrets_BuildFromConfig_FileSource_MissingPathRejected(t *testing.T) {
+	cfg := &Config{
+		AnthropicAPIKey: &SecretSpec{Source: SourceFile},
+	}
+	_, err := BuildFromConfig(context.Background(), cfg)
+	if err == nil {
+		t.Fatalf("want error for source=file with empty path, got nil")
+	}
+	if !strings.Contains(err.Error(), "source=file requires path") {
+		t.Fatalf("err %q missing %q", err, "source=file requires path")
 	}
 }
 
