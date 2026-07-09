@@ -31,14 +31,20 @@ import (
 
 // AnthropicPlanner is a ModelClient that calls Anthropic's
 // Messages API with a tool_use schema corresponding to ProgramBrief.
+//
+// Deadline is caller-owned: Plan uses req.WithContext(ctx); callers
+// wanting a backstop wrap ctx with context.WithTimeout.
 type AnthropicPlanner struct {
-	APIKey   string
-	Model    string        // e.g. "claude-opus-4-7"
-	BaseURL  string        // defaults to https://api.anthropic.com
-	Version  string        // anthropic-version header; defaults to "2023-06-01"
-	Timeout  time.Duration // defaults to 120s
-	Prompt   string        // system prompt; defaults to defaultPlannerPrompt
+	APIKey     string
+	Model      string // e.g. "claude-opus-4-7"
+	BaseURL    string // defaults to https://api.anthropic.com
+	Version    string // anthropic-version header; defaults to "2023-06-01"
+	Prompt     string // system prompt; defaults to defaultPlannerPrompt
 	HTTPClient *http.Client
+	// Timeout is retained for backward-compatible struct literals but
+	// is no longer honored: Plan reads ctx.Deadline() only. Remove
+	// callers assigning this and drop the field on the next major.
+	Timeout time.Duration
 }
 
 // NewAnthropicPlanner resolves ANTHROPIC_API_KEY via the secrets
@@ -63,7 +69,6 @@ func NewAnthropicPlanner(model string) (*AnthropicPlanner, error) {
 		Model:   model,
 		BaseURL: "https://api.anthropic.com",
 		Version: "2023-06-01",
-		Timeout: 120 * time.Second,
 		Prompt:  defaultPlannerPrompt,
 	}, nil
 }
@@ -92,9 +97,13 @@ func (a *AnthropicPlanner) Plan(ctx context.Context, parent schemas.WorkItem) (*
 	req.Header.Set("x-api-key", a.APIKey)
 	req.Header.Set("anthropic-version", a.Version)
 
+	// Deadline is caller-owned via req.WithContext(ctx). A client-level
+	// Timeout would race the caller's ctx and silently pre-empt a longer
+	// or absent deadline; callers wanting a backstop wrap ctx with
+	// context.WithTimeout themselves.
 	client := a.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: a.Timeout}
+		client = &http.Client{}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
