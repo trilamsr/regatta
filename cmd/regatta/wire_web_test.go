@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/authz"
 	"github.com/trilamsr/regatta/internal/health"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 	"github.com/trilamsr/regatta/internal/web"
@@ -72,13 +71,12 @@ func TestReadOnlyRoutes_RejectNonGETWithMethodNotAllowed(t *testing.T) {
 	}
 }
 
-// TestBuildListenerConfig pins serveFlags -> listenerConfig threading (UI/Addr/DB/Clock/Authorizer/PublicHost/Heartbeat/TickInterval) so MAY-48 tick-stale wiring cannot silently regress.
+// TestBuildListenerConfig pins serveFlags -> listenerConfig threading (UI/Addr/DB/Clock/PublicHost/Heartbeat/TickInterval) so MAY-48 tick-stale wiring cannot silently regress.
 func TestBuildListenerConfig(t *testing.T) {
 	t.Parallel()
 
 	clock := func() time.Time { return time.Unix(0, 0).UTC() }
 	db := &state.DB{}
-	authzr := &authz.OPAAuthorizer{}
 	hb := health.NewHeartbeatCell(clock)
 	tick := 750 * time.Millisecond
 	f := serveFlags{
@@ -87,7 +85,7 @@ func TestBuildListenerConfig(t *testing.T) {
 		TickDur: tick,
 	}
 
-	cfg := buildListenerConfig(f, db, clock, authzr, "ui.example.com", hb)
+	cfg := buildListenerConfig(f, db, clock, "ui.example.com", hb)
 
 	if cfg.UI != f.UI {
 		t.Errorf("UI: got %v want %v", cfg.UI, f.UI)
@@ -97,9 +95,6 @@ func TestBuildListenerConfig(t *testing.T) {
 	}
 	if cfg.DB != db {
 		t.Errorf("DB: got %p want %p", cfg.DB, db)
-	}
-	if cfg.Authorizer != authzr {
-		t.Errorf("Authorizer: got %p want %p", cfg.Authorizer, authzr)
 	}
 	if cfg.PublicHost != "ui.example.com" {
 		t.Errorf("PublicHost: got %q want %q", cfg.PublicHost, "ui.example.com")
