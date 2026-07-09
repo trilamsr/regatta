@@ -38,6 +38,29 @@ import (
 // triggered by an upstream predicate. The schema, identifier-shape,
 // and DAG gates are still enforced.
 func (p *ProgramBriefV2) ValidateV2() error {
+	if err := p.validateHeader(); err != nil {
+		return err
+	}
+	if err := p.validateFeatureIdentities(); err != nil {
+		return err
+	}
+
+	known := make(map[string]*PlannedFeatureV2, len(p.FeaturesV2))
+	for i := range p.FeaturesV2 {
+		known[p.FeaturesV2[i].ID] = &p.FeaturesV2[i]
+	}
+	if err := p.validateFeatureEdges(known); err != nil {
+		return err
+	}
+	if err := p.CheckReachability(); err != nil {
+		return err
+	}
+	return p.checkV2DAG()
+}
+
+// validateHeader enforces schema_version, program_id shape, parent
+// linkage, and non-empty parent_criteria + features.
+func (p *ProgramBriefV2) validateHeader() error {
 	if p.SchemaVersion != 2 {
 		return fmt.Errorf("%w: schema_version must be 2, got %d", ErrPlanSchemaInvalid, p.SchemaVersion)
 	}
@@ -53,6 +76,12 @@ func (p *ProgramBriefV2) ValidateV2() error {
 	if len(p.FeaturesV2) == 0 {
 		return fmt.Errorf("%w: features must not be empty", ErrPlanSchemaInvalid)
 	}
+	return nil
+}
+
+// validateFeatureIdentities enforces per-feature ID shape, dedup,
+// non-empty title, and allowed estimated_complexity.
+func (p *ProgramBriefV2) validateFeatureIdentities() error {
 	seenFeat := map[string]bool{}
 	for _, f := range p.FeaturesV2 {
 		if !featureIDRe.MatchString(f.ID) {
@@ -69,12 +98,13 @@ func (p *ProgramBriefV2) ValidateV2() error {
 			return fmt.Errorf("%w: feature %s estimated_complexity %q invalid", ErrPlanSchemaInvalid, f.ID, f.EstimatedComplexity)
 		}
 	}
+	return nil
+}
 
-	known := make(map[string]*PlannedFeatureV2, len(p.FeaturesV2))
-	for i := range p.FeaturesV2 {
-		known[p.FeaturesV2[i].ID] = &p.FeaturesV2[i]
-	}
-
+// validateFeatureEdges walks each feature's edges: endpoint existence,
+// on_skip enum, per-predicate compile against owner's OutputsSchema,
+// and the ≥1-predicated ⇒ default_next-required rule (spec §3.3 #2).
+func (p *ProgramBriefV2) validateFeatureEdges(known map[string]*PlannedFeatureV2) error {
 	for i := range p.FeaturesV2 {
 		f := &p.FeaturesV2[i]
 		hasPredicated := false
@@ -109,23 +139,23 @@ func (p *ProgramBriefV2) ValidateV2() error {
 			}
 		}
 	}
-	if err := p.CheckReachability(); err != nil {
-		return err
-	}
+	return nil
+}
 
-	// Cycle check: project edges into a v1-shaped DependsOnFeatures
-	// view on a scratch ProgramBrief so we can reuse checkDAG.
-	//
-	// We build the scratch DependsOnFeatures FRESH from edges alone
-	// (we do not preserve the embedded v1 DependsOnFeatures). V2 uses
-	// outgoing-edge semantics — e.From is the owning feature, e.To is
-	// the downstream — so the v1-shaped dep arrow for e is
-	// "e.To depends on e.From", i.e. append e.From to e.To's deps.
-	// Mixing in the embedded v1 DependsOnFeatures would double-count
-	// the same relationship under inverted direction and trip a false
-	// cycle on any lowered v1 brief. checkDAG is direction-agnostic
-	// for cycle detection, so feeding it a single consistent
-	// projection is what matters.
+// checkV2DAG projects v2 edges into a v1-shaped DependsOnFeatures view
+// on a scratch ProgramBrief so we can reuse checkDAG.
+//
+// We build the scratch DependsOnFeatures FRESH from edges alone
+// (we do not preserve the embedded v1 DependsOnFeatures). V2 uses
+// outgoing-edge semantics — e.From is the owning feature, e.To is
+// the downstream — so the v1-shaped dep arrow for e is
+// "e.To depends on e.From", i.e. append e.From to e.To's deps.
+// Mixing in the embedded v1 DependsOnFeatures would double-count
+// the same relationship under inverted direction and trip a false
+// cycle on any lowered v1 brief. checkDAG is direction-agnostic
+// for cycle detection, so feeding it a single consistent
+// projection is what matters.
+func (p *ProgramBriefV2) checkV2DAG() error {
 	scratch := p.ProgramBrief
 	scratch.Features = make([]PlannedFeature, len(p.FeaturesV2))
 	idxByID := make(map[string]int, len(p.FeaturesV2))
