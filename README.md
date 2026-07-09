@@ -105,6 +105,12 @@ the rebuild step above.
 - [`testdata/gates/canary/`](testdata/gates/canary/) — canary
   archetype corpus + injection mechanism
 
+## Contributing
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contributor guide (PR flow, CI gates, conventions).
+- [`CLAUDE.md`](CLAUDE.md) — agent operating rules; read first if you're touching this repo with Claude Code or any other agent.
+- [`docs/engineer/README.md`](docs/engineer/README.md) — engineer entry point (specs, briefs, dispatch templates, autonomous-loop docs).
+
 ## Why "regatta"
 
 Work runs in **lanes** — one agent per lane, racing in parallel
