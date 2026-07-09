@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/trilamsr/regatta/internal/obs"
@@ -62,15 +63,21 @@ type Orchestrator struct {
 	spawnBackoff *spawnBackoff
 	tickErrSeen  map[string]bool
 
-	// getAgentOverride and transitionAgentOverride are TEST-ONLY hooks.
-	// Mutate them ONLY before any goroutine reads them — never
-	// concurrently with a running ScheduleOnce. No lock is taken on the
-	// hot path; a concurrent mutation would race. Production code keeps
-	// both nil; the nil-check is one branch on a hot path and avoids
-	// refactoring every db caller in the package onto an interface
-	// (R19-A O2 + O3 tests).
-	getAgentOverride        func(ctx context.Context, id int64) (*state.Agent, error)
-	transitionAgentOverride func(ctx context.Context, id int64, next state.AgentState, mut state.AgentMutation) (*state.Agent, error)
+	// rollbackFailed increments once per rollbackReservation step that
+	// the state layer rejected (label step={transition,release_locks}) so
+	// operators can alert on lane-slot leak before a restart is forced.
+	rollbackFailed metric.Int64Counter
+
+	// getAgentOverride, transitionAgentOverride, and
+	// releaseAgentLocksOverride are TEST-ONLY hooks. Mutate them ONLY
+	// before any goroutine reads them — never concurrently with a running
+	// ScheduleOnce. No lock is taken on the hot path; a concurrent
+	// mutation would race. Production code keeps all three nil; the
+	// nil-check is one branch on a hot path and avoids refactoring every
+	// db caller in the package onto an interface (R19-A O2 + O3 tests).
+	getAgentOverride          func(ctx context.Context, id int64) (*state.Agent, error)
+	transitionAgentOverride   func(ctx context.Context, id int64, next state.AgentState, mut state.AgentMutation) (*state.Agent, error)
+	releaseAgentLocksOverride func(ctx context.Context, id int64) (int64, error)
 }
 
 // logTickErrIfTransition emits a Warn for kind ONCE on the pending→failed
@@ -141,6 +148,18 @@ func New(cfg Config) *Orchestrator {
 	if tracer == nil {
 		tracer = otel.Tracer("orchestrator")
 	}
+	rollbackFailed, err := cfg.ResolveMeter().Int64Counter(
+		"regatta.orchestrator.rollback_failed",
+	)
+	if err != nil {
+		// A meter that rejects counter creation would otherwise silently
+		// disable the lane-leak signal we just landed. Fall back to the
+		// global-scoped meter so the counter still records — matches the
+		// resilience shape already used by scheduler.newRecheckBackoffWithMeter.
+		rollbackFailed, _ = obs.Meter(obs.MeterScopeOrchestrator).Int64Counter(
+			"regatta.orchestrator.rollback_failed",
+		)
+	}
 	return &Orchestrator{
 		adapterSync:  cfg.AdapterSync,
 		briefLoader:  cfg.BriefLoader,
@@ -151,8 +170,9 @@ func New(cfg Config) *Orchestrator {
 		cfg:          cfg,
 		log:          log,
 		tracer:       tracer,
-		heartbeat:    cfg.HealthHeartbeat,
-		spawnBackoff: newSpawnBackoff(),
+		heartbeat:      cfg.HealthHeartbeat,
+		spawnBackoff:   newSpawnBackoff(),
+		rollbackFailed: rollbackFailed,
 	}
 }
 

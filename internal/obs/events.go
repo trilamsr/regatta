@@ -107,6 +107,13 @@ const (
 	// so ListSpawnable can re-schedule the work item (R19-A follow-up).
 	EventReapCrashedRequeued EventName = "reaper.crashed_requeued"
 
+	// EventOrchestratorRollbackFailed fires WARN once per rollback step
+	// (transition, release_locks) that the state layer rejected during
+	// rollbackReservation. Prior to landing this signal, both errors were
+	// swallowed on the floor — ~100 spawn failures could silently leak
+	// every lane slot before the daemon needed a restart to recover.
+	EventOrchestratorRollbackFailed EventName = "orchestrator.rollback_failed"
+
 	// EventSpawnerBackendChanged fires WARN once per crash-recovery row
 	// whose session_id was written by the stub spawner but the daemon now
 	// runs under the claude backend — a reboot ghost with no live process.
@@ -278,6 +285,7 @@ func AllEventNames() []EventName {
 		EventReapKilled,
 		EventReapSkipped,
 		EventReapCrashedRequeued,
+		EventOrchestratorRollbackFailed,
 		EventSpawnerBackendChanged,
 		EventCreditExhausted,
 		EventGateVerdict,
