@@ -7,7 +7,6 @@ install-hooks:  ## Install repo-managed Git hooks (sets core.hooksPath to .githo
 	@echo "  prepare-commit-msg -> auto-append Signed-off-by"
 	@echo "  commit-msg         -> validate Conventional Commits subject"
 	@echo "  pre-commit         -> make check"
-	@echo "  pre-push           -> make ci"
 
 uninstall-hooks:  ## Detach repo-managed hooks (resets core.hooksPath).
 	@git config --unset core.hooksPath || true

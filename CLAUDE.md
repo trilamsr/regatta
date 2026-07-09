@@ -43,11 +43,11 @@ UX > ease > performance > best-practices > speed > velocity. Long-term > short-t
 
 ## CI gates (local pre-push)
 
-- **`make pre-push-check`** before every push (= `make check` + PR-body release-notes-block sanity).
+- **`make pre-push-check`** before every push (= `make check`; release-notes sanity enforced server-side by pr-lint after 2026-07-08 gate cull).
 - **Fast precheck before `make check`** — implementer runs `go build ./... && go vet ./<changed-pkg>/...` FIRST (~5s) on every iteration; only escalate to `make check` (~60s) once build+vet are green. Fail-fast on syntax/typos/import-cycles at ~1/12th the cost of full `make check`. Precheck reduces the iteration loop cost, not the gate count. (`feedback_compile_precheck`)
 - **Pre-push `make check` MANDATORY** — every dispatched implementer subagent MUST run the full `make check` exactly ONCE before `git push` and verify exit=0. Per-commit `make check` runs are NOT required; during iteration, prefer `go test ./<changed-pkg>/... -short` (~5s) for the package(s) the commit touches. Use the canonical PIPESTATUS-safe form per `feedback_subagent_cicheck_compress`. Never push broken state; fix root cause + re-run. (`feedback_pre_commit_make_check`)
 - **`make check`** — authoritative target list lives at `Makefile.d/ci.mk::check`; run `make help` for descriptions. `check-no-bare-sleep` fails closed on `time.Sleep` lexically nested inside a `for` block in any `*_test.go` — migrate to `testutil.Eventually` / `testutil.EventuallyT` / `testutil.AssertStable`, or annotate `// allow-sleep: <reason>` for legitimately non-polling waits.
-- **`make ci-check`** = `check stale-todo`.
+- **`make ci-check`** = `check` (alias since the `stale-todo` shard was culled 2026-07-08).
 - **Banned-phrase gate** (`scripts/doc-check.sh`): rejects `blazing[- ]fast`, `production[- ]grade`, `world[- ]class`, `seamless`, `cutting[- ]edge`, `state[- ]of[- ]the[- ]art`, and 5 more (11 total). Wrap literal token mentions in backticks. Reword hits to falsifiable claims. Tag spec-only PRs with `[DOCS]`/`[CI]`/`[CHORE]` release-notes prefix to skip check-tdd. (`feedback_ci_gates`)
 - **check-tdd cross-package satisfaction** (`scripts/check-tdd.sh`): a prod `.go` file is satisfied by a co-located `*_test.go` walking up shared ancestors, OR by a whole-word match of a newly-added exported identifier in any `*_test.go` in the PR diff. (`feedback_ci_gates`)
 - **PR body hygiene**: `gh pr create`/`gh pr edit` MUST use `--body-file <path>` (HEREDOC escapes backticks + silently breaks release-notes fence). Pre-push grep for triple-fence ` ```release-notes ` block presence. (`feedback_pr_body_hygiene`)

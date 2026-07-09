@@ -14,7 +14,8 @@
 # across the full tree on ubuntu / macos as a backstop, catching any race
 # in a package whose code hides concurrency from the scan regex.
 #
-# Regenerate via scripts/regen-go-shards.sh (see docs/engineer/pointers.md).
+# Hand-maintained: add a package when it introduces prod-code concurrency
+# primitives; remove when the last concurrency primitive is deleted.
 github.com/trilamsr/regatta/cmd/regatta
 github.com/trilamsr/regatta/internal/alarmwebhook
 github.com/trilamsr/regatta/internal/authz

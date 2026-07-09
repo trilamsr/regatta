@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test stale-todo verify-vendored-assets lint tidy-check mod-verify check-no-bare-sleep check-no-bare-sleep-test-test check-tdd-test check-release-notes-local-test check-go-shard-coverage check-go-shard-coverage-test check-docker-env-parity check-docker-env-parity-test check-env-canonical next-migration
+.PHONY: doc-check doc-check-test verify-vendored-assets lint tidy-check mod-verify check-no-bare-sleep check-no-bare-sleep-test check-tdd-test check-docker-env-parity check-docker-env-parity-test check-env-canonical next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, comment-noise, test-godoc length).
 	bash scripts/doc-check.sh
@@ -29,18 +29,6 @@ check-no-bare-sleep-test:  ## Fixture-driven test for check-no-bare-sleep.sh.
 
 next-migration:  ## Print the next free SQLite migration number (zero-padded 4 digits). Use in dispatch prompts: $$(make next-migration).
 	@bash scripts/next-migration.sh
-
-check-release-notes-local-test:  ## Fixture-driven test for check-release-notes-local.sh (MAY-100 fence/[CATEGORY] + MAY-73 misplaced Reviewer-recommendation in commit msg).
-	bash scripts/check-release-notes-local_test.sh
-
-check-go-shard-coverage:  ## Fail when union of scripts/go-shards/shard-*.txt != `go list ./...`, or any package appears in 2+ shards. Mechanical drift gate.
-	bash scripts/check-go-shard-coverage.sh
-
-check-go-shard-coverage-test:  ## Fixture-driven test for check-go-shard-coverage.sh.
-	bash scripts/check-go-shard-coverage_test.sh
-
-stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
-	bash scripts/stale-todo.sh
 
 verify-vendored-assets:  ## Assert on-disk SHA-256 of internal/web/static/htmx.min.js matches the pin in VENDORED.md. Mismatch = supply-chain tamper or accidental edit; fails CI.
 	@bash -c 'set -euo pipefail; \
