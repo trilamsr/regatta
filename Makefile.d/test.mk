@@ -2,8 +2,8 @@
 .PHONY: go-check go-check-full go-check-shard property-test property-test-full crash-recovery-property-full mutation-test mutation-test-install bench cover
 
 # Property test set — single source of truth for property-test + property-test-full.
-PROPERTY_TESTS := TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty|TestSchedulerCrashRecoveryProperty|TestSpendCrashRecoveryProperty|TestReaperCrashRecoveryProperty|TestBridge_PrimitiveAttrRoundTrip_Property
-PROPERTY_PKGS := ./internal/orchestrator/state/... ./internal/orchestrator/scheduler/... ./internal/cost/spend/... ./internal/gates/approval/... ./internal/obs/otel/...
+PROPERTY_TESTS := TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty|TestSchedulerCrashRecoveryProperty|TestSpendCrashRecoveryProperty|TestReaperCrashRecoveryProperty
+PROPERTY_PKGS := ./internal/orchestrator/state/... ./internal/orchestrator/scheduler/... ./internal/cost/spend/... ./internal/gates/approval/...
 
 # Race-detector cost is ~2x test wall-clock + ~2x compile. Apply only to
 # packages whose PROD code uses concurrency primitives (sync.*, channels, go

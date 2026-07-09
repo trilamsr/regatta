@@ -201,9 +201,9 @@ of the source `slo/*.yaml`. To change an SLO:
 
 ```sh
 # 1. Edit the source spec.
-$EDITOR slo/l4-latency.yaml
+$EDITOR slo/scheduler-tick.yaml
 
-# 2. Re-compile (regenerates dashboards/prometheus/rules/l4-latency.yaml).
+# 2. Re-compile (regenerates dashboards/prometheus/rules/scheduler-tick.yaml).
 make slo-compile
 
 # 3. Hot-reload Prometheus — the compose flag --web.enable-lifecycle

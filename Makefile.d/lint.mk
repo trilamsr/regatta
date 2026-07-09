@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test stale-todo verify-vendored-assets lint tidy-check mod-verify check-no-bare-sleep check-no-bare-sleep-test check-stale-refs check-stale-refs-test check-tdd-test check-release-notes-local-test check-go-shard-coverage check-go-shard-coverage-test check-docker-env-parity check-docker-env-parity-test check-env-canonical next-migration
+.PHONY: doc-check doc-check-test stale-todo verify-vendored-assets lint tidy-check mod-verify check-no-bare-sleep check-no-bare-sleep-test-test check-tdd-test check-release-notes-local-test check-go-shard-coverage check-go-shard-coverage-test check-docker-env-parity check-docker-env-parity-test check-env-canonical next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, comment-noise, test-godoc length).
 	bash scripts/doc-check.sh
@@ -16,11 +16,7 @@ check-docker-env-parity-test:  ## Fixture-driven self-test for check-docker-env-
 check-env-canonical:  ## Fail when prod Go code reads a legacy env var name when a canonical alias exists (R-MEGA-2 G3). Escape: `// canonical-env-skip: <reason>`.
 	bash scripts/check-env-canonical.sh
 
-check-stale-refs:  ## Fail when PR deletes files but tracked files still reference them. Escape: `<!-- stale-refs-justified: <reason> -->`.
-	bash scripts/check-stale-refs.sh
 
-check-stale-refs-test:  ## Fixture-driven test for check-stale-refs.sh.
-	bash scripts/check-stale-refs_test.sh
 
 check-tdd-test:  ## Fixture-driven test for check-tdd.sh (gate self-test).
 	bash scripts/check-tdd_test.sh

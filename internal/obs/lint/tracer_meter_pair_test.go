@@ -25,7 +25,6 @@ var knownGap = map[string]string{
 	"internal/cost/gate/gate.go:Config":                               "#509",
 	"internal/cost/reconcile/tick.go:Config":                          "#509",
 	"internal/gates/approval/gate.go:Gate":                            "#509",
-	"internal/gates/l4/reload.go:Reloader":                            "#509",
 	"internal/orchestrator/adapter/markdown.go:MarkdownCatalogConfig": "#509",
 	"internal/orchestrator/prwatch/prwatch.go:Config":                 "#509",
 	"internal/orchestrator/spawner/claude.go:ClaudeSpawnerConfig":     "#509",

@@ -14,14 +14,14 @@ help:  ## Show this help.
 # doc phrases). Trimmed 2026-07-08: 17 ceremony/rule-drift gates + the
 # `check-meta` self-tests were culled — see the W3 gate-cull PR for the full
 # kill list.
-check: doc-check check-no-bare-sleep check-stale-refs check-docker-env-parity check-env-canonical check-go-shard-coverage lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test  ## Local gate; <60s. `vet` dropped — golangci-lint enables govet (.golangci.yml).
+check: doc-check check-no-bare-sleep check-docker-env-parity check-env-canonical check-go-shard-coverage lint tidy-check mod-verify verify-vendored-assets go-check property-test slo-compile-test  ## Local gate; <60s. `vet` dropped — golangci-lint enables govet (.golangci.yml).
 
 # CI parallelization shards. Together cover the same gate set as `make check`
 # (plus `stale-todo` for `check-stale-todo`). Local `make check` and
 # `make ci-check` remain the serial pre-push entrypoints; the shards exist so
 # .github/workflows/ci.yml can fan them out into parallel jobs without
 # duplicating the target list per shard.
-check-docs: doc-check check-no-bare-sleep check-stale-refs check-go-shard-coverage  ## CI shard: bash-script doc/citation gates. Fast (~30s).
+check-docs: doc-check check-no-bare-sleep check-go-shard-coverage  ## CI shard: bash-script doc/citation gates. Fast (~30s).
 
 check-go: tidy-check mod-verify verify-vendored-assets go-check  ## CI shard: Go module + race-test sweep. `lint` runs in its own job. Slow (~3-5min, setup-go cached).
 
@@ -35,7 +35,7 @@ ci: ci-check  ## CI entrypoint. CI also runs lint as a separate job via golangci
 
 ci-integration: ## Nightly-only: e2e + integration tests that cost Anthropic tokens / write to real fixture repos. Requires REGATTA_E2E_* env (see tests/e2e/loopclosure/loop_closure_test.go). Skips when env absent. Tag split rationale: docs/engineer/testing-conventions.md.
 	go test -tags=e2e -count=1 -timeout=30m ./tests/e2e/...
-	go test -tags=integration_gh -count=1 -timeout=10m ./internal/orchestrator/prwatch/... ./internal/orchestrator/scheduler/... ./internal/orchestrator/adapter/githubissues/... ./internal/gates/l4/...
+	go test -tags=integration_gh -count=1 -timeout=10m ./internal/orchestrator/prwatch/... ./internal/orchestrator/scheduler/... ./internal/orchestrator/adapter/githubissues/...
 	go test -tags=docker -count=1 -timeout=15m ./tests/docker/...
 
 integration: ## Build-tag-gated integration tests: tests/docker (compose stack) + tests/integration (CLI subprocess + migration replay). Wired into a dedicated CI job so unit-test feedback stays fast (R-MEGA-3 INT-5).

@@ -98,7 +98,7 @@ func (s *Scheduler) costCapDeniesOrphans(ctx context.Context, n int) bool {
 	return true
 }
 
-// recheckGates fans out the approval / cost-governor / L4 gate
+// recheckGates fans out the approval / cost-governor gate
 // re-checks for one orphan (#703 R1). skip=true drops the orphan from
 // this tick; err halts the tick (only the approval-gate reject
 // CAS path returns one — paused/denied/blocked all skip and log).
@@ -138,9 +138,6 @@ func (s *Scheduler) recheckGates(ctx context.Context, tc *tickCtx, workItemID st
 		return skip, err
 	}
 	if s.recheckCost(ctx, wi) {
-		return true, nil
-	}
-	if s.recheckL4(ctx, wi) {
 		return true, nil
 	}
 	return false, nil
@@ -190,8 +187,7 @@ func (s *Scheduler) orphanArchivedNoGates(ctx context.Context, tc *tickCtx, work
 // the orphan must pause (fail-closed).
 func (s *Scheduler) fetchWorkItemForRecheck(ctx context.Context, tc *tickCtx, workItemID string) (wi state.WorkItem, fetched, ok bool) {
 	gatesWired := (s.cfg.Gate != nil && s.cfg.GateResolver != nil) ||
-		(s.cfg.CostGate != nil && s.cfg.CostGateResolver != nil) ||
-		(s.cfg.L4Gate != nil && s.cfg.L4GateResolver != nil)
+		(s.cfg.CostGate != nil && s.cfg.CostGateResolver != nil)
 	if !gatesWired {
 		return state.WorkItem{}, false, false
 	}
@@ -311,42 +307,6 @@ func (s *Scheduler) recheckCost(ctx context.Context, wi state.WorkItem) (skip bo
 		return true
 	}
 	return false
-}
-
-// recheckL4 mirrors applyL4Gate for one wi. Blocking verdicts and
-// Evaluate errors both fail-closed.
-func (s *Scheduler) recheckL4(ctx context.Context, wi state.WorkItem) (skip bool) {
-	if s.cfg.L4Gate == nil || s.cfg.L4GateResolver == nil {
-		return false
-	}
-	sc, gated := s.cfg.L4GateResolver(wi)
-	if !gated {
-		return false
-	}
-	gr, err := s.cfg.L4Gate.Evaluate(ctx, sc.Cfg, sc.In)
-	if err != nil {
-		s.log.Warn("scheduler.l4_gate_error",
-			string(obs.KeyWorkItemID), wi.ID,
-			string(obs.KeyGateID), sc.Cfg.GateID,
-			string(obs.KeyErr), err.Error(),
-		)
-		return true
-	}
-	if !gr.Blocking {
-		return false
-	}
-	reason := string(gr.Verdict)
-	if len(gr.Findings) > 0 {
-		reason = gr.Findings[0].ID
-	}
-	s.log.Info("scheduler.l4_gate_blocked",
-		string(obs.KeyWorkItemID), wi.ID,
-		string(obs.KeyGateID), sc.Cfg.GateID,
-		string(obs.KeyVerdict), string(gr.Verdict),
-		string(obs.KeyReason), reason,
-	)
-	s.emitGateRejected(ctx, wi.ID, sc.In.PRSHA, reason)
-	return true
 }
 
 func (s *Scheduler) resolveLocks(workItemID string) []string {

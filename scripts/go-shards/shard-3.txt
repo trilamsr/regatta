@@ -8,7 +8,6 @@ github.com/trilamsr/regatta/internal/cost/cap
 github.com/trilamsr/regatta/internal/cost/gate
 github.com/trilamsr/regatta/internal/dbutil
 github.com/trilamsr/regatta/internal/gates/l0
-github.com/trilamsr/regatta/internal/gates/l4
 github.com/trilamsr/regatta/internal/health
 github.com/trilamsr/regatta/internal/obs
 github.com/trilamsr/regatta/internal/obs/lint
@@ -18,7 +17,6 @@ github.com/trilamsr/regatta/internal/orchestrator/state
 github.com/trilamsr/regatta/internal/orchestrator/state/approvals_shadow
 github.com/trilamsr/regatta/internal/secrets
 github.com/trilamsr/regatta/internal/testutil/gitenv
-github.com/trilamsr/regatta/internal/watchdog
 github.com/trilamsr/regatta/internal/web
 github.com/trilamsr/regatta/internal/web/etag
 github.com/trilamsr/regatta/internal/web/internalerror

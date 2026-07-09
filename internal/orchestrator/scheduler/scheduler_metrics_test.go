@@ -24,7 +24,6 @@ var expectedSteps = []string{
 	"gate_cost",
 	"gate_cost_cap",
 	"gate_l0",
-	"gate_l4",
 	"gate_parallel_cap",
 	"persist",
 	"reaper",
