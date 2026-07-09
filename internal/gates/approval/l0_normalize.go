@@ -6,7 +6,7 @@
 // edit (visible or invisible).
 //
 // Normative behavior is specified in testdata/gates/l0/README.md.
-package l0
+package approval
 
 import (
 	"strings"
@@ -20,7 +20,7 @@ import (
 // stripped code points (notably U+034F CGJ and U+200C ZWNJ) actively
 // block NFC composition; a strip-after-NFC ordering would leave their
 // effect intact.
-func Normalize(s string) string {
+func l0Normalize(s string) string {
 	return norm.NFC.String(strip(s))
 }
 

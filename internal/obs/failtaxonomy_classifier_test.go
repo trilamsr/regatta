@@ -1,18 +1,17 @@
-package failtaxonomy_test
+package obs_test
 
 import (
 	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/obs/failtaxonomy"
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/testutil/reporoot"
 )
 
@@ -23,14 +22,14 @@ func TestFailureClassifier_RegexFastPath_P95Under5ms(t *testing.T) {
 		t.Fatalf("corpus too small: %d entries", len(corpus))
 	}
 	for _, c := range corpus {
-		failtaxonomy.Classify(c)
+		obs.Classify(c)
 	}
 	const iterations = 200
 	durations := make([]time.Duration, 0, iterations*len(corpus))
 	for i := 0; i < iterations; i++ {
 		for _, c := range corpus {
 			start := time.Now()
-			failtaxonomy.Classify(c)
+			obs.Classify(c)
 			durations = append(durations, time.Since(start))
 		}
 	}
@@ -50,7 +49,7 @@ func TestFailureClassifier_UnknownBucketFallthrough(t *testing.T) {
 		"INFO: build started\nINFO: build done\n",
 	}
 	for _, c := range cases {
-		if got := failtaxonomy.Classify(c); got != failtaxonomy.TaxUnknown {
+		if got := obs.Classify(c); got != obs.TaxUnknown {
 			t.Errorf("Classify(%q) = %v, want unknown", c, got)
 		}
 	}
@@ -60,18 +59,18 @@ func TestFailureClassifier_UnknownBucketFallthrough(t *testing.T) {
 func TestFailureClassifier_KnownBucketCoverage(t *testing.T) {
 	cases := []struct {
 		log  string
-		want failtaxonomy.Taxonomy
+		want obs.Taxonomy
 	}{
-		{"context deadline exceeded", failtaxonomy.TaxTimeout},
-		{"merge conflict in foo/bar.go", failtaxonomy.TaxConflict},
-		{"gate_reject: CELDecider policy block", failtaxonomy.TaxGateReject},
-		{"reviewer block: changes requested", failtaxonomy.TaxReviewerBlock},
-		{"panic: runtime error", failtaxonomy.TaxCrash},
-		{"FAIL  github.com/foo/bar  exit status 1", failtaxonomy.TaxCIFail},
-		{"cost cap reached for tenant", failtaxonomy.TaxCostCap},
+		{"context deadline exceeded", obs.TaxTimeout},
+		{"merge conflict in foo/bar.go", obs.TaxConflict},
+		{"gate_reject: CELDecider policy block", obs.TaxGateReject},
+		{"reviewer block: changes requested", obs.TaxReviewerBlock},
+		{"panic: runtime error", obs.TaxCrash},
+		{"FAIL  github.com/foo/bar  exit status 1", obs.TaxCIFail},
+		{"cost cap reached for tenant", obs.TaxCostCap},
 	}
 	for _, tc := range cases {
-		if got := failtaxonomy.Classify(tc.log); got != tc.want {
+		if got := obs.Classify(tc.log); got != tc.want {
 			t.Errorf("Classify(%q) = %v, want %v", tc.log, got, tc.want)
 		}
 	}
@@ -79,13 +78,13 @@ func TestFailureClassifier_KnownBucketCoverage(t *testing.T) {
 
 // TestFailureTaxonomyEnum_Closed pins the 8-bucket closed enum.
 func TestFailureTaxonomyEnum_Closed(t *testing.T) {
-	tax := failtaxonomy.AllTaxonomies()
+	tax := obs.AllTaxonomies()
 	if len(tax) != 8 {
 		t.Fatalf("want 8 taxonomies, got %d (%v)", len(tax), tax)
 	}
 	found := false
 	for _, x := range tax {
-		if x == failtaxonomy.TaxUnknown {
+		if x == obs.TaxUnknown {
 			found = true
 		}
 	}
@@ -94,41 +93,29 @@ func TestFailureTaxonomyEnum_Closed(t *testing.T) {
 	}
 }
 
-// TestNoUnboundedLabel_PRNumber AST-walks the package for pr_number string literals in production code.
-func TestNoUnboundedLabel_PRNumber(t *testing.T) {
+// TestFailtaxonomy_NoUnboundedLabel_PRNumber AST-walks the failtaxonomy prod file for pr_number literals.
+func TestFailtaxonomy_NoUnboundedLabel_PRNumber(t *testing.T) {
 	repoRoot := reporoot.Must(t)
-	walkRoot := filepath.Join(repoRoot, "internal", "obs", "failtaxonomy")
+	target := filepath.Join(repoRoot, "internal", "obs", "failtaxonomy_classifier.go")
 	fset := token.NewFileSet()
 	var failures []string
 
-	err := filepath.WalkDir(walkRoot, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			return err
-		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			lit, ok := n.(*ast.BasicLit)
-			if !ok || lit.Kind != token.STRING {
-				return true
-			}
-			raw := strings.Trim(lit.Value, "\"`")
-			if raw == "pr_number" {
-				pos := fset.Position(lit.Pos())
-				failures = append(failures, pos.String()+": banned pr_number literal in metric package")
-			}
-			return true
-		})
-		return nil
-	})
+	f, err := parser.ParseFile(fset, target, nil, parser.SkipObjectResolution)
 	if err != nil {
-		t.Fatalf("walk: %v", err)
+		t.Fatalf("parse: %v", err)
 	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		lit, ok := n.(*ast.BasicLit)
+		if !ok || lit.Kind != token.STRING {
+			return true
+		}
+		raw := strings.Trim(lit.Value, "\"`")
+		if raw == "pr_number" {
+			pos := fset.Position(lit.Pos())
+			failures = append(failures, pos.String()+": banned pr_number literal in metric package")
+		}
+		return true
+	})
 	if len(failures) > 0 {
 		t.Fatalf("cardinality leaks:\n  %s", strings.Join(failures, "\n  "))
 	}
@@ -138,11 +125,11 @@ func TestNoUnboundedLabel_PRNumber(t *testing.T) {
 func TestFailureClassifier_TailWindowOnly(t *testing.T) {
 	pad := strings.Repeat("INFO: ok\n", 2000)
 	sig := pad + "panic: runtime error: nil pointer\n"
-	if got := failtaxonomy.Classify(sig); got != failtaxonomy.TaxCrash {
+	if got := obs.Classify(sig); got != obs.TaxCrash {
 		t.Fatalf("trailing signature missed: got %v", got)
 	}
 	sigBuried := "panic: runtime error\n" + strings.Repeat("INFO: ok\n", 2000)
-	if got := failtaxonomy.Classify(sigBuried); got == failtaxonomy.TaxCrash {
+	if got := obs.Classify(sigBuried); got == obs.TaxCrash {
 		t.Fatal("buried-signature outside tail window should not match — design bug")
 	}
 }
@@ -154,7 +141,7 @@ func BenchmarkClassifier_RegexClassify(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = failtaxonomy.Classify(body)
+		_ = obs.Classify(body)
 	}
 }
 
@@ -175,18 +162,18 @@ func BenchmarkClassifier_8KBTailBoundary(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		got := failtaxonomy.Classify(body)
-		if got != failtaxonomy.TaxCrash {
+		got := obs.Classify(body)
+		if got != obs.TaxCrash {
 			b.Fatalf("classify on 16KB log = %v, want crash", got)
 		}
 	}
 }
 
-// TestRecord_EmitsCounterWithoutPanic verifies Record returns the classified bucket and does not panic on nil meter.
-func TestRecord_EmitsCounterWithoutPanic(t *testing.T) {
-	got := failtaxonomy.Record(context.Background(), failtaxonomy.Config{},
+// TestFailtaxonomyRecord_EmitsCounterWithoutPanic verifies Record returns the classified bucket and does not panic on nil meter.
+func TestFailtaxonomyRecord_EmitsCounterWithoutPanic(t *testing.T) {
+	got := obs.FailtaxonomyRecord(context.Background(), obs.FailtaxonomyConfig{},
 		"context deadline exceeded")
-	if got != failtaxonomy.TaxTimeout {
+	if got != obs.TaxTimeout {
 		t.Fatalf("Record bucket = %v, want timeout", got)
 	}
 }

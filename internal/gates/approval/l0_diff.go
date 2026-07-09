@@ -1,27 +1,25 @@
-package l0
+package approval
 
 import (
 	"bufio"
 	"strings"
 )
 
-// FileChange holds the old and new content of one file in a unified
+// L0FileChange holds the old and new content of one file in a unified
 // diff. /dev/null on either side yields an empty string.
-type FileChange struct {
+type L0FileChange struct {
 	OldPath string
 	NewPath string
 	Old     string // reconstructed from ` ` and `-` lines
 	New     string // reconstructed from ` ` and `+` lines
 }
 
-// ParseUnifiedDiff parses a minimal subset of unified-diff format
-// sufficient for L0 fixtures. It reconstructs only the lines that
-// appear in the diff hunks; surrounding context is not synthesized.
-// For fixtures with /dev/null on one side, the other side's content
-// is the full file.
-func ParseUnifiedDiff(diff string) []FileChange {
-	var out []FileChange
-	var cur *FileChange
+// L0ParseUnifiedDiff parses a minimal subset of unified-diff format
+// sufficient for L0 fixtures; reconstructs only lines that appear in
+// diff hunks (surrounding context is not synthesized).
+func L0ParseUnifiedDiff(diff string) []L0FileChange {
+	var out []L0FileChange
+	var cur *L0FileChange
 	flush := func() {
 		if cur != nil {
 			out = append(out, *cur)
@@ -36,26 +34,26 @@ func ParseUnifiedDiff(diff string) []FileChange {
 		switch {
 		case strings.HasPrefix(line, "diff --git "):
 			flush()
-			cur = &FileChange{}
+			cur = &L0FileChange{}
 			inHunk = false
 		case strings.HasPrefix(line, "--- "):
 			if cur == nil {
-				cur = &FileChange{}
+				cur = &L0FileChange{}
 			}
 			cur.OldPath = strings.TrimPrefix(strings.TrimPrefix(line, "--- "), "a/")
 		case strings.HasPrefix(line, "+++ "):
 			if cur == nil {
-				cur = &FileChange{}
+				cur = &L0FileChange{}
 			}
 			cur.NewPath = strings.TrimPrefix(strings.TrimPrefix(line, "+++ "), "b/")
 		case strings.HasPrefix(line, "rename from "):
 			if cur == nil {
-				cur = &FileChange{}
+				cur = &L0FileChange{}
 			}
 			cur.OldPath = strings.TrimPrefix(line, "rename from ")
 		case strings.HasPrefix(line, "rename to "):
 			if cur == nil {
-				cur = &FileChange{}
+				cur = &L0FileChange{}
 			}
 			cur.NewPath = strings.TrimPrefix(line, "rename to ")
 		case strings.HasPrefix(line, "@@"):

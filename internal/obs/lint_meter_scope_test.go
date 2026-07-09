@@ -6,7 +6,7 @@
 // const block instead of N call sites — a dashboard query keyed on
 // "scheduler" survives any rename because the const value is the
 // authoritative copy of that string.
-package lint_test
+package obs_test
 
 import (
 	"go/ast"

@@ -1,4 +1,4 @@
-package l0
+package approval
 
 import "testing"
 
@@ -13,7 +13,7 @@ func TestParseUnifiedDiff_Minimal(t *testing.T) {
 +- [x] Add foo. test=TestFoo
  - [ ] Unchanged.
 `
-	changes := ParseUnifiedDiff(d)
+	changes := L0ParseUnifiedDiff(d)
 	if len(changes) != 1 {
 		t.Fatalf("len(changes)=%d", len(changes))
 	}
@@ -40,7 +40,7 @@ func TestParseUnifiedDiff_NewFile(t *testing.T) {
 +# New
 +- [ ] Brand new criterion.
 `
-	changes := ParseUnifiedDiff(d)
+	changes := L0ParseUnifiedDiff(d)
 	if len(changes) != 1 || changes[0].Old != "" {
 		t.Fatalf("got %+v", changes)
 	}
@@ -57,7 +57,7 @@ similarity index 100%
 rename from MILESTONES_OLD.md
 rename to MILESTONES.md
 `
-	changes := ParseUnifiedDiff(d)
+	changes := L0ParseUnifiedDiff(d)
 	if len(changes) != 1 {
 		t.Fatalf("len(changes)=%d", len(changes))
 	}

@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
-	"github.com/trilamsr/regatta/internal/gates/l0"
+	"github.com/trilamsr/regatta/internal/gates/approval"
 )
 
 //go:embed init_assets/regatta.yaml init_assets/sample.diff
@@ -172,7 +172,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "regatta init: re-read %s: %v\n", diffPath, err)
 		return 1
 	}
-	res := l0.Check(l0.Default(), l0.ParseUnifiedDiff(string(onDisk)))
+	res := approval.L0Check(approval.L0Default(), approval.L0ParseUnifiedDiff(string(onDisk)))
 
 	if *jsonOut {
 		if err := emitInitJSON(stdout, written, skipped, overwritten, res); err != nil {

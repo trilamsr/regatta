@@ -1,4 +1,4 @@
-package l0
+package approval
 
 import (
 	"encoding/json"
@@ -31,7 +31,7 @@ func TestFixtureCorpus(t *testing.T) {
 					if err != nil {
 						t.Fatalf("read: %v", err)
 					}
-					r := Check(Default(), ParseUnifiedDiff(string(body)))
+					r := L0Check(L0Default(), L0ParseUnifiedDiff(string(body)))
 					switch kind {
 					case "pass":
 						if r.Verdict != schemas.VerdictPass {

@@ -11,7 +11,7 @@ import (
 	"os"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
-	"github.com/trilamsr/regatta/internal/gates/l0"
+	"github.com/trilamsr/regatta/internal/gates/approval"
 )
 
 func runL0(args []string) int {
@@ -37,7 +37,7 @@ func runL0(args []string) int {
 		fmt.Fprintln(os.Stderr, "regatta l0:", err)
 		return 2
 	}
-	result := l0.Check(l0.Default(), l0.ParseUnifiedDiff(string(data)))
+	result := approval.L0Check(approval.L0Default(), approval.L0ParseUnifiedDiff(string(data)))
 	return emitL0(result)
 }
 
@@ -54,7 +54,7 @@ func runL0Refs(args []string) int {
 		fmt.Fprintln(os.Stderr, "regatta l0-refs: -base and -head required")
 		return 2
 	}
-	result, err := l0.CheckRefs(context.Background(), l0.Default(), *repoDir, *baseRef, *headRef)
+	result, err := approval.L0CheckRefs(context.Background(), approval.L0Default(), *repoDir, *baseRef, *headRef)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "regatta l0-refs:", err)
 		return 2
@@ -74,7 +74,7 @@ func runL0Merge(args []string) int {
 		fmt.Fprintln(os.Stderr, "regatta l0-merge: -commit required")
 		return 2
 	}
-	result, err := l0.CheckMergeCommit(context.Background(), l0.Default(), *repoDir, *commit)
+	result, err := approval.L0CheckMergeCommit(context.Background(), approval.L0Default(), *repoDir, *commit)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "regatta l0-merge:", err)
 		return 2

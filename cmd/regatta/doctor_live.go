@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/trilamsr/regatta/internal/config"
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
-	verifyrepo "github.com/trilamsr/regatta/internal/config/verify"
 	"github.com/trilamsr/regatta/internal/secrets"
 )
 
@@ -80,7 +80,7 @@ func liveVerifyRepoConfig(ctx context.Context) (bool, []string, error) {
 	if v, _, gerr := secrets.GetWithSource(ctx, chain, secrets.KeyGHToken); gerr == nil {
 		token = string(v.Bytes())
 	}
-	res, err := verifyrepo.Run(ctx, verifyrepo.Config{
+	res, err := config.VerifyRun(ctx, config.VerifyConfig{
 		Owner:  cfg.Repo.Owner,
 		Repo:   cfg.Repo.Name,
 		Branch: branch,

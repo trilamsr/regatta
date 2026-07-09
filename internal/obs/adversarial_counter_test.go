@@ -1,4 +1,4 @@
-package adversarial
+package obs
 
 import (
 	"context"
@@ -19,12 +19,12 @@ import (
 func TestAdversarial_FindingsCounter_IncrementsOnSubstrateEvent(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	r, err := NewRecorder(Config{Meter: mp.Meter("test")})
+	r, err := NewAdversarialRecorder(AdversarialConfig{Meter: mp.Meter("test")})
 	if err != nil {
 		t.Fatalf("NewRecorder: %v", err)
 	}
 
-	err = r.Record(context.Background(), Finding{
+	err = r.Record(context.Background(), AdversarialFinding{
 		SpanID: "s1", Index: 0,
 		Severity: SeverityHigh, Scope: ScopeFile,
 		Text: "missing error wrap on db call",
@@ -145,9 +145,9 @@ func TestAdversarial_SeverityScopeEnum_Closed(t *testing.T) {
 func TestAdversarial_NoDoubleCountOnRetry(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
-	r, _ := NewRecorder(Config{Meter: mp.Meter("test")})
+	r, _ := NewAdversarialRecorder(AdversarialConfig{Meter: mp.Meter("test")})
 
-	f := Finding{SpanID: "s9", Index: 3, Severity: SeverityLow, Scope: ScopeRepo, Text: "godoc overflow"}
+	f := AdversarialFinding{SpanID: "s9", Index: 3, Severity: SeverityLow, Scope: ScopeRepo, Text: "godoc overflow"}
 	for i := 0; i < 5; i++ {
 		_ = r.Record(context.Background(), f)
 	}
@@ -173,15 +173,15 @@ func TestAdversarial_NoDoubleCountOnRetry(t *testing.T) {
 
 // TestAdversarial_NilMeterFallback pins nil-Config.Meter to the global-scoped meter.
 func TestAdversarial_NilMeterFallback(t *testing.T) {
-	cfg := Config{}
+	cfg := AdversarialConfig{}
 	if cfg.ResolveMeter() == nil {
 		t.Fatal("ResolveMeter returned nil")
 	}
-	r, err := NewRecorder(cfg)
+	r, err := NewAdversarialRecorder(cfg)
 	if err != nil {
 		t.Fatalf("NewRecorder: %v", err)
 	}
-	if err := r.Record(context.Background(), Finding{
+	if err := r.Record(context.Background(), AdversarialFinding{
 		Severity: SeverityNit, Scope: ScopePackage, Text: "test",
 	}); err != nil {
 		t.Errorf("Record on fallback meter: %v", err)
@@ -190,8 +190,8 @@ func TestAdversarial_NilMeterFallback(t *testing.T) {
 
 // TestAdversarial_InvalidSeverityRejected rejects unknown severity values pre-emit.
 func TestAdversarial_InvalidSeverityRejected(t *testing.T) {
-	r, _ := NewRecorder(Config{Meter: noop.NewMeterProvider().Meter("test")})
-	err := r.Record(context.Background(), Finding{
+	r, _ := NewAdversarialRecorder(AdversarialConfig{Meter: noop.NewMeterProvider().Meter("test")})
+	err := r.Record(context.Background(), AdversarialFinding{
 		Severity: Severity("bogus"), Scope: ScopeFile, Text: "x",
 	})
 	if err == nil {

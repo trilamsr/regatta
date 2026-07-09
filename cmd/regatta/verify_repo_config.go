@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/trilamsr/regatta/internal/config"
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
-	verifyrepo "github.com/trilamsr/regatta/internal/config/verify"
 	"github.com/trilamsr/regatta/internal/secrets"
 )
 
@@ -51,7 +51,7 @@ func runVerifyRepoConfig(args []string) int {
 	if v, _, err := secrets.GetWithSource(ctx, secrets.Default(ctx), secrets.KeyGHToken); err == nil {
 		token = string(v.Bytes())
 	}
-	res, err := verifyrepo.Run(ctx, verifyrepo.Config{
+	res, err := config.VerifyRun(ctx, config.VerifyConfig{
 		Owner:  *owner,
 		Repo:   *repo,
 		Branch: *branch,

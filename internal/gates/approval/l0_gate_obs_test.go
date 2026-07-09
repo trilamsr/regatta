@@ -1,4 +1,4 @@
-package l0
+package approval
 
 import (
 	"log/slog"
@@ -9,10 +9,10 @@ import (
 	"github.com/trilamsr/regatta/internal/slogutil"
 )
 
-func TestL0Gate_EmitsVerdictOnCheck(t *testing.T) {
+func TestL0Gate_EmitsVerdictOnL0Check(t *testing.T) {
 	t.Parallel()
 	h := obstest.New()
-	cfg := Default()
+	cfg := L0Default()
 	cfg.Logger = slog.New(h)
 
 	d := `diff --git a/M.md b/M.md
@@ -23,7 +23,7 @@ func TestL0Gate_EmitsVerdictOnCheck(t *testing.T) {
 -- [ ] First criterion.
 +- [x] First criterion. test=TestFoo
 `
-	_ = Check(cfg, ParseUnifiedDiff(d))
+	_ = L0Check(cfg, L0ParseUnifiedDiff(d))
 
 	rec, ok := h.FindEvent(obs.EventGateVerdict)
 	if !ok {

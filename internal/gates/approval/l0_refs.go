@@ -1,4 +1,4 @@
-package l0
+package approval
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ import (
 // base shows only what the PR actually changed.
 //
 // CheckMergeCommit is the §7 re-run path; both share this diff-base helper.
-func CheckRefs(ctx context.Context, cfg Config, repoDir, baseRef, headRef string) (schemas.GateResult, error) {
+func L0CheckRefs(ctx context.Context, cfg L0Config, repoDir, baseRef, headRef string) (schemas.GateResult, error) {
 	mergeBase, err := gitMergeBase(ctx, repoDir, baseRef, headRef)
 	if err != nil {
 		return schemas.GateResult{}, fmt.Errorf("merge-base %s %s: %w", baseRef, headRef, err)
@@ -28,7 +28,7 @@ func CheckRefs(ctx context.Context, cfg Config, repoDir, baseRef, headRef string
 	if err != nil {
 		return schemas.GateResult{}, fmt.Errorf("diff %s..%s: %w", mergeBase, headRef, err)
 	}
-	return Check(cfg, ParseUnifiedDiff(diff)), nil
+	return L0Check(cfg, L0ParseUnifiedDiff(diff)), nil
 }
 
 // CheckMergeCommit re-runs L0 on a merge commit (testdata/README.md §7). The
@@ -40,7 +40,7 @@ func CheckRefs(ctx context.Context, cfg Config, repoDir, baseRef, headRef string
 // branch tightened a criterion before the merge, and the merged tree would
 // regress that criterion. Comparing the merge tree against the post-tighten
 // base shows the regression.
-func CheckMergeCommit(ctx context.Context, cfg Config, repoDir, mergeCommit string) (schemas.GateResult, error) {
+func L0CheckMergeCommit(ctx context.Context, cfg L0Config, repoDir, mergeCommit string) (schemas.GateResult, error) {
 	parent, err := gitFirstParent(ctx, repoDir, mergeCommit)
 	if err != nil {
 		return schemas.GateResult{}, fmt.Errorf("first parent of %s: %w", mergeCommit, err)
@@ -49,7 +49,7 @@ func CheckMergeCommit(ctx context.Context, cfg Config, repoDir, mergeCommit stri
 	if err != nil {
 		return schemas.GateResult{}, fmt.Errorf("diff %s..%s: %w", parent, mergeCommit, err)
 	}
-	return Check(cfg, ParseUnifiedDiff(diff)), nil
+	return L0Check(cfg, L0ParseUnifiedDiff(diff)), nil
 }
 
 func gitMergeBase(ctx context.Context, dir, a, b string) (string, error) {
