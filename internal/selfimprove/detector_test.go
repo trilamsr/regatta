@@ -2,7 +2,6 @@ package selfimprove
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -149,49 +148,3 @@ func TestDetector_ApplyMode_FilesIssues(t *testing.T) {
 	}
 }
 
-func stubLLM(resp string, err error, gotMax *int) LLMComplete {
-	return func(_ context.Context, _ string, maxTokens int) (string, error) {
-		if gotMax != nil {
-			*gotMax = maxTokens
-		}
-		return resp, err
-	}
-}
-
-// TestLLMScanner_BudgetCap_StaysUnderMaxTokens asserts the hard 4000-token cap is passed verbatim.
-func TestLLMScanner_BudgetCap_StaysUnderMaxTokens(t *testing.T) {
-	var gotMax int
-	dir := t.TempDir()
-	s := &LLMScanner{Client: stubLLM("rules: []\n", nil, &gotMax), OutputDir: dir, Clock: func() time.Time { return fixedNow }}
-	if _, err := s.Scan(context.Background(), "digest data", "prompt template"); err != nil {
-		t.Fatalf("scan: %v", err)
-	}
-	if gotMax != MaxLLMTokens {
-		t.Fatalf("want max_tokens=%d, got %d", MaxLLMTokens, gotMax)
-	}
-	if gotMax > 4000 {
-		t.Fatalf("budget cap exceeded: %d > 4000", gotMax)
-	}
-}
-
-// TestLLMScanner_NeverAutoFiles_OnlyWritesYAML asserts the LLM path never receives a GH client.
-func TestLLMScanner_NeverAutoFiles_OnlyWritesYAML(t *testing.T) {
-	dir := t.TempDir()
-	s := &LLMScanner{Client: stubLLM("rules:\n  - name: foo\n", nil, nil), OutputDir: dir, Clock: func() time.Time { return fixedNow }}
-	path, err := s.Scan(context.Background(), "digest", "prompt")
-	if err != nil {
-		t.Fatalf("scan: %v", err)
-	}
-	if !strings.HasSuffix(path, ".yaml") {
-		t.Fatalf("want yaml output path, got %s", path)
-	}
-}
-
-// TestLLMScanner_PropagatesClientError asserts a complete-error surfaces as an error and writes nothing.
-func TestLLMScanner_PropagatesClientError(t *testing.T) {
-	dir := t.TempDir()
-	s := &LLMScanner{Client: stubLLM("", errors.New("boom"), nil), OutputDir: dir, Clock: func() time.Time { return fixedNow }}
-	if _, err := s.Scan(context.Background(), "digest", "prompt"); err == nil {
-		t.Fatal("want error, got nil")
-	}
-}

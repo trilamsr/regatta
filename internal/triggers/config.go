@@ -5,23 +5,8 @@ import (
 	"os"
 	"time"
 
-	"go.opentelemetry.io/otel/metric"
 	"gopkg.in/yaml.v3"
-
-	"github.com/trilamsr/regatta/internal/obs"
 )
-
-// MeterConfig wires the gauge instrument to a meter. Nil falls back
-// to obs.MeterScopeObsTriggers at first use, matching the meter-DI
-// pattern used across regatta packages.
-type MeterConfig struct {
-	Meter metric.Meter
-}
-
-// ResolveMeter returns the configured meter or the global fallback.
-func (m MeterConfig) ResolveMeter() metric.Meter {
-	return obs.ResolveMeter(m.Meter, obs.MeterScopeObsTriggers)
-}
 
 // TriggerSpec is one entry in slo/triggers.yaml. Operator-editable;
 // CUE schema at slo/triggers.cue validates structural drift on

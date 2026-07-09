@@ -20,10 +20,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
-	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/cost/gate"
 	"github.com/trilamsr/regatta/internal/gates/approval"
-	"github.com/trilamsr/regatta/internal/gates/l4"
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/merge"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
@@ -39,18 +37,6 @@ type CostGate interface {
 // CostGateResolver maps wi to its cost scope; ok=false means out-of-
 // scope (lane outside the cost regime).
 type CostGateResolver func(wi state.WorkItem) (gate.WorkItemScope, bool)
-
-// L4Gate is the scheduler-side seam to the adversarial-reviewer gate
-// (spec §3.2 step 0.7); keeps the model adapter + prompt loader + OTel
-// emitter deps invisible to scheduler tests.
-type L4Gate interface {
-	Evaluate(ctx context.Context, cfg l4.Config, in l4.Input) (schemas.GateResult, error)
-}
-
-// L4GateResolver maps wi to its L4 scope; ok=false means out-of-scope.
-// Returning L4Scope directly lets filter.Pass[L4Scope] consume the
-// resolver without an adapter wrapper (#704 R1).
-type L4GateResolver func(wi state.WorkItem) (L4Scope, bool)
 
 // DowngradeHook surfaces a soft-cap-induced model swap to the spawner.
 // Nil is legal — soft-cap downgrades degrade to WARN-only.
@@ -144,11 +130,6 @@ type Config struct {
 	// opted in via AllowDowngrade.
 	OnDowngrade DowngradeHook
 
-	// L4Gate / L4GateResolver: spec §3.2 step 0.7 adversarial-reviewer
-	// gate-pass; either nil short-circuits applyL4Gate to identity.
-	L4Gate         L4Gate
-	L4GateResolver L4GateResolver
-
 	// CostCap is the global daily-spend ceiling (PHASE-AUTONOMY W5).
 	// Allow=false halts the whole tick BEFORE per-scope gates; nil
 	// short-circuits to identity.
@@ -224,11 +205,6 @@ type schedulerDB interface {
 	// the approval-gate reject path and brief_loader cascade-archive
 	// onto one primitive (formerly both issued raw-SQL UPDATEs).
 	TransitionWorkItem(ctx context.Context, id string, from, to state.WorkItemStatus) error
-	// GetAgentByWorkItemID + RecordEvent are the seam applyL4Gate uses
-	// to emit gate_rejected audit rows (issue #479). agent_id=NULL when
-	// no row exists yet so the gate can fire pre-spawn.
-	GetAgentByWorkItemID(ctx context.Context, workItemID string) (*state.Agent, error)
-	RecordEvent(ctx context.Context, agentID int64, kind, payloadJSON string) error
 }
 
 // Scheduler is single-caller: Tick must not run concurrently. The
@@ -437,19 +413,10 @@ func (s *Scheduler) Tick(ctx context.Context) (reserved []int64, err error) {
 			spawnable = sp
 			return nil
 		}},
-		// gate_cost before l4: never pay model tokens for cost-denied wi.
 		{"gate_cost", func() error {
 			sp, e := s.applyCostGovernor(ctx, spawnable)
 			if e != nil {
 				return fmt.Errorf("scheduler: apply cost governor: %w", e)
-			}
-			spawnable = sp
-			return nil
-		}},
-		{"gate_l4", func() error {
-			sp, e := s.applyL4Gate(ctx, spawnable)
-			if e != nil {
-				return fmt.Errorf("scheduler: apply l4 gate: %w", e)
 			}
 			spawnable = sp
 			return nil

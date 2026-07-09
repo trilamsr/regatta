@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/trilamsr/regatta/contracts/schemas"
 	"github.com/trilamsr/regatta/internal/cost/gate"
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/obstest"
@@ -82,38 +81,6 @@ func TestReserveOrphans_RechecksCostGate_R1(t *testing.T) {
 	spawning, _ := db.ListAgentsByState(ctx, state.AgentSpawning)
 	if len(spawning) != 0 {
 		t.Fatalf("spawning=%+v; want 0", spawning)
-	}
-}
-
-// TestReserveOrphans_RechecksL4Gate_R1 asserts a wi newly blocked by the L4 gate is dropped at orphan reservation (#703 R1).
-func TestReserveOrphans_RechecksL4Gate_R1(t *testing.T) {
-	db := statetest.OpenDB(t)
-	ctx := context.Background()
-	seedPlanned(t, db, "wi-l4-orphan", "prod")
-
-	t1 := New(db, Config{LaneCaps: map[string]int{"prod": 0}})
-	if _, err := t1.Tick(ctx); err != nil {
-		t.Fatalf("T1 Tick: %v", err)
-	}
-
-	fg := &fakeL4Gate{results: map[string]schemas.GateResult{
-		"wi-l4-orphan": {Verdict: schemas.VerdictFail, Blocking: true, Findings: []schemas.Finding{{
-			ID: "L4-CRIT", Severity: schemas.FindingCritical, Claim: "blocking",
-		}}},
-	}}
-	t2 := New(db, Config{
-		L4Gate:         fg,
-		L4GateResolver: l4ResolverByID(map[string]struct{}{"wi-l4-orphan": {}}),
-	})
-	ids, err := t2.Tick(ctx)
-	if err != nil {
-		t.Fatalf("T2 Tick: %v", err)
-	}
-	if len(ids) != 0 {
-		t.Fatalf("T2 reserved=%v; want 0 — L4 gate must re-check on orphan reservation", ids)
-	}
-	if len(fg.calls) == 0 {
-		t.Fatalf("L4 gate not consulted at orphan reservation — re-check missing")
 	}
 }
 
