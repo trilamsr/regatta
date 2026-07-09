@@ -24,9 +24,7 @@ func (stubFailMeter) Int64Counter(string, ...metric.Int64CounterOption) (metric.
 	return nil, errStubCounter
 }
 
-// TestHandlerInitLogsPrimaryMeterError asserts a Warn log fires when the
-// primary meter's Int64Counter fails so operators can diagnose meter
-// misconfig instead of seeing silent zero alerthook metrics.
+// TestHandlerInitLogsPrimaryMeterError asserts init() warn-logs when primary Int64Counter fails.
 func TestHandlerInitLogsPrimaryMeterError(t *testing.T) {
 	var buf bytes.Buffer
 	logger := slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
