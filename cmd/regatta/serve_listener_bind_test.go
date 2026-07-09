@@ -11,14 +11,7 @@ import (
 	"time"
 )
 
-// TestStartHTTPServer_ReturnsBindErrorSynchronously asserts that when
-// srv.Addr is already bound by another listener, startHTTPServer returns
-// an actionable error at call time — not from a background goroutine
-// silently logging to stderr while the main loop continues. Prior wiring
-// spawned httpSrv.ListenAndServe() in a goroutine; EADDRINUSE surfaced
-// only during the deferred shutdown drain, leaving operators looking at
-// a "started" boot log for a serve that was never actually listening
-// (wave-a bug 8).
+// TestStartHTTPServer_ReturnsBindErrorSynchronously asserts EADDRINUSE surfaces at call time, not from a background goroutine (wave-a bug 8).
 func TestStartHTTPServer_ReturnsBindErrorSynchronously(t *testing.T) {
 	// Pre-bind a listener on 127.0.0.1:0, capture the resolved addr,
 	// then point the HTTP server at that same addr — Serve MUST fail
@@ -56,10 +49,7 @@ func TestStartHTTPServer_ReturnsBindErrorSynchronously(t *testing.T) {
 	}
 }
 
-// TestStartHTTPServer_HappyPath asserts that with a free port
-// startHTTPServer binds synchronously, spawns the Serve goroutine, and
-// the returned stop func drains cleanly without leaking the goroutine
-// past shutdown (wave-a bug 8).
+// TestStartHTTPServer_HappyPath asserts free-port bind + clean stop drain within shutdown budget (wave-a bug 8).
 func TestStartHTTPServer_HappyPath(t *testing.T) {
 	buf := &bytes.Buffer{}
 	logger := log.New(buf, "", 0)
@@ -96,9 +86,7 @@ func TestStartHTTPServer_HappyPath(t *testing.T) {
 	}
 }
 
-// TestStartHTTPServer_EmptyAddrDefaults asserts an empty srv.Addr falls
-// back to defaultListenerAddr so callers don't have to know the default
-// (wave-a bug 8).
+// TestStartHTTPServer_EmptyAddrDefaults asserts empty srv.Addr falls back to defaultListenerAddr in the error path (wave-a bug 8).
 func TestStartHTTPServer_EmptyAddrDefaults(t *testing.T) {
 	// Pre-bind defaultListenerAddr to force the bind error path, then
 	// point srv at "" — the helper MUST substitute defaultListenerAddr
