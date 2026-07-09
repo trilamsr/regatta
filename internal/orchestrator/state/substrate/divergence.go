@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -90,10 +91,15 @@ func (c DivergenceReaderConfig) withDefaults() DivergenceReaderConfig {
 // DivergenceReader is the background audit-table poll loop. One goroutine
 // per substrate instance; Close() (or ctx cancel) drains it cleanly.
 type DivergenceReader struct {
-	cfg     DivergenceReaderConfig
-	cursor  int64 // last seen audit row id (high-watermark)
-	done    chan struct{}
-	cancel  context.CancelFunc
+	cfg    DivergenceReaderConfig
+	cursor int64 // last seen audit row id (high-watermark)
+	// mu guards started/cancel/done against Start racing Close on the substrate-shutdown fan-out: a defensive Close on the never-started path must not block on a done channel the goroutine never closes.
+	mu        sync.Mutex
+	started   bool
+	done      chan struct{}
+	cancel    context.CancelFunc
+	closeOnce sync.Once
+	closeErr  error
 }
 
 // NewDivergenceReader builds a reader against cfg.DB. The cursor starts
@@ -105,8 +111,7 @@ func NewDivergenceReader(cfg DivergenceReaderConfig) (*DivergenceReader, error) 
 		return nil, errors.New("substrate: divergence reader requires DB")
 	}
 	return &DivergenceReader{
-		cfg:  cfg.withDefaults(),
-		done: make(chan struct{}),
+		cfg: cfg.withDefaults(),
 	}, nil
 }
 
@@ -127,23 +132,35 @@ func (r *DivergenceReader) SeekCursor(ctx context.Context) error {
 	return nil
 }
 
-// Start spawns the poll goroutine. Returns immediately; the loop runs
-// until ctx is cancelled or Close() is called. First poll fires after
-// the first PollInterval tick (not immediately) so test setup/teardown
-// of a reader does not race a partial poll.
+// Start spawns the poll goroutine and returns immediately; the loop runs until ctx is cancelled or Close() is called, and the first poll fires on the first PollInterval tick (NOT immediately) so a flap of rapid Start/Close in tests cannot race a partial poll. Calling Start more than once is a no-op; the second call's ctx is discarded so the goroutine identity stays singular — otherwise Close would block forever waiting on a done channel only one of N goroutines can close.
 func (r *DivergenceReader) Start(ctx context.Context) {
+	r.mu.Lock()
+	if r.started {
+		r.mu.Unlock()
+		return
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	r.cancel = cancel
+	r.done = make(chan struct{})
+	r.started = true
+	r.mu.Unlock()
 	go r.run(ctx)
 }
 
-// Close stops the reader and waits for the goroutine to exit. Idempotent.
+// Close stops the reader and waits for the goroutine to exit; idempotent and safe pre-Start (without the started-guard, Close blocked forever on a done channel the goroutine would never close).
 func (r *DivergenceReader) Close() error {
-	if r.cancel != nil {
-		r.cancel()
-	}
-	<-r.done
-	return nil
+	r.closeOnce.Do(func() {
+		r.mu.Lock()
+		started := r.started
+		cancel := r.cancel
+		done := r.done
+		r.mu.Unlock()
+		if started {
+			cancel()
+			<-done
+		}
+	})
+	return r.closeErr
 }
 
 // PollOnce runs a single poll synchronously. Exported for tests; emits
