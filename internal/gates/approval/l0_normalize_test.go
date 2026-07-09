@@ -1,4 +1,4 @@
-package l0
+package approval
 
 import "testing"
 
@@ -27,9 +27,9 @@ func TestNormalize_StripsInvisibles(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := Normalize(c.in)
+			got := l0Normalize(c.in)
 			if got != c.want {
-				t.Errorf("Normalize(%q) = %q; want %q", c.in, got, c.want)
+				t.Errorf("l0Normalize(%q) = %q; want %q", c.in, got, c.want)
 			}
 		})
 	}
@@ -42,9 +42,9 @@ func TestNormalize_StripBeforeNFC(t *testing.T) {
 	// matching the bare composed form.
 	poisoned := "A͏̊"
 	bare := "Å"
-	if Normalize(poisoned) != Normalize(bare) {
-		t.Fatalf("strip-before-NFC failure: Normalize(%q)=%q vs Normalize(%q)=%q",
-			poisoned, Normalize(poisoned), bare, Normalize(bare))
+	if l0Normalize(poisoned) != l0Normalize(bare) {
+		t.Fatalf("strip-before-NFC failure: l0Normalize(%q)=%q vs l0Normalize(%q)=%q",
+			poisoned, l0Normalize(poisoned), bare, l0Normalize(bare))
 	}
 }
 
@@ -53,7 +53,7 @@ func TestNormalize_NFCEquivalence(t *testing.T) {
 	// é as U+00E9 (precomposed) vs U+0065 U+0301 (decomposed).
 	a := "café"
 	b := "café"
-	if Normalize(a) != Normalize(b) {
-		t.Fatalf("NFC equivalence failed: %q vs %q", Normalize(a), Normalize(b))
+	if l0Normalize(a) != l0Normalize(b) {
+		t.Fatalf("NFC equivalence failed: %q vs %q", l0Normalize(a), l0Normalize(b))
 	}
 }

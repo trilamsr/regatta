@@ -1,11 +1,10 @@
-package dispatch_test
+package obs_test
 
 import (
 	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"io/fs"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,7 +17,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
-	"github.com/trilamsr/regatta/internal/obs/dispatch"
+	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/testutil/reporoot"
 )
 
@@ -28,11 +27,11 @@ func TestDispatchSpan_RecordsKindOutcomeDuration(t *testing.T) {
 	tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
 	defer func() { _ = tp.Shutdown(context.Background()) }()
 
-	cfg := dispatch.Config{Tracer: tp.Tracer("test")}
-	_, end := dispatch.Start(context.Background(), cfg, dispatch.KindImplementer, "task-42")
+	cfg := obs.DispatchConfig{Tracer: tp.Tracer("test")}
+	_, end := obs.DispatchStart(context.Background(), cfg, obs.KindImplementer, "task-42")
 	time.Sleep(2 * time.Millisecond)
-	end(dispatch.EndOpts{
-		Outcome:      dispatch.OutcomeSuccess,
+	end(obs.EndOpts{
+		Outcome:      obs.OutcomeSuccess,
 		InputTokens:  100,
 		OutputTokens: 200,
 		Model:        "claude-opus-4-7",
@@ -71,9 +70,9 @@ func TestDispatchSpan_TaskIDInAttrNotLabel(t *testing.T) {
 	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	defer func() { _ = mp.Shutdown(context.Background()) }()
 
-	cfg := dispatch.Config{Tracer: tp.Tracer("test"), Meter: mp.Meter("test")}
-	_, end := dispatch.Start(context.Background(), cfg, dispatch.KindReviewer, "task-99")
-	end(dispatch.EndOpts{Outcome: dispatch.OutcomeSuccess})
+	cfg := obs.DispatchConfig{Tracer: tp.Tracer("test"), Meter: mp.Meter("test")}
+	_, end := obs.DispatchStart(context.Background(), cfg, obs.KindReviewer, "task-99")
+	end(obs.EndOpts{Outcome: obs.OutcomeSuccess})
 
 	// Span carries task_id.
 	if got := attrMap(exp.GetSpans()[0].Attributes)["task_id"]; got != "task-99" {
@@ -121,9 +120,9 @@ func TestDispatchSpan_ModelAttrSanitized(t *testing.T) {
 	for _, tc := range cases {
 		exp := tracetest.NewInMemoryExporter()
 		tp := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exp))
-		cfg := dispatch.Config{Tracer: tp.Tracer("test")}
-		_, end := dispatch.Start(context.Background(), cfg, dispatch.KindImplementer, "t")
-		end(dispatch.EndOpts{Outcome: dispatch.OutcomeSuccess, Model: tc.model})
+		cfg := obs.DispatchConfig{Tracer: tp.Tracer("test")}
+		_, end := obs.DispatchStart(context.Background(), cfg, obs.KindImplementer, "t")
+		end(obs.EndOpts{Outcome: obs.OutcomeSuccess, Model: tc.model})
 
 		spans := exp.GetSpans()
 		attrs := attrMap(spans[0].Attributes)
@@ -135,61 +134,48 @@ func TestDispatchSpan_ModelAttrSanitized(t *testing.T) {
 	}
 }
 
-// TestNoUnboundedLabel_PRNumber AST-walks dispatch package for pr_number/task_id on metric instrument call sites only.
-func TestNoUnboundedLabel_PRNumber(t *testing.T) {
+// TestDispatch_NoUnboundedLabel_PRNumber AST-walks dispatch_spans.go for pr_number/task_id on metric instrument call sites only.
+func TestDispatch_NoUnboundedLabel_PRNumber(t *testing.T) {
 	repoRoot := reporoot.Must(t)
-	walkRoot := filepath.Join(repoRoot, "internal", "obs", "dispatch")
+	target := filepath.Join(repoRoot, "internal", "obs", "dispatch_spans.go")
 	fset := token.NewFileSet()
 	var failures []string
 
-	// Walk *.Add / *.Record calls — metric instrument emission sites.
 	metricSel := map[string]struct{}{"Add": {}, "Record": {}}
 
-	err := filepath.WalkDir(walkRoot, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			return err
-		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			if _, hit := metricSel[sel.Sel.Name]; !hit {
-				return true
-			}
-			for _, arg := range call.Args {
-				ast.Inspect(arg, func(inner ast.Node) bool {
-					lit, ok := inner.(*ast.BasicLit)
-					if !ok || lit.Kind != token.STRING {
-						return true
-					}
-					raw := strings.Trim(lit.Value, "\"`")
-					if raw == "pr_number" || raw == "task_id" {
-						pos := fset.Position(lit.Pos())
-						failures = append(failures,
-							pos.String()+": banned label "+raw+" on metric instrument")
-					}
-					return true
-				})
-			}
-			return true
-		})
-		return nil
-	})
+	f, err := parser.ParseFile(fset, target, nil, parser.SkipObjectResolution)
 	if err != nil {
-		t.Fatalf("walk: %v", err)
+		t.Fatalf("parse: %v", err)
 	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if _, hit := metricSel[sel.Sel.Name]; !hit {
+			return true
+		}
+		for _, arg := range call.Args {
+			ast.Inspect(arg, func(inner ast.Node) bool {
+				lit, ok := inner.(*ast.BasicLit)
+				if !ok || lit.Kind != token.STRING {
+					return true
+				}
+				raw := strings.Trim(lit.Value, "\"`")
+				if raw == "pr_number" || raw == "task_id" {
+					pos := fset.Position(lit.Pos())
+					failures = append(failures,
+						pos.String()+": banned label "+raw+" on metric instrument")
+				}
+				return true
+			})
+		}
+		return true
+	})
 	if len(failures) > 0 {
 		t.Fatalf("metric cardinality leaks:\n  %s", strings.Join(failures, "\n  "))
 	}
@@ -197,64 +183,43 @@ func TestNoUnboundedLabel_PRNumber(t *testing.T) {
 
 // TestDispatchSpan_NoUnboundedLabel_PRNumber AST-walks span.SetAttributes call sites in the dispatch package for unbounded labels (#662).
 func TestDispatchSpan_NoUnboundedLabel_PRNumber(t *testing.T) {
-	// Span attributes legitimately carry pr_number/task_id/model — high-
-	// cardinality drill keys ride span attributes by design (see
-	// dispatch package godoc). The cardinality risk is on METRIC labels.
-	// This test pins the COMPLEMENT: span.SetAttributes calls in the
-	// dispatch package MUST stay confined to the dispatch package — a
-	// drift where a metric instrument call grew up to look like a span
-	// SetAttributes call (e.g. via a helper rename) would be caught by
-	// the existing TestNoUnboundedLabel_PRNumber. This test instead pins
-	// the SHAPE: every span.SetAttributes call site in dispatch is the
-	// single canonical one in spans.go:138, and any new call site MUST
-	// be reviewed against the cardinality budget.
+	// Span.SetAttributes call sites in dispatch_spans.go MUST stay at
+	// the single canonical site; any new site requires cardinality
+	// review against spec §3.2.
 	repoRoot := reporoot.Must(t)
-	walkRoot := filepath.Join(repoRoot, "internal", "obs", "dispatch")
+	target := filepath.Join(repoRoot, "internal", "obs", "dispatch_spans.go")
 	fset := token.NewFileSet()
 	var setAttrSites []string
 
-	err := filepath.WalkDir(walkRoot, func(path string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		f, err := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
-		if err != nil {
-			return err
-		}
-		ast.Inspect(f, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
-			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			if sel.Sel.Name != "SetAttributes" {
-				return true
-			}
-			pos := fset.Position(call.Pos())
-			setAttrSites = append(setAttrSites, pos.String())
-			return true
-		})
-		return nil
-	})
+	f, err := parser.ParseFile(fset, target, nil, parser.SkipObjectResolution)
 	if err != nil {
-		t.Fatalf("walk: %v", err)
+		t.Fatalf("parse: %v", err)
 	}
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		sel, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if sel.Sel.Name != "SetAttributes" {
+			return true
+		}
+		pos := fset.Position(call.Pos())
+		setAttrSites = append(setAttrSites, pos.String())
+		return true
+	})
 	if len(setAttrSites) != 1 {
-		t.Fatalf("want exactly 1 span.SetAttributes call site in dispatch package, got %d:\n  %s\n"+
-			"new sites require cardinality-budget review against the spec §3.2 fence.",
+		t.Fatalf("want exactly 1 span.SetAttributes call site in dispatch_spans.go, got %d:\n  %s",
 			len(setAttrSites), strings.Join(setAttrSites, "\n  "))
 	}
 }
 
 // TestDispatchKindEnum_Closed pins the 4-kind closed enum against AllKinds.
 func TestDispatchKindEnum_Closed(t *testing.T) {
-	kinds := dispatch.AllKinds()
+	kinds := obs.AllKinds()
 	if len(kinds) != 4 {
 		t.Fatalf("want 4 kinds, got %d (%v)", len(kinds), kinds)
 	}
@@ -262,7 +227,7 @@ func TestDispatchKindEnum_Closed(t *testing.T) {
 
 // TestDispatchOutcomeEnum_Closed pins the 4-outcome closed enum.
 func TestDispatchOutcomeEnum_Closed(t *testing.T) {
-	outs := dispatch.AllOutcomes()
+	outs := obs.AllOutcomes()
 	if len(outs) != 4 {
 		t.Fatalf("want 4 outcomes, got %d (%v)", len(outs), outs)
 	}
@@ -275,8 +240,8 @@ func TestDispatchSpan_NilConfigFallsBackToGlobal(t *testing.T) {
 			t.Fatalf("nil-config Start panicked: %v", r)
 		}
 	}()
-	_, end := dispatch.Start(context.Background(), dispatch.Config{}, dispatch.KindTriage, "t")
-	end(dispatch.EndOpts{Outcome: dispatch.OutcomeError})
+	_, end := obs.DispatchStart(context.Background(), obs.DispatchConfig{}, obs.KindTriage, "t")
+	end(obs.EndOpts{Outcome: obs.OutcomeError})
 }
 
 // attrMap flattens span attributes into a string map for test assertions.

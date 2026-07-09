@@ -64,12 +64,10 @@ type Recorder interface {
 	RecordEvent(ctx context.Context, agentID int64, kind, payloadJSON string) error
 }
 
-// ResumeReader looks up the most recent operator-override event so the
-// Enforcer can compare it to today's day_anchor. Returns zero time
+// ResumeReader looks up the most recent operator-override event so
+// the Enforcer can compare it to today's day_anchor; returns zero time
 // when no override has been written.
-type ResumeReader interface {
-	LatestResumeAt(ctx context.Context) (time.Time, error)
-}
+type ResumeReader func(ctx context.Context) (time.Time, error)
 
 // Config wires the Enforcer. CapMicro=0 disables the global ceiling
 // entirely (no overhead — Allow returns false). TZ defaults to UTC;
@@ -240,7 +238,7 @@ func (e *Enforcer) evaluate(ctx context.Context) (SchedulerState, string) {
 	overCap := spendMicro > e.cfg.CapMicro
 	overridden := false
 	if overCap && e.cfg.Resume != nil {
-		latestResume, rerr := e.cfg.Resume.LatestResumeAt(ctx)
+		latestResume, rerr := e.cfg.Resume(ctx)
 		if rerr != nil {
 			e.log.Warn("cost_cap.resume_read_error", "err", rerr.Error())
 		} else if !latestResume.IsZero() && !latestResume.Before(dayAnchor(now, e.tz)) {
@@ -381,7 +379,7 @@ func (e *Enforcer) Snapshot(ctx context.Context) (spend.USDMicro, spend.USDMicro
 	if e.cfg.CapMicro > 0 && spendMicro > e.cfg.CapMicro {
 		state = Throttled
 		if e.cfg.Resume != nil {
-			latest, _ := e.cfg.Resume.LatestResumeAt(ctx)
+			latest, _ := e.cfg.Resume(ctx)
 			if !latest.IsZero() && !latest.Before(dayAnchor(now, e.tz)) {
 				state = Active
 			}

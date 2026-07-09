@@ -1,10 +1,9 @@
-// Package adversarial rolls up reviewer-subagent findings into a
-// bounded OTel counter so the operator surface (D-T1 dashboard) can
-// trend severity, scope, and recurring pattern without the free-form
-// finding text blowing the metric tag budget. Free-form text stays in
-// the substrate event payload; this package emits only the bounded
-// enum derived from it (spec §3, R2 mitigation).
-package adversarial
+// Adversarial finding rollup: bounded OTel counter over reviewer-
+// subagent findings so the D-T1 dashboard can trend severity, scope,
+// and recurring pattern without the free-form text blowing the tag
+// budget (spec §3, R2). Free-form text stays in substrate events;
+// this file emits only the bounded enum derived from it.
+package obs
 
 import "strings"
 

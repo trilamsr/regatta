@@ -3,7 +3,7 @@
 // see — here, the "every Tracer-bearing DI struct also carries a
 // Meter seam" invariant from W6 (#509). One repo-walk per CI run
 // keeps the gate cheap and the violation list visible.
-package lint_test
+package obs_test
 
 import (
 	"fmt"

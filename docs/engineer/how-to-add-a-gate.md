@@ -22,7 +22,7 @@ new contract surfaces.
 1. Pick the gate's id (`<name>`, lowercase, hyphen-allowed). The id
    appears in `GateResult.gate_id`.
 2. Create `internal/gates/<name>/gate.go` with the package name
-   matching `<name>`. Mirror the shape of `internal/gates/l0/gate.go`:
+   matching `<name>`. Mirror the shape of `internal/gates/approval/l0_gate.go`:
    - `Input` struct: bounded fields the runner passes in.
    - `Run(ctx, in) (schemas.GateResult, error)`.
 3. Emit a `GateResult` per [`contracts/schemas/gate_result.schema.json`](../../contracts/schemas/gate_result.schema.json).
@@ -36,7 +36,7 @@ new contract surfaces.
 5. Add a table-driven contract test at
    `internal/gates/<name>/fixture_test.go` that sweeps the corpus
    and asserts each fixture's expected verdict. Mirror
-   `internal/gates/l0/fixture_test.go`.
+   `internal/gates/approval/l0_fixture_test.go`.
 6. Wire the runner into the orchestrator gate-runner registry (the
    wiring point lands when L3-L5 ship; until then, `cmd/regatta`
    contains the per-gate subcommand entrypoints).
@@ -64,7 +64,7 @@ trigger: first reference custom-gate impl under `plugins/gates/`).
 - No mocking of contracts (spec C11). Run against real
   implementations + fixture corpora.
 - `t.Fatalf` on missing fixture dir (not `t.Skipf`) so path drift
-  fails closed - see `internal/gates/l0/fixture_test.go` for the
+  fails closed - see `internal/gates/approval/l0_fixture_test.go` for the
   pattern.
 
 ## Promotion to contracts/

@@ -1,11 +1,9 @@
-// Package dispatch instruments subagent dispatches with a span,
-// outcome counter, and duration histogram. Spec OBS-WAVE-C-T1.
-//
-// Cardinality fence: kind ∈ {implementer, reviewer, designer, triage}
-// and outcome ∈ {success, refused, error, timeout} are closed enums.
-// task_id, model, pr_number ride span attributes only — never metric
-// labels. The operator drills counter → exemplar trace_id → span.
-package dispatch
+// Dispatch instrumentation: span + outcome counter + duration
+// histogram for subagent dispatches (spec OBS-WAVE-C-T1). Kind ∈
+// {implementer, reviewer, designer, triage} and outcome ∈ {success,
+// refused, error, timeout} are closed enums; task_id/model/pr_number
+// ride span attributes only, never metric labels.
+package obs
 
 import (
 	"context"
@@ -50,18 +48,17 @@ func AllOutcomes() []Outcome {
 	return []Outcome{OutcomeSuccess, OutcomeRefused, OutcomeError, OutcomeTimeout}
 }
 
-// scopeName pins the OTel instrumentation scope.
-const scopeName = "github.com/trilamsr/regatta/internal/obs/dispatch"
+// dispatchScopeName pins the OTel scope for dispatch instrumentation.
+const dispatchScopeName = "github.com/trilamsr/regatta/internal/obs/dispatch"
 
-// Config holds DI handles for tracer + meter. Nil falls back to the
-// global providers — a test that swaps the global noop wins.
-type Config struct {
+// DispatchConfig holds tracer + meter DI handles; nil falls back to
+// the global providers so a test noop swap wins.
+type DispatchConfig struct {
 	Tracer trace.Tracer
 	Meter  metric.Meter
 }
 
-// EndOpts collects post-run attributes the caller stamps onto the span
-// and counter via the EndFunc returned from Start.
+// EndOpts collects post-run attributes the caller stamps via EndFunc.
 type EndOpts struct {
 	Outcome      Outcome
 	InputTokens  int64
@@ -78,31 +75,29 @@ type EndOpts struct {
 // Idempotent on second call (defer-friendly).
 type EndFunc func(opts EndOpts)
 
-// modelAttrPattern whitelists model attribute shape — `^[a-z0-9._-]{1,40}$`.
-// Anything outside becomes the literal "invalid_model" so a typo'd
-// API-key fragment cannot leak through the span attribute set (R4).
-var modelAttrPattern = regexp.MustCompile(`^[a-z0-9._-]{1,40}$`)
+// dispatchModelAttrPattern whitelists model attribute shape so a
+// typo'd API-key fragment cannot leak through span attrs (R4).
+var dispatchModelAttrPattern = regexp.MustCompile(`^[a-z0-9._-]{1,40}$`)
 
-// sanitizeModel folds non-whitelist input to "invalid_model".
-func sanitizeModel(s string) string {
-	if modelAttrPattern.MatchString(s) {
+// dispatchSanitizeModel folds non-whitelist input to "invalid_model".
+func dispatchSanitizeModel(s string) string {
+	if dispatchModelAttrPattern.MatchString(s) {
 		return s
 	}
 	return "invalid_model"
 }
 
-// Start opens the dispatch span and returns a child context + an EndFunc.
-// Callers MUST invoke the EndFunc exactly once (defer ok). kind and taskID
-// are stamped on span open so a crashed/abandoned subagent still surfaces
-// in the trace tree.
-func Start(ctx context.Context, cfg Config, kind Kind, taskID string) (context.Context, EndFunc) {
+// DispatchStart opens the dispatch span and returns child ctx + an
+// EndFunc — call exactly once (defer ok); crashed subagents still
+// surface via the kind+task_id stamped on span open.
+func DispatchStart(ctx context.Context, cfg DispatchConfig, kind Kind, taskID string) (context.Context, EndFunc) {
 	tracer := cfg.Tracer
 	if tracer == nil {
-		tracer = otel.Tracer(scopeName)
+		tracer = otel.Tracer(dispatchScopeName)
 	}
 	meter := cfg.Meter
 	if meter == nil {
-		meter = otel.Meter(scopeName)
+		meter = otel.Meter(dispatchScopeName)
 	}
 
 	start := time.Now()
@@ -130,7 +125,7 @@ func Start(ctx context.Context, cfg Config, kind Kind, taskID string) (context.C
 			attribute.Float64("duration_seconds", dur.Seconds()),
 		}
 		if opts.Model != "" {
-			attrs = append(attrs, attribute.String("model", sanitizeModel(opts.Model)))
+			attrs = append(attrs, attribute.String("model", dispatchSanitizeModel(opts.Model)))
 		}
 		if opts.PRNumber != 0 {
 			attrs = append(attrs, attribute.Int64("pr_number", opts.PRNumber))

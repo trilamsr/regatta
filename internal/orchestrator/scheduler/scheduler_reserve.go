@@ -91,7 +91,7 @@ func (s *Scheduler) costCapDeniesOrphans(ctx context.Context, n int) bool {
 	if s.cfg.CostCap == nil {
 		return false
 	}
-	if s.cfg.CostCap.Allow(ctx) {
+	if s.cfg.CostCap(ctx) {
 		return false
 	}
 	s.log.Info("scheduler.cost_cap_throttled_orphans", "throttled_pending", n)

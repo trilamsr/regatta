@@ -1,10 +1,7 @@
-// Package failtaxonomy classifies dispatch / PR failure logs into a
-// closed enum and emits a counter labeled with the bucket (spec
-// OBS-WAVE-C-T4 §5). Hot-path constraint: regex-table only, P95 < 5ms
-// on the last 8KB of CI output. LLM verify-only fallback deferred to
-// W4 — deterministic operational signal beats slow non-deterministic
-// classification.
-package failtaxonomy
+// Failure taxonomy: closed enum + counter for dispatch/PR failures
+// (spec OBS-WAVE-C-T4 §5). Regex-table only, P95 < 5ms on the last
+// 8KB of CI output.
+package obs
 
 import (
 	"context"
@@ -40,23 +37,20 @@ func AllTaxonomies() []Taxonomy {
 	}
 }
 
-const scopeName = "github.com/trilamsr/regatta/internal/obs/failtaxonomy"
+const failtaxonomyScopeName = "github.com/trilamsr/regatta/internal/obs/failtaxonomy"
 
-// tailBytes is the trailing log window the regex sweep scans. 99% of
-// failure signatures live near the end of the CI log; bounding here
-// keeps P95 classify latency under 5ms on multi-MB logs (R3).
-const tailBytes = 8 * 1024
+// failtaxTailBytes bounds the regex sweep to the last 8KB of CI
+// output — P95 classify latency stays <5ms on multi-MB logs (R3).
+const failtaxTailBytes = 8 * 1024
 
-// rule pairs a compiled pattern with its taxonomy bucket. First match
-// wins, so order is load-bearing — most-specific patterns at the top.
-type rule struct {
+// failtaxRule pairs a compiled pattern with its taxonomy bucket;
+// first match wins so order in failtaxRules is load-bearing.
+type failtaxRule struct {
 	pattern *regexp.Regexp
 	bucket  Taxonomy
 }
 
-// Operator-readable canonical pattern table. Compile-once at package
-// init keeps Classify allocation-free.
-var rules = []rule{
+var failtaxRules = []failtaxRule{
 	{regexp.MustCompile(`(?i)(cost.cap|budget.exceed|cost.exhausted|tenant.cost.cap)`), TaxCostCap},
 	{regexp.MustCompile(`(?i)(context\s+deadline\s+exceeded|timed?\s*out|deadline\s+exceeded)`), TaxTimeout},
 	{regexp.MustCompile(`(?i)(merge\s+conflict|conflict\s+in\s+\S+|both\s+modified:)`), TaxConflict},
@@ -70,10 +64,10 @@ var rules = []rule{
 // Classify scans the trailing tailBytes for a rule match. Empty /
 // no-match routes to TaxUnknown (spec §5.1).
 func Classify(logTail string) Taxonomy {
-	if len(logTail) > tailBytes {
-		logTail = logTail[len(logTail)-tailBytes:]
+	if len(logTail) > failtaxTailBytes {
+		logTail = logTail[len(logTail)-failtaxTailBytes:]
 	}
-	for _, r := range rules {
+	for _, r := range failtaxRules {
 		if r.pattern.MatchString(logTail) {
 			return r.bucket
 		}
@@ -81,24 +75,24 @@ func Classify(logTail string) Taxonomy {
 	return TaxUnknown
 }
 
-// Config holds the meter DI handle. Nil falls back to otel.Meter on
-// the package scope.
-type Config struct {
+// FailtaxonomyConfig holds the meter DI handle for failure recording.
+// Nil falls back to otel.Meter on the package scope.
+type FailtaxonomyConfig struct {
 	Meter metric.Meter
 }
 
 // ResolveMeter returns Meter or a lazily-resolved global fallback.
-func (c Config) ResolveMeter() metric.Meter {
+func (c FailtaxonomyConfig) ResolveMeter() metric.Meter {
 	if c.Meter != nil {
 		return c.Meter
 	}
-	return otel.Meter(scopeName)
+	return otel.Meter(failtaxonomyScopeName)
 }
 
-// Record classifies logTail and increments the failure counter under
-// the resolved bucket. Counter-create error is dropped — telemetry
-// MUST NOT mask the underlying failure that triggered the call.
-func Record(ctx context.Context, cfg Config, logTail string) Taxonomy {
+// FailtaxonomyRecord classifies logTail and increments the failure
+// counter under the resolved bucket. Counter-create error is dropped
+// — telemetry MUST NOT mask the failure that triggered the call.
+func FailtaxonomyRecord(ctx context.Context, cfg FailtaxonomyConfig, logTail string) Taxonomy {
 	bucket := Classify(logTail)
 	ctr, err := cfg.ResolveMeter().Int64Counter("regatta.pr.failure")
 	if err == nil {

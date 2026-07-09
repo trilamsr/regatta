@@ -1,18 +1,7 @@
-// Package verify implements `regatta verify-repo-config`: a
-// pre-flight audit of the target GitHub repo against the P2 canonical
-// recipe and the silent-bypass classes documented in
-// docs/design.md §Threat Model.
-//
-// Failure modes covered:
-//   - enforce_admins: false (default) → admins silently bypass everything
-//   - required_approving_review_count < 2 → not actually two-key
-//   - require_code_owner_reviews: false
-//   - require_last_push_approval: false → Mercari PR-hijacking class
-//   - dismiss_stale_reviews: false
-//   - CODEOWNERS pattern references non-existent team/user (silent ignore)
-//   - CODEOWNERS file missing
-//   - Required status checks list includes a job that can SKIP
-package verify
+// verify-repo-config: pre-flight audit of the target GitHub repo
+// against the P2 canonical recipe and the silent-bypass classes
+// documented in docs/design.md §Threat Model.
+package config
 
 import (
 	"context"
@@ -26,18 +15,18 @@ import (
 	"time"
 )
 
-// Config names the GitHub repo + branch the audit interrogates; Token falls back to $GITHUB_TOKEN.
-type Config struct {
+// VerifyConfig names the GitHub repo + branch the audit interrogates; Token falls back to $GITHUB_TOKEN.
+type VerifyConfig struct {
 	Owner  string
 	Repo   string
 	Branch string // default "main"
 	Token  string // GitHub PAT or App installation token (read from GITHUB_TOKEN if empty)
 }
 
-// Result aggregates per-check verdicts; FailedOK lists the IDs callers should pipe into exit code 2.
-type Result struct {
+// VerifyResult aggregates per-check verdicts; FailedOK lists the IDs callers should pipe into exit code 2.
+type VerifyResult struct {
 	OK       bool     `json:"ok"`
-	Checks   []Check  `json:"checks"`
+	Checks   []VerifyCheck  `json:"checks"`
 	FailedOK []string `json:"failed_ok"` // human-readable check IDs that failed
 }
 
@@ -47,8 +36,8 @@ const (
 	checkTitleCodeowners    = "CODEOWNERS parses cleanly"
 )
 
-// Check is one named assertion in the audit; JSON-tagged so callers can render the report verbatim.
-type Check struct {
+// VerifyCheck is one named assertion in the audit; JSON-tagged so callers can render the report verbatim.
+type VerifyCheck struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
 	Passed   bool   `json:"passed"`
@@ -56,8 +45,8 @@ type Check struct {
 	Rationale string `json:"rationale,omitempty"`
 }
 
-// Run executes every check sequentially; partial failure is captured in Result, not returned as error, so callers can render the full report.
-func Run(ctx context.Context, cfg Config) (Result, error) {
+// VerifyRun executes every check sequentially; partial failure is captured in Result, not returned as error, so callers can render the full report.
+func VerifyRun(ctx context.Context, cfg VerifyConfig) (VerifyResult, error) {
 	if cfg.Branch == "" {
 		cfg.Branch = "main"
 	}
@@ -65,20 +54,20 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		cfg.Token = os.Getenv("GITHUB_TOKEN")
 	}
 	if cfg.Owner == "" || cfg.Repo == "" {
-		return Result{}, errors.New("verifyrepo: Owner and Repo required")
+		return VerifyResult{}, errors.New("verifyrepo: Owner and Repo required")
 	}
 	if cfg.Token == "" {
-		return Result{}, errors.New("verifyrepo: GitHub token required (pass via GITHUB_TOKEN)")
+		return VerifyResult{}, errors.New("verifyrepo: GitHub token required (pass via GITHUB_TOKEN)")
 	}
 
-	res := Result{OK: true}
+	res := VerifyResult{OK: true}
 	res.add(checkBranchProtection(ctx, cfg))
 	res.add(checkCodeOwners(ctx, cfg))
 	res.add(checkCodeOwnersErrors(ctx, cfg))
 	return res, nil
 }
 
-func (r *Result) add(c Check) {
+func (r *VerifyResult) add(c VerifyCheck) {
 	r.Checks = append(r.Checks, c)
 	if !c.Passed {
 		r.OK = false
@@ -102,11 +91,11 @@ type branchProtection struct {
 	} `json:"required_status_checks"`
 }
 
-func checkBranchProtection(ctx context.Context, cfg Config) Check {
+func checkBranchProtection(ctx context.Context, cfg VerifyConfig) VerifyCheck {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/branches/%s/protection", cfg.Owner, cfg.Repo, cfg.Branch)
 	var bp branchProtection
 	if err := ghGet(ctx, cfg.Token, url, &bp); err != nil {
-		return Check{
+		return VerifyCheck{
 			ID:        checkIDBranchProtection,
 			Title:     "Branch protection on " + cfg.Branch,
 			Passed:    false,
@@ -134,7 +123,7 @@ func checkBranchProtection(ctx context.Context, cfg Config) Check {
 		problems = append(problems, "no required status checks configured")
 	}
 	if len(problems) > 0 {
-		return Check{
+		return VerifyCheck{
 			ID:        checkIDBranchProtection,
 			Title:     "Branch protection on " + cfg.Branch,
 			Passed:    false,
@@ -142,14 +131,14 @@ func checkBranchProtection(ctx context.Context, cfg Config) Check {
 			Rationale: "P2 canonical recipe: required_approving_review_count≥2, require_code_owner_reviews, require_last_push_approval, dismiss_stale_reviews, enforce_admins.",
 		}
 	}
-	return Check{
+	return VerifyCheck{
 		ID:     checkIDBranchProtection,
 		Title:  "Branch protection on " + cfg.Branch,
 		Passed: true,
 	}
 }
 
-func checkCodeOwners(ctx context.Context, cfg Config) Check {
+func checkCodeOwners(ctx context.Context, cfg VerifyConfig) VerifyCheck {
 	for _, path := range []string{"CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"} {
 		url := fmt.Sprintf("https://api.github.com/repos/%s/%s/contents/%s?ref=%s", cfg.Owner, cfg.Repo, path, cfg.Branch)
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -160,7 +149,7 @@ func checkCodeOwners(ctx context.Context, cfg Config) Check {
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				return Check{
+				return VerifyCheck{
 					ID:     "codeowners_present",
 					Title:  "CODEOWNERS file present",
 					Passed: true,
@@ -169,7 +158,7 @@ func checkCodeOwners(ctx context.Context, cfg Config) Check {
 			}
 		}
 	}
-	return Check{
+	return VerifyCheck{
 		ID:        "codeowners_present",
 		Title:     "CODEOWNERS file present",
 		Passed:    false,
@@ -190,11 +179,11 @@ type codeOwnersErrors struct {
 	} `json:"errors"`
 }
 
-func checkCodeOwnersErrors(ctx context.Context, cfg Config) Check {
+func checkCodeOwnersErrors(ctx context.Context, cfg VerifyConfig) VerifyCheck {
 	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/codeowners/errors", cfg.Owner, cfg.Repo)
 	var ce codeOwnersErrors
 	if err := ghGet(ctx, cfg.Token, url, &ce); err != nil {
-		return Check{
+		return VerifyCheck{
 			ID:        checkIDCodeownersErrors,
 			Title:     checkTitleCodeowners,
 			Passed:    false,
@@ -207,7 +196,7 @@ func checkCodeOwnersErrors(ctx context.Context, cfg Config) Check {
 		for _, e := range ce.Errors {
 			msgs = append(msgs, fmt.Sprintf("line %d: %s (%s)", e.Line, e.Message, e.Kind))
 		}
-		return Check{
+		return VerifyCheck{
 			ID:        checkIDCodeownersErrors,
 			Title:     checkTitleCodeowners,
 			Passed:    false,
@@ -215,7 +204,7 @@ func checkCodeOwnersErrors(ctx context.Context, cfg Config) Check {
 			Rationale: "GitHub silently ignores CODEOWNERS lines referencing non-existent teams/users; this endpoint surfaces them.",
 		}
 	}
-	return Check{
+	return VerifyCheck{
 		ID:     checkIDCodeownersErrors,
 		Title:  checkTitleCodeowners,
 		Passed: true,

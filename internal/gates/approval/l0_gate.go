@@ -1,4 +1,4 @@
-package l0
+package approval
 
 import (
 	"fmt"
@@ -10,11 +10,9 @@ import (
 	"github.com/trilamsr/regatta/internal/obs"
 )
 
-// Config controls which files L0 treats as spec sources. For the
-// markdown_catalog adapter this is a list of suffixes or globs; for
-// API-backed adapters L0 fetches the source body directly and synthesizes
-// a diff against the recorded SourceRef.
-type Config struct {
+// L0Config controls which files L0 treats as spec sources; for the
+// markdown_catalog adapter this is a list of suffixes or globs.
+type L0Config struct {
 	// SpecPathSuffixes is the list of path suffixes L0 should treat as
 	// spec sources. Common values: ".md", "MILESTONES.md".
 	SpecPathSuffixes []string
@@ -30,13 +28,13 @@ type Config struct {
 	Clock func() time.Time
 }
 
-// Default returns a Config that treats any markdown file as a spec source.
-func Default() Config {
-	return Config{SpecPathSuffixes: []string{".md"}}
+// L0Default returns a Config that treats any markdown file as a spec source.
+func L0Default() L0Config {
+	return L0Config{SpecPathSuffixes: []string{".md"}}
 }
 
-// Check runs L0 against a parsed diff and returns a GateResult.
-func Check(cfg Config, changes []FileChange) schemas.GateResult {
+// L0Check runs L0 against a parsed diff and returns a GateResult.
+func L0Check(cfg L0Config, changes []L0FileChange) schemas.GateResult {
 	clock := cfg.Clock
 	if clock == nil {
 		clock = time.Now
@@ -92,7 +90,7 @@ func emitVerdict(log *slog.Logger, gr schemas.GateResult) {
 	)
 }
 
-func (c Config) isSpecPath(fc FileChange) bool {
+func (c L0Config) isSpecPath(fc L0FileChange) bool {
 	p := fc.NewPath
 	if p == "" || p == "/dev/null" {
 		p = fc.OldPath
@@ -105,9 +103,9 @@ func (c Config) isSpecPath(fc FileChange) bool {
 	return false
 }
 
-func compareCriteria(fc FileChange) []schemas.Finding {
-	oldCs := Extract(fc.Old)
-	newCs := Extract(fc.New)
+func compareCriteria(fc L0FileChange) []schemas.Finding {
+	oldCs := l0Extract(fc.Old)
+	newCs := l0Extract(fc.New)
 	path := fc.NewPath
 	if path == "" || path == "/dev/null" {
 		path = fc.OldPath
@@ -128,8 +126,8 @@ func compareCriteria(fc FileChange) []schemas.Finding {
 
 	for i := range oldCs {
 		o, n := oldCs[i], newCs[i]
-		oNorm := Normalize(o.Text)
-		nNorm := Normalize(n.Text)
+		oNorm := l0Normalize(o.Text)
+		nNorm := l0Normalize(n.Text)
 		if oNorm != nNorm {
 			findings = append(findings, schemas.Finding{
 				ID:       fmt.Sprintf("L0-TEXT-%d", i),
@@ -141,7 +139,7 @@ func compareCriteria(fc FileChange) []schemas.Finding {
 			continue
 		}
 		// Text identical after normalization. Validate state transitions.
-		if o.State == StatePlanned && n.State == StateDone {
+		if o.State == L0StatePlanned && n.State == L0StateDone {
 			if n.Citation == "" {
 				findings = append(findings, schemas.Finding{
 					ID:       fmt.Sprintf("L0-CITATION-%d", i),
@@ -152,7 +150,7 @@ func compareCriteria(fc FileChange) []schemas.Finding {
 				})
 			}
 		}
-		if o.State == StateDone && n.State == StatePlanned {
+		if o.State == L0StateDone && n.State == L0StatePlanned {
 			findings = append(findings, schemas.Finding{
 				ID:       fmt.Sprintf("L0-REVERT-%d", i),
 				Severity: schemas.FindingCritical,

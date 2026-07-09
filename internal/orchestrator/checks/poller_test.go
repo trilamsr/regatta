@@ -2,25 +2,48 @@ package checks
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
 )
 
+// fakeGH scripts the GHShell Runner with per-PR CheckRun rows so the
+// Poller can be exercised without a live gh binary.
 type fakeGH struct {
 	mu   sync.Mutex
 	byPR map[string]CheckRun
 	err  error
 }
 
-func (f *fakeGH) PRChecks(_ context.Context, pr string) (CheckRun, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.err != nil {
-		return CheckRun{}, f.err
-	}
-	return f.byPR[pr], nil
+func (f *fakeGH) shell() *GHShell {
+	return &GHShell{Runner: func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.err != nil {
+			return nil, f.err
+		}
+		// args: pr checks <pr> --json conclusion,status,name --required
+		if len(args) < 3 {
+			return nil, fmt.Errorf("unexpected gh args: %v", args)
+		}
+		pr := args[2]
+		cr := f.byPR[pr]
+		row := struct {
+			Conclusion string `json:"conclusion"`
+			Status     string `json:"status"`
+			Name       string `json:"name"`
+		}{Conclusion: cr.Conclusion, Status: cr.Status, Name: "req"}
+		// Emit as an array so PRChecks JSON decode succeeds; empty
+		// conclusion yields a pending row so the aggregator returns
+		// the pending shape rather than success-completed.
+		if cr.Conclusion == "" && cr.Status == "" {
+			return []byte(`[]`), nil
+		}
+		return json.Marshal([]any{row})
+	}}
 }
 
 func (f *fakeGH) set(pr string, cr CheckRun) {
@@ -56,7 +79,7 @@ func TestPoller_FirstObservationEmits(t *testing.T) {
 	gh := &fakeGH{}
 	gh.set("PR-1", CheckRun{Conclusion: "success", Status: "completed"})
 	sink := &captureSink{}
-	p := New(gh, sink)
+	p := New(gh.shell(), sink)
 
 	if err := p.Poll(context.Background(), "PR-1"); err != nil {
 		t.Fatal(err)
@@ -72,7 +95,7 @@ func TestPoller_FlipEmitsAgain(t *testing.T) {
 	gh := &fakeGH{}
 	gh.set("PR-1", CheckRun{Conclusion: "success", Status: "completed"})
 	sink := &captureSink{}
-	p := New(gh, sink)
+	p := New(gh.shell(), sink)
 
 	if err := p.Poll(context.Background(), "PR-1"); err != nil {
 		t.Fatal(err)
@@ -92,7 +115,7 @@ func TestPoller_NonFlipDoesNotEmit(t *testing.T) {
 	gh := &fakeGH{}
 	gh.set("PR-1", CheckRun{Conclusion: "success", Status: "completed"})
 	sink := &captureSink{}
-	p := New(gh, sink)
+	p := New(gh.shell(), sink)
 
 	for i := 0; i < 3; i++ {
 		if err := p.Poll(context.Background(), "PR-1"); err != nil {
@@ -110,7 +133,7 @@ func TestPoller_ConcurrentPollsSafe(t *testing.T) {
 	gh := &fakeGH{}
 	gh.set("PR-1", CheckRun{Conclusion: "success", Status: "completed"})
 	sink := &captureSink{}
-	p := New(gh, sink)
+	p := New(gh.shell(), sink)
 
 	var wg sync.WaitGroup
 	var errs atomic.Int64
@@ -134,7 +157,7 @@ func TestPoller_GHErrorBubbles(t *testing.T) {
 	t.Parallel()
 	gh := &fakeGH{err: errors.New("network down")}
 	sink := &captureSink{}
-	p := New(gh, sink)
+	p := New(gh.shell(), sink)
 
 	if err := p.Poll(context.Background(), "PR-1"); err == nil {
 		t.Error("expected error, got nil")

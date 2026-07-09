@@ -23,7 +23,7 @@ type Dependencies struct {
 	Clock   func() time.Time
 }
 
-// NewHTTPCallback returns the spec §3.3 row 8 path and the concrete handler that satisfies InteractiveNotifier.CallbackRoute().
+// NewHTTPCallback returns the spec §3.3 row 8 path and the concrete HTTP handler for interactive notifier callbacks (e.g. Slack button POST).
 func NewHTTPCallback(deps Dependencies) (string, http.Handler) {
 	clock := deps.Clock
 	if clock == nil {

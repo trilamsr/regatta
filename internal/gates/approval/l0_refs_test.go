@@ -1,4 +1,4 @@
-package l0
+package approval
 
 import (
 	"context"
@@ -80,7 +80,7 @@ func (r *testRepo) merge(ref, msg string) string {
 	return r.git("rev-parse", "HEAD")
 }
 
-// TestCheckRefs_DiffBaseHidesBaseBranchTightening asserts CheckRefs diffs against merge-base (not main-tip) so unrelated base-branch tightening does not fail the PR (§1 contract).
+// TestCheckRefs_DiffBaseHidesBaseBranchTightening asserts L0CheckRefs diffs against merge-base (not main-tip) so unrelated base-branch tightening does not fail the PR (§1 contract).
 func TestCheckRefs_DiffBaseHidesBaseBranchTightening(t *testing.T) {
 	r := newTestRepo(t)
 	r.write("MILESTONES.md", "# M1\n- [ ] Alpha criterion.\n- [ ] Bravo criterion.\n")
@@ -94,9 +94,9 @@ func TestCheckRefs_DiffBaseHidesBaseBranchTightening(t *testing.T) {
 	r.write("MILESTONES.md", "# M1\n- [ ] Alpha criterion.\n- [ ] Bravo criterion tightened on main.\n")
 	r.commit("B: main tightens Bravo independently")
 
-	res, err := CheckRefs(context.Background(), Default(), r.dir, "main", "pr")
+	res, err := L0CheckRefs(context.Background(), L0Default(), r.dir, "main", "pr")
 	if err != nil {
-		t.Fatalf("CheckRefs: %v", err)
+		t.Fatalf("L0CheckRefs: %v", err)
 	}
 	if res.Verdict != schemas.VerdictPass {
 		t.Fatalf("verdict=%s findings=%+v; PR's diff against merge-base should pass — main's Bravo tightening is invisible to L0", res.Verdict, res.Findings)
@@ -113,16 +113,16 @@ func TestCheckRefs_DiffBaseCatchesPRTextEdit(t *testing.T) {
 	r.write("MILESTONES.md", "# M1\n- [ ] Alpha criterion rewritten by agent.\n")
 	r.commit("PR: text edit (violation)")
 
-	res, err := CheckRefs(context.Background(), Default(), r.dir, "main", "pr")
+	res, err := L0CheckRefs(context.Background(), L0Default(), r.dir, "main", "pr")
 	if err != nil {
-		t.Fatalf("CheckRefs: %v", err)
+		t.Fatalf("L0CheckRefs: %v", err)
 	}
 	if res.Verdict != schemas.VerdictFail {
 		t.Fatalf("verdict=%s; expected fail (PR edits criterion text)", res.Verdict)
 	}
 }
 
-// TestCheckMergeCommit_CatchesPostMergeRegression asserts CheckMergeCommit catches a rubber-stamp merge (`-X theirs`) that clobbers main's post-PR tightening (§7 contract).
+// TestCheckMergeCommit_CatchesPostMergeRegression asserts L0CheckMergeCommit catches a rubber-stamp merge (`-X theirs`) that clobbers main's post-PR tightening (§7 contract).
 func TestCheckMergeCommit_CatchesPostMergeRegression(t *testing.T) {
 	r := newTestRepo(t)
 	r.write("MILESTONES.md", "# M1\n- [ ] Alpha criterion original.\n")
@@ -141,9 +141,9 @@ func TestCheckMergeCommit_CatchesPostMergeRegression(t *testing.T) {
 	r.git("merge", "--no-ff", "-q", "-X", "theirs", "-m", "merge PR", "pr")
 	mergeSHA := r.git("rev-parse", "HEAD")
 
-	res, err := CheckMergeCommit(context.Background(), Default(), r.dir, mergeSHA)
+	res, err := L0CheckMergeCommit(context.Background(), L0Default(), r.dir, mergeSHA)
 	if err != nil {
-		t.Fatalf("CheckMergeCommit: %v", err)
+		t.Fatalf("L0CheckMergeCommit: %v", err)
 	}
 	if res.Verdict != schemas.VerdictFail {
 		t.Fatalf("verdict=%s findings=%+v; merge tree reverts main's Alpha tightening and adds a criterion — both are violations", res.Verdict, res.Findings)
@@ -163,9 +163,9 @@ func TestCheckMergeCommit_CleanMergePasses(t *testing.T) {
 	r.checkout("main")
 	mergeSHA := r.merge("pr", "merge PR")
 
-	res, err := CheckMergeCommit(context.Background(), Default(), r.dir, mergeSHA)
+	res, err := L0CheckMergeCommit(context.Background(), L0Default(), r.dir, mergeSHA)
 	if err != nil {
-		t.Fatalf("CheckMergeCommit: %v", err)
+		t.Fatalf("L0CheckMergeCommit: %v", err)
 	}
 	if res.Verdict != schemas.VerdictPass {
 		t.Fatalf("verdict=%s findings=%+v; clean merge of a valid PR flip must pass on re-run", res.Verdict, res.Findings)

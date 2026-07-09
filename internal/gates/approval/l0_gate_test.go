@@ -1,4 +1,4 @@
-package l0
+package approval
 
 import (
 	"testing"
@@ -6,9 +6,9 @@ import (
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-func runCheck(t *testing.T, diff string) schemas.GateResult {
+func runL0Check(t *testing.T, diff string) schemas.GateResult {
 	t.Helper()
-	return Check(Default(), ParseUnifiedDiff(diff))
+	return L0Check(L0Default(), L0ParseUnifiedDiff(diff))
 }
 
 func TestCheck_StateFlipWithCitation_Passes(t *testing.T) {
@@ -21,7 +21,7 @@ func TestCheck_StateFlipWithCitation_Passes(t *testing.T) {
 -- [ ] First criterion.
 +- [x] First criterion. test=TestFoo
 `
-	r := runCheck(t, d)
+	r := runL0Check(t, d)
 	if r.Verdict != schemas.VerdictPass {
 		t.Fatalf("verdict=%s findings=%+v", r.Verdict, r.Findings)
 	}
@@ -37,7 +37,7 @@ func TestCheck_StateFlipWithoutCitation_Fails(t *testing.T) {
 -- [ ] First criterion.
 +- [x] First criterion.
 `
-	r := runCheck(t, d)
+	r := runL0Check(t, d)
 	if r.Verdict != schemas.VerdictFail {
 		t.Fatalf("verdict=%s; expected fail", r.Verdict)
 	}
@@ -56,7 +56,7 @@ func TestCheck_TextEdit_Fails(t *testing.T) {
 -- [ ] First criterion.
 +- [ ] First criterion modified.
 `
-	r := runCheck(t, d)
+	r := runL0Check(t, d)
 	if r.Verdict != schemas.VerdictFail {
 		t.Fatalf("verdict=%s; expected fail", r.Verdict)
 	}
@@ -85,7 +85,7 @@ func TestCheck_InvisibleGlyphInjection_Fails(t *testing.T) {
 	// matches the normative behavior: text-after-normalize is the
 	// equivalence relation; visual-only glyph reshuffling is permitted.
 	// Catching purely-cosmetic invisibles is left to a separate gate.
-	r := runCheck(t, d)
+	r := runL0Check(t, d)
 	if r.Verdict != schemas.VerdictPass {
 		t.Fatalf("verdict=%s; expected pass after normalization (findings=%+v)", r.Verdict, r.Findings)
 	}
@@ -100,7 +100,7 @@ func TestCheck_NFCEquivalence_Passes(t *testing.T) {
 		" # M\n" +
 		"-- [ ] café latte.\n" +
 		"+- [ ] café latte.\n"
-	r := runCheck(t, d)
+	r := runL0Check(t, d)
 	if r.Verdict != schemas.VerdictPass {
 		t.Fatalf("verdict=%s findings=%+v", r.Verdict, r.Findings)
 	}
@@ -116,7 +116,7 @@ func TestCheck_CriterionAdded_Fails(t *testing.T) {
  - [ ] First criterion.
 +- [ ] Brand new criterion the agent invented.
 `
-	r := runCheck(t, d)
+	r := runL0Check(t, d)
 	if r.Verdict != schemas.VerdictFail {
 		t.Fatalf("verdict=%s; expected fail", r.Verdict)
 	}
@@ -132,7 +132,7 @@ func TestCheck_CriterionRemoved_Fails(t *testing.T) {
  - [ ] First criterion.
 -- [ ] Second criterion.
 `
-	r := runCheck(t, d)
+	r := runL0Check(t, d)
 	if r.Verdict != schemas.VerdictFail {
 		t.Fatalf("verdict=%s; expected fail", r.Verdict)
 	}
@@ -148,7 +148,7 @@ func TestCheck_StateRevert_Fails(t *testing.T) {
 -- [x] First criterion. test=TestFoo
 +- [ ] First criterion.
 `
-	r := runCheck(t, d)
+	r := runL0Check(t, d)
 	if r.Verdict != schemas.VerdictFail {
 		t.Fatalf("verdict=%s; expected fail", r.Verdict)
 	}
@@ -162,7 +162,7 @@ similarity index 100%
 rename from MILESTONES_OLD.md
 rename to MILESTONES.md
 `
-	r := runCheck(t, d)
+	r := runL0Check(t, d)
 	if r.Verdict != schemas.VerdictPass {
 		t.Fatalf("verdict=%s findings=%+v; expected pass for pure rename", r.Verdict, r.Findings)
 	}
@@ -177,7 +177,7 @@ func TestCheck_NonSpecFile_Skipped(t *testing.T) {
 -old code
 +new code
 `
-	r := runCheck(t, d)
+	r := runL0Check(t, d)
 	if r.Verdict != schemas.VerdictPass {
 		t.Fatalf("non-spec file should be skipped: verdict=%s findings=%+v", r.Verdict, r.Findings)
 	}

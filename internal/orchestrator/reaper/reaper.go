@@ -29,17 +29,12 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
 )
 
-// ChildKiller is implemented by spawners that own live processes.
-// The Reaper consults this to send SIGTERM before removing the
-// worktree (a forced rm of a worktree currently being written to
-// races against the child's filesystem activity).
-type ChildKiller interface {
-	// KillAgent best-effort signals the agent's child process and
-	// returns whether a process was actually signaled. The
-	// implementation MUST be safe to call when the agent is unknown
-	// (returns false, nil).
-	KillAgent(agentID int64) (signaled bool, err error)
-}
+// ChildKiller is the narrow func-shape seam the Reaper invokes to
+// send SIGTERM before worktree removal — a forced rm of a worktree in
+// active write races the child's FS activity. Production wires
+// (*spawner.ClaudeSpawner).KillAgent; the func MUST be safe when the
+// agent is unknown (return false, nil).
+type ChildKiller func(agentID int64) (signaled bool, err error)
 
 // Config wires the Reaper's collaborators and structured-event sink.
 // All fields except Logger are required; Logger defaults to
@@ -149,7 +144,7 @@ func (r *Reaper) Reap(ctx context.Context, agentID int64) error {
 		string(obs.KeyWorkItemID), agent.WorkItemID,
 	)
 	if r.killer != nil {
-		signaled, err := r.killer.KillAgent(agentID)
+		signaled, err := r.killer(agentID)
 		if err != nil {
 			return fmt.Errorf("reaper: kill agent %d: %w", agentID, err)
 		}
@@ -226,7 +221,7 @@ func (r *Reaper) SweepCrashedWithPID(ctx context.Context) error {
 			continue
 		}
 		if r.killer != nil {
-			if _, err := r.killer.KillAgent(a.ID); err != nil {
+			if _, err := r.killer(a.ID); err != nil {
 				r.log.Warn(string(obs.EventReapSkipped),
 					string(obs.KeyAgentID), a.ID,
 					string(obs.KeyReason), "kill_failed",

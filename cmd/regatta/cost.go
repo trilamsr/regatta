@@ -120,7 +120,7 @@ func buildEnforcer(ctx context.Context, deps costDeps) (*costcap.Enforcer, func(
 		MemoizeTTL: settings.MemoizeTTL,
 		Spend:      spend.NewReader(db.SQL(), clock),
 		Recorder:   db,
-		Resume:     resumeReader{db: db},
+		Resume:     newResumeReader(db),
 		Clock:      clock,
 	})
 	if err != nil {
@@ -130,23 +130,19 @@ func buildEnforcer(ctx context.Context, deps costDeps) (*costcap.Enforcer, func(
 	return enf, closeDB, nil
 }
 
-// resumeReader adapts state.DB.LatestEventByKind to the costcap.ResumeReader interface.
-type resumeReader struct{ db *state.DB }
-
-func (r resumeReader) LatestResumeAt(ctx context.Context) (time.Time, error) {
-	ev, err := r.db.LatestEventByKind(ctx, costcap.EventKindResumed)
-	if err != nil {
-		if errors.Is(err, errNoRows()) {
-			return time.Time{}, nil
+// newResumeReader returns a costcap.ResumeReader closure reading the
+// last cost_cap_resumed audit event via state.DB.
+func newResumeReader(db *state.DB) costcap.ResumeReader {
+	return func(ctx context.Context) (time.Time, error) {
+		ev, err := db.LatestEventByKind(ctx, costcap.EventKindResumed)
+		if err != nil {
+			if errors.Is(err, sqlErrNoRows) {
+				return time.Time{}, nil
+			}
+			return time.Time{}, err
 		}
-		return time.Time{}, err
+		return ev.CreatedAt, nil
 	}
-	return ev.CreatedAt, nil
-}
-
-// errNoRows hides sql.ErrNoRows so cost.go avoids a top-level database/sql import.
-func errNoRows() error {
-	return sqlErrNoRows
 }
 
 func readConfigBytes(path string) []byte {

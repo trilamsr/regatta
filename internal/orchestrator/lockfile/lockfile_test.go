@@ -1,13 +1,9 @@
 //go:build unix
 
-// The lockfile contract — flock byte-0 + PID stamp written under the
-// lock — is POSIX-specific. gofrs/flock on Windows uses LockFileEx
-// over byte range [0,1), which blocks any other handle (including
-// ours) from writing the PID payload at offset 0. The orchestrator
-// runtime is documented Linux + macOS only (docs/design.md); the
-// Windows build target exists for tooling/cross-build smoke checks,
-// not runtime use — so we exclude these tests from Windows entirely
-// rather than degrade the production design.
+// Lockfile contract is POSIX-specific: syscall.Flock byte-0 + PID
+// stamp written under the lock. Orchestrator runtime is Linux + macOS
+// only (docs/design.md); Windows build target exists for
+// tooling/cross-build smoke checks, not runtime use.
 
 package lockfile
 

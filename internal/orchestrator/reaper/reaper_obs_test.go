@@ -19,7 +19,7 @@ func TestReaper_EmitsKilledOnReap(t *testing.T) {
 	r := New(Config{
 		DB:     db,
 		WM:     wm,
-		Killer: killer,
+		Killer: killer.KillAgent,
 		Logger: slog.New(h),
 	})
 
