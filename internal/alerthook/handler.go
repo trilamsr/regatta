@@ -1,4 +1,4 @@
-package alarmwebhook
+package alerthook
 
 import (
 	"context"
@@ -118,14 +118,14 @@ type Handler struct {
 // internal/orchestrator/scheduler/scheduler.go::ResolveMeter so a
 // post-construct SetupMeter still wires through.
 func (h *Handler) resolveMeter() metric.Meter {
-	return obs.ResolveMeter(h.Meter, obs.MeterScopeAlarmwebhook)
+	return obs.ResolveMeter(h.Meter, obs.MeterScopeAlerthook)
 }
 
 func (h *Handler) resolveTracer() trace.Tracer {
 	if h.Tracer != nil {
 		return h.Tracer
 	}
-	return otel.Tracer("alarmwebhook")
+	return otel.Tracer("alerthook")
 }
 
 func (h *Handler) resolveLogger() *slog.Logger {
@@ -143,9 +143,9 @@ func (h *Handler) init() {
 	h.initOnce.Do(func() {
 		h.cache = newDedupCache(h.Now, h.CacheTTL)
 		m := h.resolveMeter()
-		c, err := m.Int64Counter("regatta.alarm_webhook.alerts.total")
+		c, err := m.Int64Counter("regatta.alerthook.alerts.total")
 		if err != nil {
-			c, _ = obs.Meter(obs.MeterScopeAlarmwebhookFallback).Int64Counter("regatta.alarm_webhook.alerts.total")
+			c, _ = obs.Meter(obs.MeterScopeAlerthookFallback).Int64Counter("regatta.alerthook.alerts.total")
 		}
 		h.alertCounter = c
 	})
@@ -266,7 +266,7 @@ func (h *Handler) resolveNow() func() time.Time {
 // liveness probe never costs a GitHub API call.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.init()
-	ctx, span := h.resolveTracer().Start(r.Context(), "alarmwebhook.webhook")
+	ctx, span := h.resolveTracer().Start(r.Context(), "alerthook.webhook")
 	defer span.End()
 
 	if r.Method != http.MethodPost {
@@ -280,7 +280,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// security boundary: localhost bound is reachable from every container
 	// on the same host.
 	if !checkWebhookAuth(r) {
-		h.resolveLogger().WarnContext(ctx, "alarmwebhook.auth_rejected",
+		h.resolveLogger().WarnContext(ctx, "alerthook.auth_rejected",
 			"remote", r.RemoteAddr)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -298,25 +298,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// re-delivered, not swallowed.
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
-			h.resolveLogger().ErrorContext(ctx, "alarmwebhook.payload_too_large",
+			h.resolveLogger().ErrorContext(ctx, "alerthook.payload_too_large",
 				"limit_bytes", MaxBodyBytes, "err", err)
 			http.Error(w, "payload exceeds "+fmt.Sprintf("%d", MaxBodyBytes)+" bytes; retry advised", http.StatusInternalServerError)
 			return
 		}
-		h.resolveLogger().WarnContext(ctx, "alarmwebhook.read_body_failed", "err", err)
+		h.resolveLogger().WarnContext(ctx, "alerthook.read_body_failed", "err", err)
 		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	var p Payload
 	if err := json.Unmarshal(raw, &p); err != nil {
-		h.resolveLogger().WarnContext(ctx, "alarmwebhook.decode_failed", "err", err)
+		h.resolveLogger().WarnContext(ctx, "alerthook.decode_failed", "err", err)
 		http.Error(w, "decode payload: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if len(p.Alerts) == 0 {
-		h.resolveLogger().InfoContext(ctx, "alarmwebhook.no_alerts")
+		h.resolveLogger().InfoContext(ctx, "alerthook.no_alerts")
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -331,7 +331,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if routeErr != nil {
 		span.RecordError(routeErr)
 		span.SetStatus(codes.Error, "route failed")
-		h.resolveLogger().ErrorContext(ctx, "alarmwebhook.route_failed", "err", routeErr)
+		h.resolveLogger().ErrorContext(ctx, "alerthook.route_failed", "err", routeErr)
 		http.Error(w, "route: "+routeErr.Error(), http.StatusBadGateway)
 		return
 	}
@@ -369,7 +369,7 @@ func (h *Handler) route(ctx context.Context, p Payload, a Alert) error {
 			return fmt.Errorf("comment on #%d: %w", issueNumber, err)
 		}
 		h.bump(ctx, name, severity, "comment_added")
-		h.resolveLogger().InfoContext(ctx, "alarmwebhook.comment_added",
+		h.resolveLogger().InfoContext(ctx, "alerthook.comment_added",
 			"alertname", name, "issue", issueNumber)
 		return nil
 	}
@@ -386,7 +386,7 @@ func (h *Handler) route(ctx context.Context, p Payload, a Alert) error {
 		h.cache.put(name, num, true)
 	}
 	h.bump(ctx, name, severity, "issue_created")
-	h.resolveLogger().InfoContext(ctx, "alarmwebhook.issue_created",
+	h.resolveLogger().InfoContext(ctx, "alerthook.issue_created",
 		"alertname", name, "issue", num, "severity", severity)
 	return nil
 }

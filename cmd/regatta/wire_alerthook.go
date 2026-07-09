@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/trilamsr/regatta/internal/alarmwebhook"
+	"github.com/trilamsr/regatta/internal/alerthook"
 	validateconfig "github.com/trilamsr/regatta/internal/config/validate"
 )
 
@@ -18,27 +18,27 @@ import (
 // indirection makes the intent explicit.
 const defaultGHTokenEnvVar = "GITHUB_TOKEN" //nolint:gosec // env-var name, not a secret
 
-// startAlarmWebhook is the one-line wire-up for the in-process W1
+// startAlerthook is the one-line wire-up for the in-process W1
 // receiver. Empty / missing alarm_webhook.listen_addr ⇒ no-op so
 // zero-config deployments stay zero-cost. Failures during wire-up
 // (bad gh_repo shape, empty token env) log-warn instead of fail-loud
 // because the receiver is opt-in observability surface, not boot-
 // critical state — `regatta serve` MUST keep coming up even when
 // AlertManager is unreachable.
-func startAlarmWebhook(ctx context.Context, repoRoot string, slogger *slog.Logger) {
+func startAlerthook(ctx context.Context, repoRoot string, slogger *slog.Logger) {
 	cfg, _ := validateconfig.LoadConfigFile(filepath.Join(repoRoot, "regatta.yaml"))
 	wh := cfg.AlarmWebhookConfig()
 	if wh == nil {
 		return
 	}
 	if wh.GHRepo == "" {
-		slogger.Warn("alarmwebhook.disabled", "reason", "gh_repo empty",
+		slogger.Warn("alerthook.disabled", "reason", "gh_repo empty",
 			"listen_addr", wh.ListenAddr)
 		return
 	}
 	parts := strings.SplitN(wh.GHRepo, "/", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		slogger.Warn("alarmwebhook.disabled", "reason", "gh_repo not owner/name",
+		slogger.Warn("alerthook.disabled", "reason", "gh_repo not owner/name",
 			"gh_repo", wh.GHRepo)
 		return
 	}
@@ -48,12 +48,12 @@ func startAlarmWebhook(ctx context.Context, repoRoot string, slogger *slog.Logge
 	}
 	token := os.Getenv(tokenEnv)
 	if token == "" {
-		slogger.Warn("alarmwebhook.disabled", "reason", "token env empty",
+		slogger.Warn("alerthook.disabled", "reason", "token env empty",
 			"env", tokenEnv)
 		return
 	}
 	go func() {
-		err := alarmwebhook.Serve(ctx, alarmwebhook.ServeOptions{
+		err := alerthook.Serve(ctx, alerthook.ServeOptions{
 			ListenAddr:  wh.ListenAddr,
 			GHRepoOwner: parts[0],
 			GHRepoName:  parts[1],
@@ -61,7 +61,7 @@ func startAlarmWebhook(ctx context.Context, repoRoot string, slogger *slog.Logge
 			Logger:      slogger,
 		})
 		if err != nil {
-			slogger.Error("alarmwebhook.exit", "err", err)
+			slogger.Error("alerthook.exit", "err", err)
 		}
 	}()
 }

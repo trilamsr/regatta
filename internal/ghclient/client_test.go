@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
-	"github.com/trilamsr/regatta/internal/alarmwebhook"
+	"github.com/trilamsr/regatta/internal/alerthook"
 	"github.com/trilamsr/regatta/internal/ghclient"
 	"github.com/trilamsr/regatta/internal/selfimprove"
 )
 
-// TestUnifiedClient_AlarmwebhookHTTPSatisfiesGHClient asserts the prod alarmwebhook HTTP constructor returns ghclient.Client (#710 B3).
-func TestUnifiedClient_AlarmwebhookHTTPSatisfiesGHClient(t *testing.T) {
-	requireClient(t, alarmwebhook.NewHTTPGitHubClient("t", "o", "r", ""))
+// TestUnifiedClient_AlerthookHTTPSatisfiesGHClient asserts the prod alerthook HTTP constructor returns ghclient.Client (#710 B3).
+func TestUnifiedClient_AlerthookHTTPSatisfiesGHClient(t *testing.T) {
+	requireClient(t, alerthook.NewHTTPGitHubClient("t", "o", "r", ""))
 }
 
 func requireClient(t *testing.T, c ghclient.Client) {

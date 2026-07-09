@@ -1,9 +1,9 @@
-// Package alarmwebhook receives AlertManager webhook payloads and routes
+// Package alerthook receives AlertManager webhook payloads and routes
 // each firing alert to GitHub-issue create or comment-on-existing per the
 // PHASE-AUTONOMY-W1 dedup rule. Both cmd/regatta-alarm-webhook (sidecar)
 // and cmd/regatta serve (in-process via W3 supervisor) import this
 // package; the handler stays transport-agnostic.
-package alarmwebhook
+package alerthook
 
 // Payload mirrors the AlertManager v4 webhook contract documented at
 // https://prometheus.io/docs/alerting/latest/configuration/#webhook_config.

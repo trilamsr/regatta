@@ -15,7 +15,7 @@ Stage 2 of containerization. Four services on one bridge:
 | `regatta` | `regatta:stage2` (local build) | 8080 | the orchestrator binary from Stage 1. |
 | `prometheus` | `prom/prometheus:v3.7.2` | 9090 | OTLP-native receiver + TSDB + alert evaluator. |
 | `grafana` | `grafana/grafana:11.4.0` | 3000 | provisioned dashboards from `docs/operator/dashboards/`. |
-| `alertmanager` | `prom/alertmanager:v0.28.1` | 9093 | routes Sloth-compiled alerts → `regatta-alarm-webhook`. |
+| `alertmanager` | `prom/alertmanager:v0.28.1` | 9093 | routes Sloth-compiled alerts → `regatta-alerthook`. |
 
 The stack runs everything on one Docker bridge (`regatta-net`) with
 four named volumes (`regatta-data`, `prom-data`, `grafana-data`,
@@ -178,7 +178,7 @@ regatta (OTel SDK)
 prometheus :9090/api/v1/otlp/v1/metrics
    │  --web.enable-otlp-receiver
    ▼
-TSDB ────► Sloth rules ────► AlertManager ────► regatta-alarm-webhook
+TSDB ────► Sloth rules ────► AlertManager ────► regatta-alerthook
    │
    ▼
 Grafana :3000 (datasource: Prometheus)
@@ -254,7 +254,7 @@ Three likely causes:
 
 ### AlertManager fires but no GitHub issue lands
 
-Expected today. `regatta-alarm-webhook` (#458 W1) is not yet
+Expected today. `regatta-alerthook` (#458 W1) is not yet
 implemented; the webhook URL is a placeholder that returns a connection
 error. AlertManager will retry per its back-off schedule; the alerts
 are visible at <http://localhost:9093>. When W1 ships, this section

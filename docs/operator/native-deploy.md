@@ -28,7 +28,7 @@ below.
 | 1 | Clone / pull the repo | [Step 1 — Clone](#step-1--clone) |
 | 2 | `.env` fill (`ANTHROPIC_API_KEY` + `GH_TOKEN`) | [Step 2 — `.env`](#step-2--env-fill) |
 | 3 | `chmod 600 .env` | [Step 3 — secret mode](#step-3--secret-mode) |
-| 4 | Edit `regatta.yaml` (spend cap + alarm-webhook) | [Step 4 — `regatta.yaml`](#step-4--regattayaml) |
+| 4 | Edit `regatta.yaml` (spend cap + alerthook) | [Step 4 — `regatta.yaml`](#step-4--regattayaml) |
 | 5 | Anthropic console monthly cap | [Step 5 — console cap](#step-5--anthropic-console-monthly-cap) |
 | 6 | Branch protection sanity (`regatta verify-repo-config`) | [Step 6 — branch protection](#step-6--branch-protection-sanity) |
 | 7 | `make ci-check` on `main` | [Step 7 — `make ci-check`](#step-7--make-ci-check) |
@@ -37,7 +37,7 @@ below.
 | 10 | `regatta status` panels populate | [Step 10 — status panels](#step-10--regatta-status-panels) |
 | 11 | Smoke-dispatch one trivial work_item | [Step 11 — smoke-dispatch](#step-11--smoke-dispatch) |
 | 12 | Watch first PR end-to-end | [Step 12 — first-PR walk](#step-12--first-pr-walk) |
-| 13 | Verify alarm-webhook trips | [Step 13 — alarm-webhook](#step-13--alarm-webhook-trip) |
+| 13 | Verify alerthook trips | [Step 13 — alerthook](#step-13--alerthook-trip) |
 | 14 | 24h unattended green criteria | [Step 14 — 24h stop criteria](#step-14--24h-stop-criteria) |
 
 ## Step 1 — Clone
@@ -136,7 +136,7 @@ This is the only *hard* spend ceiling — the in-loop
 `spend_cap_usd_per_day` is a soft cap that throttles dispatch but does
 not bill-block. Pick a number you can afford to lose; cap-tripped
 requests return a 4xx and the loop surfaces them through the
-alarm-webhook (Step 13).
+alerthook (Step 13).
 
 ## Step 6 — branch protection sanity
 
@@ -400,13 +400,13 @@ What success looks like:
 
 **MVR-1-T4 caveat**: the GH-issue adapter (auto-consume of
 loop-filed issues back into work_items) is **not yet shipped**.
-Alarm-webhook *fires* and files a GH issue (Step 13), but the loop
+Alerthook *fires* and files a GH issue (Step 13), but the loop
 does not yet auto-consume it back into work-item state. Until MVR-1-T4
 lands you must hand-process those issues weekly.
 
-## Step 13 — alarm-webhook trip
+## Step 13 — alerthook trip
 
-The alarm-webhook listens on `alarm_webhook.listen_addr` (default
+The alerthook listens on `alarm_webhook.listen_addr` (default
 `127.0.0.1:9101`) and files a GitHub issue on receipt. The fastest
 verification hits the handler directly:
 
@@ -435,7 +435,7 @@ Stop watching when **all four** hold:
 - [ ] Cost-today panel is under your `spend_cap_usd_per_day` setting.
 - [ ] Zero `brief.rejected`, `brief.tombstoned`,
       `child.cascade_archived`, `child.dependency_archived`, or
-      `alarmwebhook.disabled` events in journald / stderr.log in the
+      `alerthook.disabled` events in journald / stderr.log in the
       last 24h.
 - [ ] At least one PR closed end-to-end (merged via operator click,
       abandoned via approval-gate timeout, or L4-rejected). Confirms
@@ -446,7 +446,7 @@ the matching log slice into a post-mortem at
 `docs/engineer/post-mortems/`.
 
 7d-watch criterion adds: GH-issue adapter (MVR-1-T4) must have shipped,
-else continue hand-processing alarm-webhook issues weekly.
+else continue hand-processing alerthook issues weekly.
 
 30d-watch criterion adds: at least one full automerge cycle (no human
 merge click). Gated on Phase X relaxation, not Phase S.

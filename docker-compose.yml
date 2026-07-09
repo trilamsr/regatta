@@ -3,7 +3,7 @@
 # Wires four services on one bridge: regatta (Stage 1 image) emits OTLP
 # metrics to a Prometheus 3 native receiver (no OTel Collector hop — #519
 # §6), Grafana 11 reads the same Prom for dashboards, AlertManager fires
-# webhooks to regatta-alarm-webhook (#458 W1) when SLO rules breach.
+# webhooks to regatta-alerthook (#458 W1) when SLO rules breach.
 #
 # Spec authority: docs/engineer/research/2026-06-02-container-stages.md §6 + §14.
 # Stage 1 runbook lives at docs/operator/container.md. Stage 2 operator

@@ -1,4 +1,4 @@
-package alarmwebhook
+package alerthook
 
 import (
 	"encoding/json"
@@ -64,8 +64,8 @@ func postRapid(rt *rapid.T, h http.Handler, body []byte) *httptest.ResponseRecor
 	return rr
 }
 
-// TestAlarmWebhook_PropertyTest_NoDoubleIssueOnReplay asserts no random AlertManager payload produces two CreateIssue calls when replayed twice.
-func TestAlarmWebhook_PropertyTest_NoDoubleIssueOnReplay(t *testing.T) {
+// TestAlertHook_PropertyTest_NoDoubleIssueOnReplay asserts no random AlertManager payload produces two CreateIssue calls when replayed twice.
+func TestAlertHook_PropertyTest_NoDoubleIssueOnReplay(t *testing.T) {
 	t.Setenv(WebhookAuthEnv, "property-test-token")
 	rapid.Check(t, func(rt *rapid.T) {
 		body := genPayload().Draw(rt, "payload")

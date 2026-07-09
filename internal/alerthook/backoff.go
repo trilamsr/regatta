@@ -1,4 +1,4 @@
-package alarmwebhook
+package alerthook
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 // ErrCircuitOpen signals the retrier is fail-fast: too many consecutive 429s
 // observed in CircuitWindow, so callers must back off without burning another
 // GH API quota slot until CircuitOpenFor elapses.
-var ErrCircuitOpen = errors.New("alarmwebhook: circuit open (consecutive 429s)")
+var ErrCircuitOpen = errors.New("alerthook: circuit open (consecutive 429s)")
 
 // retryClock is the time+sleep seam so tests advance backoff deterministically
 // without real wall-clock waits.

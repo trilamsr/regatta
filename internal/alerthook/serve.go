@@ -1,4 +1,4 @@
-package alarmwebhook
+package alerthook
 
 import (
 	"context"
@@ -27,13 +27,13 @@ type ServeOptions struct {
 // goroutine-launch it.
 func Serve(ctx context.Context, opts ServeOptions) error {
 	if opts.ListenAddr == "" {
-		return errors.New("alarmwebhook: ListenAddr empty")
+		return errors.New("alerthook: ListenAddr empty")
 	}
 	if opts.GHRepoOwner == "" || opts.GHRepoName == "" {
-		return errors.New("alarmwebhook: gh repo owner+name required")
+		return errors.New("alerthook: gh repo owner+name required")
 	}
 	if opts.GHToken == "" {
-		return errors.New("alarmwebhook: gh token empty")
+		return errors.New("alerthook: gh token empty")
 	}
 	logger := opts.Logger
 	if logger == nil {
@@ -60,7 +60,7 @@ func Serve(ctx context.Context, opts ServeOptions) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("alarmwebhook.listen", "addr", opts.ListenAddr,
+		logger.Info("alerthook.listen", "addr", opts.ListenAddr,
 			"repo", opts.GHRepoOwner+"/"+opts.GHRepoName)
 		err := srv.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {

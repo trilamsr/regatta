@@ -98,7 +98,7 @@ func runSelfImproveScan(args []string) int {
 	}
 
 	// --apply: open the substrate read-only WAL conn (#645). GH adapter
-	// wiring follows the W1 alarm-webhook seam; until that ships, --apply
+	// wiring follows the W1 alerthook seam; until that ships, --apply
 	// without a GH client errors loudly rather than silently producing
 	// no issues.
 	dsn := fmt.Sprintf("file:%s?mode=ro&_journal_mode=WAL&_query_only=1", *dbPath)
@@ -110,7 +110,7 @@ func runSelfImproveScan(args []string) int {
 	defer func() { _ = db.Close() }()
 
 	src := selfimprove.NewSQLEventSource(db)
-	// GH adapter is W1 alarm-webhook's responsibility (spec §6.2); until
+	// GH adapter is W1 alerthook's responsibility (spec §6.2); until
 	// that constructor is exposed here, --apply errors so the operator
 	// is never surprised by a silent no-op.
 	fmt.Fprintln(os.Stderr, "regatta self-improve scan --apply: substrate event source wired; GH adapter wiring pending W1 hand-off — running scan in dry-print mode")
