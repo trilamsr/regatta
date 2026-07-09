@@ -86,7 +86,7 @@ func TestSubstrate_TokenSpendPayloadValidates(t *testing.T) {
 	defer func() { _ = tx.Rollback() }()
 
 	now := mustParseUnixMs("2026-06-01T12:00:01Z")
-	bad := substrate.Event{
+	bad := substrate.SubstrateEvent{
 		ID:            substrate.Mint(now),
 		RunID:         "run-x",
 		TenantID:      substrate.DefaultTenantID,

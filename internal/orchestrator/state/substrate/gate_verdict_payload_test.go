@@ -18,7 +18,7 @@ func TestSubstrate_GateVerdictPayloadValidation(t *testing.T) {
 	db := openMigratedDB(t)
 	ctx := testCtx()
 
-	good := substrate.Event{
+	good := substrate.SubstrateEvent{
 		ID:            substrate.Mint(testTime()),
 		RunID:         "run-G",
 		TenantID:      substrate.DefaultTenantID,

@@ -20,7 +20,7 @@ func TestSubstrate_SignCanonicalized_KeyMutationPoisoning(t *testing.T) {
 
 	// Fixed Event values so MAC drift can only come from key state,
 	// never from a ULID Mint roll.
-	fixedEv := substrate.Event{
+	fixedEv := substrate.SubstrateEvent{
 		ID:            "01J0000000000000000000000K",
 		RunID:         "run-KM",
 		TenantID:      substrate.DefaultTenantID,
@@ -76,8 +76,8 @@ func TestSubstrate_SignCanonicalized_SigMACStableAcrossCalls(t *testing.T) {
 
 	// Fixed Event values (no Mint) so the recomputed sign-call produces
 	// the same envelope and the MAC compare is meaningful.
-	mk := func(id string) substrate.Event {
-		return substrate.Event{
+	mk := func(id string) substrate.SubstrateEvent {
+		return substrate.SubstrateEvent{
 			ID:            id,
 			RunID:         "run-SM",
 			TenantID:      substrate.DefaultTenantID,

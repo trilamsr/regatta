@@ -177,7 +177,7 @@ func (s *Sweeper) sweepOnce(ctx context.Context) error {
 }
 
 // fetchBatch reads the next chunk of events from the RO pool; ordered by id DESC so the sweeper walks newest-first and short-circuits on the cutoff. Keyset pagination on id (not LIMIT/OFFSET) keeps each batch O(BatchSize) regardless of sweep progress.
-func (s *Sweeper) fetchBatch(ctx context.Context, afterID string, cutoff int64) ([]Event, error) {
+func (s *Sweeper) fetchBatch(ctx context.Context, afterID string, cutoff int64) ([]SubstrateEvent, error) {
 	var (
 		rows *sql.Rows
 		err  error
@@ -207,10 +207,10 @@ func (s *Sweeper) fetchBatch(ctx context.Context, afterID string, cutoff int64) 
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []Event
+	var out []SubstrateEvent
 	for rows.Next() {
 		var (
-			e           Event
+			e           SubstrateEvent
 			wiID, sup   sql.NullString
 			kindStr     string
 			payloadStr  string
@@ -232,7 +232,7 @@ func (s *Sweeper) fetchBatch(ctx context.Context, afterID string, cutoff int64) 
 }
 
 // verifyRow re-runs the substrate Verify check against a single row. A real MAC mismatch increments the chain-break counter and emits a WARN log; missing-key errors are quiet (legitimate during key rotation per spec §10 R9). Other sqlite errors propagate so run() logs at its boundary. Verify is a pure HMAC compare — contextcheck false-positives on the pure-fn call; ctx here flows only to the counter emit + WARN log.
-func (s *Sweeper) verifyRow(ctx context.Context, e Event) error {
+func (s *Sweeper) verifyRow(ctx context.Context, e SubstrateEvent) error {
 	err := Verify(e, s.cfg.Keyring) //nolint:contextcheck // pure fn; ctx flows to counter + log
 
 	if err == nil {

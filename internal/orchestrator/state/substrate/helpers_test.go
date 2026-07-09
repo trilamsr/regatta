@@ -55,7 +55,7 @@ func withinTx(ctx context.Context, t *testing.T, db *sql.DB, fn func(*sql.Tx) er
 
 // appendEventTx is the standard test path: open a tx, call AppendEvent,
 // commit (or rollback on error). Keeps each test free of boilerplate.
-func appendEventTx(ctx context.Context, t *testing.T, db *sql.DB, e substrate.Event) error {
+func appendEventTx(ctx context.Context, t *testing.T, db *sql.DB, e substrate.SubstrateEvent) error {
 	t.Helper()
 	return withinTx(ctx, t, db, func(tx *sql.Tx) error {
 		return substrate.AppendEvent(ctx, tx, e, testKey, testKeyID)
@@ -75,8 +75,8 @@ func testCtx() context.Context {
 }
 
 // mkEvent builds a baseline valid Event the tests mutate per case.
-func mkEvent(seed byte, runID string, kind substrate.EventKind, payload string, at time.Time) substrate.Event {
-	return substrate.Event{
+func mkEvent(seed byte, runID string, kind substrate.EventKind, payload string, at time.Time) substrate.SubstrateEvent {
+	return substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         runID,
 		TenantID:      substrate.DefaultTenantID,

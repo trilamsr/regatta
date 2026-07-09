@@ -107,7 +107,7 @@ func TestReloader_IgnoresEditorBackupFiles(t *testing.T) {
 		Tenant:     authz.DefaultTenant,
 		Debounce:   25 * time.Millisecond,
 		Logger:     slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		OnReload:   func(reload.Result) { reloadCount.Add(1) },
+		OnReload:   func(reload.PolicyReloadResult) { reloadCount.Add(1) },
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -130,14 +130,14 @@ func TestReloader_NoOpReloadOnSameSHA(t *testing.T) {
 	dir, az := setupAuthz(t)
 	// Buffer holds at least one swap + one skip so OnReload never
 	// back-pressures doReload.
-	results := make(chan reload.Result, 16)
+	results := make(chan reload.PolicyReloadResult, 16)
 	r := &reload.Reloader{
 		Authorizer: az,
 		Loader:     &disk.Loader{Dir: dir, Fallback: embeddedFallback()},
 		Tenant:     authz.DefaultTenant,
 		Debounce:   25 * time.Millisecond,
 		Logger:     slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		OnReload:   func(res reload.Result) { results <- res },
+		OnReload:   func(res reload.PolicyReloadResult) { results <- res },
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -394,14 +394,14 @@ func waitForRevisionChange(t *testing.T, az *authz.OPAAuthorizer, before string,
 	}, fmt.Sprintf("revision unchanged (was %q)", before))
 }
 
-func waitForReloadResult(t *testing.T, ch <-chan reload.Result, timeout time.Duration) reload.Result {
+func waitForReloadResult(t *testing.T, ch <-chan reload.PolicyReloadResult, timeout time.Duration) reload.PolicyReloadResult {
 	t.Helper()
 	select {
 	case res := <-ch:
 		return res
 	case <-time.After(timeout):
 		t.Fatalf("no reload result after %s", timeout)
-		return reload.Result{}
+		return reload.PolicyReloadResult{}
 	}
 }
 

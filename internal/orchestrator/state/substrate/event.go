@@ -87,14 +87,14 @@ func AllKinds() []EventKind {
 	}
 }
 
-// Event is one row in substrate_events. Append-only; state for any
+// SubstrateEvent is one row in substrate_events. Append-only; state for any
 // wedge is fold(events WHERE kind=X). Callers DO NOT set SigAlg /
 // SigKeyID / SigMAC — AppendEvent populates them via Sign().
 //
 // PayloadJSON must be ≤ 1024 bytes (sqlite CHECK enforces) and must
 // typed-unmarshal against the per-kind validator registered in
 // validate.go.
-type Event struct {
+type SubstrateEvent struct {
 	ID            string
 	RunID         string
 	WorkItemID    string
@@ -147,7 +147,7 @@ func ResetClockForTesting() {
 // so a cycle never wastes a sqlite write. ErrReplay surfaces only
 // after the row would have been written — the UNIQUE collision IS the
 // detection mechanism.
-func AppendEvent(ctx context.Context, tx *sql.Tx, e Event, key []byte, keyID string) error {
+func AppendEvent(ctx context.Context, tx *sql.Tx, e SubstrateEvent, key []byte, keyID string) error {
 	if e.TenantID == "" {
 		return ErrTenantRequired
 	}
@@ -222,7 +222,7 @@ func AppendEvent(ctx context.Context, tx *sql.Tx, e Event, key []byte, keyID str
 // own fastScratch for the duration of the call, so concurrent writers
 // with different (key, keyID) pairs each rebind their borrowed scratch
 // and emit independent MACs (#700 R1).
-func AppendEventCanonicalized(ctx context.Context, tx *sql.Tx, e Event, preCanonPayload []byte, key []byte, keyID string) error {
+func AppendEventCanonicalized(ctx context.Context, tx *sql.Tx, e SubstrateEvent, preCanonPayload []byte, key []byte, keyID string) error {
 	if e.TenantID == "" {
 		return ErrTenantRequired
 	}

@@ -172,10 +172,10 @@ func (s *ClaudeSpawner) SetStarter(p ProcessStarter) {
 // behaviour intact (cmd.Stdout = os.Stdout in execStarter), the other
 // feeds genai.ParseStream so OTel `llm_call` spans land as children of
 // this Spawn's `operator_invocation` span (W6 spec §3.4, §3.5).
-func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) {
+func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (SpawnResult, error) {
 	path, err := s.wm.Create(ctx, req.AgentID, s.cfg.BaseRef)
 	if err != nil {
-		return Result{}, fmt.Errorf("spawner: create worktree: %w", err)
+		return SpawnResult{}, fmt.Errorf("spawner: create worktree: %w", err)
 	}
 	prompt := s.cfg.Prompt(req)
 
@@ -202,14 +202,14 @@ func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) 
 		_ = pr.Close()
 		span.End()
 		_ = s.wm.Remove(context.WithoutCancel(ctx), req.AgentID)
-		return Result{}, fmt.Errorf("spawner: start claude: %w", err)
+		return SpawnResult{}, fmt.Errorf("spawner: start claude: %w", err)
 	}
 	if cmd.Process == nil {
 		_ = pw.Close()
 		_ = pr.Close()
 		span.End()
 		_ = s.wm.Remove(context.WithoutCancel(ctx), req.AgentID)
-		return Result{}, errors.New("spawner: starter returned cmd with nil Process")
+		return SpawnResult{}, errors.New("spawner: starter returned cmd with nil Process")
 	}
 	pid := cmd.Process.Pid
 	start := s.cfg.Clock()
@@ -234,7 +234,7 @@ func (s *ClaudeSpawner) Spawn(ctx context.Context, req Request) (Result, error) 
 	s.children[req.AgentID] = cmd
 	s.mu.Unlock()
 
-	return Result{PID: pid, SessionID: sessionID}, nil
+	return SpawnResult{PID: pid, SessionID: sessionID}, nil
 }
 
 // Children returns a snapshot of live exec.Cmd handles by agent ID.

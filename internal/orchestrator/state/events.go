@@ -9,8 +9,8 @@ import (
 	"github.com/trilamsr/regatta/internal/obs"
 )
 
-// Event is the in-memory view of a row in the events table.
-type Event struct {
+// StateEvent is the in-memory view of a row in the events table.
+type StateEvent struct {
 	ID          int64
 	AgentID     sql.NullInt64
 	Kind        string
@@ -78,7 +78,7 @@ func (d *DB) RecordEventTx(ctx context.Context, tx *sql.Tx, agentID int64, kind,
 // event-driven tickers (rejectionrouter, future PR-watcher) to
 // resume from an in-memory cursor without re-reading the whole
 // events table. A non-positive limit defaults to 100.
-func (d *DB) ListEventsByKindSince(ctx context.Context, kind string, sinceID int64, limit int) ([]Event, error) {
+func (d *DB) ListEventsByKindSince(ctx context.Context, kind string, sinceID int64, limit int) ([]StateEvent, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -92,9 +92,9 @@ func (d *DB) ListEventsByKindSince(ctx context.Context, kind string, sinceID int
 		return nil, fmt.Errorf("state: list events by kind: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var out []Event
+	var out []StateEvent
 	for rows.Next() {
-		var e Event
+		var e StateEvent
 		var created int64
 		if err := rows.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
 			return nil, err
@@ -111,7 +111,7 @@ func (d *DB) ListEventsByKindSince(ctx context.Context, kind string, sinceID int
 // trap fixed for the no-kind path (R5-Bug-1): without it, `events tail
 // --kind K --since DUR` against a populated table would return oldest
 // LIMIT rows of that kind, then drop them all in the Go-side filter.
-func (d *DB) ListEventsByKindSinceTime(ctx context.Context, kind string, sinceID int64, cutoffUnix int64, limit int) ([]Event, error) {
+func (d *DB) ListEventsByKindSinceTime(ctx context.Context, kind string, sinceID int64, cutoffUnix int64, limit int) ([]StateEvent, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -125,9 +125,9 @@ func (d *DB) ListEventsByKindSinceTime(ctx context.Context, kind string, sinceID
 		return nil, fmt.Errorf("state: list events by kind since time: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var out []Event
+	var out []StateEvent
 	for rows.Next() {
-		var e Event
+		var e StateEvent
 		var created int64
 		if err := rows.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
 			return nil, err
@@ -143,17 +143,17 @@ func (d *DB) ListEventsByKindSinceTime(ctx context.Context, kind string, sinceID
 // operator-resume window from the row's created_at: a Resume event
 // whose created_at >= today's day_anchor lifts the throttle until the
 // next rollover (spec PHASE-AUTONOMY W5 §3).
-func (d *DB) LatestEventByKind(ctx context.Context, kind string) (Event, error) {
+func (d *DB) LatestEventByKind(ctx context.Context, kind string) (StateEvent, error) {
 	row := d.sql.QueryRowContext(ctx,
 		`SELECT id, agent_id, kind, payload_json, created_at
 		 FROM events
 		 WHERE kind = ?
 		 ORDER BY created_at DESC, id DESC
 		 LIMIT 1`, kind)
-	var e Event
+	var e StateEvent
 	var created int64
 	if err := row.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
-		return Event{}, err
+		return StateEvent{}, err
 	}
 	e.CreatedAt = time.Unix(created, 0).UTC()
 	return e, nil
@@ -166,7 +166,7 @@ func (d *DB) LatestEventByKind(ctx context.Context, kind string) (Event, error) 
 // oldest LIMIT cap (ListEvents w/ ASC order returned only the
 // earliest rows). cutoffUnix=0 disables the time filter; sinceID=0
 // disables the resume cursor. Limit ≤0 defaults to 100.
-func (d *DB) ListEventsSince(ctx context.Context, sinceID int64, cutoffUnix int64, limit int) ([]Event, error) {
+func (d *DB) ListEventsSince(ctx context.Context, sinceID int64, cutoffUnix int64, limit int) ([]StateEvent, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -180,9 +180,9 @@ func (d *DB) ListEventsSince(ctx context.Context, sinceID int64, cutoffUnix int6
 		return nil, fmt.Errorf("state: list events since: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var out []Event
+	var out []StateEvent
 	for rows.Next() {
-		var e Event
+		var e StateEvent
 		var created int64
 		if err := rows.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
 			return nil, err
@@ -211,7 +211,7 @@ func (d *DB) DeleteEventsOlderThan(ctx context.Context, cutoff time.Time) (int64
 
 // ListEvents returns events ordered by id ascending. Used by tests and
 // the audit log writer.
-func (d *DB) ListEvents(ctx context.Context, limit int) ([]Event, error) {
+func (d *DB) ListEvents(ctx context.Context, limit int) ([]StateEvent, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -222,9 +222,9 @@ func (d *DB) ListEvents(ctx context.Context, limit int) ([]Event, error) {
 		return nil, fmt.Errorf("state: list events: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var out []Event
+	var out []StateEvent
 	for rows.Next() {
-		var e Event
+		var e StateEvent
 		var created int64
 		if err := rows.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
 			return nil, err

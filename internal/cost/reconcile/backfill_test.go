@@ -327,7 +327,7 @@ func TestCostBackfill_SingleEventWindow(t *testing.T) {
 func seedRunWindow(t *testing.T, ctx context.Context, db *sql.DB, runID string, start, end time.Time) {
 	t.Helper()
 	for i, at := range []time.Time{start, end} {
-		ev := substrate.Event{
+		ev := substrate.SubstrateEvent{
 			ID:            substrate.Mint(at),
 			RunID:         runID,
 			WorkItemID:    "WI-1",

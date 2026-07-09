@@ -110,7 +110,7 @@ func RecordCall(ctx context.Context, tx *sql.Tx, r CallRecord, opt WriteOptions)
 	at := now().UTC()
 
 	span := trace.SpanFromContext(ctx).SpanContext()
-	ev := substrate.Event{
+	ev := substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         r.RunID,
 		WorkItemID:    r.WorkItemID,

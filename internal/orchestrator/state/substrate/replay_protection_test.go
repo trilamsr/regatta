@@ -52,7 +52,7 @@ func TestSubstrate_ReplayProtectionProperty(t *testing.T) {
 // appendInTx opens a tx, calls AppendEvent, and commits (rolls back on
 // error). Mirrors helpers_test.go's appendEventTx but takes no testing.TB
 // so it can be invoked from rapid-driven closures.
-func appendInTx(ctx context.Context, db *sql.DB, e substrate.Event) error {
+func appendInTx(ctx context.Context, db *sql.DB, e substrate.SubstrateEvent) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return err

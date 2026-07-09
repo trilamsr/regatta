@@ -53,7 +53,7 @@ func (d *DB) shadowMirrorApprovalEvent(ctx context.Context, ev ApprovalEvent, cf
 	if actor == "" {
 		actor = approvals_shadow.SystemActor
 	}
-	e := substrate.Event{
+	e := substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         cfg.RunID,
 		TenantID:      cfg.TenantID,

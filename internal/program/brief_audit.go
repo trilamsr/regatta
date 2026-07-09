@@ -66,7 +66,7 @@ func (b *BriefLoader) recordBriefRejection(ctx context.Context, path, reason str
 		return
 	}
 	at := b.auditNow()
-	ev := substrate.Event{
+	ev := substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         b.audit.RunID,
 		TenantID:      tenant,

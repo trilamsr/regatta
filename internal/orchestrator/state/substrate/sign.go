@@ -27,7 +27,7 @@ const SigAlg = schemas.SigAlg
 // blob_digest, supersedes, written_by, written_at, schema_version,
 // nonce). The signature is NOT included in the signed map (it IS the
 // MAC over the rest).
-func signedPayload(e Event) map[string]any {
+func signedPayload(e SubstrateEvent) map[string]any {
 	var payload any
 	if len(e.PayloadJSON) == 0 {
 		payload = map[string]any{}
@@ -67,7 +67,7 @@ func signedPayload(e Event) map[string]any {
 // Mutates *e — callers are expected to construct an event, pass to
 // AppendEvent (which calls Sign internally). Direct callers (tests,
 // shadow-write path) may invoke Sign + INSERT manually.
-func Sign(e *Event, key []byte, keyID string) error {
+func Sign(e *SubstrateEvent, key []byte, keyID string) error {
 	if len(key) < schemas.MinKeyLen {
 		return fmt.Errorf("%w: got %d bytes, want >= %d",
 			schemas.ErrWeakKey, len(key), schemas.MinKeyLen)
@@ -98,7 +98,7 @@ func Sign(e *Event, key []byte, keyID string) error {
 // nonce would pass verification — the UNIQUE column-nonce constraint
 // blocks the trivial replay but a smart attacker who controls the row
 // shape could otherwise sneak by.
-func Verify(e Event, keyring map[string][]byte) error {
+func Verify(e SubstrateEvent, keyring map[string][]byte) error {
 	key, ok := keyring[e.SigKeyID]
 	if !ok {
 		return fmt.Errorf("%w: unknown key_id %q", ErrUnverifiable, e.SigKeyID)
@@ -167,7 +167,7 @@ var fastScratchPool = sync.Pool{
 // boundary check below is a smoke test, not a contract gate — wrong
 // field order or truncation passes sanity and surfaces only at Verify
 // time as ErrUnverifiable (#700 R7). Use Sign for cold paths.
-func SignCanonicalized(e *Event, preCanon []byte, key []byte, keyID string) error {
+func SignCanonicalized(e *SubstrateEvent, preCanon []byte, key []byte, keyID string) error {
 	if len(key) < schemas.MinKeyLen {
 		return fmt.Errorf("%w: got %d bytes, want >= %d",
 			schemas.ErrWeakKey, len(key), schemas.MinKeyLen)
@@ -233,7 +233,7 @@ func unsafeStringBytes(s string) []byte {
 // (ULIDs, run-ids, hex nonces, etc.); appendJSONStringASCII handles the
 // JSON-string escape minimum needed (RFC 8259 §7) so we do not link the
 // general-purpose stdlib encoder on the hot path.
-func appendCanonicalEnvelope(dst []byte, e *Event, preCanon []byte) []byte {
+func appendCanonicalEnvelope(dst []byte, e *SubstrateEvent, preCanon []byte) []byte {
 	dst = append(dst, '{')
 	dst = appendKV(dst, "blob_digest", e.BlobDigest)
 	dst = append(dst, ',')

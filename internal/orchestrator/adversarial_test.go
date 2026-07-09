@@ -30,9 +30,9 @@ import (
 // retry, never leaving it stuck in spawning.
 type failingSpawner struct{ calls atomic.Int64 }
 
-func (s *failingSpawner) Spawn(context.Context, spawner.Request) (spawner.Result, error) {
+func (s *failingSpawner) Spawn(context.Context, spawner.Request) (spawner.SpawnResult, error) {
 	s.calls.Add(1)
-	return spawner.Result{}, fmt.Errorf("synthetic spawn failure")
+	return spawner.SpawnResult{}, fmt.Errorf("synthetic spawn failure")
 }
 
 func TestScheduleOnceRollsBackOnSpawnerFailure(t *testing.T) {

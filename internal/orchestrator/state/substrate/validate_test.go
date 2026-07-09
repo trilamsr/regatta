@@ -109,7 +109,7 @@ func TestSubstrate_KindPayloadValidation(t *testing.T) {
 			// must fail with ErrInvalidPayload before INSERT.
 			db := openMigratedDB(t)
 
-			good := substrate.Event{
+			good := substrate.SubstrateEvent{
 				ID: substrate.Mint(testTime()), RunID: "run-V",
 				TenantID: substrate.DefaultTenantID, Kind: c.kind,
 				PayloadJSON: []byte(c.wellFormed),
@@ -144,7 +144,7 @@ func TestSubstrate_KindPayloadValidation(t *testing.T) {
 		// The schema CHECK on kind would also reject — but the
 		// validate-before-INSERT order means we see ErrInvalidPayload
 		// first.
-		e := substrate.Event{
+		e := substrate.SubstrateEvent{
 			ID: substrate.Mint(testTime()), RunID: "run-V",
 			TenantID: substrate.DefaultTenantID,
 			Kind:     substrate.EventKind("totally-bogus"),

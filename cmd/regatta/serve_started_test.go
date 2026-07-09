@@ -35,7 +35,7 @@ func TestServe_EmitsServeStarted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListEvents: %v", err)
 	}
-	var got *state.Event
+	var got *state.StateEvent
 	for i := range events {
 		if events[i].Kind == string(obs.EventServeStarted) {
 			got = &events[i]

@@ -163,7 +163,7 @@ func SweepFullChain(ctx context.Context, cfg FullChainConfig) (FullChainReport, 
 // by id DESC (newest first). Keyset pagination via id < afterID keeps
 // each batch O(BatchSize). Unlike Sweeper.fetchBatch, there is no
 // written_at cutoff — the walk covers the entire table.
-func fullChainFetchBatch(ctx context.Context, ro *sql.DB, afterID string, batchSize int) ([]Event, error) {
+func fullChainFetchBatch(ctx context.Context, ro *sql.DB, afterID string, batchSize int) ([]SubstrateEvent, error) {
 	var (
 		rows *sql.Rows
 		err  error
@@ -192,10 +192,10 @@ func fullChainFetchBatch(ctx context.Context, ro *sql.DB, afterID string, batchS
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var out []Event
+	var out []SubstrateEvent
 	for rows.Next() {
 		var (
-			e          Event
+			e          SubstrateEvent
 			wiID, sup  sql.NullString
 			kindStr    string
 			payloadStr string

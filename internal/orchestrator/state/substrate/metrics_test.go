@@ -218,7 +218,7 @@ func TestT2_ChainBreakCounter_OnVerifyMismatch(t *testing.T) {
 	defer cleanup()
 
 	at := testTime()
-	e := substrate.Event{
+	e := substrate.SubstrateEvent{
 		ID: substrate.Mint(at), RunID: "run-T2", TenantID: substrate.DefaultTenantID,
 		Kind: substrate.KindHeartbeat, PayloadJSON: []byte(`{}`),
 		WrittenBy: "tester", WrittenAt: at.UnixMilli(), SchemaVersion: 1,
@@ -245,7 +245,7 @@ func TestT2_ChainBreakCounter_UnknownKeyDoesNotIncrement(t *testing.T) {
 	defer cleanup()
 
 	at := testTime()
-	e := substrate.Event{
+	e := substrate.SubstrateEvent{
 		ID: substrate.Mint(at), RunID: "run-T2b", TenantID: substrate.DefaultTenantID,
 		Kind: substrate.KindHeartbeat, PayloadJSON: []byte(`{}`),
 		WrittenBy: "tester", WrittenAt: at.UnixMilli(), SchemaVersion: 1,

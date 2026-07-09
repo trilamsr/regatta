@@ -48,7 +48,7 @@ func newLowRiskAuditSink(db *state.DB, key []byte, keyID string, logger *slog.Lo
 			return
 		}
 		at := time.Now().UTC()
-		ev := substrate.Event{
+		ev := substrate.SubstrateEvent{
 			ID:            substrate.Mint(at),
 			RunID:         lowRiskAuditRunID,
 			TenantID:      substrate.DefaultTenantID,

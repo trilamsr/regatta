@@ -69,7 +69,7 @@ func (a *SubstrateAppender) Append(ctx context.Context, tenantID, kind string, p
 	}
 	at := writtenAt.UTC()
 	a.nonceSeq++
-	ev := substrate.Event{
+	ev := substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         runIDReconciler,
 		TenantID:      tenantID,

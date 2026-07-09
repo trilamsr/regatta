@@ -221,7 +221,7 @@ func workItemStatusLabel(s state.WorkItemStatus) string {
 }
 
 // recentEventsForWorkItem joins events to the work-item via the agent owning the row so the drawer can show recent activity without a new schema column. Query-level errors return nil so the drawer still renders; per-row scan errors log WARN with the work_item_id attr and skip the row so one corrupt row never collapses the whole list into a silent empty drawer (#1135).
-func recentEventsForWorkItem(ctx context.Context, db *state.DB, workItemID string, limit int) []state.Event {
+func recentEventsForWorkItem(ctx context.Context, db *state.DB, workItemID string, limit int) []state.StateEvent {
 	if db == nil || workItemID == "" || limit <= 0 {
 		return nil
 	}
@@ -236,9 +236,9 @@ func recentEventsForWorkItem(ctx context.Context, db *state.DB, workItemID strin
 		return nil
 	}
 	defer func() { _ = rows.Close() }()
-	var out []state.Event
+	var out []state.StateEvent
 	for rows.Next() {
-		var e state.Event
+		var e state.StateEvent
 		var created int64
 		if err := rows.Scan(&e.ID, &e.AgentID, &e.Kind, &e.PayloadJSON, &created); err != nil {
 			// slog.Default() goes to stderr when SetDefault is not called; deps.Logger threading is a separate refactor.
