@@ -313,8 +313,10 @@ func (w *Watcher) Start(ctx context.Context) error {
 }
 
 // Sweep walks {running, pr_open} agents and reconciles their pr_sha
-// against GitHub once. Per-agent errors are logged + skipped so one
-// blip cannot abort the sweep. Decision matrix:
+// against GitHub once. Per-agent errors are logged + isolated so one
+// blip cannot abort the sweep, then joined into the return so
+// Orchestrator.logTickErrIfTransition sees the tick-level signal
+// (W-BUG14). Decision matrix:
 // docs/engineer/specs/2026-06-02-orchestrator-pr-watcher.md §3.3.
 func (w *Watcher) Sweep(ctx context.Context) error {
 	ctx, span := w.tracer.Start(ctx, "prwatch.sweep")
@@ -325,12 +327,15 @@ func (w *Watcher) Sweep(ctx context.Context) error {
 		return fmt.Errorf("prwatch: list agents: %w", err)
 	}
 	live := make(map[string]struct{}, len(agents))
+	var errs []error
 	for _, a := range agents {
 		live[w.branchFn(a.ID)] = struct{}{}
-		w.sweepOne(ctx, a)
+		if perr := w.sweepOne(ctx, a); perr != nil {
+			errs = append(errs, perr)
+		}
 	}
 	w.evictDeadBranches(live)
-	return nil
+	return errors.Join(errs...)
 }
 
 // evictDeadBranches drops per-branch lister state for branches whose
@@ -384,15 +389,20 @@ func (w *Watcher) observeListFailure(agentID int64, branch string, err error) {
 	w.log.Warn("prwatch.list_failed", attrs...)
 }
 
-// sweepOne reconciles a single agent. Errors are logged + swallowed
-// per the per-agent isolation rule above.
-func (w *Watcher) sweepOne(ctx context.Context, a state.Agent) {
+// sweepOne reconciles a single agent. Per-agent errors are logged AND
+// returned so Sweep can join them into a tick-level signal (W-BUG14);
+// isolation still holds — the caller keeps iterating over remaining
+// agents. Downstream DB-write failures stay log-only (already surfaced
+// by observeListFailure + prwatch.*_failed WARN metrics); only the
+// upstream lister failure — the failure mode that hides an outage
+// entirely — is propagated.
+func (w *Watcher) sweepOne(ctx context.Context, a state.Agent) error {
 	branch := w.branchFn(a.ID)
 	titlePrefix := w.titlePrefix(a.ID)
 	prs, err := w.callLister(ctx, branch, titlePrefix)
 	if err != nil {
 		w.observeListFailure(a.ID, branch, err)
-		return
+		return fmt.Errorf("prwatch: agent %d list: %w", a.ID, err)
 	}
 	w.listFailCount[a.ID] = 0
 	// #522 / #587 impersonator guard: drop PRs whose head ref carries
@@ -406,22 +416,23 @@ func (w *Watcher) sweepOne(ctx context.Context, a state.Agent) {
 	switch a.State {
 	case state.AgentRunning:
 		if pr == nil {
-			return
+			return nil
 		}
 		w.observeBranchRenamedByAgent(a, branch, *pr)
 		w.transitionToPROpen(ctx, a, *pr)
 	case state.AgentPROpen:
 		if pr == nil {
 			w.observeBranchLost(ctx, a)
-			return
+			return nil
 		}
 		w.missCount[a.ID] = 0
 		w.observeBranchDiverged(ctx, a, *pr)
 		if pr.HeadRefOid == a.PRSHA {
-			return
+			return nil
 		}
 		w.observeHeadChanged(ctx, a, *pr)
 	}
+	return nil
 }
 
 // pickPR resolves the >1 open PR case by lowest PR number (spec §3.3

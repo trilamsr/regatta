@@ -785,3 +785,60 @@ func TestWatcher_Sweep_EvictsCacheForDeadBranches(t *testing.T) {
 		t.Fatalf("want Forget('regatta/agent-1'), got %v", lister.forgotten)
 	}
 }
+
+// perBranchLister returns errByBranch[branch] if set, else prsByBranch[branch]. (W-BUG14).
+type perBranchLister struct {
+	mu           sync.Mutex
+	errByBranch  map[string]error
+	prsByBranch  map[string][]PullRequest
+}
+
+func (l *perBranchLister) ListOpenByHead(_ context.Context, branch, _ string) ([]PullRequest, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if err, ok := l.errByBranch[branch]; ok {
+		return nil, err
+	}
+	return append([]PullRequest(nil), l.prsByBranch[branch]...), nil
+}
+
+// TestWatcher_Sweep_AggregatesPerAgentErrors asserts Sweep returns a non-nil error joining every per-agent lister failure while still applying successful per-agent effects (W-BUG14).
+func TestWatcher_Sweep_AggregatesPerAgentErrors(t *testing.T) {
+	errA := errors.New("gh boom A")
+	errB := errors.New("gh boom B")
+	lister := &perBranchLister{
+		errByBranch: map[string]error{
+			"regatta/agent-1": errA,
+			"regatta/agent-2": errB,
+		},
+		prsByBranch: map[string][]PullRequest{
+			"regatta/agent-3": {{Number: 77, HeadRefOid: "cafef00d", State: "OPEN"}},
+		},
+	}
+	w, db := newTestWatcher(t, lister)
+	driveToRunning(t, db, "WORK-1")
+	driveToRunning(t, db, "WORK-2")
+	a3 := driveToRunning(t, db, "WORK-3")
+
+	err := w.Sweep(context.Background())
+	if err == nil {
+		t.Fatalf("Sweep: got nil, want aggregated per-agent error")
+	}
+	if !errors.Is(err, errA) {
+		t.Fatalf("Sweep err missing agent-1 cause: %v", err)
+	}
+	if !errors.Is(err, errB) {
+		t.Fatalf("Sweep err missing agent-2 cause: %v", err)
+	}
+	// Partial success: agent-3's transition still landed.
+	got, gerr := db.GetAgent(context.Background(), a3.ID)
+	if gerr != nil {
+		t.Fatalf("get agent-3: %v", gerr)
+	}
+	if got.State != state.AgentPROpen {
+		t.Fatalf("agent-3 state=%s, want pr_open (partial success)", got.State)
+	}
+	if got.PRSHA != "cafef00d" {
+		t.Fatalf("agent-3 pr_sha=%s, want cafef00d", got.PRSHA)
+	}
+}

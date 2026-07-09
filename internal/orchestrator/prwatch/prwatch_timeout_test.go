@@ -37,9 +37,9 @@ func TestWatcher_ListTimeout_BoundsSweepPerCall(t *testing.T) {
 	driveToRunning(t, db, "WORK-1")
 
 	start := time.Now()
-	if err := w.Sweep(context.Background()); err != nil {
-		t.Fatalf("sweep: %v", err)
-	}
+	// W-BUG14: Sweep now returns the aggregated per-agent lister error;
+	// this test only cares that the call returns bounded by listTimeout.
+	_ = w.Sweep(context.Background())
 	elapsed := time.Since(start)
 	if elapsed > 500*time.Millisecond {
 		t.Fatalf("sweep took %s, want ≤500ms under 100ms listTimeout", elapsed)
@@ -61,9 +61,9 @@ func TestWatcher_ListTimeout_EscalatesToErrorOnThirdConsecutiveFailure(t *testin
 	driveToRunning(t, db, "WORK-1")
 
 	for i := 0; i < 3; i++ {
-		if err := w.Sweep(context.Background()); err != nil {
-			t.Fatalf("sweep %d: %v", i+1, err)
-		}
+		// W-BUG14: Sweep now returns the aggregated per-agent error; this
+		// test asserts log-level escalation, not the return value.
+		_ = w.Sweep(context.Background())
 	}
 
 	out := buf.String()
@@ -97,10 +97,10 @@ func TestWatcher_ListTimeout_ResetsCounterOnSuccess(t *testing.T) {
 	driveToRunning(t, db, "WORK-1")
 
 	// 2 failures + 1 success + 1 failure ⇒ counter reset, no ERROR emitted.
+	// W-BUG14: Sweep returns the aggregated per-agent error on failures;
+	// this test asserts counter-reset log behavior, not the return value.
 	for i := 0; i < 4; i++ {
-		if err := w.Sweep(context.Background()); err != nil {
-			t.Fatalf("sweep %d: %v", i+1, err)
-		}
+		_ = w.Sweep(context.Background())
 	}
 	if strings.Contains(buf.String(), "level=ERROR") {
 		t.Fatalf("counter was not reset on success; unexpected ERROR log:\n%s", buf.String())
