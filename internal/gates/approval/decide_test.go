@@ -2,10 +2,13 @@ package approval
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -278,4 +281,92 @@ func readDecideGoSource() (string, error) {
 		return "", err
 	}
 	return string(b), nil
+}
+
+// TestMarkApprovalDecidedTx_RowsAffectedZeroReturnsNotFound pins the UPDATE-zero-rows branch (decide.go rows==0).
+func TestMarkApprovalDecidedTx_RowsAffectedZeroReturnsNotFound(t *testing.T) {
+	h := newDecideTxHarness(t, "system", []string{"alice"}, 1, false)
+	ctx := context.Background()
+	const missingID = "a-does-not-exist"
+	err := h.db.WithTx(ctx, func(tx *sql.Tx) error {
+		return markApprovalDecidedTx(ctx, tx, missingID, state.ApprovalStatusApproved, []string{"alice"}, h.now)
+	})
+	if err == nil {
+		t.Fatalf("markApprovalDecidedTx(missing id): got nil err; want not-found")
+	}
+	if !strings.Contains(err.Error(), missingID) {
+		t.Fatalf("markApprovalDecidedTx err=%q; want to cite id %q", err.Error(), missingID)
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Fatalf("markApprovalDecidedTx err=%q; want 'not found' substring", err.Error())
+	}
+}
+
+// TestMarkApprovalDecidedTx_HappyPathReturnsNilAndFlipsStatus is the positive twin isolating the not-found test to the UPDATE-miss branch.
+func TestMarkApprovalDecidedTx_HappyPathReturnsNilAndFlipsStatus(t *testing.T) {
+	h := newDecideTxHarness(t, "system", []string{"alice"}, 1, false)
+	ctx := context.Background()
+	if err := h.db.WithTx(ctx, func(tx *sql.Tx) error {
+		return markApprovalDecidedTx(ctx, tx, h.approvalID, state.ApprovalStatusApproved, []string{"alice"}, h.now)
+	}); err != nil {
+		t.Fatalf("markApprovalDecidedTx(existing id): %v", err)
+	}
+	got, err := h.db.GetApproval(ctx, h.approvalID)
+	if err != nil {
+		t.Fatalf("GetApproval: %v", err)
+	}
+	if got.Status != state.ApprovalStatusApproved {
+		t.Fatalf("denorm status=%q; want approved", got.Status)
+	}
+}
+
+// TestApprovalDecideTx_ConcurrentDecideRelyOnTerminalRaceGuard proves rows==0 stays unreachable because the pre-tx isTerminal guard (#206) fires first.
+func TestApprovalDecideTx_ConcurrentDecideRelyOnTerminalRaceGuard(t *testing.T) {
+	h := newDecideTxHarness(t, "system", []string{"alice", "bob"}, 1, false)
+	ctx := context.Background()
+
+	var wg sync.WaitGroup
+	results := make([]error, 2)
+	statuses := make([]string, 2)
+	starts := make(chan struct{})
+	for i, reviewer := range []string{"alice", "bob"} {
+		i, reviewer := i, reviewer
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-starts
+			_, status, err := DecideTx(ctx, h.db, h.payload(reviewer), reviewer, "allow", "", h.clock)
+			results[i] = err
+			statuses[i] = status
+		}()
+	}
+	close(starts)
+	wg.Wait()
+
+	var wins, losses int
+	for i, err := range results {
+		switch {
+		case err == nil && statuses[i] == state.ApprovalStatusApproved:
+			wins++
+		case errors.Is(err, state.ErrTokenReplay):
+			losses++
+		default:
+			t.Fatalf("goroutine %d: err=%v status=%q; want (nil,approved) OR ErrTokenReplay", i, err, statuses[i])
+		}
+	}
+	if wins != 1 || losses != 1 {
+		t.Fatalf("wins=%d losses=%d; want exactly one winner + one ErrTokenReplay loser (results=%v)", wins, losses, results)
+	}
+
+	// Denorm must reflect exactly one terminal flip — proof the loser did NOT
+	// reach markApprovalDecidedTx and hit the rows==0 branch. If the pre-tx
+	// terminal guard regressed, we'd see the loser blow up with the
+	// not-found error surfaced by the direct-call test above.
+	got, err := h.db.GetApproval(ctx, h.approvalID)
+	if err != nil {
+		t.Fatalf("GetApproval: %v", err)
+	}
+	if got.Status != state.ApprovalStatusApproved {
+		t.Fatalf("denorm status=%q; want approved", got.Status)
+	}
 }
