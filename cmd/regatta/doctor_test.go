@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -214,5 +216,76 @@ func TestCheckSpawnerAuth_FailNamesAllPaths(t *testing.T) {
 		if !strings.Contains(got.Hint, token) {
 			t.Fatalf("hint must name %q; got %q", token, got.Hint)
 		}
+	}
+}
+
+// TestCheckSpawnerAuth_MissingAuthJSON asserts FAIL when ~/.claude exists but auth.json is absent — malformed-auth used to slip past doctor and hang serve at first spawn.
+func TestCheckSpawnerAuth_MissingAuthJSON(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	env := doctorEnv{getenv: func(key string) string {
+		if key == "HOME" {
+			return home
+		}
+		return ""
+	}}
+	got := checkSpawnerAuth(env)
+	if got.Status != statusFail {
+		t.Fatalf("status=%q want FAIL when auth.json missing; hint=%q", got.Status, got.Hint)
+	}
+	if !strings.Contains(got.Hint, "auth.json") {
+		t.Fatalf("hint must name auth.json; got %q", got.Hint)
+	}
+	if !strings.Contains(got.Hint, "claude") {
+		t.Fatalf("hint must reference `claude` remediation command; got %q", got.Hint)
+	}
+}
+
+// TestCheckSpawnerAuth_MalformedAuthJSON asserts FAIL when ~/.claude/auth.json is non-JSON — the failure mode that motivated this bug (serve hangs at first spawn).
+func TestCheckSpawnerAuth_MalformedAuthJSON(t *testing.T) {
+	home := t.TempDir()
+	claudeDir := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(claudeDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(claudeDir, "auth.json"), []byte("not json {{{"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	env := doctorEnv{getenv: func(key string) string {
+		if key == "HOME" {
+			return home
+		}
+		return ""
+	}}
+	got := checkSpawnerAuth(env)
+	if got.Status != statusFail {
+		t.Fatalf("status=%q want FAIL on malformed auth.json; hint=%q", got.Status, got.Hint)
+	}
+	if !strings.Contains(got.Hint, "auth.json") {
+		t.Fatalf("hint must name auth.json; got %q", got.Hint)
+	}
+}
+
+// TestCheckSpawnerAuth_ValidAuthJSON asserts PASS when ~/.claude/auth.json exists AND parses as JSON.
+func TestCheckSpawnerAuth_ValidAuthJSON(t *testing.T) {
+	home := t.TempDir()
+	claudeDir := filepath.Join(home, ".claude")
+	if err := os.MkdirAll(claudeDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(claudeDir, "auth.json"), []byte(`{"token":"x"}`), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	env := doctorEnv{getenv: func(key string) string {
+		if key == "HOME" {
+			return home
+		}
+		return ""
+	}}
+	got := checkSpawnerAuth(env)
+	if got.Status != statusPass {
+		t.Fatalf("status=%q want PASS on valid auth.json; hint=%q err=%q", got.Status, got.Hint, got.Error)
 	}
 }
