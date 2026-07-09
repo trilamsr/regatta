@@ -79,6 +79,37 @@ func TestWithTx_RollsBackOnError(t *testing.T) {
 	}
 }
 
+// TestWithTx_ReturnsCtxErrWhenCanceledInsideFn asserts WithTx returns ctx.Err() unwrapped when ctx cancels mid-tx before commit — callers can distinguish operator-cancel from a genuine commit failure.
+func TestWithTx_ReturnsCtxErrWhenCanceledInsideFn(t *testing.T) {
+	db := newTestDB(t)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	err := db.WithTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(context.Background(),
+			`INSERT INTO agents (work_item_id, lane, state, created_at, updated_at)
+			 VALUES ('W-1', 'server', 'pending', 1, 1)`); err != nil {
+			return err
+		}
+		cancel()
+		return nil
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("WithTx err=%v want errors.Is(err, context.Canceled)", err)
+	}
+	if errors.Unwrap(err) != nil {
+		t.Fatalf("WithTx err=%v is wrapped; want ctx.Err() sentinel returned directly so callers can distinguish cancel from genuine commit failure", err)
+	}
+
+	var n int
+	if err := db.sql.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) FROM agents WHERE work_item_id = 'W-1'`).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("rows=%d want 0 — ctx cancel did not prevent commit (silent lost work)", n)
+	}
+}
+
 // TestWithTx_RollsBackOnPanic guards the crash-mid-tx safety property the scheduler relies on.
 func TestWithTx_RollsBackOnPanic(t *testing.T) {
 	db := newTestDB(t)
