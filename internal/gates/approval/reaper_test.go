@@ -13,7 +13,6 @@ import (
 
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
-	"github.com/trilamsr/regatta/internal/slogutil"
 )
 
 // reaperTestDB opens a fresh sqlite DB whose constructor-bound clock
@@ -149,7 +148,7 @@ func TestReaper_FailPolicy(t *testing.T) {
 	if !ok {
 		t.Fatalf("event %q not emitted", obs.EventApprovalTimedOut)
 	}
-	v, ok := slogutil.AttrValue(rec, string(obs.KeyPolicy))
+	v, ok := attrValue(rec, string(obs.KeyPolicy))
 	if !ok {
 		t.Fatalf("attr %q missing", obs.KeyPolicy)
 	}
@@ -639,7 +638,7 @@ func TestReaper_SlogAuditPayloadMatchesRow(t *testing.T) {
 			if !ok {
 				t.Fatalf("slog event %q not emitted", tc.wantEvent)
 			}
-			v, ok := slogutil.AttrValue(rec, "audit_payload")
+			v, ok := attrValue(rec, "audit_payload")
 			if !ok {
 				t.Fatalf("slog record missing audit_payload attr")
 			}

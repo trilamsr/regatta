@@ -12,7 +12,6 @@ import (
 
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
-	"github.com/trilamsr/regatta/internal/web/internalerror"
 )
 
 func loadEventsView(ctx context.Context, deps Dependencies) any {
@@ -44,7 +43,7 @@ func serveEventDrawer(w http.ResponseWriter, r *http.Request, deps Dependencies)
 	}
 	ev.PayloadJSON = prettyJSON(ev.PayloadJSON)
 	if err := deps.Templates.Render(w, "_drawer_event", ev); err != nil {
-		internalerror.Write(w, nil, "web.drawer_event_render", err)
+		writeInternalError(w, nil, "web.drawer_event_render", err)
 	}
 }
 

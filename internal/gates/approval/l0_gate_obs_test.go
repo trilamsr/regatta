@@ -6,7 +6,6 @@ import (
 
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/obstest"
-	"github.com/trilamsr/regatta/internal/slogutil"
 )
 
 func TestL0Gate_EmitsVerdictOnL0Check(t *testing.T) {
@@ -29,17 +28,17 @@ func TestL0Gate_EmitsVerdictOnL0Check(t *testing.T) {
 	if !ok {
 		t.Fatalf("gate.verdict event not emitted; records=%+v", h.Records())
 	}
-	gid, ok := slogutil.AttrValue(rec, string(obs.KeyGateID))
+	gid, ok := attrValue(rec, string(obs.KeyGateID))
 	if !ok {
 		t.Fatalf("gate.verdict missing %s attr", obs.KeyGateID)
 	}
 	if gid.String() != "l0" {
 		t.Fatalf("gate_id=%q; want %q", gid.String(), "l0")
 	}
-	if _, ok := slogutil.AttrValue(rec, string(obs.KeyVerdict)); !ok {
+	if _, ok := attrValue(rec, string(obs.KeyVerdict)); !ok {
 		t.Fatalf("gate.verdict missing %s attr", obs.KeyVerdict)
 	}
-	if _, ok := slogutil.AttrValue(rec, string(obs.KeyDurationMs)); !ok {
+	if _, ok := attrValue(rec, string(obs.KeyDurationMs)); !ok {
 		t.Fatalf("gate.verdict missing %s attr", obs.KeyDurationMs)
 	}
 }
