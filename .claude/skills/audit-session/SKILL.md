@@ -122,7 +122,7 @@ while read rule; do
     || echo "rule $rule missing from dispatch templates"
 done < "$HANDOFF_DIR/new-rules.txt"
 
-bash scripts/check-prompt-parity.sh
+# Worker-prompt parity gate was culled 2026-07-08; drift is honor-system now.
 ```
 
 MEMORY.md sync: diff new `feedback_*` slugs vs MEMORY.md index → write missing index lines via Edit. Memory dir is operator-personal; per `feedback_no_memory_reread` do not `cat` slug files.

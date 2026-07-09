@@ -5,8 +5,8 @@ Code-writing subagent. Substitute `<VARS>` then paste into Task dispatch.
 ## Anti-patterns (block-list)
 
 NEVER:
-1. Put `Reviewer-recommendation:` or `Reviewer-agent-id:` in commit messages. The gate (`scripts/check-reviewer-verdict.sh`) reads PR body only — commit-message tokens are invisible. Per `feedback_no_self_tagged_approve`.
-2. Enable `gh pr merge --auto` on load-bearing PRs carrying agent-id tokens. The gate fails closed with `automerge_with_agent_id_on_load_bearing`. End with `gh pr ready <N>` + operator-merge handoff. Per `feedback_no_implementer_automerge`.
+1. Put `Reviewer-recommendation:` or `Reviewer-agent-id:` in commit messages. Those tokens belong in the PR BODY (honor-system since the mechanical gate was culled 2026-07-08). Per `feedback_no_self_tagged_approve`.
+2. Enable `gh pr merge --auto`. End with `gh pr ready <N>` + operator-merge handoff. Per `feedback_no_implementer_automerge`.
 3. Operate in `.claude/worktrees/operator-docker-soak/` or any shared-named worktree when ≥1 other agent uses it concurrently. HEAD clobber + lost work. Use orchestrator-pinned `regatta/agent-<N>` branch in the pre-created worktree. Per `feedback_keep_orchestrator_branch_name`.
 4. Self-tag `Reviewer-recommendation: APPROVE` as the implementer. Independent reviewer subagent dispatches in a separate slot — implementer ends with `gh pr ready <N>` only. Per `feedback_no_self_tagged_approve`.
 
@@ -138,35 +138,6 @@ LOAD-BEARING LEFTOVERS → ISSUES
 
 INDEPENDENT REVIEW
 - Solo implementers ship at B-tier by default. Spawn reviewer to pull up to A. (`feedback_adversarial_review`)
-
-## Anchored rules (worker-prompt parity)
-
-These slugs MUST be cited by `internal/orchestrator/spawner/claude.go::defaultPromptBuilder` so spawned worker subprocesses receive them inline (CC subprocess auto-loads CLAUDE.md but the per-dispatch prompt is authoritative for context budgeting). `scripts/check-prompt-parity.sh` enforces. Add a slug here only when the rule is worker-actionable mid-task. Reviewer-only / operator-only rules stay out of this list. Closes #901.
-
-- `feedback_tdd_discipline`
-- `feedback_comments_discipline`
-- `feedback_deletion_default`
-- `feedback_deletion_sweep_full_repo`
-- `feedback_pr_body_hygiene`
-- `feedback_review_proportional`
-- `feedback_no_implementer_automerge`
-- `feedback_keep_orchestrator_branch_name`
-- `feedback_no_self_tagged_approve`
-- `feedback_pre_commit_make_check`
-- `feedback_colocated_test_required`
-- `feedback_audit_main_before_implementing`
-- `feedback_premise_before_deletion`
-- `feedback_validate_before_ship`
-- `feedback_subagent_output_verify`
-- `feedback_honest_tdd_claims`
-- `feedback_stop_at_pr_ready`
-- `feedback_subagent_cicheck_compress`
-- `feedback_compile_precheck`
-- `feedback_no_pgrep_sleep_babysit`
-- `feedback_grep_first_read_targeted`
-- `feedback_explicit_completion_signal`
-
-Escape hatch: append ` <!-- prompt-parity-skip: <reason> -->` to a bullet to mark a slug intentionally kept here but not pushed to the prompt.
 
 ## Per-dispatch payload
 - Task: `<TASK-ID>`
