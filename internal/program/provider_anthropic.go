@@ -56,15 +56,34 @@ type AnthropicPlanner struct {
 // responses. Matches the 5-attempt precedent set by internal/cost/reconcile.
 const maxAnthropicRetries = 5
 
+// newSecretsFetcher returns the platform secrets chain used to
+// resolve the Anthropic key; overridden by tests to inject a blocking
+// stub without patching os.Setenv or the composite chain.
+var newSecretsFetcher = secrets.Default
+
+// keyResolveTimeout bounds the ANTHROPIC_API_KEY lookup so a wedged
+// keychain (unresponsive `security` binary, hung `pass` GPG agent)
+// cannot block boot forever — operator sees a named-source timeout
+// instead of a misleading "empty key" (W-BUG9).
+var keyResolveTimeout = 5 * time.Second
+
 // NewAnthropicPlanner resolves ANTHROPIC_API_KEY via the secrets
 // Fetcher chain (keychain → legacy env → canonical env) and returns a
 // configured client. The model id is required so callers explicitly
 // choose Opus vs Sonnet vs Haiku (price/quality is operator-visible,
 // never hidden).
 func NewAnthropicPlanner(model string) (*AnthropicPlanner, error) {
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), keyResolveTimeout)
+	defer cancel()
+	f := newSecretsFetcher(ctx)
 	var key string
-	if v, err := secrets.Default(ctx).Get(ctx, secrets.KeyAnthropic); err == nil {
+	v, err := f.Get(ctx, secrets.KeyAnthropic)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("timeout waiting for secret source %q resolving %s: %w",
+				f.Name(), secrets.KeyAnthropic, err)
+		}
+	} else {
 		key = strings.TrimSpace(string(v.Bytes()))
 	}
 	if key == "" {
