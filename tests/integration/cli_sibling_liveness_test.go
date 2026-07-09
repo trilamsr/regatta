@@ -50,7 +50,7 @@ func TestCLISiblingLiveness(t *testing.T) {
 	// status --json invoked in parallel; --addr must point at the running serve.
 	statusCtx, statusCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer statusCancel()
-	out, err := exec.CommandContext(statusCtx, binPath, "status", "--once", "--json", "--addr", addr).Output()
+	out, err := exec.CommandContext(statusCtx, binPath, "status", "--once", "--json", "--socket", "http://"+addr).Output()
 	if err != nil {
 		t.Fatalf("status --json: %v\n%s", err, out)
 	}
