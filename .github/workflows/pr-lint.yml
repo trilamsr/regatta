@@ -140,7 +140,7 @@ jobs:
           failed=0
           for name_val in \
             "doc-check=$DOC_CHECK" \
-            "release-notes=$RELEASE_NOTES" \ do
+            "release-notes=$RELEASE_NOTES"; do
             name="${name_val%%=*}"
             result="${name_val#*=}"
             case "$result" in
