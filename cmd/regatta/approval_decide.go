@@ -100,7 +100,7 @@ func defaultDBPath(args []string) string {
 func runApprovalDecideWith(deps approvalDecideDeps, args []string) int {
 	fs := flag.NewFlagSet("approval decide", flag.ContinueOnError)
 	fs.SetOutput(deps.Stderr)
-	tokenFlag := fs.String("token", "", "Signed approval token (wire format)")
+	tokenFlag := fs.String("token", "", "Signed approval-gate payload emitted by the orchestrator (opaque wire format; copy verbatim from the orchestrator logs)")
 	decisionFlag := fs.String("decision", "", "allow | deny")
 	reasonFlag := fs.String("reason", "", "Optional human-readable reason")
 	reviewerIDFlag := fs.String("reviewer-id", "", "Reviewer id presenting the token (required)")

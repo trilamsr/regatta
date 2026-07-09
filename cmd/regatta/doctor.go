@@ -150,6 +150,7 @@ func runDoctorTo(out, errW io.Writer, args []string, env doctorEnv) int {
 		}
 		_, _ = fmt.Fprintf(out, "\nsummary: %d PASS, %d FAIL, %d SKIP\n",
 			envelope.Summary.Pass, envelope.Summary.Fail, envelope.Summary.Skip)
+		_, _ = fmt.Fprintln(out, "(All FAILs block `regatta serve`; SKIPs are advisory.)")
 	}
 
 	if envelope.Summary.Fail > 0 {

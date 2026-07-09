@@ -83,7 +83,7 @@ func runProgramPlan(args []string) int {
 	}
 	key := os.Getenv(*keyEnv)
 	if key == "" {
-		fmt.Fprintf(os.Stderr, "regatta program plan: $%s is empty\n", *keyEnv)
+		fmt.Fprintf(os.Stderr, "regatta program plan: env var $%s is set but contains an empty string (export a non-empty HMAC key or point -hmac-key-env at a different variable)\n", *keyEnv)
 		return 2
 	}
 

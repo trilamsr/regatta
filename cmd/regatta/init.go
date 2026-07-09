@@ -41,8 +41,11 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintln(fs.Output())
 		_, _ = fmt.Fprintln(fs.Output(), "Scaffolds regatta.yaml and a demo attack at .regatta/sample.diff in the")
 		_, _ = fmt.Fprintln(fs.Output(), "current directory, then runs the L0 gate against the demo so you see in")
-		_, _ = fmt.Fprintln(fs.Output(), "one command what regatta catches. Idempotent: re-running on matching")
-		_, _ = fmt.Fprintln(fs.Output(), "files is a no-op; diverged files cause exit 2 unless --force is passed.")
+		_, _ = fmt.Fprintln(fs.Output(), "one command what regatta catches.")
+		_, _ = fmt.Fprintln(fs.Output())
+		_, _ = fmt.Fprintln(fs.Output(), "Idempotent on re-run: files matching the bundled template are skipped;")
+		_, _ = fmt.Fprintln(fs.Output(), "files that have diverged cause exit 2 unless --force is passed (in which")
+		_, _ = fmt.Fprintln(fs.Output(), "case they are overwritten).")
 		_, _ = fmt.Fprintln(fs.Output())
 		_, _ = fmt.Fprintln(fs.Output(), "Flags:")
 		fs.PrintDefaults()
@@ -80,7 +83,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 	// "not a directory" from os.ReadFile.
 	if info, err := os.Lstat(".regatta"); err == nil {
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			_, _ = fmt.Fprintf(stderr, "regatta init: refusing to write: .regatta exists but is not a regular directory (got mode %s). Remove or rename it, then re-run.\n", info.Mode())
+			_, _ = fmt.Fprintf(stderr, "regatta init: refusing to write: .regatta exists but is not a regular directory (got mode %s). Symlinks and non-directory entries are rejected for security isolation (prevents symlink-injection into paths outside the repo). Remove or rename it, then re-run.\n", info.Mode())
 			return 2
 		}
 	}
