@@ -63,7 +63,7 @@ go build -trimpath -o regatta ./cmd/regatta
 ```
 
 Reproducibility flags + diff-against-published-artifact recipe live
-in [docs/auditor/reproducibility.md](../auditor/reproducibility.md);
+in `../auditor/reproducibility.md`;
 that doc is canonical for supply-chain posture.
 
 ## Uninstall

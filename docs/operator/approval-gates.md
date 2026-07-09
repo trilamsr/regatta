@@ -412,4 +412,4 @@ for off-host audit-sink wiring once issue #80 lands.
 - Quickstart: [quickstart.md](quickstart.md)
 - Configure: [configure.md](configure.md)
 - Day-1 / Day-7 / Day-30 ops: [day1.md](day1.md), [day7.md](day7.md), [day30.md](day30.md)
-- Wedge background: [../wedges/approval-gates.md](../wedges/approval-gates.md)
+- Wedge background: `../wedges/approval-gates.md`

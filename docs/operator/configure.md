@@ -93,7 +93,7 @@ orchestrator approves a touch. Default candidates: `CHANGELOG.md`,
 
 `telemetry.audit_sink` accepts an `s3://` URI (Object-Lock-COMPLIANCE
 mode recommended) or a `syslog://` endpoint. See
-[`docs/auditor/audit-log.md`](../auditor/audit-log.md) for the wire
+`../auditor/audit-log.md` for the wire
 format (stub today; full shape lands with the audit-sink writer).
 
 ## Context

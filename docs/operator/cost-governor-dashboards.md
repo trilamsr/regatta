@@ -99,4 +99,4 @@ Sampler details live at
 - Operator runbook (cost-governor semantics): [./cost-governor.md](./cost-governor.md).
 - Incident playbook (on-call triage): [../engineer/runbooks/cost-governor-incidents.md](../engineer/runbooks/cost-governor-incidents.md).
 - W6 observability surface (general OTel wiring): [./observability.md](./observability.md).
-- Design spec (engineering reference): [../engineer/specs/2026-06-01-cost-governor-design.md](../engineer/specs/phase-x/2026-06-01-cost-governor-design.md).
+- Design spec (engineering reference): `../engineer/specs/phase-x/2026-06-01-cost-governor-design.md`.

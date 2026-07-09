@@ -1,6 +1,51 @@
 // Package approval implements the HITL approval gate. The gate pauses
 // a work_item until the reviewer set decides (allow/deny) via signed
-// callback token. See docs/superpowers/specs/2026-05-31-mvp-approval-gates.md.
+// callback token.
+//
+// Rationale (extracted from RFC-0003; retained here because the source
+// file was collapsed into docs/engineer/CHANGELOG.md per the W2 spec
+// purge). Numbering matches RFC-0003 §Decision:
+//
+//  1. Status modulator, not new lifecycle — adds planned →
+//     awaiting_approval → planned|rejected on work_items; scheduler
+//     hot path for non-gated work is untouched.
+//  2. Event-sourced canonical truth — approval_events is the log,
+//     approvals.status is fold(events) and property-tested byte-equal,
+//     so replay is deterministic and audit is append-only.
+//  3. HMAC constant-time verify BEFORE JSON unmarshal — closes the
+//     parser-oracle class where a crafted payload triggers behaviour
+//     pre-auth; reuses contracts/schemas/sign.go:macSum, JTI drawn
+//     from crypto/rand (math/rand lint-gated).
+//  4. Reviewer set snapshotted at request time, not decide time —
+//     mutating regatta.yaml after an approval opens cannot change who
+//     can approve it; N-of-M quorum + prevent_self_review are the RBAC
+//     primitives, team-scope deferred.
+//  5. Escalation tier ladder — on_timeout=escalate advances tiers,
+//     replays prior votes against the new quorum, revokes tier-N
+//     tokens, mints tier-N+1; terminal event follows in-tx when
+//     replayed votes satisfy the new quorum.
+//  6. Reaper auto-approve is config-gated to risk_class=low — the
+//     config-load validator rejects auto_approve on medium|high gates;
+//     high-blast classes MUST stay fail or escalate.
+//  7. Decide-path atomicity — all five mutations (token_consumed
+//     event, decided event, denormalised status update, terminal kind
+//     event, work_items.status transition) run in one BEGIN IMMEDIATE
+//     … COMMIT; failure rolls back the block, token stays unconsumed.
+//  8. Fold ordering is by event id, not ts — autoincrement id is the
+//     canonical sequence; wall-clock ts is advisory and may drift.
+//  9. One open approval per (work_item_id, gate_name) — belt via
+//     UNIQUE index on approvals; suspenders via process-level flock +
+//     pool size 1 giving at most one Tick concurrently.
+//  10. fold ≡ status property — the denormalised approvals.status
+//      column matches fold(approval_events).status across every
+//      observable state, asserted by a 200-sequence property test.
+//  11. Notifier is interface-only in MVP — default is a slog no-op so
+//      audit trail captures intent; unregistered notifier kind fails
+//      startup fail-closed rather than silently falling through to
+//      stub.
+//  12. CLI surface — regatta approval decide --token … --decision
+//      allow|deny [--reason …] and regatta approval list [--mine]
+//      [--format=table|json] are the two operator entry points.
 package approval
 
 import (

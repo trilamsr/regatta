@@ -128,7 +128,7 @@ contracts follow the deprecation cycle described in `PRINCIPLES.md`
   `status=merged`; cycle detection at upsert.
 - Operator docs: program plan walkthrough, flock troubleshooting,
   slog event reference.
-- [`docs/engineer/mvp-1-dod-checklist.md`](docs/engineer/mvp-1-dod-checklist.md);
+- `docs/engineer/mvp-1-dod-checklist.md`;
   series-complete + grade-A + grade-A+ tickable gates with
   verification commands.
 

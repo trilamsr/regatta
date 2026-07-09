@@ -18,9 +18,10 @@ sources.
    stack L0-L6, program layer, threat model).
 3. `docs/incidents.md` - AI-agent incident catalog driving the trap
    patterns.
-4. `PRINCIPLES.md` + `STYLE.md` + `AGENTS.md` - how we work.
-5. `docs/superpowers/specs/` - design specs for in-flight or recent
-   structural changes.
+4. `CLAUDE.md` - universal agent-and-contributor operating rules.
+5. `docs/engineer/specs/` + `docs/engineer/briefs/` - active design
+   specs and unshipped briefs; `docs/engineer/CHANGELOG.md` for
+   shipped decisions.
 
 ## Tree map
 
@@ -29,21 +30,19 @@ regatta/
   cmd/regatta/        # single binary; thin wiring; subcommands
   contracts/          # operator-facing surface (versioned)
     schemas/          # JSON Schema + CUE + Go pkg `schemas`
-    prompts/          # signed agent prompts (populated MVP-1+)
-    wire/             # plugin wire-protocol docs (when first plugin lands)
+    prompts/          # signed agent prompts
+    wire/             # plugin wire-protocol docs
   internal/           # private impl; default visibility
-    gates/            # gate runners (L0 shipped; L1-L5 deferred;
-      l0/  security/   # security/ is a custom gate, not in the numbered stack)
+    gates/            # gate runners
     config/           # regatta.yaml load + repo audit
       validate/  verify/
     orchestrator/     # daemon: watcher / scheduler / spawner / reaper / state / adapter
-    program/          # MVP-1 program layer (planner + handoff + route)
-  testdata/           # all fixture corpora (P6 single root)
-    gates/{l0,canary,security}/  program/handoffs/
+    program/          # program layer (planner + handoff + route)
+  testdata/           # all fixture corpora (single root)
   docs/
-    design.md  incidents.md
-    superpowers/specs/   # design specs for restructures + features
-    rfcs/  operator/  auditor/  engineer/  # persona-scoped surfaces
+    design.md  incidents.md  architecture.md  CHANGELOG-releases.md
+    engineer/         # engineer-scoped surfaces + specs + briefs + CHANGELOG
+    operator/         # operator-scoped surfaces
   scripts/            # repo tooling (doc-check, etc.)
   research/           # raw investigation; out of doc-check scope
   .githooks/  .github/  .claude/
@@ -62,5 +61,6 @@ regatta/
 | Program-layer code | `internal/program/` |
 | Program fixtures | `testdata/program/` |
 | Config load + repo audit | `internal/config/{validate,verify}/` |
-| New design spec | `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md` |
+| New design spec | `docs/engineer/specs/YYYY-MM-DD-<topic>-design.md` |
+| Shipped-spec history | `docs/engineer/CHANGELOG.md` |
 | Incident catalog | `docs/incidents.md` |

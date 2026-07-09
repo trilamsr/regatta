@@ -7,7 +7,7 @@ summary: "P3.8 swap-out adapter contracts: 5 adapters (OTel exporter, OPA RBAC, 
 # Adapter Contracts for Swap-Out — Design Spec
 
 **Date:** 2026-06-01
-**Brief:** [2026-05-31-mvp-3-next-level.md](../briefs/2026-05-31-mvp-3-next-level.md) §5 thread #3 — "Adapter contracts for swap-out"
+**Brief:** `../briefs/2026-05-31-mvp-3-next-level.md` §5 thread #3 — "Adapter contracts for swap-out"
 **Status:** Design (pre-implementation)
 **Companion specs:** W6 OTel (2026-06-01-mvp3-otel-observability), W8 OPA-RBAC, W10 Sigstore, W12 Metered Billing, Cost-Governor (LLM gateway).
 

@@ -541,6 +541,6 @@ failure; the CLI exits non-zero and names the missing surface.
   `docs/operator/cost-governor-dashboards.md` (sibling cite, lands in
   #301; link restored in post-merge follow-up PR).
 - Design spec (engineers) —
-  [docs/engineer/specs/phase-x/2026-06-01-cost-governor-design.md](../engineer/specs/phase-x/2026-06-01-cost-governor-design.md).
+  `../engineer/specs/phase-x/2026-06-01-cost-governor-design.md`.
 - OTel wiring + sampler customization —
   [docs/operator/observability.md](./observability.md).
