@@ -1,7 +1,7 @@
 // Package ghclient is the shared seam between regatta packages and the
-// GitHub REST API. Consumers (alarmwebhook handler, selfimprove
+// GitHub REST API. Consumers (alerthook handler, selfimprove
 // detector) depend on Client; production wires the HTTP impl in
-// alarmwebhook.NewHTTPGitHubClient. Issue carries the union of fields
+// alerthook.NewHTTPGitHubClient. Issue carries the union of fields
 // every consumer reads — Body for the selfimprove dedup-key marker,
 // Title for human-readable logging, Number for the dedup target.
 package ghclient
@@ -45,7 +45,7 @@ type ListIssuesOpts struct {
 // Issue is the trimmed view of a GitHub issue every consumer reads.
 // Body is what selfimprove scans for the `dedup-key:` marker and what
 // the github_issues spec adapter parses for the regatta metadata block;
-// Title + Number are what alarmwebhook logs against. Labels + UpdatedAt
+// Title + Number are what alerthook logs against. Labels + UpdatedAt
 // were added for the github_issues adapter (MVR-1-T4) — additive only.
 type Issue struct {
 	Number    int       `json:"number"`
@@ -91,7 +91,7 @@ func NewGHCLIClientWithRunner(owner, name string, r Runner) *GHCLIClient {
 	return &GHCLIClient{owner: owner, repo: name, runner: r}
 }
 
-// ListOpenIssuesByLabel is unimplemented on the gh-CLI client — alarmwebhook path returns ErrAdapterUnsupported so misroutes fail loud.
+// ListOpenIssuesByLabel is unimplemented on the gh-CLI client — alerthook path returns ErrAdapterUnsupported so misroutes fail loud.
 func (c *GHCLIClient) ListOpenIssuesByLabel(_ context.Context, _, _ string) ([]Issue, error) {
 	return nil, fmt.Errorf("%w: ListOpenIssuesByLabel via gh CLI", schemas.ErrAdapterUnsupported)
 }

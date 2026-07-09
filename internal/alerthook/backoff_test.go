@@ -1,4 +1,4 @@
-package alarmwebhook
+package alerthook
 
 import (
 	"context"

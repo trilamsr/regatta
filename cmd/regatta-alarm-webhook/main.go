@@ -1,7 +1,7 @@
 // Command regatta-alarm-webhook is the sidecar AlertManager receiver.
 // Operator picks this binary OR the in-process variant under
 // `regatta serve` (W3 supervisor handles either); both wire the same
-// internal/alarmwebhook.Handler so behaviour stays byte-equal.
+// internal/alerthook.Handler so behaviour stays byte-equal.
 package main
 
 import (
@@ -15,7 +15,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/trilamsr/regatta/internal/alarmwebhook"
+	"github.com/trilamsr/regatta/internal/alerthook"
 )
 
 func main() {
@@ -50,7 +50,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	return alarmwebhook.Serve(ctx, alarmwebhook.ServeOptions{
+	return alerthook.Serve(ctx, alerthook.ServeOptions{
 		ListenAddr:  *listen,
 		GHRepoOwner: parts[0],
 		GHRepoName:  parts[1],

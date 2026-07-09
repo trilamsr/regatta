@@ -1,6 +1,6 @@
 # AlertManager config for the Stage 2 self-host stack.
 #
-# Single receiver: regatta-alarm-webhook (#458 W1). Sloth-compiled alert
+# Single receiver: regatta-alerthook (#458 W1). Sloth-compiled alert
 # rules carry sloth_severity=page or sloth_severity=ticket labels; both
 # route to the same receiver today.
 #
@@ -11,16 +11,16 @@ global:
   resolve_timeout: 5m
 
 route:
-  receiver: regatta-alarm-webhook
+  receiver: regatta-alerthook
   group_by: ['alertname', 'slo_id']
   group_wait: 30s
   group_interval: 5m
   repeat_interval: 4h
 
 receivers:
-  - name: regatta-alarm-webhook
+  - name: regatta-alerthook
     webhook_configs:
-      # regatta-alarm-webhook serves /webhook (internal/alarmwebhook/serve.go).
+      # regatta-alerthook serves /webhook (internal/alerthook/serve.go).
       # The earlier /alarm path was a placeholder pre-W1; alerts silently
       # 404'd in production until R31 docker-runtime audit caught the drift.
       - url: http://regatta:9095/webhook

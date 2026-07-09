@@ -17,7 +17,7 @@
 # Hand-maintained: add a package when it introduces prod-code concurrency
 # primitives; remove when the last concurrency primitive is deleted.
 github.com/trilamsr/regatta/cmd/regatta
-github.com/trilamsr/regatta/internal/alarmwebhook
+github.com/trilamsr/regatta/internal/alerthook
 github.com/trilamsr/regatta/internal/authz
 github.com/trilamsr/regatta/internal/authz/policies/reload
 github.com/trilamsr/regatta/internal/cost/cap

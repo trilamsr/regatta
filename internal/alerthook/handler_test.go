@@ -1,4 +1,4 @@
-package alarmwebhook
+package alerthook
 
 import (
 	"context"
@@ -104,8 +104,8 @@ func post(t *testing.T, h http.Handler, body []byte) *httptest.ResponseRecorder 
 	return rr
 }
 
-// TestAlarmWebhook_ParsesAlertManagerSampleJSON asserts payload decode against the literal upstream AlertManager sample fixture.
-func TestAlarmWebhook_ParsesAlertManagerSampleJSON(t *testing.T) {
+// TestAlertHook_ParsesAlertManagerSampleJSON asserts payload decode against the literal upstream AlertManager sample fixture.
+func TestAlertHook_ParsesAlertManagerSampleJSON(t *testing.T) {
 	data := loadSample(t)
 	var p Payload
 	if err := json.Unmarshal(data, &p); err != nil {
@@ -125,8 +125,8 @@ func TestAlarmWebhook_ParsesAlertManagerSampleJSON(t *testing.T) {
 	}
 }
 
-// TestAlarmWebhook_FirstFiring_CreatesIssue asserts a fresh alertname triggers one CreateIssue with autonomous+obs-alert+severity labels.
-func TestAlarmWebhook_FirstFiring_CreatesIssue(t *testing.T) {
+// TestAlertHook_FirstFiring_CreatesIssue asserts a fresh alertname triggers one CreateIssue with autonomous+obs-alert+severity labels.
+func TestAlertHook_FirstFiring_CreatesIssue(t *testing.T) {
 	fake := &fakeGitHub{}
 	h := &Handler{Client: fake}
 	rr := post(t, h, loadSample(t))
@@ -151,8 +151,8 @@ func TestAlarmWebhook_FirstFiring_CreatesIssue(t *testing.T) {
 	}
 }
 
-// TestAlarmWebhook_SecondFiringSameAlertname_CommentsOnExistingIssue asserts a refiring routes to CommentOnIssue and never re-creates.
-func TestAlarmWebhook_SecondFiringSameAlertname_CommentsOnExistingIssue(t *testing.T) {
+// TestAlertHook_SecondFiringSameAlertname_CommentsOnExistingIssue asserts a refiring routes to CommentOnIssue and never re-creates.
+func TestAlertHook_SecondFiringSameAlertname_CommentsOnExistingIssue(t *testing.T) {
 	fake := &fakeGitHub{
 		Existing: map[string][]ghclient.Issue{
 			"HighErrorRate": {{Number: 42, Title: "[obs-alert] HighErrorRate firing (critical)"}},
@@ -175,8 +175,8 @@ func TestAlarmWebhook_SecondFiringSameAlertname_CommentsOnExistingIssue(t *testi
 	}
 }
 
-// TestAlarmWebhook_BodyContainsAllRequiredFields asserts the issue body carries alarm name, threshold, current value, dashboard URL, and replay command.
-func TestAlarmWebhook_BodyContainsAllRequiredFields(t *testing.T) {
+// TestAlertHook_BodyContainsAllRequiredFields asserts the issue body carries alarm name, threshold, current value, dashboard URL, and replay command.
+func TestAlertHook_BodyContainsAllRequiredFields(t *testing.T) {
 	fake := &fakeGitHub{}
 	h := &Handler{Client: fake}
 	rr := post(t, h, loadSample(t))
@@ -200,8 +200,8 @@ func TestAlarmWebhook_BodyContainsAllRequiredFields(t *testing.T) {
 	}
 }
 
-// TestAlarmWebhook_RejectsNonPOST asserts GET/PUT/DELETE return 405 without a GH API call.
-func TestAlarmWebhook_RejectsNonPOST(t *testing.T) {
+// TestAlertHook_RejectsNonPOST asserts GET/PUT/DELETE return 405 without a GH API call.
+func TestAlertHook_RejectsNonPOST(t *testing.T) {
 	fake := &fakeGitHub{}
 	h := &Handler{Client: fake}
 	for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
@@ -218,8 +218,8 @@ func TestAlarmWebhook_RejectsNonPOST(t *testing.T) {
 	}
 }
 
-// TestAlarmWebhook_RejectsMalformedJSON asserts a junk body returns 400 not a panic.
-func TestAlarmWebhook_RejectsMalformedJSON(t *testing.T) {
+// TestAlertHook_RejectsMalformedJSON asserts a junk body returns 400 not a panic.
+func TestAlertHook_RejectsMalformedJSON(t *testing.T) {
 	fake := &fakeGitHub{}
 	h := &Handler{Client: fake}
 	rr := post(t, h, []byte("{not-json"))
@@ -281,8 +281,8 @@ func TestHandler_4MiBExactBoundary_Succeeds(t *testing.T) {
 	}
 }
 
-// TestAlarmWebhook_EmptyAlertsReturns204 asserts an empty alerts slice short-circuits without a GH call.
-func TestAlarmWebhook_EmptyAlertsReturns204(t *testing.T) {
+// TestAlertHook_EmptyAlertsReturns204 asserts an empty alerts slice short-circuits without a GH call.
+func TestAlertHook_EmptyAlertsReturns204(t *testing.T) {
 	fake := &fakeGitHub{}
 	h := &Handler{Client: fake}
 	rr := post(t, h, []byte(`{"status":"firing","alerts":[]}`))
@@ -294,8 +294,8 @@ func TestAlarmWebhook_EmptyAlertsReturns204(t *testing.T) {
 	}
 }
 
-// TestAlarmWebhook_GitHubErrorReturns502 asserts a GH API failure surfaces as 502 with the body propagated for operator triage.
-func TestAlarmWebhook_GitHubErrorReturns502(t *testing.T) {
+// TestAlertHook_GitHubErrorReturns502 asserts a GH API failure surfaces as 502 with the body propagated for operator triage.
+func TestAlertHook_GitHubErrorReturns502(t *testing.T) {
 	fake := &fakeGitHub{ListErr: errors.New("rate limited")}
 	h := &Handler{Client: fake}
 	rr := post(t, h, loadSample(t))
@@ -304,8 +304,8 @@ func TestAlarmWebhook_GitHubErrorReturns502(t *testing.T) {
 	}
 }
 
-// TestAlarmWebhook_LabelsAreLowercaseAndDistinct asserts the three issue labels match the autonomous+obs-alert+severity contract verbatim.
-func TestAlarmWebhook_LabelsAreLowercaseAndDistinct(t *testing.T) {
+// TestAlertHook_LabelsAreLowercaseAndDistinct asserts the three issue labels match the autonomous+obs-alert+severity contract verbatim.
+func TestAlertHook_LabelsAreLowercaseAndDistinct(t *testing.T) {
 	fake := &fakeGitHub{}
 	h := &Handler{Client: fake}
 	rr := post(t, h, loadSample(t))
@@ -324,8 +324,8 @@ func TestAlarmWebhook_LabelsAreLowercaseAndDistinct(t *testing.T) {
 	}
 }
 
-// TestAlarmWebhook_ConcurrentStormProducesOneIssue asserts a burst of 20 simultaneous firings of one alertname yields exactly one CreateIssue + 19 comments.
-func TestAlarmWebhook_ConcurrentStormProducesOneIssue(t *testing.T) {
+// TestAlertHook_ConcurrentStormProducesOneIssue asserts a burst of 20 simultaneous firings of one alertname yields exactly one CreateIssue + 19 comments.
+func TestAlertHook_ConcurrentStormProducesOneIssue(t *testing.T) {
 	fake := &fakeGitHub{}
 	h := &Handler{Client: fake}
 	body := loadSample(t)
@@ -352,8 +352,8 @@ func TestAlarmWebhook_ConcurrentStormProducesOneIssue(t *testing.T) {
 	}
 }
 
-// TestAlarmWebhook_DedupCacheShortCircuits asserts back-to-back firings of the same alertname only hit the GH search API once thanks to the 60s cache.
-func TestAlarmWebhook_DedupCacheShortCircuits(t *testing.T) {
+// TestAlertHook_DedupCacheShortCircuits asserts back-to-back firings of the same alertname only hit the GH search API once thanks to the 60s cache.
+func TestAlertHook_DedupCacheShortCircuits(t *testing.T) {
 	fake := &fakeGitHub{
 		Existing: map[string][]ghclient.Issue{
 			"HighErrorRate": {{Number: 7, Title: "[obs-alert] HighErrorRate firing (critical)"}},

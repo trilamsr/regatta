@@ -376,11 +376,11 @@ func runServe(args []string) int {
 		}()
 	}
 
-	// W1 alarm-webhook: opt-in per regatta.yaml::alarm_webhook.listen_addr.
-	// The handler ships in internal/alarmwebhook; both this in-process
+	// W1 alerthook: opt-in per regatta.yaml::alarm_webhook.listen_addr.
+	// The handler ships in internal/alerthook; both this in-process
 	// path and cmd/regatta-alarm-webhook drive the same Serve helper so
 	// behaviour stays byte-equal. Disabled when listen_addr is empty.
-	startAlarmWebhook(ctx, f.RepoRoot, slogger)
+	startAlerthook(ctx, f.RepoRoot, slogger)
 
 	if f.TickOnce {
 		if err := runTickOnce(ctx, o); err != nil {
