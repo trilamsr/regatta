@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -94,10 +95,169 @@ func TestAnthropicPlanner_UpstreamFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	a := &AnthropicPlanner{APIKey: "x", Model: "x", BaseURL: server.URL, Version: "v"}
+	a := &AnthropicPlanner{APIKey: "x", Model: "x", BaseURL: server.URL, Version: "v", RetryBase: time.Microsecond}
 	_, err := a.Plan(context.Background(), schemas.WorkItem{})
 	if err == nil {
 		t.Fatal("expected error on 503")
+	}
+}
+
+// TestAnthropicPlanner_RetriesOn429 asserts Plan retries on rate-limit and eventually succeeds (MAY bug wave-a-4).
+func TestAnthropicPlanner_RetriesOn429(t *testing.T) {
+	respBody := `{
+	  "stop_reason": "tool_use",
+	  "content": [
+	    {"type": "tool_use", "name": "emit_feature_plan",
+	     "input": {"features": [
+	       {"id": "F-A", "title": "do A", "fulfills": ["AC-1"], "depends_on_features": []}
+	     ]}}
+	  ]
+	}`
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := hits.Add(1)
+		if n <= 2 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(respBody))
+	}))
+	defer server.Close()
+
+	a := &AnthropicPlanner{APIKey: "k", Model: "m", BaseURL: server.URL, Version: "v", RetryBase: time.Microsecond}
+	got, err := a.Plan(context.Background(), schemas.WorkItem{ID: "RFC-1", AcceptanceCriteria: []schemas.Criterion{{ID: "AC-1", Text: "a"}}})
+	if err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if got == nil || len(got.Features) != 1 || got.Features[0].ID != "F-A" {
+		t.Fatalf("bad plan after retry: %+v", got)
+	}
+	if hits.Load() != 3 {
+		t.Fatalf("expected 3 hits (429, 429, 200), got %d", hits.Load())
+	}
+}
+
+// TestAnthropicPlanner_RetriesOn503 asserts Plan retries on overload and eventually succeeds.
+func TestAnthropicPlanner_RetriesOn503(t *testing.T) {
+	respBody := `{"stop_reason":"tool_use","content":[{"type":"tool_use","name":"emit_feature_plan","input":{"features":[{"id":"F-A","title":"a","fulfills":["AC-1"],"depends_on_features":[]}]}}]}`
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := hits.Add(1)
+		if n == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(respBody))
+	}))
+	defer server.Close()
+
+	a := &AnthropicPlanner{APIKey: "k", Model: "m", BaseURL: server.URL, Version: "v", RetryBase: time.Microsecond}
+	if _, err := a.Plan(context.Background(), schemas.WorkItem{ID: "RFC-1", AcceptanceCriteria: []schemas.Criterion{{ID: "AC-1", Text: "a"}}}); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if hits.Load() != 2 {
+		t.Fatalf("expected 2 hits (503, 200), got %d", hits.Load())
+	}
+}
+
+// TestAnthropicPlanner_NoRetryOn401 asserts auth failures fail fast without retry.
+func TestAnthropicPlanner_NoRetryOn401(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	a := &AnthropicPlanner{APIKey: "k", Model: "m", BaseURL: server.URL, Version: "v", RetryBase: time.Microsecond}
+	_, err := a.Plan(context.Background(), schemas.WorkItem{})
+	if err == nil {
+		t.Fatal("expected 401 error")
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("expected exactly 1 hit on 401 (no retry), got %d", hits.Load())
+	}
+}
+
+// TestAnthropicPlanner_NoRetryOn400 asserts client errors (bad request) are not retried.
+func TestAnthropicPlanner_NoRetryOn400(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	a := &AnthropicPlanner{APIKey: "k", Model: "m", BaseURL: server.URL, Version: "v", RetryBase: time.Microsecond}
+	if _, err := a.Plan(context.Background(), schemas.WorkItem{}); err == nil {
+		t.Fatal("expected 400 error")
+	}
+	if hits.Load() != 1 {
+		t.Fatalf("expected exactly 1 hit on 400, got %d", hits.Load())
+	}
+}
+
+// TestAnthropicPlanner_HonorsRetryAfter asserts Retry-After header seconds is honored on 429.
+func TestAnthropicPlanner_HonorsRetryAfter(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := hits.Add(1)
+		if n == 1 {
+			w.Header().Set("Retry-After", "0")
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"stop_reason":"tool_use","content":[{"type":"tool_use","name":"emit_feature_plan","input":{"features":[{"id":"F-A","title":"a","fulfills":["AC-1"],"depends_on_features":[]}]}}]}`))
+	}))
+	defer server.Close()
+
+	a := &AnthropicPlanner{APIKey: "k", Model: "m", BaseURL: server.URL, Version: "v", RetryBase: time.Microsecond}
+	start := time.Now()
+	if _, err := a.Plan(context.Background(), schemas.WorkItem{ID: "RFC-1", AcceptanceCriteria: []schemas.Criterion{{ID: "AC-1", Text: "a"}}}); err != nil {
+		t.Fatalf("unexpected: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("Retry-After: 0 should not induce a long wait, got %v", elapsed)
+	}
+	if hits.Load() != 2 {
+		t.Fatalf("expected 2 hits, got %d", hits.Load())
+	}
+}
+
+// TestAnthropicPlanner_CtxCancelledMidBackoff asserts ctx cancel aborts retry loop promptly.
+func TestAnthropicPlanner_CtxCancelledMidBackoff(t *testing.T) {
+	var hits atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel after a tiny window so at least one attempt lands but the
+	// backoff sleep is interrupted before all 5 retries elapse.
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	a := &AnthropicPlanner{APIKey: "k", Model: "m", BaseURL: server.URL, Version: "v", RetryBase: 500 * time.Millisecond}
+	start := time.Now()
+	_, err := a.Plan(ctx, schemas.WorkItem{})
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatal("expected ctx cancel error")
+	}
+	if !strings.Contains(err.Error(), context.Canceled.Error()) {
+		t.Fatalf("expected canceled ctx err, got %v", err)
+	}
+	// Full 5-attempt exponential at 500ms base would be >7s. Aborting
+	// mid-backoff should return well under 2s.
+	if elapsed > 2*time.Second {
+		t.Fatalf("ctx cancel did not abort backoff promptly: %v", elapsed)
 	}
 }
 
