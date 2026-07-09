@@ -98,6 +98,12 @@ type Handler struct {
 	initOnce sync.Once
 	cache    *dedupCache
 
+	// fallbackMeter overrides the package-level obs.Meter fallback used
+	// when the primary Int64Counter call fails. Nil = production
+	// obs.Meter(MeterScopeAlerthookFallback). Test-only seam so the
+	// double-fail path (both primary AND fallback error) is coverable.
+	fallbackMeter metric.Meter
+
 	alertCounter metric.Int64Counter
 
 	// perAlertname serialises concurrent route() calls sharing an
@@ -135,6 +141,13 @@ func (h *Handler) resolveLogger() *slog.Logger {
 	return slog.Default()
 }
 
+func (h *Handler) resolveFallbackMeter() metric.Meter {
+	if h.fallbackMeter != nil {
+		return h.fallbackMeter
+	}
+	return obs.Meter(obs.MeterScopeAlerthookFallback)
+}
+
 // init wires meter-derived instruments lazily so a caller mutation of
 // h.Meter between construction and first request still binds.
 // Guarded by sync.Once so concurrent first-requests cannot race past
@@ -143,14 +156,20 @@ func (h *Handler) init() {
 	h.initOnce.Do(func() {
 		h.cache = newDedupCache(h.Now, h.CacheTTL)
 		log := h.resolveLogger()
-		m := h.resolveMeter()
-		c, err := m.Int64Counter("regatta.alerthook.alerts.total")
+		const counterName = "regatta.alerthook.alerts.total"
+		c, err := h.resolveMeter().Int64Counter(counterName)
 		if err != nil {
-			log.Warn("alerthook.meter_primary_failed", "err", err)
+			log.Warn("alerthook.meter_primary_failed",
+				"scope", string(obs.MeterScopeAlerthook),
+				"counter", counterName,
+				"err", err)
 			var ferr error
-			c, ferr = obs.Meter(obs.MeterScopeAlerthookFallback).Int64Counter("regatta.alerthook.alerts.total")
+			c, ferr = h.resolveFallbackMeter().Int64Counter(counterName)
 			if ferr != nil {
-				log.Error("alerthook.meter_fallback_failed", "err", ferr)
+				log.Error("alerthook.meter_fallback_failed",
+					"scope", string(obs.MeterScopeAlerthookFallback),
+					"counter", counterName,
+					"err", ferr)
 			}
 		}
 		h.alertCounter = c
