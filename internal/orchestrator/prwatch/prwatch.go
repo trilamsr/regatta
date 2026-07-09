@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
@@ -164,6 +165,16 @@ type Watcher struct {
 	// Compared against the current sweep's set to drive per-branch
 	// cache eviction on the lister (MAY-52). nil until first Sweep.
 	lastLiveBranches map[string]struct{}
+
+	// listTimeout bounds a single ListOpenByHead call so one hung
+	// per-agent gh shell-out cannot wedge the whole Sweep (MAY-bug6).
+	// Zero means no cap; wired at construction from Config.ListTimeout.
+	listTimeout time.Duration
+
+	// listFailCount: per-agent consecutive list-failure count. Reset on
+	// success. Escalates the list_failed log from WARN to ERROR once
+	// the count reaches listFailErrorThreshold (MAY-bug6).
+	listFailCount map[int64]int
 }
 
 // New constructs a Watcher. Returns an error when required deps are
@@ -216,6 +227,7 @@ func New(cfg Config) (*Watcher, error) {
 		dirtyEmitted:          make(map[int64]bool),
 		localHeadFn:           cfg.LocalHeadFn,
 		divergedEmitted:       make(map[int64]string),
+		listFailCount:         make(map[int64]int),
 	}, nil
 }
 
