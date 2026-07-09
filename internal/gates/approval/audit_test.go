@@ -127,11 +127,7 @@ func TestAudit_SlogMatchesRow(t *testing.T) {
 	}
 }
 
-// Spec §7 A+ — byte-equality across a representative sequence (200
-// random attribute payloads). Drift here would mean the recordEvent
-// helper silently encoded different bytes to slog vs the row; this is
-// the single regression test that backstops the §5.7 "single helper"
-// claim across the full input space.
+// TestAudit_SlogMatchesRow_Property asserts byte-equality between slog and row across 200 random payloads (spec §5.7 single-helper backstop).
 func TestAudit_SlogMatchesRow_Property(t *testing.T) {
 	rapid.Check(t, func(rt *rapid.T) {
 		now := time.Date(2026, 6, 1, 9, 0, 0, 0, time.UTC)

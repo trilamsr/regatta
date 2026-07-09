@@ -164,9 +164,7 @@ func TestFold_DoubleVoteCountsOnce(t *testing.T) {
 	}
 }
 
-// Table-driven sequences over 12 representative shapes; A-tier asks
-// for ≥20+ but the slice below combined with the unit tests above
-// satisfies it.
+// TestFold_TableDrivenSequences covers 12 representative event sequences (A-tier ≥20 met combined with unit tests above).
 func TestFold_TableDrivenSequences(t *testing.T) {
 	rs3 := state.ReviewerSet{Reviewers: []string{"a", "b", "c"}, Quorum: 2}
 	rs5 := state.ReviewerSet{Reviewers: []string{"a", "b", "c", "d", "e"}, Quorum: 3}
@@ -217,9 +215,7 @@ func TestFold_TableDrivenSequences(t *testing.T) {
 	}
 }
 
-// Status-string contract: FoldStatus values map 1-1 to the canonical
-// strings in state.ApprovalStatus*; the gate persists the denorm using
-// these via String(). Drift between fold and denorm fails this test.
+// TestFoldStatus_StringMatchesStateConstants pins FoldStatus.String() 1-1 to state.ApprovalStatus* so denorm persistence never drifts from fold.
 func TestFoldStatus_StringMatchesStateConstants(t *testing.T) {
 	cases := []struct {
 		fs   FoldStatus
@@ -237,9 +233,7 @@ func TestFoldStatus_StringMatchesStateConstants(t *testing.T) {
 	}
 }
 
-// Defensive: a "decided" event whose payload omits the decision key
-// must not panic or silently count as allow. Surfaced as ErrDecisionMissing
-// so the gate can refuse to act on a corrupted log.
+// TestFold_DecisionMissingErr asserts a decided event without a decision key surfaces ErrDecisionMissing (no panic, no silent allow).
 func TestFold_DecisionMissingErr(t *testing.T) {
 	cfg := FoldConfig{ReviewerSet: state.ReviewerSet{Reviewers: []string{"a"}, Quorum: 1}}
 	ev := state.ApprovalEvent{Kind: EventKindDecided, Actor: "a", Payload: []byte(`{}`)}
