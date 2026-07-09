@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
@@ -123,6 +124,47 @@ func TestAnthropicPlanner_NewRequiresEnv(t *testing.T) {
 	}
 	if a.Prompt == "" || a.Timeout == 0 {
 		t.Fatal("defaults not applied")
+	}
+}
+
+// TestAnthropicPlanner_CtxDeadlineNotShortCircuitedByClientTimeout asserts Plan honors ctx as the sole deadline; the Timeout field is a no-op backstop (MAY-BUG5).
+func TestAnthropicPlanner_CtxDeadlineNotShortCircuitedByClientTimeout(t *testing.T) {
+	respBody := `{
+	  "stop_reason": "tool_use",
+	  "content": [
+	    {"type": "tool_use", "name": "emit_feature_plan",
+	     "input": {"features": [
+	       {"id": "F-A", "title": "do A", "fulfills": ["AC-1"], "depends_on_features": []}
+	     ]}}
+	  ]
+	}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(respBody))
+	}))
+	defer server.Close()
+
+	// Timeout=50ms would short-circuit the 200ms server response
+	// if honored as a client-level timeout. Post-fix it is ignored;
+	// only ctx governs the deadline (here Background = no deadline).
+	a := &AnthropicPlanner{
+		APIKey:  "test-key",
+		Model:   "claude-opus-4-7",
+		BaseURL: server.URL,
+		Version: "2023-06-01",
+		Prompt:  "test",
+		Timeout: 50 * time.Millisecond,
+	}
+	got, err := a.Plan(context.Background(), schemas.WorkItem{
+		ID: "RFC-1",
+		AcceptanceCriteria: []schemas.Criterion{{ID: "AC-1", Text: "do A"}},
+	})
+	if err != nil {
+		t.Fatalf("Plan honored a client-level timeout that pre-empts ctx: %v", err)
+	}
+	if len(got.Features) != 1 {
+		t.Fatalf("unexpected features: %+v", got.Features)
 	}
 }
 
