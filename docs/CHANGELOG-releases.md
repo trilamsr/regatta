@@ -48,7 +48,7 @@ contracts follow the deprecation cycle described in `PRINCIPLES.md`
 - `golangci-lint` now excludes sibling worktrees under
   `.claude/worktrees/` from the lint scope.
 - Package doc comments on `route.go`, `migrate.go`, and
-  `spec_adapter.go` fixed to ST1000 form (start with the package
+  `work_item_source.go` fixed to ST1000 form (start with the package
   name).
 
 ## v0.2.0 - 2026-05-31 - MVP-2 Conditional DAG
@@ -107,7 +107,7 @@ contracts follow the deprecation cycle described in `PRINCIPLES.md`
 ### Added
 
 - `state.work_items` table; universal queue, single source of truth.
-- `internal/orchestrator/adaptersync`; mirrors SpecAdapter into
+- `internal/orchestrator/adaptersync`; mirrors WorkItemSource into
   `work_items` each tick.
 - `internal/program.BriefLoader` + `LoadAndVerifyBrief`; verifies
   signed program briefs and upserts child work_items.

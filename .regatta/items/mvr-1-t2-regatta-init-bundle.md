@@ -22,7 +22,7 @@ Three child tasks under this program item:
 
 - Init wizard - `regatta init` runs an AlecAivazis/survey TUI; probes `gh auth status` + asks for repo path; writes `regatta.yaml` + `.regatta/items/` scaffold.
 - GoReleaser pipeline - single `.goreleaser.yaml`; builds darwin/linux/windows binaries on tag push; uploads to GH Release.
-- GH-issue adapter - implements `schemas.SpecAdapter` against `[autonomous]`-labelled issues via go-github (already a runtime dep). Round-trip schema parallel to markdown adapter.
+- GH-issue adapter - implements `schemas.WorkItemSource` against `[autonomous]`-labelled issues via go-github (already a runtime dep). Round-trip schema parallel to markdown adapter.
 
 ## Approach
 
@@ -35,7 +35,7 @@ Three child tasks under this program item:
 
 - [planned] c1: `regatta init` runs interactively, writes a valid `regatta.yaml` + `.regatta/items/_template.md`, round-trips through the markdown adapter on first poll.
 - [planned] c2: `git tag v0.x.0 && git push --tags` triggers GoReleaser; darwin-arm64 + linux-amd64 binaries appear on GH Release within 10 min.
-- [planned] c3: GH-issue adapter implements `schemas.SpecAdapter` (List + Get + UpdateStatus + Capabilities); `[autonomous]`-labelled issues round-trip to `schemas.WorkItem` with stable `SourceRef`.
+- [planned] c3: GH-issue adapter implements `schemas.WorkItemSource` (List + Get + UpdateStatus + Capabilities); `[autonomous]`-labelled issues round-trip to `schemas.WorkItem` with stable `SourceRef`.
 - [planned] c4: GH-issue adapter shares a second-consumer contract proof against `internal/orchestrator/adapter/markdown.go` per `feedback_research_design_principles` "no proven equivalent for exact shape".
 - [planned] c5: README install snippet works on a fresh macOS/Linux box - one `go install` line OR one `curl | tar` line; persona A reaches first PR under 30 min on a clean repo.
 - [planned] c6: Reviewer subagent spawned + cleared per `feedback_agent_pr_review`.

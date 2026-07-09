@@ -163,7 +163,7 @@ const exitReasonCompleted = "completed"
 // emptyHint* constants pin the operator-facing copy for blank dashboard panels so a future palette / cadence change edits one source instead of N templates. WHY: a blank "loading…" or empty div leaves the operator guessing whether the scheduler is wedged or simply idle.
 const (
 	emptyHintAgents    = "No agents in flight. Add a work-item or run `regatta serve`; scheduler ticks every 5s."
-	emptyHintWorkItems = "No work-items found. Drop a markdown file into .regatta/items/ or set spec_adapter.type=github_issues and spec_adapter.selector in regatta.yaml."
+	emptyHintWorkItems = "No work-items found. Drop a markdown file into .regatta/items/ or set work_item_source.type=github_issues and work_item_source.selector in regatta.yaml."
 	emptyHintEvents    = "No activity yet. Events land here as agents spawn, tick, and exit."
 )
 

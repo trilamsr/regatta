@@ -1,4 +1,4 @@
-// Package adaptersync mirrors the read-only SpecAdapter into
+// Package adaptersync mirrors the read-only WorkItemSource into
 // state.work_items. Step 3 of orchestrator.PollOnce (spec §2.9).
 // Tombstones rows the adapter no longer returns; see
 // cascadeChildrenOfArchivedPrograms for parent→child fan-out.
@@ -51,10 +51,10 @@ func scrubAdaptersyncErr(msg string) string {
 	return msg
 }
 
-// SpecAdapter is the subset of schemas.SpecAdapter the Syncer needs:
+// WorkItemSource is the subset of schemas.WorkItemSource the Syncer needs:
 // List drives the mirror; Capabilities supplies MinPollInterval so the
 // Syncer can skip List inside the rate-budget window (#888).
-type SpecAdapter interface {
+type WorkItemSource interface {
 	List(ctx context.Context) ([]schemas.WorkItem, error)
 	Capabilities() schemas.Capabilities
 }
@@ -64,7 +64,7 @@ type SpecAdapter interface {
 // components share one injection shape.
 type Config struct {
 	// Adapter mirrors the orchestrator's read surface. Required.
-	Adapter SpecAdapter
+	Adapter WorkItemSource
 
 	// DB is the universal state store. Required.
 	DB *state.DB
@@ -107,7 +107,7 @@ func (c Config) ResolveMeter() metric.Meter {
 // throttle worsens the limit (#888). Single-adapter scope; concurrency
 // is provided by orchestrator.PollOnce's flock.
 type Syncer struct {
-	adapter           SpecAdapter
+	adapter           WorkItemSource
 	db                *state.DB
 	log               *slog.Logger
 	tracer            trace.Tracer

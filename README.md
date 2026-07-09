@@ -93,8 +93,8 @@ the rebuild step above.
 - [`docs/design.md`](docs/design.md) — full design
 - [`docs/incidents.md`](docs/incidents.md) — AI-agent incident
   catalog with primary sources, root causes, and prevention patterns
-- [`contracts/schemas/spec_adapter.go`](contracts/schemas/spec_adapter.go) —
-  normative Go interface for `SpecAdapter`
+- [`contracts/schemas/work_item_source.go`](contracts/schemas/work_item_source.go) —
+  normative Go interface for `WorkItemSource`
 - [`contracts/schemas/gate_result.schema.json`](contracts/schemas/gate_result.schema.json) —
   JSON Schema for the structured payload every gate emits
 - [`contracts/schemas/work_item.schema.json`](contracts/schemas/work_item.schema.json) —

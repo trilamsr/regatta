@@ -233,7 +233,7 @@ Per-iteration scratch stays local and gitignored; the final-state, tracked desig
 
 ## Related RFCs (shipped milestone decisions)
 
-- [`../../rfcs/0001-mvp-1-program-publish.md`](../../rfcs/0001-mvp-1-program-publish.md) — MVP-1 program publish via sqlite, not SpecAdapter.
+- [`../../rfcs/0001-mvp-1-program-publish.md`](../../rfcs/0001-mvp-1-program-publish.md) — MVP-1 program publish via sqlite, not WorkItemSource.
 - [`../../rfcs/0002-mvp-2-conditional-dag.md`](../../rfcs/0002-mvp-2-conditional-dag.md) — MVP-2 W1 outcome-conditional DAG (CEL edges + journal).
 - [`../../rfcs/0003-mvp-2-approval-gates.md`](../../rfcs/0003-mvp-2-approval-gates.md) — MVP-2 approval gates (HMAC token + reaper + fold).
 TRAILER

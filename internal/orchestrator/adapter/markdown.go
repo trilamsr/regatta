@@ -1,4 +1,4 @@
-// Package adapter holds the concrete schemas.SpecAdapter
+// Package adapter holds the concrete schemas.WorkItemSource
 // implementations the orchestrator can run against. The skeleton
 // ships markdown_catalog only; github_issues, jira, linear, and the
 // custom-binary protocol land in follow-up commits.
@@ -76,9 +76,9 @@ type markdownCatalog struct {
 	mu     sync.Mutex
 }
 
-// NewMarkdownCatalog returns a schemas.SpecAdapter backed by
+// NewMarkdownCatalog returns a schemas.WorkItemSource backed by
 // .regatta/items/*.md under cfg.Root.
-func NewMarkdownCatalog(cfg MarkdownCatalogConfig) (schemas.SpecAdapter, error) {
+func NewMarkdownCatalog(cfg MarkdownCatalogConfig) (schemas.WorkItemSource, error) {
 	if cfg.Root == "" {
 		return nil, errors.New("adapter: MarkdownCatalogConfig.Root is required")
 	}

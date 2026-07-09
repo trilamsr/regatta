@@ -1,9 +1,9 @@
-# SpecAdapter platform constraints
+# WorkItemSource platform constraints
 
 **Status:** research draft, v1.
 **Scope:** what L0 (the deterministic spec-immutability gate) can actually
 verify for each built-in adapter. Inputs:
-[`schemas/spec_adapter.go`](../schemas/spec_adapter.go),
+[`schemas/work_item_source.go`](../schemas/work_item_source.go),
 [`schemas/work_item.schema.json`](../schemas/work_item.schema.json),
 [`docs/design.md` §Spec contract](../docs/design.md).
 
@@ -382,7 +382,7 @@ criteria:
    using Linear, sub-issues are arguably the more honest mapping** —
    the WorkItem maps to the parent, each `Criterion` maps to a
    sub-issue. The adapter SHOULD support both modes and select via
-   `regatta.yaml: spec_adapter.linear.criteria_mode:
+   `regatta.yaml: work_item_source.linear.criteria_mode:
    "checkbox" | "subissue"`.
 
 **Gotchas:**
@@ -533,14 +533,14 @@ tier when the operator picks an adapter:
 > while an agent was working, but cannot recover the prior text.
 > Consider tracking specs in `markdown_catalog` mode instead.
 
-**Per-repo override:** `regatta.yaml: spec_adapter.tier_override:
+**Per-repo override:** `regatta.yaml: work_item_source.tier_override:
 strict|warn|off` lets the operator pick how L0 reacts on
 `ErrSourceMutated`. Default = `strict` (fail PR); `warn` (gate-comment
 only) is appropriate for degraded-mode adapters during rollout.
 
 ---
 
-## 11. Concrete change-list for `schemas/spec_adapter.go`
+## 11. Concrete change-list for `schemas/work_item_source.go`
 
 ```go
 type Capabilities struct {
@@ -613,7 +613,7 @@ Also propose a new sentinel error:
 var ErrSourceUnverifiable = errors.New("regatta: source verifiability degraded")
 ```
 
-L0 treats `ErrSourceUnverifiable` per `spec_adapter.tier_override`:
+L0 treats `ErrSourceUnverifiable` per `work_item_source.tier_override`:
 `strict` → fail; `warn` → gate-comment; `off` → ignore.
 
 ---

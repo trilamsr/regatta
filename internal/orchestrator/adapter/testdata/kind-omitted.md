@@ -7,4 +7,4 @@ status: planned
 
 ## Acceptance criteria
 
-- [planned] c1: anchors omitted kind defaults to schemas.KindFeature per spec_adapter.go:41 (#866)
+- [planned] c1: anchors omitted kind defaults to schemas.KindFeature per work_item_source.go:41 (#866)

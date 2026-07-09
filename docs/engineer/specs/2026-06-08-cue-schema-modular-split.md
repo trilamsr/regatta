@@ -63,7 +63,7 @@ contracts/schemas/
   regatta/
     root.cue                  # #Config + version pin + import "list"
     secrets.cue               # #Secret + #Secrets
-    spec_adapter.cue          # #SpecAdapter
+    work_item_source.cue          # #WorkItemSource
     ci.cue                    # #CI + #PRTemplate
     gates.cue                 # #Gate + #ApprovalTier
     lanes.cue                 # #Lane
@@ -147,10 +147,10 @@ LOC delta: −40 from monolith, +42 in `secrets.cue`, +6 in `embed.go`. Net +8. 
 
 ### Slice 2 — split `#Scheduler` + `#Adapter` (and the SCHEDULER subsystem)
 
-Note: existing schema has no `#Scheduler` definition; scheduler config is implicit / handled in Go. The cascade-source this session was `#SpecAdapter` + `#Gate` and friends. Re-scoped slice-2 to:
+Note: existing schema has no `#Scheduler` definition; scheduler config is implicit / handled in Go. The cascade-source this session was `#WorkItemSource` + `#Gate` and friends. Re-scoped slice-2 to:
 
 Files touched:
-- `contracts/schemas/regatta/spec_adapter.cue` (NEW): hoist `#SpecAdapter`.
+- `contracts/schemas/regatta/work_item_source.cue` (NEW): hoist `#WorkItemSource`.
 - `contracts/schemas/regatta/gates.cue` (NEW): hoist `#Gate` + `#ApprovalTier`.
 - `contracts/schemas/regatta.v1.cue`: remove those definitions.
 - `contracts/schemas/embed.go`: extend embed glob.
@@ -205,7 +205,7 @@ Could a file accidentally declare `package regattav2` and silently break the mer
 
 ### A4 — Embed-string concat order ordering: does it matter?
 
-CUE has no order-dependence between sibling definitions (`#Secret` can reference `#Secrets` regardless of file order). Order only matters if a `#Definition` is referenced *before* declaration in **the same file**, and even then CUE resolves by name, not file position. Alphabetical concat (`secrets.cue` < `spec_adapter.cue`) is deterministic; `embed.FS` ranges files in lexical order.
+CUE has no order-dependence between sibling definitions (`#Secret` can reference `#Secrets` regardless of file order). Order only matters if a `#Definition` is referenced *before* declaration in **the same file**, and even then CUE resolves by name, not file position. Alphabetical concat (`secrets.cue` < `work_item_source.cue`) is deterministic; `embed.FS` ranges files in lexical order.
 
 ### A5 — `cue.Filename("regatta.v1.cue")` lies about source location post-concat.
 
@@ -257,19 +257,19 @@ Each slice is one PR, file-disjoint, cascade-rebase-safe.
 
 **Reviewer dispatch**: yes — load-bearing under `contracts/schemas/` (per `Reviewer-recommendation` gate).
 
-### §8.2 Slice-2 brief — split `#SpecAdapter` + `#Gate`
+### §8.2 Slice-2 brief — split `#WorkItemSource` + `#Gate`
 
-**Title**: `[REFACTOR] contracts/schemas: hoist #SpecAdapter + #Gate to regatta/{spec_adapter,gates}.cue (cascade-rebase fix)`
+**Title**: `[REFACTOR] contracts/schemas: hoist #WorkItemSource + #Gate to regatta/{work_item_source,gates}.cue (cascade-rebase fix)`
 
 **Scope**:
-1. Create `contracts/schemas/regatta/spec_adapter.cue`: hoist `#SpecAdapter`.
+1. Create `contracts/schemas/regatta/work_item_source.cue`: hoist `#WorkItemSource`.
 2. Create `contracts/schemas/regatta/gates.cue`: hoist `#Gate` + `#ApprovalTier`.
 3. Remove from `regatta.v1.cue`.
 4. Update embed glob.
 5. Reuse `TestLoadConfig_GoldenByteEqual` from slice-1 (already RED-then-GREEN); assert still GREEN.
 
-**Path lock**: `contracts/schemas/regatta/spec_adapter.cue`, `contracts/schemas/regatta/gates.cue`.
-**LOC budget**: ~110 hoisted (#SpecAdapter ~28, #Gate + #ApprovalTier ~75), zero new logic.
+**Path lock**: `contracts/schemas/regatta/work_item_source.cue`, `contracts/schemas/regatta/gates.cue`.
+**LOC budget**: ~110 hoisted (#WorkItemSource ~28, #Gate + #ApprovalTier ~75), zero new logic.
 **Release-notes prefix**: `[REFACTOR]`.
 
 **Pre-merge**: must rebase onto slice-1 merge.

@@ -107,7 +107,7 @@ Mechanically tight. The platform-fact claims hold up; the one place to push back
 
 ---
 
-## 05 — SpecAdapter Platform Constraints
+## 05 — WorkItemSource Platform Constraints
 
 The platform-fact map is mostly accurate but contains one CONTRADICTED claim that affects Regatta's "first-class Linear support" promise, and the GitHub `userContentEdits` framing is more confident than the API actually supports.
 

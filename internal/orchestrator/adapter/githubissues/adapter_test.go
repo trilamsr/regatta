@@ -122,7 +122,7 @@ func (c *captureLog) Lines() []string {
 	return out
 }
 
-func newAdapter(t *testing.T, gh ghclient.Client, log *captureLog, now func() time.Time) schemas.SpecAdapter {
+func newAdapter(t *testing.T, gh ghclient.Client, log *captureLog, now func() time.Time) schemas.WorkItemSource {
 	t.Helper()
 	cfg := GitHubIssuesConfig{
 		Client: gh,

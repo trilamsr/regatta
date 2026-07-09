@@ -22,10 +22,10 @@ func warnIfStubWithGitHubIssues(spawnerName, repoRoot string, logger *slog.Logge
 		}
 		return
 	}
-	if cfg == nil || cfg.SpecAdapter == nil || cfg.SpecAdapter.Type != validateconfig.SpecAdapterTypeGitHubIssues {
+	if cfg == nil || cfg.WorkItemSource == nil || cfg.WorkItemSource.Type != validateconfig.WorkItemSourceTypeGitHubIssues {
 		return
 	}
 	logger.Warn("spawner.stub_with_github_issues",
-		"hint", "spec_adapter.type=github_issues but -spawner=stub; agents will spawn as fake stubs (pid=-1) and PR watcher will be disabled. Pass -spawner=claude to dispatch real agents.",
+		"hint", "work_item_source.type=github_issues but -spawner=stub; agents will spawn as fake stubs (pid=-1) and PR watcher will be disabled. Pass -spawner=claude to dispatch real agents.",
 	)
 }

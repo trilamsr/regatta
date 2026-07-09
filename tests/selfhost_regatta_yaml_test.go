@@ -52,20 +52,20 @@ func TestSelfHost_RegattaYAML_DeclaresGithubIssues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.SpecAdapter == nil {
-		t.Fatal("repo-root regatta.yaml does not declare spec_adapter; brief §3 requires github_issues for self-host")
+	if cfg.WorkItemSource == nil {
+		t.Fatal("repo-root regatta.yaml does not declare work_item_source; brief §3 requires github_issues for self-host")
 	}
-	if got, want := cfg.SpecAdapter.Type, validate.SpecAdapterTypeGitHubIssues; got != want {
-		t.Fatalf("spec_adapter.type = %q; want %q (brief §3 self-host pin)", got, want)
+	if got, want := cfg.WorkItemSource.Type, validate.WorkItemSourceTypeGitHubIssues; got != want {
+		t.Fatalf("work_item_source.type = %q; want %q (brief §3 self-host pin)", got, want)
 	}
-	if got, want := cfg.SpecAdapter.Selector, "label:autonomous"; got != want {
-		t.Fatalf("spec_adapter.selector = %q; want %q (FEED phase intake gate per PR #1206)", got, want)
+	if got, want := cfg.WorkItemSource.Selector, "label:autonomous"; got != want {
+		t.Fatalf("work_item_source.selector = %q; want %q (FEED phase intake gate per PR #1206)", got, want)
 	}
-	if got, want := cfg.SpecAdapter.AcceptanceSection, "## Acceptance criteria"; got != want {
-		t.Fatalf("spec_adapter.acceptance_section = %q; want %q", got, want)
+	if got, want := cfg.WorkItemSource.AcceptanceSection, "## Acceptance criteria"; got != want {
+		t.Fatalf("work_item_source.acceptance_section = %q; want %q", got, want)
 	}
-	if got, want := cfg.SpecAdapter.DefaultLane, "self-host"; got != want {
-		t.Fatalf("spec_adapter.default_lane = %q; want %q (lane backfill for unlabelled issues per #1117)", got, want)
+	if got, want := cfg.WorkItemSource.DefaultLane, "self-host"; got != want {
+		t.Fatalf("work_item_source.default_lane = %q; want %q (lane backfill for unlabelled issues per #1117)", got, want)
 	}
 }
 

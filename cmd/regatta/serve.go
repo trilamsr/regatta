@@ -177,7 +177,7 @@ func runServe(args []string) int {
 	go watchSecretsExport(ctx, secretCache, slogger)
 	startSecretsRotationLoop(ctx, secretCache, secretFetcher, slogger, db)
 
-	ad, err := buildSpecAdapter(f, slogger)
+	ad, err := buildWorkItemSource(f, slogger)
 	if err != nil {
 		logger.Printf("adapter: %v", err)
 		return 2

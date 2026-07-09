@@ -1,4 +1,4 @@
-// Package githubissues implements schemas.SpecAdapter over GitHub Issues labelled `autonomous` (MVR-1-T4); deterministic projection, LLM inference forbidden (spec §6.2).
+// Package githubissues implements schemas.WorkItemSource over GitHub Issues labelled `autonomous` (MVR-1-T4); deterministic projection, LLM inference forbidden (spec §6.2).
 package githubissues
 
 import (
@@ -53,7 +53,7 @@ type projection struct {
 	DedupKey           string
 }
 
-// parseIssueBody normalizes body bytes (CRLF→LF + NFC) and extracts metadata, dedup marker, and acceptance criteria; SkipReason on projection failure (spec §7.6). When the body has no `lane:` metadata, defaultLane (when non-empty) backfills Lane so adaptersync stops emitting `empty_lane` WARN on operator-filed issues (#1117, mirrors the scheduler default added in #1048). defaultLane is NOT validated against the scheduler's LaneCaps map at parse time — the operator owns matching `spec_adapter.default_lane` to one of their configured lane caps; an unknown lane reaches the scheduler and triggers downstream `unknown_lane` handling rather than a panic. Tightening to YAML-load validation is the reopen-trigger for #1117.
+// parseIssueBody normalizes body bytes (CRLF→LF + NFC) and extracts metadata, dedup marker, and acceptance criteria; SkipReason on projection failure (spec §7.6). When the body has no `lane:` metadata, defaultLane (when non-empty) backfills Lane so adaptersync stops emitting `empty_lane` WARN on operator-filed issues (#1117, mirrors the scheduler default added in #1048). defaultLane is NOT validated against the scheduler's LaneCaps map at parse time — the operator owns matching `work_item_source.default_lane` to one of their configured lane caps; an unknown lane reaches the scheduler and triggers downstream `unknown_lane` handling rather than a panic. Tightening to YAML-load validation is the reopen-trigger for #1117.
 func parseIssueBody(rawBody, defaultLane string) (projection, SkipReason, error) {
 	body := normalize(rawBody)
 	var p projection

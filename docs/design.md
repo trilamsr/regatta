@@ -48,7 +48,7 @@ Every other choice traces to these.
 
 - **The spec is the oracle.** Repos already encode "done" in
   machine-readable form (acceptance criteria, RFC rubrics, test
-  plans). Regatta plugs into that surface via `SpecAdapter`
+  plans). Regatta plugs into that surface via `WorkItemSource`
   ([§Spec contract](#spec-contract)); it does not invent a new format.
 - **The platform enforces what the prompt cannot.** Every public AI-
   agent incident -- Replit's prod-DB wipe, EchoLeak, Cursor MCPoison
@@ -81,7 +81,7 @@ abandoned and the doc reverts to base Regatta.
 ### Companion artifacts
 
 `docs/incidents.md` (32 incidents + full P1-P13 prose);
-`contracts/schemas/spec_adapter.go` (Go interface, normative);
+`contracts/schemas/work_item_source.go` (Go interface, normative);
 `contracts/schemas/{gate_result,work_item}.schema.json` (JSON Schemas);
 `contracts/schemas/regatta.v1.cue` (config schema); `testdata/gates/l0/` (L0
 fixture corpus contract); `testdata/gates/canary/` (canary archetype
@@ -260,7 +260,7 @@ from the 2026 reward-hacking corpus and the Preference Leakage ICLR
 ### Architecture
 
 A standalone Go daemon (the **Regatta orchestrator**) holds the
-`SpecAdapter`, the scheduler with sorted-lock acquisition, the agent
+`WorkItemSource`, the scheduler with sorted-lock acquisition, the agent
 spawner (`claude --resume`), the PR watcher (GitHub/GitLab adapter),
 the gate runner (parallel L0-Lx), the rejection router (K=3 then
 escalate), the canary injector (~5%), supervisor limits (cgroup-
@@ -271,8 +271,8 @@ opens a PR; the gate stack runs on every push.
 ### Spec contract
 
 A work item is the agent's complete spec. Regatta declares a
-`SpecAdapter` interface
-([`contracts/schemas/spec_adapter.go`](../contracts/schemas/spec_adapter.go) -- normative);
+`WorkItemSource` interface
+([`contracts/schemas/work_item_source.go`](../contracts/schemas/work_item_source.go) -- normative);
 the repo selects an implementation.
 
 Built-in adapters: `github_issues`, `gitlab_issues`,
@@ -404,7 +404,7 @@ multi-tenant service are deferred.
 Responsibilities:
 
 1. **SpecWatcher** -- polls or webhook-subscribes the configured
-   `SpecAdapter`; builds a work queue of items whose dependency chain
+   `WorkItemSource`; builds a work queue of items whose dependency chain
    is satisfied.
 2. **Scheduler** -- caps concurrency per lane (default 1); holds soft
    locks on hotspot files declared in `regatta.yaml`. **Lock
@@ -491,7 +491,7 @@ example:
 ```yaml
 version: 1
 repo: { host: github, owner: example, name: myproject }
-spec_adapter: { type: github_issues, selector: 'label:planned' }
+work_item_source: { type: github_issues, selector: 'label:planned' }
 ci: { command: 'npm test && npm run lint' }
 gates:
   - { id: spec_conformance, type: ai, model: claude-opus-4-7,   severity_block: ['fail'] }
@@ -1408,7 +1408,7 @@ peer-reviewed.
 ## References
 
 - `incidents.md` -- AI-agent incident catalog + full prose for the Trap Catalog patterns.
-- `contracts/schemas/spec_adapter.go` -- normative Go interface.
+- `contracts/schemas/work_item_source.go` -- normative Go interface.
 - `contracts/schemas/gate_result.schema.json` -- normative gate output schema.
 - `contracts/schemas/work_item.schema.json` -- normative work item schema.
 - `contracts/schemas/regatta.v1.cue` -- CUE schema for `regatta.yaml`.

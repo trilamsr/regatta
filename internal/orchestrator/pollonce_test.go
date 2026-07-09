@@ -52,7 +52,7 @@ func (listFailingAdapter) Capabilities() schemas.Capabilities { return schemas.C
 // empty briefs FS so PollOnce exercises the flock -> AdapterSync ->
 // BriefLoader chain. Scheduler is included so the Config's required-
 // field invariant holds even though PollOnce no longer calls Tick.
-func newPollOnceHarness(t *testing.T, ad adaptersync.SpecAdapter) (*orchestrator.Orchestrator, *state.DB, string) {
+func newPollOnceHarness(t *testing.T, ad adaptersync.WorkItemSource) (*orchestrator.Orchestrator, *state.DB, string) {
 	t.Helper()
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "state.db")

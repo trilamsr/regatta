@@ -51,7 +51,7 @@ Rejected alternatives (per parent spec §11, 70% cut): bespoke prereg DSL (CUE a
 
 ```
 contracts/schemas/
-  spec_adapter.go      // +Kind=research enum; +prereg.dataset.sha256; +baselines[].artifact_sha256
+  work_item_source.go      // +Kind=research enum; +prereg.dataset.sha256; +baselines[].artifact_sha256
 internal/gate/
   phack/, statpower/, leakage/, stattest/   // four gate packages
 policy/research/

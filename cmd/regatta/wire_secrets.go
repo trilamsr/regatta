@@ -42,7 +42,7 @@ func startSecretsRotationLoop(ctx context.Context, cache *secrets.Cache, fetcher
 // envAnthropicAPIKey is the legacy env var name for the Anthropic API key, referenced from secretEnvOverrides + doctor.go.
 const envAnthropicAPIKey = "ANTHROPIC_API_KEY" //nolint:gosec // env-var NAME, not a credential value
 
-// envLinearAPIKey is the legacy env var name for the Linear API key (MAY-91), read by buildSpecAdapter after the router exports it.
+// envLinearAPIKey is the legacy env var name for the Linear API key (MAY-91), read by buildWorkItemSource after the router exports it.
 const envLinearAPIKey = "LINEAR_API_KEY" //nolint:gosec // env-var NAME, not a credential value
 
 var secretEnvOverrides = map[string][]string{
@@ -54,7 +54,7 @@ var secretEnvOverrides = map[string][]string{
 	secrets.KeyApprovalToken: {"REGATTA_APPROVAL_TOKEN_KEY"},
 }
 
-// buildSecretFetcherFromRepo reads regatta.yaml at repoRoot, returning a Fetcher built from `secrets:` when present, else the Default chain. SecretSpec §11 mitigates yaml-typo risk via CUE rejection — so a non-ENOENT load error MUST surface (WARN + non-nil err) rather than silently fall back. A missing regatta.yaml stays silent and returns Default — zero-config deployments are the documented happy path (mirrors `buildSpecAdapter` #867 contract).
+// buildSecretFetcherFromRepo reads regatta.yaml at repoRoot, returning a Fetcher built from `secrets:` when present, else the Default chain. SecretSpec §11 mitigates yaml-typo risk via CUE rejection — so a non-ENOENT load error MUST surface (WARN + non-nil err) rather than silently fall back. A missing regatta.yaml stays silent and returns Default — zero-config deployments are the documented happy path (mirrors `buildWorkItemSource` #867 contract).
 func buildSecretFetcherFromRepo(ctx context.Context, repoRoot string, logger *slog.Logger) (secrets.Fetcher, error) {
 	cfgPath := filepath.Join(repoRoot, "regatta.yaml")
 	cfg, loadErr := validate.LoadConfigFile(cfgPath)

@@ -134,7 +134,7 @@ func startServe(ctx context.Context, t *testing.T, cfg e2eConfig) (*exec.Cmd, fu
 	if err := os.MkdirAll(repoRoot+"/.regatta", 0o755); err != nil {
 		t.Fatalf("mkdir .regatta: %v", err)
 	}
-	yaml := fmt.Sprintf(`spec_adapter:
+	yaml := fmt.Sprintf(`work_item_source:
   type: github_issues
   repo: %s
   label: %s

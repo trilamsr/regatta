@@ -28,7 +28,7 @@ func TestBootSecretsRequired_FailClosed(t *testing.T) {
 			unsetVars:  []string{"GH_TOKEN", "GITHUB_TOKEN"},
 			yaml: `version: 1
 repo: {host: github, owner: trilamsr, name: regatta}
-spec_adapter: {type: github_issues, selector: "label:autonomous"}
+work_item_source: {type: github_issues, selector: "label:autonomous"}
 ci: {command: "go test ./..."}
 gates:
   - id: human_merge
@@ -49,7 +49,7 @@ safety: {destructive_ops_deny: [], agent_creds_scope: dev_only}
 			unsetVars: []string{"LINEAR_API_KEY"},
 			yaml: `version: 1
 repo: {host: github, owner: trilamsr, name: regatta}
-spec_adapter: {type: linear, team: TEAM}
+work_item_source: {type: linear, team: TEAM}
 ci: {command: "go test ./..."}
 gates:
   - id: human_merge

@@ -1,5 +1,5 @@
 // Package linear consumes work items from Linear via the GraphQL API,
-// projecting them onto schemas.SpecAdapter so the orchestrator can treat
+// projecting them onto schemas.WorkItemSource so the orchestrator can treat
 // Linear issues identically to github_issues / markdown_catalog sources.
 // Read-only: UpdateStatus returns ErrAdapterUnsupported (write-back is a
 // Phase-X follow-up; the self-host loop only needs ingestion).
@@ -45,7 +45,7 @@ const (
 	stateCanceled   = "Canceled"
 )
 
-// LinearCatalogConfig configures a Linear-backed schemas.SpecAdapter;
+// LinearCatalogConfig configures a Linear-backed schemas.WorkItemSource;
 // APIKey + Team are required, the rest default-fill in NewLinearCatalog.
 type LinearCatalogConfig struct {
 	// APIKey is the Linear personal API key; sent verbatim in the
@@ -65,10 +65,10 @@ type LinearCatalogConfig struct {
 	MinPoll time.Duration
 }
 
-// NewLinearCatalog returns a Linear-backed schemas.SpecAdapter; fails
+// NewLinearCatalog returns a Linear-backed schemas.WorkItemSource; fails
 // closed when APIKey or Team is unset so a misconfigured boot surfaces
 // loudly rather than polling an unauthenticated endpoint.
-func NewLinearCatalog(cfg LinearCatalogConfig) (schemas.SpecAdapter, error) {
+func NewLinearCatalog(cfg LinearCatalogConfig) (schemas.WorkItemSource, error) {
 	if cfg.APIKey == "" {
 		return nil, errors.New("linear: Config.APIKey is required")
 	}
@@ -92,7 +92,7 @@ type adapterImpl struct {
 }
 
 // listQuery pulls the §4.1 field set with team+state filters; pagination is
-// internal per the SpecAdapter contract.
+// internal per the WorkItemSource contract.
 const listQuery = `query Issues($team: String!, $states: [String!], $first: Int!, $after: String) {
   issues(
     filter: { team: { key: { eq: $team } }, state: { name: { in: $states } } }

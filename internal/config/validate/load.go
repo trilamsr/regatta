@@ -16,16 +16,16 @@ import (
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-// SpecAdapterTypeMarkdownCatalog mirrors the CUE discriminator; cmd/regatta uses it to decide whether spec_adapter.root is meaningful.
-const SpecAdapterTypeMarkdownCatalog = "markdown_catalog"
+// WorkItemSourceTypeMarkdownCatalog mirrors the CUE discriminator; cmd/regatta uses it to decide whether work_item_source.root is meaningful.
+const WorkItemSourceTypeMarkdownCatalog = "markdown_catalog"
 
-// SpecAdapterTypeGitHubIssues mirrors the CUE discriminator for the
+// WorkItemSourceTypeGitHubIssues mirrors the CUE discriminator for the
 // MVR-1-T4 github_issues adapter; cmd/regatta wires it when set.
-const SpecAdapterTypeGitHubIssues = "github_issues"
+const WorkItemSourceTypeGitHubIssues = "github_issues"
 
-// SpecAdapterTypeLinear mirrors the CUE discriminator for the Linear
+// WorkItemSourceTypeLinear mirrors the CUE discriminator for the Linear
 // read-adapter (MAY-91); cmd/regatta wires it when set.
-const SpecAdapterTypeLinear = "linear"
+const WorkItemSourceTypeLinear = "linear"
 
 // LoadFile reads path and runs LoadBytes on its contents.
 func LoadFile(path string) error {
@@ -83,7 +83,7 @@ type Prompts struct {
 type Config struct {
 	Prompts          *Prompts          `yaml:"prompts,omitempty" json:"prompts,omitempty"`
 	Repo             *Repo             `yaml:"repo,omitempty" json:"repo,omitempty"`
-	SpecAdapter      *SpecAdapter      `yaml:"spec_adapter,omitempty" json:"spec_adapter,omitempty"`
+	WorkItemSource      *WorkItemSource      `yaml:"work_item_source,omitempty" json:"work_item_source,omitempty"`
 	Safety           *Safety           `yaml:"safety,omitempty" json:"safety,omitempty"`
 	Scheduler        *Scheduler        `yaml:"scheduler,omitempty" json:"scheduler,omitempty"`
 	AlarmWebhook     *AlarmWebhook     `yaml:"alarm_webhook,omitempty" json:"alarm_webhook,omitempty"`
@@ -190,8 +190,8 @@ type Authz struct {
 	ReloadFsnotify *bool `yaml:"reload_fsnotify,omitempty" json:"reload_fsnotify,omitempty"`
 }
 
-// SpecAdapter is the typed view of `regatta.yaml::spec_adapter`; per-type fields are unioned and zero for the non-matching type.
-type SpecAdapter struct {
+// WorkItemSource is the typed view of `regatta.yaml::work_item_source`; per-type fields are unioned and zero for the non-matching type.
+type WorkItemSource struct {
 	Type string `yaml:"type" json:"type"`
 	// Root is the markdown_catalog directory containing `.regatta/items/*.md`; CUE-defaulted to "." for the self-host layout. Empty for non-markdown_catalog types.
 	Root string `yaml:"root,omitempty" json:"root,omitempty"`
@@ -242,15 +242,15 @@ func (c *Config) AlarmWebhookConfig() *AlarmWebhook {
 	return c.AlarmWebhook
 }
 
-// MarkdownCatalogRoot returns the resolved spec_adapter.root when the adapter type is markdown_catalog; empty for every other type. Empty result keeps the --items-root flag default unchanged.
+// MarkdownCatalogRoot returns the resolved work_item_source.root when the adapter type is markdown_catalog; empty for every other type. Empty result keeps the --items-root flag default unchanged.
 func (c *Config) MarkdownCatalogRoot() string {
-	if c == nil || c.SpecAdapter == nil {
+	if c == nil || c.WorkItemSource == nil {
 		return ""
 	}
-	if c.SpecAdapter.Type != SpecAdapterTypeMarkdownCatalog {
+	if c.WorkItemSource.Type != WorkItemSourceTypeMarkdownCatalog {
 		return ""
 	}
-	return c.SpecAdapter.Root
+	return c.WorkItemSource.Root
 }
 
 // SchedulerParallelCap returns the resolved `scheduler.parallel_cap` value
@@ -272,7 +272,7 @@ func (c *Config) LowRiskAutoMergeConfig() LowRiskAutoMerge {
 	return *c.LowRiskAutoMerge
 }
 
-// LoadConfig CUE-validates yaml bytes (same gate as LoadBytes) then decodes the unified value into a typed Config — unified value carries CUE defaults concretely (omitted `spec_adapter.root: .` surfaces as ".", not "").
+// LoadConfig CUE-validates yaml bytes (same gate as LoadBytes) then decodes the unified value into a typed Config — unified value carries CUE defaults concretely (omitted `work_item_source.root: .` surfaces as ".", not "").
 func LoadConfig(data []byte) (*Config, error) {
 	if len(data) == 0 {
 		return nil, errors.New("regatta.yaml is empty")

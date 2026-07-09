@@ -14,7 +14,7 @@ repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: github_issues
   selector: "label:autonomous"
 ci:
@@ -39,7 +39,7 @@ repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: markdown_catalog
   root: .regatta/items
 ci:

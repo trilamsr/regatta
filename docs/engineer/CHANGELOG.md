@@ -15,7 +15,7 @@ Scope: `docs/engineer/specs/` + `docs/engineer/briefs/`. Phase-X exploratory spe
 
 - Cross-repo roadmap auto-discovery + zero-touch bootstrap: `regatta init` scans org for `.regatta/` bundles and stitches them into a unified board without manual wiring.
 - `docs/engineer/dispatch-templates/*.md` modular split (#985): monolithic dispatch template split per-role (implementer, reviewer, designer, triage) so worker prompts only carry the relevant slice.
-- External-Platform Spec Adapters: spec adapter tier discipline generalized beyond GitHub Issues — Linear, Jira, YouTrack land on the same `SpecAdapter` interface.
+- External-Platform Spec Adapters: spec adapter tier discipline generalized beyond GitHub Issues — Linear, Jira, YouTrack land on the same `WorkItemSource` interface.
 - Provider-halt gate: pre-call gate refuses to spawn when the target LLM provider is degraded per health probe; prevents cost burn on known outages.
 - SOC 2 readiness roadmap: TSC taxonomy, in-scope boundary, control-implementation sequence.
 - Svelte console UX design: dashboard visual overhaul; anchors dashboard + mission-control aesthetic thread.
@@ -29,7 +29,7 @@ Scope: `docs/engineer/specs/` + `docs/engineer/briefs/`. Phase-X exploratory spe
 ## 2026-06-04
 
 - BudgetReconciledPayload float-field deprecation (#709): sequenced cutover from `float64` cost fields to fixed-point `int64` cents; two-release deprecation with byte-equal replay parity.
-- MVR-1-T4 github_issues spec adapter impl (#850): first tier-B adapter under the SpecAdapter interface; consumed by cross-repo roadmap discovery.
+- MVR-1-T4 github_issues spec adapter impl (#850): first tier-B adapter under the WorkItemSource interface; consumed by cross-repo roadmap discovery.
 - Operator Console Phase-S UI roadmap: S1→S2→S3 sequence for the operator dashboard alongside the substrate cutover.
 - Scheduler `filter.Apply` monomorphization bench (#753): ns/op + B/op + allocs/op captured across the 3 instantiation sites with stripped `cmd/regatta` binary-size baseline for the monomorphization cost debate.
 

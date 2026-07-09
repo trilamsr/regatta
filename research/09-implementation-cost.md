@@ -213,7 +213,7 @@ during reap).
 
 ### 2.2 CPU, RAM, network
 
-- **CPU:** The orchestrator itself is sleepy (polling SpecAdapter,
+- **CPU:** The orchestrator itself is sleepy (polling WorkItemSource,
   reading Anthropic JSON, writing sqlite). Each agent subprocess is a
   Claude SDK client that's mostly IO-bound. L1 (repo CI) is the only
   potentially heavy load — `npm test`, `pytest`, `go test` can pin
@@ -531,7 +531,7 @@ no parallel team):
 | Week | Deliverable | Hours est | Confidence |
 |---|---|---|---|
 | **1** | Repo scaffold, sqlite schema migration, CUE config loader, `regatta validate-config` command. WorkItem + GateResult schemas wired (JSON Schema + CUE). | 35 | High |
-| **2** | SpecAdapter interface + `github_issues` adapter + `markdown_catalog` adapter. `regatta validate-spec` + DAG validation. NFC + invisible-glyph normalization (P10). | 40 | High |
+| **2** | WorkItemSource interface + `github_issues` adapter + `markdown_catalog` adapter. `regatta validate-spec` + DAG validation. NFC + invisible-glyph normalization (P10). | 40 | High |
 | **3** | L0 deterministic gate + fixture corpus (≥30 fixtures by end of week, on track to 200). L1 shell-out gate. L2 PR-body validator. Wire `regatta gate-run --pr` as a one-shot tool. | 40 | High |
 | **4** | AgentSpawner: shell out to `claude` CLI, worktree creation via bare-clone+worktree-add, session capture into sqlite. Cgroups v2 limits via `containerd/cgroups/v3`. Single-PR end-to-end demo. | 40 | Med |
 | **5** | L3 + L4 + L5 SDK clients with prompt caching, structured-output schema validation, `GateResult` emission, HMAC signing. PR-comment posting via `google/go-github`. | 40 | Med |
@@ -548,7 +548,7 @@ possible if (and only if):
   of acceptance-criteria text).
 - The 8-archetype canary corpus is reused from `gates/canary/testdata/`
   rather than designed from scratch.
-- The SpecAdapter ships with only `github_issues` + `markdown_catalog`
+- The WorkItemSource ships with only `github_issues` + `markdown_catalog`
   in v3.1, deferring Jira/Linear/GitLab to v3.2.
 - No model-output regressions during build (a 1-week incident like
   the March 2026 Claude Code cache regression eats the buffer).
@@ -639,7 +639,7 @@ team, 15 PRs/wk."**
 
 9. **README** — change "single-lane mode ~6–8 weeks" to
    "**single-lane mode ~8 weeks (6 with no interruptions, 10 if
-   touching SpecAdapter for a custom backend)**."
+   touching WorkItemSource for a custom backend)**."
 
 ---
 

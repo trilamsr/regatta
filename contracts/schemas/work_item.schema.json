@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/trilamsr/regatta/schemas/work_item.schema.json",
   "title": "WorkItem",
-  "description": "A unit of planned work the fleet may pick up. Emitted by every SpecAdapter. See schemas/spec_adapter.go for the Go form.",
+  "description": "A unit of planned work the fleet may pick up. Emitted by every WorkItemSource. See schemas/work_item_source.go for the Go form.",
   "type": "object",
   "required": ["id", "title", "acceptance_criteria", "status", "source"],
   "additionalProperties": false,

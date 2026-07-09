@@ -44,16 +44,16 @@ regatta validate-config --config ./regatta.yaml
 ```
 
 Every required field is named in the file: `version`, `repo`,
-`spec_adapter`, `ci.command`, `gates`, `safety`. Defaults from
+`work_item_source`, `ci.command`, `gates`, `safety`. Defaults from
 `contracts/schemas/regatta.v1.cue` apply to everything else; the full
 surface is in [`examples/full/regatta.yaml`](../../examples/full/regatta.yaml)
 and field-by-field semantics live in [configure.md](configure.md).
 
 For a markdown-driven workflow (recommended for self-host — no GitHub
-Issues round-trip), switch `spec_adapter`:
+Issues round-trip), switch `work_item_source`:
 
 ```yaml
-spec_adapter:
+work_item_source:
   type: markdown_catalog
   root: .   # items live at <repo>/.regatta/items/
 ```
@@ -133,7 +133,7 @@ regatta serve --repo . --spawner=claude
 
 What happens on the first tick:
 
-1. `spec_adapter` reads `.regatta/items/*.md`, inserts new rows into
+1. `work_item_source` reads `.regatta/items/*.md`, inserts new rows into
    `work_items`.
 2. Scheduler picks one spawnable work item per lane, opens a worktree
    under `.regatta/worktrees/`, signs a brief into
