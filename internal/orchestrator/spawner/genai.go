@@ -106,12 +106,40 @@ func ParseStream(ctx context.Context, tracer trace.Tracer, r io.Reader, onResult
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1<<20)
 
+	// scanCh decouples scanner.Scan (blocking on r.Read) from ctx.Done so a
+	// wedged claude subprocess whose stdout stalls past the init event does
+	// not hold ParseStream past ctx deadline (W-BUG10). One-slot buffered so
+	// the goroutine can exit even if ctx cancel wins the select race.
+	scanCh := make(chan bool, 1)
+	scanNext := func() { scanCh <- scanner.Scan() }
+	go scanNext()
+
 	var (
-		span     trace.Span
-		gotInit  bool
+		span    trace.Span
+		gotInit bool
 	)
-	for scanner.Scan() {
+	for {
+		var ok bool
+		select {
+		case <-ctx.Done():
+			if span != nil {
+				span.SetStatus(codes.Error, ctx.Err().Error())
+				span.SetAttributes(rotel.ErrorTypeAttr("stream_truncated"))
+				span.End()
+			}
+			return ctx.Err()
+		case ok = <-scanCh:
+		}
+		if !ok {
+			break
+		}
 		line := scanner.Bytes()
+		// Copy bytes off the scanner buffer before relaunching the goroutine
+		// — scanner.Bytes() is only valid until the next Scan call.
+		lineCopy := make([]byte, len(line))
+		copy(lineCopy, line)
+		line = lineCopy
+		go scanNext()
 		if len(line) == 0 {
 			continue
 		}
