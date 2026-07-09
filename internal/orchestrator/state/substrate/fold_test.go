@@ -2,7 +2,9 @@ package substrate_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -125,5 +127,84 @@ func TestSubstrate_FoldOrdersByWrittenAtThenID(t *testing.T) {
 	if events[0].ID != a.ID || events[1].ID != b.ID {
 		t.Fatalf("fold order: got [%s, %s] want [%s, %s]",
 			events[0].ID, events[1].ID, a.ID, b.ID)
+	}
+}
+
+// TestSubstrate_FoldPropagatesScanErrorMidIteration pins that a Scan failure on a mid-loop row aborts the fold with nil slice + wrapped error (W-COV4).
+func TestSubstrate_FoldPropagatesScanErrorMidIteration(t *testing.T) {
+	ctx := context.Background()
+	db := openMigratedDB(t)
+	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
+	// Two clean rows precede the poisoned row; sqlite's non-STRICT
+	// INTEGER affinity accepts a TEXT literal into schema_version, so
+	// rows.Scan into *int64 fails on that row alone. The poisoned row
+	// carries a written_at between the clean rows so Fold's ORDER BY
+	// (written_at, id) places the failure mid-iteration.
+	clean1 := mkEvent(0xe1, "run-P", substrate.KindHeartbeat,
+		`{"work_item_id":"WI-P","timestamp":1}`, now)
+	clean2 := mkEvent(0xe2, "run-P", substrate.KindHeartbeat,
+		`{"work_item_id":"WI-P","timestamp":2}`, now.Add(2*time.Second))
+	if err := appendEventTx(ctx, t, db, clean1); err != nil {
+		t.Fatalf("clean1: %v", err)
+	}
+	if err := appendEventTx(ctx, t, db, clean2); err != nil {
+		t.Fatalf("clean2: %v", err)
+	}
+
+	poisonID := substrate.Mint(now.Add(time.Second))
+	_, err := db.ExecContext(ctx,
+		`INSERT INTO substrate_events
+		   (id, run_id, work_item_id, tenant_id, trace_id, span_id,
+		    kind, key, payload_json, blob_digest, supersedes,
+		    written_by, written_at, schema_version, nonce,
+		    sig_alg, sig_key_id, sig_mac)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		poisonID, "run-P", nil, substrate.DefaultTenantID, "", "",
+		string(substrate.KindHeartbeat), "",
+		`{"work_item_id":"WI-P","timestamp":1}`, "", nil,
+		"tester", now.Add(time.Second).UnixMilli(), "not_an_int",
+		"aa112233445566778899aabbccddeeff",
+		"HMAC-SHA256", testKeyID,
+		"0000000000000000000000000000000000000000000000000000000000000000",
+	)
+	if err != nil {
+		t.Fatalf("poison insert: %v", err)
+	}
+
+	out, err := substrate.Fold(ctx, db, "run-P", substrate.KindHeartbeat)
+	if err == nil {
+		t.Fatalf("Fold: err=nil want scan error; out=%v", out)
+	}
+	if out != nil {
+		t.Fatalf("Fold: partial slice leaked on scan error: %v", out)
+	}
+	if !strings.Contains(err.Error(), "fold scan") {
+		t.Fatalf("Fold: err=%v want wrapped %q prefix", err, "substrate: fold scan")
+	}
+}
+
+// TestSubstrate_FoldPropagatesQueryError pins that a QueryContext failure returns before defer registration without panic (W-COV4).
+func TestSubstrate_FoldPropagatesQueryError(t *testing.T) {
+	db := openMigratedDB(t)
+	// Closing the DB before the call forces QueryContext to fail at
+	// line 23; the defer on line 36 never registers because rows is nil.
+	// This asserts that failure path is panic-free and error-wrapped.
+	if err := db.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	out, err := substrate.Fold(context.Background(), db, "run-Q", substrate.KindHeartbeat)
+	if err == nil {
+		t.Fatalf("Fold on closed DB: err=nil want query error; out=%v", out)
+	}
+	if out != nil {
+		t.Fatalf("Fold on closed DB: out=%v want nil", out)
+	}
+	if !strings.Contains(err.Error(), "fold query") {
+		t.Fatalf("Fold on closed DB: err=%v want wrapped %q prefix", err, "substrate: fold query")
+	}
+	if !errors.Is(err, sql.ErrConnDone) && !strings.Contains(err.Error(), "closed") {
+		t.Fatalf("Fold on closed DB: err=%v want ErrConnDone or closed-DB error", err)
 	}
 }
