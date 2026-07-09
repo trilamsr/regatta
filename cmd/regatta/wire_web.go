@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -185,6 +188,34 @@ func newWebHandler(cfg listenerConfig) (http.Handler, error) {
 		Heartbeat:      cfg.Heartbeat,
 		TickInterval:   cfg.TickInterval,
 	}), nil
+}
+
+// startHTTPServer binds srv.Addr synchronously so an EADDRINUSE lands as
+// an actionable boot error at runServe's return-2 path rather than as a
+// stray goroutine log after the orchestrator has already started. The
+// prior wiring spawned httpSrv.ListenAndServe() in a goroutine — bind
+// errors surfaced only when the deferred Shutdown drained serveErr, so
+// operators saw a healthy-looking startup with a silently missing
+// listener. Returns a stop func the caller defers for graceful drain.
+func startHTTPServer(srv *http.Server, logger *log.Logger) (func(), error) {
+	addr := srv.Addr
+	if addr == "" {
+		addr = defaultListenerAddr
+	}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("bind %s: %w — free the port or set --addr", addr, err)
+	}
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- srv.Serve(ln) }()
+	return func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), listenerShutdownBudget)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+		if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Printf("listener: %v", err)
+		}
+	}, nil
 }
 
 // parsePublicURL extracts the Host (incl. port) from --public-url so OriginCheck
