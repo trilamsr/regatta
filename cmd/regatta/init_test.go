@@ -425,6 +425,51 @@ func TestInit_ForceJSONOverwriteEnvelope(t *testing.T) {
 	}
 }
 
+func TestInit_AutoDetectsRepoIdentityFromGitRemote(t *testing.T) {
+	orig := gitRemoteURL
+	t.Cleanup(func() { gitRemoteURL = orig })
+	gitRemoteURL = func() (string, error) { return "git@github.com:acme/widgets.git", nil }
+	dir := t.TempDir()
+	code, _, stderr := runInitInDir(t, dir, nil)
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, stderr)
+	}
+	if stderr != "" {
+		t.Fatalf("expected empty stderr on happy path; got %q", stderr)
+	}
+	yaml, err := os.ReadFile(filepath.Join(dir, "regatta.yaml"))
+	if err != nil {
+		t.Fatalf("read yaml: %v", err)
+	}
+	if !bytes.Contains(yaml, []byte("owner: acme\n")) {
+		t.Errorf("expected substituted owner: acme; got:\n%s", yaml)
+	}
+	if !bytes.Contains(yaml, []byte("name: widgets\n")) {
+		t.Errorf("expected substituted name: widgets; got:\n%s", yaml)
+	}
+}
+
+func TestInit_UnmatchedRemoteEmitsWarn(t *testing.T) {
+	orig := gitRemoteURL
+	t.Cleanup(func() { gitRemoteURL = orig })
+	gitRemoteURL = func() (string, error) { return "git@gitlab.com:acme/widgets.git", nil }
+	dir := t.TempDir()
+	code, _, stderr := runInitInDir(t, dir, nil)
+	if code != 0 {
+		t.Fatalf("exit=%d stderr=%q", code, stderr)
+	}
+	if !strings.Contains(stderr, "WARN") {
+		t.Errorf("expected WARN on unmatched remote; got %q", stderr)
+	}
+	yaml, err := os.ReadFile(filepath.Join(dir, "regatta.yaml"))
+	if err != nil {
+		t.Fatalf("read yaml: %v", err)
+	}
+	if !bytes.Contains(yaml, []byte("owner: YOUR_ORG")) {
+		t.Errorf("expected placeholder owner; got:\n%s", yaml)
+	}
+}
+
 func TestInit_RefusesRegularFileAtRegattaPath(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, ".regatta"), []byte("not a dir\n"), 0o600); err != nil {

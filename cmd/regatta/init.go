@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/trilamsr/regatta/contracts/schemas"
@@ -61,6 +63,11 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "regatta init: internal: read embedded yaml: %v\n", err)
 		return 1
 	}
+	// Auto-detect owner/name from `git remote get-url origin` so the
+	// scaffold matches this repo instead of the embedded placeholder;
+	// on parse failure fall back to a placeholder + WARN so the operator
+	// sees the failure explicitly.
+	yamlBytes = substituteRepoIdentity(yamlBytes, stderr)
 	diffBytes, err := initAssets.ReadFile("init_assets/sample.diff")
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "regatta init: internal: read embedded sample.diff: %v\n", err)
@@ -291,4 +298,41 @@ func nilToEmpty(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// gitRemoteURL runs `git remote get-url origin` in cwd and returns the
+// trimmed URL; overridden in tests so we do not shell out.
+var gitRemoteURL = func() (string, error) {
+	out, err := exec.Command("git", "remote", "get-url", "origin").Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// remoteRE matches github.com URLs in ssh (git@) and https forms, e.g.
+// `git@github.com:trilamsr/regatta.git` or `https://github.com/trilamsr/regatta`.
+var remoteRE = regexp.MustCompile(`github\.com[:/]([^/]+)/([^/.]+)`)
+
+// substituteRepoIdentity rewrites the embedded `owner:` / `name:` lines
+// from `git remote get-url origin`. Non-git directories keep the embedded
+// `example / myproject` placeholder silently (no git remote means the
+// operator will hand-edit anyway). When the git command succeeds but the
+// URL doesn't match a github.com form we emit a WARN and drop
+// `YOUR_ORG # replace` / `YOUR_REPO # replace` so the gap is visible.
+func substituteRepoIdentity(yamlBytes []byte, stderr io.Writer) []byte {
+	url, err := gitRemoteURL()
+	if err != nil {
+		return yamlBytes
+	}
+	m := remoteRE.FindStringSubmatch(url)
+	if len(m) != 3 {
+		_, _ = fmt.Fprintf(stderr, "regatta init: WARN: `git remote get-url origin` returned %q which does not match a github.com URL; wrote placeholders in regatta.yaml\n", url)
+		yamlBytes = bytes.Replace(yamlBytes, []byte("  owner: example\n"), []byte("  owner: YOUR_ORG # replace\n"), 1)
+		yamlBytes = bytes.Replace(yamlBytes, []byte("  name: myproject\n"), []byte("  name: YOUR_REPO # replace\n"), 1)
+		return yamlBytes
+	}
+	yamlBytes = bytes.Replace(yamlBytes, []byte("  owner: example\n"), []byte("  owner: "+m[1]+"\n"), 1)
+	yamlBytes = bytes.Replace(yamlBytes, []byte("  name: myproject\n"), []byte("  name: "+m[2]+"\n"), 1)
+	return yamlBytes
 }
