@@ -6,12 +6,10 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log"
 	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -167,6 +165,10 @@ func runServe(args []string) int {
 	}
 	defer obsShutdown()
 
+	if err := ensureDBParent(f.DBPath); err != nil {
+		logger.Printf("db path: %v", err)
+		return 2
+	}
 	db, err := state.Open(ctx, state.DSN(f.DBPath))
 	if err != nil {
 		logger.Printf("open db: %v", err)
@@ -338,16 +340,12 @@ func runServe(args []string) int {
 		return 2
 	}
 	if httpSrv != nil {
-		serveErr := make(chan error, 1)
-		go func() { serveErr <- httpSrv.ListenAndServe() }()
-		defer func() {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), listenerShutdownBudget)
-			defer cancel()
-			_ = httpSrv.Shutdown(shutdownCtx)
-			if err := <-serveErr; err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Printf("listener: %v", err)
-			}
-		}()
+		stop, err := startHTTPServer(httpSrv, logger)
+		if err != nil {
+			logger.Printf("listener bind: %v", err)
+			return 2
+		}
+		defer stop()
 	}
 
 	emitServeStarted(ctx, db, bootStart, slogger)
