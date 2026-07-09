@@ -50,7 +50,7 @@ func serveEventDrawer(w http.ResponseWriter, r *http.Request, deps Dependencies)
 // eventVerb turns the substrate's state-machine event tokens into one short operator-readable sentence so the recent-activity panel reads as narrative not log noise. Unknown kinds fall through to template.HTMLEscapeString(e.Kind) so a future event_kind addition stays XSS-safe; the verb branches concatenate only numeric ids (%d-formatted) and static spans, while work_item_id values from PayloadJSON are routed through template.HTMLEscapeString before splicing — keep that invariant for any new payload-derived field.
 //
 //nolint:gosec // see godoc above — every branch returns either static HTML, %d-formatted numeric ids, HTMLEscapeString(kind), or HTMLEscapeString-wrapped payload chip values
-func eventVerb(e state.Event) template.HTML {
+func eventVerb(e state.StateEvent) template.HTML {
 	id := ""
 	if e.AgentID.Valid {
 		id = fmt.Sprintf(" <span class=\"strong\">#%d</span>", e.AgentID.Int64)

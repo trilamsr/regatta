@@ -91,7 +91,7 @@ type Reloader struct {
 
 	// OnReload fires after every doReload call, including no-op skips.
 	// Test hook for assertions (production wiring leaves nil).
-	OnReload func(Result)
+	OnReload func(PolicyReloadResult)
 
 	// Clock is the wall-clock source for the per-reload Duration
 	// stamp. Nil falls back to time.Now. Same shape as the rest of
@@ -100,8 +100,8 @@ type Reloader struct {
 	Clock func() time.Time
 }
 
-// Result is the per-reload report emitted to OnReload + Logger.
-type Result struct {
+// PolicyReloadResult is the per-reload report emitted to OnReload + Logger.
+type PolicyReloadResult struct {
 	Trigger        string
 	RevisionBefore string
 	RevisionAfter  string
@@ -366,7 +366,7 @@ func (r *Reloader) doReload(ctx context.Context, trigger string) {
 
 	revBefore := r.Authorizer.CurrentRevision(r.Tenant)
 	sha, _, err := r.Loader.ActiveBundle(ctx, r.Tenant)
-	res := Result{Trigger: trigger, RevisionBefore: revBefore, Duration: clock().Sub(start)}
+	res := PolicyReloadResult{Trigger: trigger, RevisionBefore: revBefore, Duration: clock().Sub(start)}
 	span.SetAttributes(
 		attribute.String("regatta.authz.reload.trigger", trigger),
 		attribute.String("regatta.authz.reload.revision_before", revBefore),
@@ -422,7 +422,7 @@ func (r *Reloader) doReload(ctx context.Context, trigger string) {
 	r.report(res)
 }
 
-func (r *Reloader) report(res Result) {
+func (r *Reloader) report(res PolicyReloadResult) {
 	if r.OnReload != nil {
 		r.OnReload(res)
 	}

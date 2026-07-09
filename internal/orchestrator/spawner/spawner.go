@@ -47,9 +47,9 @@ type Request struct {
 	AgentDestructiveOpsAllow []string
 }
 
-// Result reports spawned process identifiers the orchestrator records
+// SpawnResult reports spawned process identifiers the orchestrator records
 // in state.agents so a restart can adopt or reap the child.
-type Result struct {
+type SpawnResult struct {
 	PID       int
 	SessionID string
 }
@@ -58,7 +58,7 @@ type Result struct {
 // safe for concurrent calls (orchestrator may spawn multiple agents
 // in the same tick).
 type Spawner interface {
-	Spawn(ctx context.Context, req Request) (Result, error)
+	Spawn(ctx context.Context, req Request) (SpawnResult, error)
 }
 
 // Config holds Stub spawner tunables + deps; mirrors the Config.Logger
@@ -129,10 +129,10 @@ func New(cfg Config) *Stub {
 	return &Stub{db: cfg.DB, log: log, clock: clock, tracer: tracer}
 }
 
-// Spawn returns a deterministic synthetic Result. PID is a negative
+// Spawn returns a deterministic synthetic SpawnResult. PID is a negative
 // counter so it cannot collide with any real OS pid; SessionID embeds
 // the work-item ID for debugging.
-func (s *Stub) Spawn(ctx context.Context, req Request) (Result, error) {
+func (s *Stub) Spawn(ctx context.Context, req Request) (SpawnResult, error) {
 	// W6 spec §3.5: one `operator_invocation` span per spawn, parent
 	// of the T4 `llm_call` child opened by the stream-json parser.
 	_, span := s.tracer.Start(ctx, "operator_invocation",
@@ -151,7 +151,7 @@ func (s *Stub) Spawn(ctx context.Context, req Request) (Result, error) {
 	s.mu.Lock()
 	s.calls = append(s.calls, req)
 	s.mu.Unlock()
-	return Result{
+	return SpawnResult{
 		PID:       int(-n),
 		SessionID: fmt.Sprintf("stub-%d-%s", n, req.WorkItemID),
 	}, nil

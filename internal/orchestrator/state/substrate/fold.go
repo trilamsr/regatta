@@ -19,7 +19,7 @@ import (
 // Callers needing tenant- or work-item-scoped folds use indexed
 // helpers (FoldByWorkItem, FoldByTenant) — see lint-substrate-queries
 // which rejects unscoped substrate_events SELECTs in production code.
-func Fold(ctx context.Context, db *sql.DB, runID string, kind EventKind) ([]Event, error) {
+func Fold(ctx context.Context, db *sql.DB, runID string, kind EventKind) ([]SubstrateEvent, error) {
 	rows, err := db.QueryContext(ctx,
 		`SELECT id, run_id, work_item_id, tenant_id, trace_id, span_id,
 		        kind, key, payload_json, blob_digest, supersedes,
@@ -35,9 +35,9 @@ func Fold(ctx context.Context, db *sql.DB, runID string, kind EventKind) ([]Even
 	}
 	defer func() { _ = rows.Close() }()
 
-	var out []Event
+	var out []SubstrateEvent
 	for rows.Next() {
-		var e Event
+		var e SubstrateEvent
 		var workItemID, supersedes sql.NullString
 		var payload []byte
 		var kindStr string

@@ -11,7 +11,7 @@ import (
 // BenchmarkAppendEvent_HMACAndCanonOnly is Task 0 perf gate per spec §7 (target ≤ 500 ns/op).
 func BenchmarkAppendEvent_HMACAndCanonOnly(b *testing.B) {
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
-	e := substrate.Event{
+	e := substrate.SubstrateEvent{
 		ID:            "01J0000000000000000000000A",
 		RunID:         "run-B",
 		WorkItemID:    "WI-B",
@@ -41,7 +41,7 @@ func BenchmarkAppendEvent_HMACAndCanonOnly(b *testing.B) {
 // BenchmarkAppendEvent_PreCanonicalized is the F1 fast-path gate per spec §7 (#216, target ≤ 500 ns/op).
 func BenchmarkAppendEvent_PreCanonicalized(b *testing.B) {
 	now := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
-	e := substrate.Event{
+	e := substrate.SubstrateEvent{
 		ID:            "01J0000000000000000000000A",
 		RunID:         "run-B",
 		WorkItemID:    "WI-B",

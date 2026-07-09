@@ -128,7 +128,7 @@ func Backfill(ctx context.Context, cfg BackfillConfig) (BackfillResult, error) {
 		if err != nil {
 			return res, err
 		}
-		ev := substrate.Event{
+		ev := substrate.SubstrateEvent{
 			ID:            substrate.Mint(written),
 			RunID:         cfg.RunID,
 			WorkItemID:    witemID,

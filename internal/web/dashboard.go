@@ -62,7 +62,7 @@ type dashboardWorkItemsView struct {
 }
 
 type dashboardEventsView struct {
-	Rows      []state.Event
+	Rows      []state.StateEvent
 	EmptyHint string
 }
 
@@ -121,7 +121,7 @@ type dashboardWorkItemDetail struct {
 	state.WorkItem
 	Acceptance   string
 	StatusLabel  string
-	RecentEvents []state.Event
+	RecentEvents []state.StateEvent
 	// IssueURL is empty unless web.Config.GitHubRepo is wired. When set, the drawer
 	// renders a direct link to the upstream issue so the operator can verify context
 	// without a separate search step.

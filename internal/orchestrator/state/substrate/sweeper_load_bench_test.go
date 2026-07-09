@@ -107,13 +107,13 @@ func BenchmarkSubstrate_AppendUnderSweeperLoad(b *testing.B) {
 // newBenchEvent builds a valid substrate event the bench can append
 // repeatedly without tripping the UNIQUE(run_id, written_by, nonce)
 // replay guard — each event carries a fresh random nonce.
-func newBenchEvent(b *testing.B, runID string, at time.Time) substrate.Event {
+func newBenchEvent(b *testing.B, runID string, at time.Time) substrate.SubstrateEvent {
 	b.Helper()
 	var n [16]byte
 	if _, err := rand.Read(n[:]); err != nil {
 		b.Fatalf("rand nonce: %v", err)
 	}
-	return substrate.Event{
+	return substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         runID,
 		TenantID:      substrate.DefaultTenantID,

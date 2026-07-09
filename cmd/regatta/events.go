@@ -114,7 +114,7 @@ func runEventsTailWith(deps eventsTailDeps, args []string) int {
 }
 
 func emitEventsPage(stdout, stderr io.Writer, db *state.DB, ctx context.Context, kind string, agentID int64, cutoff time.Time, sinceID int64, limit int, format string, header bool) (int64, error) {
-	var rows []state.Event
+	var rows []state.StateEvent
 	var err error
 	cutoffUnix := int64(0)
 	if !cutoff.IsZero() {
@@ -171,7 +171,7 @@ type eventsRow struct {
 	CreatedAtUnix int64  `json:"created_at_unix"`
 }
 
-func emitEventsJSON(out io.Writer, evs []state.Event) error {
+func emitEventsJSON(out io.Writer, evs []state.StateEvent) error {
 	rows := make([]eventsRow, 0, len(evs))
 	for _, e := range evs {
 		row := eventsRow{
@@ -191,7 +191,7 @@ func emitEventsJSON(out io.Writer, evs []state.Event) error {
 	return enc.Encode(rows)
 }
 
-func emitEventsTable(out io.Writer, evs []state.Event, header bool) error {
+func emitEventsTable(out io.Writer, evs []state.StateEvent, header bool) error {
 	if header && len(evs) == 0 {
 		_, _ = fmt.Fprintln(out, "no events in window.")
 		return nil

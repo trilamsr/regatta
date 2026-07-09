@@ -44,7 +44,7 @@ func TestAuditVerify_DBSchemaSkew_SurfacesInOutput(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	writeVerdictEvent(t, ctx, dbPath, substrate.Event{
+	writeVerdictEvent(t, ctx, dbPath, substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         runID,
 		WorkItemID:    "WI-1",
@@ -125,7 +125,7 @@ func TestAuditVerify_NonDeterministicVerdict_FlagsVerifyOnly(t *testing.T) {
 	payloadBytes, _ := json.Marshal(p)
 
 	ctx := context.Background()
-	writeVerdictEvent(t, ctx, dbPath, substrate.Event{
+	writeVerdictEvent(t, ctx, dbPath, substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         runID,
 		WorkItemID:    "WI-2",
@@ -170,7 +170,7 @@ func TestAuditVerify_NonDeterministicVerdict_FlagsVerifyOnly(t *testing.T) {
 // one signed gate_verdict event, and closes the handle so the
 // CLI-under-test can open its own connection without racing against
 // sqlite's single-writer model.
-func writeVerdictEvent(t *testing.T, ctx context.Context, dbPath string, ev substrate.Event) {
+func writeVerdictEvent(t *testing.T, ctx context.Context, dbPath string, ev substrate.SubstrateEvent) {
 	t.Helper()
 	db, err := state.Open(ctx, state.DSN(dbPath))
 	if err != nil {
@@ -205,7 +205,7 @@ func writeVerdictEvent(t *testing.T, ctx context.Context, dbPath string, ev subs
 // corrupted on disk. Tests for those paths need to plant the row
 // shape directly so the audit-verify code under test sees the same
 // thing it would see in production.
-func writeRawVerdictEvent(t *testing.T, ctx context.Context, dbPath string, ev substrate.Event) {
+func writeRawVerdictEvent(t *testing.T, ctx context.Context, dbPath string, ev substrate.SubstrateEvent) {
 	t.Helper()
 	db, err := state.Open(ctx, state.DSN(dbPath))
 	if err != nil {
@@ -256,7 +256,7 @@ func TestAuditVerify_LegacyVerdictBackfill_ShowsUnknownLegacy(t *testing.T) {
 	legacyPayload := []byte(`{"gate_name":"cel-approval","pass":true,"reason":"ok","work_item_id":"WI-L"}`)
 
 	ctx := context.Background()
-	writeRawVerdictEvent(t, ctx, dbPath, substrate.Event{
+	writeRawVerdictEvent(t, ctx, dbPath, substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         runID,
 		WorkItemID:    "WI-L",
@@ -323,7 +323,7 @@ func TestAuditVerify_DecodeError_SurfacesInOutput(t *testing.T) {
 	brokenPayload := []byte(`{not json at all`)
 
 	ctx := context.Background()
-	writeRawVerdictEvent(t, ctx, dbPath, substrate.Event{
+	writeRawVerdictEvent(t, ctx, dbPath, substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         runID,
 		WorkItemID:    "WI-D",
@@ -395,7 +395,7 @@ func TestAuditVerify_UnsetKeyring_ExitsNonZero(t *testing.T) {
 	payloadBytes, _ := json.Marshal(p)
 
 	ctx := context.Background()
-	writeVerdictEvent(t, ctx, dbPath, substrate.Event{
+	writeVerdictEvent(t, ctx, dbPath, substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         runID,
 		WorkItemID:    "WI-K",

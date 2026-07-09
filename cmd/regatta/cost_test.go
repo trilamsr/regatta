@@ -532,7 +532,7 @@ func TestCostBackfill_CLI_TagFlagFlowsThrough(t *testing.T) {
 func seedCLIRunWindow(t *testing.T, ctx context.Context, db *sql.DB, runID string, start, end time.Time, key []byte, keyID string) {
 	t.Helper()
 	for i, at := range []time.Time{start, end} {
-		ev := substrate.Event{
+		ev := substrate.SubstrateEvent{
 			ID:            substrate.Mint(at),
 			RunID:         runID,
 			WorkItemID:    "WI-cli",

@@ -187,7 +187,7 @@ func (r *Router) sweepUnlabeled(ctx context.Context) error {
 // handle applies per-event side-effects. Returns nil for events the
 // router correctly drops (stale sha, agent not in gates_running,
 // missing agent_id) so the cursor can advance.
-func (r *Router) handle(ctx context.Context, ev state.Event) error {
+func (r *Router) handle(ctx context.Context, ev state.StateEvent) error {
 	if !ev.AgentID.Valid {
 		return nil
 	}

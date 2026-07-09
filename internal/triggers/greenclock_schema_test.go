@@ -29,7 +29,7 @@ func emitGreenClockResetThroughSchema(t *testing.T, kind substrate.EventKind, se
 		nonceBytes[i] = seed
 	}
 	at := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
-	e := substrate.Event{
+	e := substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         "run-greenclock-659",
 		TenantID:      substrate.DefaultTenantID,

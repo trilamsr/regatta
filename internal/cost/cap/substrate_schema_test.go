@@ -28,7 +28,7 @@ func emitCostCapEventThroughSchema(t *testing.T, kind substrate.EventKind, paylo
 		nonceBytes[i] = seed
 	}
 	at := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
-	e := substrate.Event{
+	e := substrate.SubstrateEvent{
 		ID:            substrate.Mint(at),
 		RunID:         "run-costcap-622",
 		TenantID:      substrate.DefaultTenantID,

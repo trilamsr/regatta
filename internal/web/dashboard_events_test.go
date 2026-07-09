@@ -13,7 +13,7 @@ import (
 
 // TestEventVerb_ExitedWithProviderCreditExhausted asserts agent.exited surfaces exit_reason as colored badge inline (#dashboard-exit-reason-badges).
 func TestEventVerb_ExitedWithProviderCreditExhausted(t *testing.T) {
-	ev := state.Event{
+	ev := state.StateEvent{
 		Kind:        "agent.exited",
 		PayloadJSON: `{"exit_reason":"provider_credit_exhausted","exit_code":1}`,
 	}
@@ -33,7 +33,7 @@ func TestEventVerb_ExitedWithProviderCreditExhausted(t *testing.T) {
 
 // TestEventVerb_SpawnCompletedShowsAgentAndWorkItem pins #1119: spawn.completed surfaces agent_id (Event.AgentID) + work_item_id (PayloadJSON) inline so 12 identical "ready" verbs become scannable.
 func TestEventVerb_SpawnCompletedShowsAgentAndWorkItem(t *testing.T) {
-	ev := state.Event{
+	ev := state.StateEvent{
 		Kind:        "spawn.completed",
 		PayloadJSON: `{"work_item_id":"BUG-1058","pid":12345}`,
 	}
@@ -53,7 +53,7 @@ func TestEventVerb_SpawnCompletedShowsAgentAndWorkItem(t *testing.T) {
 
 // TestEventVerb_SpawnFailedShowsAgentAndExitReason pins #1119: spawn.failed surfaces agent_id chip + exit_reason badge inline (currently exit_reason fires only for agent.exited).
 func TestEventVerb_SpawnFailedShowsAgentAndExitReason(t *testing.T) {
-	ev := state.Event{
+	ev := state.StateEvent{
 		Kind:        "spawn.failed",
 		PayloadJSON: `{"work_item_id":"BUG-1058","exit_reason":"provider_credit_exhausted"}`,
 	}
@@ -76,7 +76,7 @@ func TestEventVerb_SpawnFailedShowsAgentAndExitReason(t *testing.T) {
 
 // TestEventVerb_BriefLoadedShowsAgent pins #1119: brief.loaded surfaces agent_id + work_item_id chips so consecutive brief loads are distinguishable inline.
 func TestEventVerb_BriefLoadedShowsAgent(t *testing.T) {
-	ev := state.Event{
+	ev := state.StateEvent{
 		Kind:        "brief.loaded",
 		PayloadJSON: `{"work_item_id":"WORK-99"}`,
 	}
@@ -96,7 +96,7 @@ func TestEventVerb_BriefLoadedShowsAgent(t *testing.T) {
 
 // TestEventVerb_RecoveredCrashedShowsAgent pins #1119: recovered_crashed surfaces agent_id chip inline so the operator can trace which agent recovered without opening the drawer.
 func TestEventVerb_RecoveredCrashedShowsAgent(t *testing.T) {
-	ev := state.Event{
+	ev := state.StateEvent{
 		Kind:        "recovered_crashed",
 		PayloadJSON: `{}`,
 	}
@@ -113,7 +113,7 @@ func TestEventVerb_RecoveredCrashedShowsAgent(t *testing.T) {
 
 // TestEventVerb_EmptyAgentIDOmitsChip pins graceful degradation when AgentID.Valid is false — the chip is omitted, not rendered as "agent#0".
 func TestEventVerb_EmptyAgentIDOmitsChip(t *testing.T) {
-	e := state.Event{Kind: "spawn.completed", PayloadJSON: `{"work_item_id":"BUG-1058"}`}
+	e := state.StateEvent{Kind: "spawn.completed", PayloadJSON: `{"work_item_id":"BUG-1058"}`}
 	got := string(eventVerb(e))
 	if strings.Contains(got, "agent #0") || strings.Contains(got, "agent #") {
 		t.Fatalf("invalid AgentID rendered as agent#0: %q", got)
@@ -125,7 +125,7 @@ func TestEventVerb_EmptyAgentIDOmitsChip(t *testing.T) {
 
 // TestEventVerb_MalformedPayloadOmitsWorkItemChip pins graceful degradation when PayloadJSON is non-JSON — the chip is omitted, no panic.
 func TestEventVerb_MalformedPayloadOmitsWorkItemChip(t *testing.T) {
-	e := state.Event{Kind: "spawn.completed", AgentID: sql.NullInt64{Int64: 42, Valid: true}, PayloadJSON: `{not json`}
+	e := state.StateEvent{Kind: "spawn.completed", AgentID: sql.NullInt64{Int64: 42, Valid: true}, PayloadJSON: `{not json`}
 	got := string(eventVerb(e))
 	if strings.Contains(got, "BUG-") {
 		t.Fatalf("malformed payload rendered work_item_id: %q", got)
