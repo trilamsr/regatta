@@ -21,6 +21,11 @@ The stack runs everything on one Docker bridge (`regatta-net`) with
 four named volumes (`regatta-data`, `prom-data`, `grafana-data`,
 `alertmanager-data`).
 
+A one-shot `regatta-init` service `chown`s `/data` and `/repo/.regatta`
+to uid 65532 before `regatta` starts, so the operator does not pre-create
+`.regatta/` on the host — the init container handles ownership on
+Linux hosts (no-op on Docker Desktop where the VM translates uids).
+
 Stage 1 covered the runtime container alone — see
 [`container.md`](container.md). Stage 3 swaps the compose orchestration
 for a systemd / launchd / Kubernetes supervisor.

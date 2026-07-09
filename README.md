@@ -10,10 +10,11 @@ cp .env.example .env && $EDITOR .env && docker compose up -d
 
 `.env` needs `ANTHROPIC_API_KEY` (Claude API) and `GH_TOKEN` (PR ops).
 Everything else is optional. The default compose stack boots with
-`--ui=false` so a fresh install has no HMAC-key requirement; open
-[`docker-compose.yml`](docker-compose.yml) and flip `--ui=true` +
-set `REGATTA_HMAC_KEY=$(openssl rand -hex 32)` in `.env` once you
-want the operator dashboard on `:8080`.
+`--ui=false` so a fresh install has no HMAC-key requirement — run
+`regatta status` for the terminal TUI (subagents, PRs, merges, cost,
+green-clock) instead. To enable the web dashboard on `:8080`, set
+`REGATTA_HMAC_KEY=$(openssl rand -hex 32)` in `.env` and flip
+`--ui=true` in [`docker-compose.yml`](docker-compose.yml).
 
 The stack brings up `regatta` (the orchestrator daemon), `prometheus`
 (metrics), `grafana` (`:3000`, `admin/admin`), and `alertmanager`

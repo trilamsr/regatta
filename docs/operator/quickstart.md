@@ -79,6 +79,9 @@ status: planned
 EOF
 
 # 2. Plan, sign, and persist the brief.
+#    Briefs are HMAC-signed so the scheduler refuses any brief file
+#    edited out-of-band — the signature pins each brief to the exact
+#    plan output the operator authorized.
 export REGATTA_HMAC_KEY=$(openssl rand -hex 32)
 regatta program plan --hmac-key-env=REGATTA_HMAC_KEY --write \
   .regatta/items/PROG-1.md
