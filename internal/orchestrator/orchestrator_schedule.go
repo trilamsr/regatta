@@ -5,9 +5,21 @@ import (
 	"fmt"
 	"log/slog"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/spawner"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
+)
+
+// rollbackStep names the counter label — `transition` covers both the
+// spawning→crashed and crashed→pending edges (the release-locks step
+// sits between them) so a single label distinguishes the two failure
+// surfaces without exploding cardinality.
+const (
+	rollbackStepTransition   = "transition"
+	rollbackStepReleaseLocks = "release_locks"
 )
 
 // slowTickThresholdMs is the duration above which ScheduleOnce emits obs.EventTickSlow at WARN. Default TickInterval is 5s (cmd/regatta/serve.go); 1s = 20% of a normal tick budget — generous enough to never fire on a hot path but tight enough to catch sqlite-lock contention or scheduler bugs.
@@ -260,10 +272,44 @@ func (o *Orchestrator) transitionAgent(ctx context.Context, id int64, next state
 // rollbackReservation releases a reserved agent back to pending with its
 // lane lock freed, the shared crashed→pending→release path used when a
 // spawn fails, is suppressed by backoff (MAY-80), or is held for a
-// missing brief body (MAY-81). Best-effort: each transition error is
-// swallowed because the recovery sweep reaps any agent left mid-rollback.
+// missing brief body (MAY-81). Each step is best-effort — the recovery
+// sweep reaps any agent left mid-rollback — but a failure is loud: WARN
+// + regatta.orchestrator.rollback_failed{step} so the operator can grep
+// by lane for slot exhaustion before ~100 accumulated failures wedge the
+// daemon into a restart. Prior shape swallowed both errors on the floor.
 func (o *Orchestrator) rollbackReservation(ctx context.Context, a *state.Agent) {
-	_, _ = o.db.TransitionAgent(ctx, a.ID, state.AgentCrashed, state.AgentMutation{})
-	_, _ = o.db.ReleaseAgentLocks(ctx, a.ID)
-	_, _ = o.db.TransitionAgent(ctx, a.ID, state.AgentPending, state.AgentMutation{})
+	if _, err := o.transitionAgent(ctx, a.ID, state.AgentCrashed, state.AgentMutation{}); err != nil {
+		o.recordRollbackFailure(ctx, a, rollbackStepTransition, err)
+	}
+	if _, err := o.releaseAgentLocks(ctx, a.ID); err != nil {
+		o.recordRollbackFailure(ctx, a, rollbackStepReleaseLocks, err)
+	}
+	if _, err := o.transitionAgent(ctx, a.ID, state.AgentPending, state.AgentMutation{}); err != nil {
+		o.recordRollbackFailure(ctx, a, rollbackStepTransition, err)
+	}
+}
+
+// releaseAgentLocks dispatches to the test override when set, else to
+// the real state.DB. Symmetric with getAgent + transitionAgent.
+func (o *Orchestrator) releaseAgentLocks(ctx context.Context, id int64) (int64, error) {
+	if o.releaseAgentLocksOverride != nil {
+		return o.releaseAgentLocksOverride(ctx, id)
+	}
+	return o.db.ReleaseAgentLocks(ctx, id)
+}
+
+// recordRollbackFailure emits the WARN log + counter increment for one
+// failed rollback step. Attribution (agent_id, lane, step) is duplicated
+// across the log record and the counter label so a dashboard alert and a
+// grep-through-logs recovery share the same vocabulary.
+func (o *Orchestrator) recordRollbackFailure(ctx context.Context, a *state.Agent, step string, err error) {
+	o.log.Warn(string(obs.EventOrchestratorRollbackFailed),
+		string(obs.KeyAgentID), a.ID,
+		string(obs.KeyLane), a.Lane,
+		"step", step,
+		string(obs.KeyErr), err.Error(),
+	)
+	if o.rollbackFailed != nil {
+		o.rollbackFailed.Add(ctx, 1, metric.WithAttributes(attribute.String("step", step)))
+	}
 }
