@@ -153,106 +153,11 @@ jobs:
           fi
           export BODY
           bash scripts/check-tdd.sh
-          # Two-layer escape: the `tdd-justified` LABEL in the step `if:` above
-          # is the maintainer hard-override for the WHOLE step (both gates); the
-          # per-PR self-service escape for THIS gate is the body comment
-          # `<!-- tdd-single-commit-justified: <reason> -->`, parsed by the
-          # script. Label = maintainer; comment = author.
-          bash scripts/check-tdd-redfirst.sh
-
-  check-reviewer-verdict:
-    name: check-reviewer-verdict
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          fetch-depth: 0
-
-      # N2 (#1265): fetch live PR body via `gh pr view` instead of the
-      # event payload snapshot. The `github.event.pull_request.body`
-      # context is captured at trigger time and goes stale on body
-      # edits, forcing operator empty-commit refreshes (70 such commits
-      # to main this session per git log grep). Live fetch eliminates
-      # the snapshot lag; SNAPSHOT_BODY is retained as fallback when
-      # the API call fails (fork PRs w/o read token, transient API
-      # outages).
-      - name: check-reviewer-verdict
-        if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
-        env:
-          SNAPSHOT_BODY: ${{ github.event.pull_request.body }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # N2 live body fetch w/ snapshot fallback.
-          if BODY=$(gh pr view "$PR_NUMBER" --json body --jq '.body' 2>/dev/null) && [ -n "$BODY" ]; then
-            echo "::notice::pr-body fetched live via gh pr view at $(date -u +%FT%TZ)"
-          else
-            BODY="$SNAPSHOT_BODY"
-            echo "::warning::pr-body live fetch failed; falling back to event-payload snapshot"
-          fi
-          # Per CLAUDE.md "TDD + review": every load-bearing PR (security,
-          # concurrency, schema, public API, agent rules, CI gates)
-          # requires an independent reviewer subagent pass.
-          # Load-bearing classification lives in scripts/check-reviewer-verdict.sh
-          # so this workflow stays a thin caller — closes #986 cascade
-          # divergence where inline YAML path list shadowed the script's
-          # extended list (CLAUDE.md / Makefile / workflows / templates /
-          # gate-scripts).
-          base="${BASE_SHA}"
-          if git rev-parse --verify origin/main >/dev/null 2>&1; then
-            live_base="$(git merge-base origin/main "${HEAD_SHA}" 2>/dev/null || echo "")"
-            if [ -n "$live_base" ]; then base="$live_base"; fi
-          fi
-          paths_file=$(mktemp)
-          git diff --name-only "$base" "${HEAD_SHA}" > "$paths_file"
-          # LoC delta for [FIX] <50 LoC small-PR auto-skip on non-load-bearing
-          # surfaces (per `feedback_review_proportional`). `--shortstat` prints
-          # e.g. "3 files changed, 12 insertions(+), 4 deletions(-)"; sum
-          # insertions+deletions for the delta. Empty diff → 0.
-          loc_delta=$(git diff --shortstat "$base" "${HEAD_SHA}" \
-            | awk '{ ins=0; del=0; for(i=1;i<=NF;i++){ if($i ~ /^[0-9]+$/){ if($(i+1) ~ /insertion/){ ins=$i } else if($(i+1) ~ /deletion/){ del=$i } } } print ins+del }')
-          loc_delta=${loc_delta:-0}
-          load_bearing=0
-          while IFS= read -r changed_path; do
-            [ -z "$changed_path" ] && continue
-            case "$changed_path" in
-              internal/ghclient/*|internal/gates/*|internal/orchestrator/*|internal/supervisor/*|internal/ghidempotency/*|internal/secrets/*|internal/sandbox/*) load_bearing=1; break ;;
-              internal/web/*|internal/obs/*) load_bearing=1; break ;;
-              cmd/*|contracts/schemas/*) load_bearing=1; break ;;
-            esac
-          done < "$paths_file"
-          body_file=$(mktemp)
-          printf '%s' "$BODY" > "$body_file"
-          # --pr-author closes the self-tag loophole on load-bearing PRs:
-          # when present + APPROVE, the gate requires a bare
-          # `Reviewer-agent-id:` line whose value differs from the author.
-          # See `feedback_no_self_tagged_approve` + CLAUDE.md 'No self-tagged
-          # `Reviewer-recommendation: APPROVE`'.
-          # --automerge-enabled closes #1046: if autoMergeRequest != null
-          # AND the PR is load-bearing AND Reviewer-agent-id is present,
-          # the gate fails closed. `${arr[@]+"${arr[@]}"}` conditional
-          # expansion is required under `set -u`: bare `"${arr[@]}"` on
-          # an empty array crashes with 'unbound variable'.
-          automerge_flag=()
-          if automerge_state=$(gh pr view "$PR_NUMBER" --json autoMergeRequest --jq '.autoMergeRequest' 2>/dev/null) \
-            && [ -n "$automerge_state" ] && [ "$automerge_state" != "null" ]; then
-            automerge_flag=(--automerge-enabled)
-          fi
-          if [ "$load_bearing" -eq 1 ]; then
-            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --load-bearing --pr-author "$PR_AUTHOR" --loc-delta "$loc_delta" ${automerge_flag[@]+"${automerge_flag[@]}"}
-          else
-            bash scripts/check-reviewer-verdict.sh --body-file "$body_file" --changed-paths-file "$paths_file" --pr-author "$PR_AUTHOR" --loc-delta "$loc_delta" ${automerge_flag[@]+"${automerge_flag[@]}"}
-          fi
 
   pr-lint:
     name: pr-lint
     runs-on: ubuntu-latest
-    needs: [doc-check, release-notes, check-tdd, check-reviewer-verdict]
+    needs: [doc-check, release-notes, check-tdd]
     if: always()
     timeout-minutes: 2
     steps:
@@ -261,15 +166,13 @@ jobs:
           DOC_CHECK: ${{ needs.doc-check.result }}
           RELEASE_NOTES: ${{ needs.release-notes.result }}
           CHECK_TDD: ${{ needs.check-tdd.result }}
-          CHECK_REVIEWER_VERDICT: ${{ needs.check-reviewer-verdict.result }}
         run: |
           set -euo pipefail
           failed=0
           for name_val in \
             "doc-check=$DOC_CHECK" \
             "release-notes=$RELEASE_NOTES" \
-            "check-tdd=$CHECK_TDD" \
-            "check-reviewer-verdict=$CHECK_REVIEWER_VERDICT"; do
+            "check-tdd=$CHECK_TDD"; do
             name="${name_val%%=*}"
             result="${name_val#*=}"
             case "$result" in

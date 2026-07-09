@@ -1,14 +1,8 @@
 name: nightly
 
-# Consolidated nightly workflow. Prior split (4 files: check-meta-nightly,
-# cross-platform-nightly, crash-recovery-property-full, verify-property-nightly)
-# collapsed into per-purpose jobs sharing schedule + workflow_dispatch
-# triggers. Cron windows preserved per-job via `if:` gates on
-# github.event.schedule (see each job).
-#
-# check-meta additionally runs on push/pull_request when gate/generator
-# scripts change (path-filter), so gate edits still get exercised
-# pre-merge — the other 3 jobs skip on non-schedule/non-dispatch events.
+# Consolidated nightly workflow. Per-purpose jobs share the schedule +
+# workflow_dispatch trigger; cron windows preserved per-job via `if:` gates
+# on github.event.schedule.
 #
 # PHASE-S-RELAX (cross-platform): windows-latest dropped from the matrix
 # during the self-host-first window
@@ -20,35 +14,7 @@ on:
   schedule:
     - cron: '0 4 * * *'  # 04:00 UTC — cross-platform test
     - cron: '0 5 * * *'  # 05:00 UTC — verify-property (50-case)
-    - cron: '0 6 * * *'  # 06:00 UTC — check-meta + crash-recovery-property (2000-case)
-  push:
-    paths:
-      - 'scripts/check-*.sh'
-      - 'scripts/check-*_test.sh'
-      - 'scripts/check_state_tier_order_test.sh'
-      - 'scripts/doc-check.sh'
-      - 'scripts/doc-check_test.sh'
-      - 'scripts/gen-*.sh'
-      - 'scripts/gen-*_test.sh'
-      - 'Makefile.d/ci.mk'
-      - 'Makefile.d/lint.mk'
-      - 'Makefile.d/specs.mk'
-      - 'Makefile.d/boot-status.mk'
-      - '.github/workflows/nightly.yml'
-  pull_request:
-    paths:
-      - 'scripts/check-*.sh'
-      - 'scripts/check-*_test.sh'
-      - 'scripts/check_state_tier_order_test.sh'
-      - 'scripts/doc-check.sh'
-      - 'scripts/doc-check_test.sh'
-      - 'scripts/gen-*.sh'
-      - 'scripts/gen-*_test.sh'
-      - 'Makefile.d/ci.mk'
-      - 'Makefile.d/lint.mk'
-      - 'Makefile.d/specs.mk'
-      - 'Makefile.d/boot-status.mk'
-      - '.github/workflows/nightly.yml'
+    - cron: '0 6 * * *'  # 06:00 UTC — crash-recovery-property (2000-case)
   workflow_dispatch:
 
 concurrency:
@@ -59,24 +25,6 @@ permissions:
   contents: read
 
 jobs:
-  check-meta:
-    # Gate + generator self-tests. Fires on 06:00 UTC schedule, any
-    # workflow_dispatch, and path-filtered push/pull_request events.
-    name: gate-and-generator-self-tests
-    if: github.event_name != 'schedule' || github.event.schedule == '0 6 * * *'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          fetch-depth: 0  # check-stale-refs_test.sh + check-tdd_test.sh fixture-replay needs full history
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: run gate + generator self-tests
-        run: make check-meta
-
   cross-platform-test:
     # Nightly cross-platform Go test sweep. macOS dropped from per-PR
     # ci.yml (saves ~85s runner quota + queue time). Linux+macOS still

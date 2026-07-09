@@ -4,8 +4,9 @@
 // on agents, use TransitionAgent. *DB is safe for concurrent use;
 // Open() caps *sql.DB at one connection so writers serialize at the
 // application layer rather than retry-fighting sqlite's file lock.
-// Subpackages MUST NOT import state — enforced by
-// scripts/check-state-tier-order.sh in make check.
+// Subpackages MUST NOT import state — honor-system since the tier-order
+// gate was culled 2026-07-08; Go's import-cycle check catches the actual
+// circular-import case.
 package state
 
 import (

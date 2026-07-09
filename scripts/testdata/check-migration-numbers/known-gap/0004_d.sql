@@ -1,1 +1,0 @@
--- fixture: gap at 3 is declared known via KNOWN_GAPS env override

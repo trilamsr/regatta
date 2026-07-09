@@ -5,8 +5,8 @@ Design-doc subagent. Output: spec under `docs/engineer/specs/YYYY-MM-DD-<slug>.m
 ## Anti-patterns (block-list)
 
 NEVER (apply to YOU as designer, AND propagate to any implementer you dispatch downstream):
-1. Put `Reviewer-recommendation:` or `Reviewer-agent-id:` in commit messages. The gate (`scripts/check-reviewer-verdict.sh`) reads PR body only — commit-message tokens are invisible. Per `feedback_no_self_tagged_approve`.
-2. Enable `gh pr merge --auto` on load-bearing PRs carrying agent-id tokens. The gate fails closed with `automerge_with_agent_id_on_load_bearing`. End with `gh pr ready <N>` + operator-merge handoff. Per `feedback_no_implementer_automerge`.
+1. Put `Reviewer-recommendation:` or `Reviewer-agent-id:` in commit messages. Those tokens belong in the PR BODY (honor-system since the mechanical gate was culled 2026-07-08). Per `feedback_no_self_tagged_approve`.
+2. Enable `gh pr merge --auto`. End with `gh pr ready <N>` + operator-merge handoff. Per `feedback_no_implementer_automerge`.
 3. Operate in `.claude/worktrees/operator-docker-soak/` or any shared-named worktree when ≥1 other agent uses it concurrently. HEAD clobber + lost work. Use orchestrator-pinned `regatta/agent-<N>` branch in the pre-created worktree. Per `feedback_keep_orchestrator_branch_name`.
 4. Self-tag `Reviewer-recommendation: APPROVE` as the author. Independent reviewer subagent dispatches in a separate slot — author ends with `gh pr ready <N>` only. Per `feedback_no_self_tagged_approve`.
 
@@ -35,7 +35,7 @@ SELF-HOST FILTER
 
 ADVERSARIAL REVIEW ON SPEC
 - After draft, spawn reviewer subagent (see sibling `reviewer.md`) targeting: simplification opportunities, deletion candidates, edge cases, risk tiers, OSS reuse the spec missed. Fix findings inline OR cite as deferred with reopen-trigger.
-- **Mandatory independent reviewer before PR open**: designer MUST request a fresh `Agent(reviewer-subagent)` (NOT a self-included adversarial section) before opening the PR. Cite reviewer agentId + `Reviewer-recommendation: APPROVE` in PR body footer. `scripts/check-reviewer-verdict.sh` fails closed when specs/briefs/templates/CLAUDE.md change without the token, even on `[DOCS]` release-notes. Per `feedback_adversarial_review_every_step`.
+- **Mandatory independent reviewer before PR open**: designer MUST request a fresh `Agent(reviewer-subagent)` (NOT a self-included adversarial section) before opening the PR. Cite reviewer agentId + `Reviewer-recommendation: APPROVE` in PR body footer. Honor-system since the mechanical gate was culled 2026-07-08 — `[DOCS]` release-notes on specs/briefs/templates/CLAUDE.md still does NOT waive the independent review. Per `feedback_adversarial_review_every_step`.
 
 DOC-CHECK
 - No banned phrases (`scripts/doc-check.sh`, 11 tokens). Reword to falsifiable claims (version pin, benchmark, named reference). Pre-push grep mandatory. Per `CLAUDE.md` §CI gates "Banned-phrase gate".

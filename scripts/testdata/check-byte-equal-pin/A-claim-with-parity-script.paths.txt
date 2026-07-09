@@ -1,2 +1,0 @@
-scripts/check-gate-set-parity.sh
-internal/gates/registry.go

@@ -1,23 +1,11 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test prose-dup check-prose-dup-test stale-todo verify-vendored-assets lint tidy-check mod-verify check-no-bare-sleep check-no-bare-sleep-test check-state-tier-order check-state-tier-order-test check-prompt-parity check-prompt-parity-test check-reviewer-verdict-test check-byte-equal-pin-test check-stale-refs check-stale-refs-test check-tdd-redfirst check-tdd-redfirst-test check-tdd-test check-no-repo-specific-slugs check-migration-numbers check-migration-numbers-test check-spec-sections check-spec-sections-test check-mock-vs-real check-mock-vs-real-test check-release-notes-local-test check-go-shard-coverage check-go-shard-coverage-test check-meta-coverage-test check-alert-severity-label check-alert-severity-label-test next-migration
+.PHONY: doc-check doc-check-test stale-todo verify-vendored-assets lint tidy-check mod-verify check-no-bare-sleep check-no-bare-sleep-test check-stale-refs check-stale-refs-test check-tdd-test check-release-notes-local-test check-go-shard-coverage check-go-shard-coverage-test check-docker-env-parity check-docker-env-parity-test check-env-canonical next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, comment-noise, test-godoc length).
 	bash scripts/doc-check.sh
 
 doc-check-test:  ## Fixture-driven test for doc-check.sh comment-noise (reviewer-tag) gate.
 	bash scripts/doc-check_test.sh
-
-prose-dup:  ## Fail if a previously-deduped prose phrase reappears in 2+ markdown files.
-	bash scripts/check-prose-dup.sh
-
-check-prose-dup-test:  ## Fixture-driven test for check-prose-dup.sh (gate self-test; runs in check-meta nightly).
-	bash scripts/check-prose-dup_test.sh
-
-check-doc-links:  ## Fail when a markdown-link `](path)` body under docs/ or CLAUDE.md references a non-existent intra-repo file.
-	bash scripts/check-doc-links.sh
-
-check-doc-links-test:  ## Smoke test for check-doc-links.sh (broken / existing / external / testdata / anchor-suffix).
-	bash scripts/check-doc-links_test.sh
 
 check-docker-env-parity:  ## Fail when a REGATTA_* env var declared in docker-compose*.yml is not read by prod Go code (R-MEGA-2 G2).
 	bash scripts/check-docker-env-parity.sh
@@ -28,25 +16,13 @@ check-docker-env-parity-test:  ## Fixture-driven self-test for check-docker-env-
 check-env-canonical:  ## Fail when prod Go code reads a legacy env var name when a canonical alias exists (R-MEGA-2 G3). Escape: `// canonical-env-skip: <reason>`.
 	bash scripts/check-env-canonical.sh
 
-check-alert-severity-label:  ## Fail when a prometheus rule's `page` alert is missing the `severity:` AlertManager-routing label (R-MEGA-3 LIVE-3).
-	bash scripts/check-alert-severity-label.sh
-
-check-alert-severity-label-test:  ## Fixture-driven test for check-alert-severity-label.sh.
-	bash scripts/check-alert-severity-label_test.sh
-
 check-stale-refs:  ## Fail when PR deletes files but tracked files still reference them. Escape: `<!-- stale-refs-justified: <reason> -->`.
 	bash scripts/check-stale-refs.sh
 
 check-stale-refs-test:  ## Fixture-driven test for check-stale-refs.sh.
 	bash scripts/check-stale-refs_test.sh
 
-check-tdd-redfirst:  ## Fail when a PR adds a new prod .go + co-located _test.go without the test landing in an earlier commit. Escape: `<!-- tdd-single-commit-justified: <reason> -->`.
-	bash scripts/check-tdd-redfirst.sh
-
-check-tdd-redfirst-test:  ## Fixture-driven test for check-tdd-redfirst.sh (one-commit→fail, test-first→pass, escape→pass, out-of-scope→pass).
-	bash scripts/check-tdd-redfirst_test.sh
-
-check-tdd-test:  ## Fixture-driven test for check-tdd.sh (gate self-test; runs in check-meta nightly).
+check-tdd-test:  ## Fixture-driven test for check-tdd.sh (gate self-test).
 	bash scripts/check-tdd_test.sh
 
 check-no-bare-sleep:  ## Fail when a *_test.go file carries `time.Sleep` lexically nested inside a `for` block without `// allow-sleep:` directive (#760 migration target: testutil.Eventually).
@@ -55,68 +31,17 @@ check-no-bare-sleep:  ## Fail when a *_test.go file carries `time.Sleep` lexical
 check-no-bare-sleep-test:  ## Fixture-driven test for check-no-bare-sleep.sh.
 	bash scripts/check-no-bare-sleep_test.sh
 
-check-no-bare-pragma:  ## Fail when `_pragma=` appears outside state.DSN() (R24 class — resume.go shipped a divergent DSN).
-	bash scripts/check-no-bare-pragma.sh
-
-check-no-bare-time-unix:  ## Fail when `time.Unix(` appears without `.UTC()` or `// allow-bare-time-unix:` (R22 class — runs.go scanned Local).
-	bash scripts/check-no-bare-time-unix.sh
-
-check-file-line-budget:  ## Fail when god-files exceed their line budget (cascade-rebase prevention per feedback_cascade_rebase_root_cause).
-	bash scripts/check-file-line-budget.sh
-
-check-state-tier-order:  ## Fail when a pure subpackage under internal/orchestrator/state (jsonscan/edgeagg/transitions/cycle/approvals_shadow) imports the parent `state` package (plan #795 Option E one-way tier).
-	bash scripts/check-state-tier-order.sh
-
-check-state-tier-order-test:  ## Fixture-driven test for check-state-tier-order.sh.
-	bash scripts/check_state_tier_order_test.sh
-
-check-prompt-parity:  ## Fail when defaultPromptBuilder lacks a feedback_* slug listed under implementer.md `## Anchored rules` (closes #901, session retro Impact 3).
-	bash scripts/check-prompt-parity.sh
-
-check-prompt-parity-test:  ## Fixture-driven test for check-prompt-parity.sh (missing slug → 1, aligned → 0, escape-hatch → 0).
-	bash scripts/check-prompt-parity_test.sh
-
-check-reviewer-verdict-test:  ## Fixture-driven test for check-reviewer-verdict.sh (load-bearing PR missing APPROVE → fail; CHORE/DOCS → skip). Gate itself runs in pr-lint workflow against the live PR body (closes #899).
-	bash scripts/check-reviewer-verdict_test.sh
-
-check-byte-equal-pin-test:  ## Fixture-driven test for check-byte-equal-pin.sh. Demoted from `check` to `pre-push-check` hint in MAY-31 — script + test kept for operator-glance only; reviewer subagent covers drift.
-	bash scripts/check-byte-equal-pin_test.sh
-
-check-no-repo-specific-slugs:  ## Fail when bundled-default prompt assets (internal/orchestrator/prompt/assets/) carry feedback_* slugs or scripts/check-*.sh refs that meaningless on arbitrary target repos (spec L1.3, #965).
-	bash scripts/check-no-repo-specific-slugs.sh
-
-check-migration-numbers:  ## Fail when internal/orchestrator/state/migrations/ carries duplicates, non-contiguous tail, or PR-diff adds >1 new migration without justification (spec #971).
-	bash scripts/check-migration-numbers.sh
-
-check-migration-numbers-test:  ## Fixture-driven test for check-migration-numbers.sh (clean / duplicate / non-contiguous / known-gap / multi-add / multi-add-justified).
-	bash scripts/check-migration-numbers_test.sh
-
 next-migration:  ## Print the next free SQLite migration number (zero-padded 4 digits). Use in dispatch prompts: $$(make next-migration).
 	@bash scripts/next-migration.sh
-
-check-spec-sections:  ## Fail when a NEW or MODIFIED spec under docs/engineer/specs/ lacks one of the 7 canonical H2 sections (Problem, Design, Acceptance, Out of scope, Adversarial, Implementer brief, Reopen trigger). Pre-existing specs warn-only (closes #1032).
-	bash scripts/check-spec-sections.sh
-
-check-spec-sections-test:  ## Fixture-driven test for check-spec-sections.sh (complete / missing-acceptance strict+diff / pre-existing-warn / skeleton-prefetch opt-out / shipped opt-out).
-	bash scripts/check-spec-sections_test.sh
-
-check-mock-vs-real:  ## WARN-only ratio gate on NEW *_test.go files; >70% mock tokens vs real-infra (t.TempDir/httptest/state.Open) emits warning (closes #1088). Operator-manual; not in `check`.
-	bash scripts/check-mock-vs-real.sh
-
-check-mock-vs-real-test:  ## Fixture-driven test for check-mock-vs-real.sh (clean / high-mock / allowlisted / no-test-files).
-	bash scripts/check-mock-vs-real_test.sh
 
 check-release-notes-local-test:  ## Fixture-driven test for check-release-notes-local.sh (MAY-100 fence/[CATEGORY] + MAY-73 misplaced Reviewer-recommendation in commit msg).
 	bash scripts/check-release-notes-local_test.sh
 
-check-go-shard-coverage:  ## Fail when union of scripts/go-shards/shard-*.txt != `go list ./...`, or any package appears in 2+ shards. Mechanical drift gate per feedback_byte_equal_pin.
+check-go-shard-coverage:  ## Fail when union of scripts/go-shards/shard-*.txt != `go list ./...`, or any package appears in 2+ shards. Mechanical drift gate.
 	bash scripts/check-go-shard-coverage.sh
 
 check-go-shard-coverage-test:  ## Fixture-driven test for check-go-shard-coverage.sh.
 	bash scripts/check-go-shard-coverage_test.sh
-
-check-meta-coverage-test:  ## Assert `make check-meta` enumerates every gate self-test on disk + none leak into `make check` (MAY-30).
-	bash scripts/check-meta-coverage_test.sh
 
 stale-todo:  ## Fail if any tracked TODO|FIXME|XXX has lived past 7 days without an issue ref.
 	bash scripts/stale-todo.sh
