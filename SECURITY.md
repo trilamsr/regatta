@@ -13,7 +13,7 @@ repository.
 Regatta operates on:
 
 - Source code in the target repository (read + write via the
-  configured `SpecAdapter`).
+  configured `WorkItemSource`).
 - Work-item bodies from the configured spec source (GitHub Issues,
   GitLab Issues, Jira, Linear, markdown_catalog).
 - Model-API request + response bodies (sent to the configured

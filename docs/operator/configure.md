@@ -34,14 +34,14 @@ positions. Run before every commit that touches `regatta.yaml`.
 |---|---|
 | `version: 1` | Schema version pin. `regatta migrate-config --from N --to N+1` upgrades. |
 | `repo` | host (github/gitlab) + owner + name. Default branch defaults to `main`. |
-| `spec_adapter` | One of `github_issues`, `gitlab_issues`, `markdown_catalog`, `jira`, `linear`, `custom`. |
+| `work_item_source` | One of `github_issues`, `gitlab_issues`, `markdown_catalog`, `jira`, `linear`, `custom`. |
 | `ci.command` | Deterministic shell command; non-zero exit blocks. Use `make test && make lint` shape. |
 | `gates` | At least one. Each gate has `id`, `type` (deterministic / ai), and `severity_block`. |
 | `safety` | All fields take defaults; an empty `safety: {}` is valid. |
 
 ## Verifying the wired spec adapter
 
-After editing `spec_adapter.type` and restarting `regatta serve`, confirm the change took effect via the boot log. Every boot emits one `adapter.configured` INFO record naming the wired type plus the resolved selector / items root (#867):
+After editing `work_item_source.type` and restarting `regatta serve`, confirm the change took effect via the boot log. Every boot emits one `adapter.configured` INFO record naming the wired type plus the resolved selector / items root (#867):
 
 ```
 level=INFO msg=adapter.configured type=github_issues selector=label:autonomous repo=trilamsr/regatta

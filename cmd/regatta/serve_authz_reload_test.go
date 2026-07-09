@@ -53,7 +53,7 @@ repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: markdown_catalog
   root: .
 ci:

@@ -27,7 +27,7 @@ Today the body-loader path is filesystem-only. `buildItemBodyLoader` in `cmd/reg
 84:  }
 ```
 
-For the GitHub-issues adapter path, the issue body IS available upstream — `internal/orchestrator/adapter/githubissues/adapter.go` (lines 164 and 252) constructs `schemas.WorkItem{... Body: p.Body ...}` from `contracts/schemas/spec_adapter.go:43` (the canonical contract: `Body string \`json:"body,omitempty"\``). adaptersync then calls `state.UpsertWorkItem(ctx, ...)`, but `internal/orchestrator/state/work_items.go` declares a persistence struct (`type WorkItem struct`, lines 56-70) with NO `Body` field, and `internal/orchestrator/state/work_items_upsert.go::UpsertWorkItem` (lines 16-67) never writes one. The `work_items` table itself (defined in `internal/orchestrator/state/migrations/0002_work_items.sql`, lines 7-20) has columns `id, kind, title, lane, status, parent_program_id, depends_on_features, acceptance_json, source, last_seen_at, created_at, updated_at` and no `body`.
+For the GitHub-issues adapter path, the issue body IS available upstream — `internal/orchestrator/adapter/githubissues/adapter.go` (lines 164 and 252) constructs `schemas.WorkItem{... Body: p.Body ...}` from `contracts/schemas/work_item_source.go:43` (the canonical contract: `Body string \`json:"body,omitempty"\``). adaptersync then calls `state.UpsertWorkItem(ctx, ...)`, but `internal/orchestrator/state/work_items.go` declares a persistence struct (`type WorkItem struct`, lines 56-70) with NO `Body` field, and `internal/orchestrator/state/work_items_upsert.go::UpsertWorkItem` (lines 16-67) never writes one. The `work_items` table itself (defined in `internal/orchestrator/state/migrations/0002_work_items.sql`, lines 7-20) has columns `id, kind, title, lane, status, parent_program_id, depends_on_features, acceptance_json, source, last_seen_at, created_at, updated_at` and no `body`.
 
 End-to-end result: the adapter fetches `Body`; adaptersync silently discards it at the persistence boundary; the orchestrator falls back to the filesystem brief loader; when no `.regatta/items/<id>.md` exists the loader returns `false` and `ScheduleOnce` emits the WARN every tick that work item is ready. Operator-visible symptoms during the 2026-06-08 docker soak:
 
@@ -43,7 +43,7 @@ git -C $R show origin/main:cmd/regatta/wire_itembody.go                         
 git -C $R show origin/main:internal/orchestrator/state/work_items.go             | sed -n '56,70p'
 git -C $R show origin/main:internal/orchestrator/state/work_items_upsert.go      | sed -n '12,67p'
 git -C $R show origin/main:internal/orchestrator/state/migrations/0002_work_items.sql
-git -C $R show origin/main:contracts/schemas/spec_adapter.go                     | sed -n '37,50p'
+git -C $R show origin/main:contracts/schemas/work_item_source.go                     | sed -n '37,50p'
 git -C $R show origin/main:internal/orchestrator/adapter/githubissues/adapter.go | sed -n '160,170p;248,256p'
 ```
 
@@ -136,7 +136,7 @@ In-Go touchpoints in the same PR:
 - `internal/orchestrator/state/work_items_query.go` (`selectWorkItemsCols` / `scanWorkItems`) — extend the SELECT projection and the rowscan to surface `Body`.
 - `internal/orchestrator/state/work_items_batch_upsert.go` — same column threading as `UpsertWorkItem` for the bulk path (sibling implementation by inspection of file names; verify in the implementing PR).
 - `internal/orchestrator/adapter/githubissues/adapter.go` — no change. Already populates `WorkItem.Body` from `p.Body` at lines 164 and 252.
-- `contracts/schemas/spec_adapter.go` — no change. `Body string` already declared at line 43.
+- `contracts/schemas/work_item_source.go` — no change. `Body string` already declared at line 43.
 - `internal/orchestrator/orchestrator_schedule.go` (lines 74-83) — change the composite-read order:
 
   1. If `o.cfg.ItemBody != nil` and returns `(body, true)` → use it (filesystem-brief override stays highest-priority).
@@ -169,7 +169,7 @@ TDD order — failing test FIRST, then implementation. Each test's RED output ca
 3. **Legacy-DB test** — same pattern as `internal/orchestrator/state/work_items_run_id_migration_test.go`: seed a pre-`body` row via raw SQL, run migrations, assert the existing row survives with `body=''` and every other column intact.
 4. **UpsertWorkItem round-trip** — extend `internal/orchestrator/state/work_items_upsert_test.go`: call `UpsertWorkItem` with `WorkItem{Body: "hello"}`, call `GetWorkItem`, assert `Body == "hello"`. RED before the SELECT projection extends.
 5. **Empty-body round-trip** — `UpsertWorkItem` with `Body: ""`, read back as `""` (not NULL). Pins the `NOT NULL DEFAULT ''` choice.
-6. **adaptersync persists Body** — extend `internal/orchestrator/adaptersync/adaptersync_test.go`: drive a fake `SpecAdapter` returning one `schemas.WorkItem{Body: "issue text"}`; run one `Sync`; query `state.GetWorkItem`; assert `Body == "issue text"`. RED until the persistence path is end-to-end.
+6. **adaptersync persists Body** — extend `internal/orchestrator/adaptersync/adaptersync_test.go`: drive a fake `WorkItemSource` returning one `schemas.WorkItem{Body: "issue text"}`; run one `Sync`; query `state.GetWorkItem`; assert `Body == "issue text"`. RED until the persistence path is end-to-end.
 7. **ScheduleOnce composite-read** — extend `internal/orchestrator/orchestrator_test.go`:
    - Sub-case A: filesystem `ItemBody` returns `(body, true)` → that body dispatched, no state lookup needed (verify with a counting fake `db.GetWorkItem`), no WARN.
    - Sub-case B: `ItemBody` misses, `state.WorkItem.Body != ""` → `Body` dispatched, no WARN.
@@ -208,7 +208,7 @@ All references verified against `git ls-tree origin/main` (head `f68d35e6`). Rev
 - `internal/orchestrator/state/work_items_upsert.go:12-67` — `UpsertWorkItem` INSERT/UPDATE column lists omit `body`. Command: `git -C $R show origin/main:internal/orchestrator/state/work_items_upsert.go | sed -n '12,67p'`.
 - `internal/orchestrator/state/migrations/0002_work_items.sql:7-20` — `work_items` table definition. Command: `git -C $R show origin/main:internal/orchestrator/state/migrations/0002_work_items.sql`.
 - Migration head: `0021_substrate_kind_tool_call.sql`. Command: `git -C $R ls-tree origin/main internal/orchestrator/state/migrations/ | awk '{print $4}' | sort | tail -1`.
-- `contracts/schemas/spec_adapter.go:43` — `Body string \`json:"body,omitempty"\``. Command: `git -C $R show origin/main:contracts/schemas/spec_adapter.go | sed -n '37,50p'`.
+- `contracts/schemas/work_item_source.go:43` — `Body string \`json:"body,omitempty"\``. Command: `git -C $R show origin/main:contracts/schemas/work_item_source.go | sed -n '37,50p'`.
 - `internal/orchestrator/adapter/githubissues/adapter.go:164, 252` — `Body: p.Body` populated from `parseIssueBody`. Command: `git -C $R show origin/main:internal/orchestrator/adapter/githubissues/adapter.go | sed -n '160,170p;248,256p'`.
 
 Numeric / version claims are paired with the commands that produced them. No OSS-prior-art license claims in this spec.

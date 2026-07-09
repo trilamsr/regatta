@@ -24,13 +24,13 @@ func applyDefaultLaneCap(f *serveFlags, logger *slog.Logger) {
 		}
 		return
 	}
-	if cfg == nil || cfg.SpecAdapter == nil || cfg.SpecAdapter.Type != validateconfig.SpecAdapterTypeGitHubIssues {
+	if cfg == nil || cfg.WorkItemSource == nil || cfg.WorkItemSource.Type != validateconfig.WorkItemSourceTypeGitHubIssues {
 		return
 	}
 	f.LaneCaps[defaultGitHubIssuesLane] = 1
 	logger.Info("scheduler.default_lane_cap_applied",
 		"lane", defaultGitHubIssuesLane,
 		"cap", 1,
-		"reason", "no --lane flag passed with spec_adapter.type=github_issues",
+		"reason", "no --lane flag passed with work_item_source.type=github_issues",
 	)
 }

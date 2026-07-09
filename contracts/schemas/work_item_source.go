@@ -1,4 +1,4 @@
-// Package schemas defines the canonical SpecAdapter contract referenced
+// Package schemas defines the canonical WorkItemSource contract referenced
 // by docs/design.md §Spec contract. Two independent implementations
 // must be interchangeable; the orchestrator never reaches behind the
 // interface for source-specific behavior. Breaking changes bump major;
@@ -12,13 +12,13 @@ import (
 	"time"
 )
 
-// SpecAdapter abstracts every supported source of planned work
+// WorkItemSource abstracts every supported source of planned work
 // (github_issues, markdown_catalog, linear). Implementations MUST honor context cancellation, be
 // idempotent across identical inputs, paginate internally, surface
 // rate-limit signals as ErrRateLimited wrapping RateLimitHint, and
 // never expose a write path for Criterion.Text (L0 enforces immutable
 // acceptance-criteria text at the diff layer).
-type SpecAdapter interface {
+type WorkItemSource interface {
 	List(ctx context.Context) ([]WorkItem, error)
 
 	Get(ctx context.Context, id WorkItemID) (WorkItem, error)
@@ -137,12 +137,12 @@ var (
 )
 
 // Custom-adapter wire protocol: shells out to an executable on PATH
-// (regatta.yaml: spec_adapter.command). JSON-over-stdio, one
+// (regatta.yaml: work_item_source.command). JSON-over-stdio, one
 // request/response per invocation, newline-terminated. Exit codes:
 //   0 success / 1 ErrTransient (retried w/ backoff) / 2 ErrPermanent
 //   3 ErrRateLimited (stderr MAY carry "retry_after_seconds=N")
 //   4 invalid request (treated as permanent — operator misconfig).
-// Timeout default 30s (spec_adapter.timeout_seconds);
+// Timeout default 30s (work_item_source.timeout_seconds);
 // SIGTERM at +5s, SIGKILL at +10s.
 
 // CustomAdapterRequest is the stdin payload sent to a `custom` adapter.

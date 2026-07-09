@@ -14,7 +14,7 @@ repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: github_issues
   selector: "label:planned"
 ci:
@@ -113,10 +113,10 @@ func TestLoadFile_NonexistentPath_ErrorMentionsPath(t *testing.T) {
 }
 
 func TestLoad_MarkdownCatalogAdapter_Valid(t *testing.T) {
-	yaml := strings.Replace(minimalValid, `spec_adapter:
+	yaml := strings.Replace(minimalValid, `work_item_source:
   type: github_issues
   selector: "label:planned"
-`, `spec_adapter:
+`, `work_item_source:
   type: markdown_catalog
   root: .
 `, 1)
@@ -125,12 +125,12 @@ func TestLoad_MarkdownCatalogAdapter_Valid(t *testing.T) {
 	}
 }
 
-// TestLoad_MarkdownCatalog_RootDefaults pins that omitting `root` is legal — the CUE default ("." per regatta.v1.cue §SpecAdapter markdown_cat
+// TestLoad_MarkdownCatalog_RootDefaults pins that omitting `root` is legal — the CUE default ("." per regatta.v1.cue §WorkItemSource markdown_cat
 func TestLoad_MarkdownCatalog_RootDefaults(t *testing.T) {
-	yaml := strings.Replace(minimalValid, `spec_adapter:
+	yaml := strings.Replace(minimalValid, `work_item_source:
   type: github_issues
   selector: "label:planned"
-`, `spec_adapter:
+`, `work_item_source:
   type: markdown_catalog
 `, 1)
 	if err := LoadBytes([]byte(yaml)); err != nil {
@@ -140,10 +140,10 @@ func TestLoad_MarkdownCatalog_RootDefaults(t *testing.T) {
 
 // TestLoad_MarkdownCatalog_DeadPathField_Errors pins the schema rename: the legacy `path` field (which had no runtime consumer) is rejected af
 func TestLoad_MarkdownCatalog_DeadPathField_Errors(t *testing.T) {
-	yaml := strings.Replace(minimalValid, `spec_adapter:
+	yaml := strings.Replace(minimalValid, `work_item_source:
   type: github_issues
   selector: "label:planned"
-`, `spec_adapter:
+`, `work_item_source:
   type: markdown_catalog
   path: docs/MILESTONES.md
 `, 1)
@@ -154,10 +154,10 @@ func TestLoad_MarkdownCatalog_DeadPathField_Errors(t *testing.T) {
 
 // TestLoad_MarkdownCatalog_RootSurfacedOnConfig pins the typed accessor downstream callers use to read the adapter root from a parsed config. 
 func TestLoad_MarkdownCatalog_RootSurfacedOnConfig(t *testing.T) {
-	yaml := strings.Replace(minimalValid, `spec_adapter:
+	yaml := strings.Replace(minimalValid, `work_item_source:
   type: github_issues
   selector: "label:planned"
-`, `spec_adapter:
+`, `work_item_source:
   type: markdown_catalog
   root: subdir
 `, 1)
@@ -172,10 +172,10 @@ func TestLoad_MarkdownCatalog_RootSurfacedOnConfig(t *testing.T) {
 
 // TestLoad_MarkdownCatalog_RootDefaultSurfaced pins the CUE-default flow: an operator who omits `root` reads "." back, not "".
 func TestLoad_MarkdownCatalog_RootDefaultSurfaced(t *testing.T) {
-	yaml := strings.Replace(minimalValid, `spec_adapter:
+	yaml := strings.Replace(minimalValid, `work_item_source:
   type: github_issues
   selector: "label:planned"
-`, `spec_adapter:
+`, `work_item_source:
   type: markdown_catalog
 `, 1)
 	cfg, err := LoadConfig([]byte(yaml))
@@ -187,12 +187,12 @@ func TestLoad_MarkdownCatalog_RootDefaultSurfaced(t *testing.T) {
 	}
 }
 
-// TestLoad_GitHubIssues_DefaultLaneSurfaced pins #1117: regatta.yaml::spec_adapter.default_lane parses through to Config.SpecAdapter.DefaultLane so cmd/regatta/wire_spec_adapter.go can forward it to the github_issues adapter.
+// TestLoad_GitHubIssues_DefaultLaneSurfaced pins #1117: regatta.yaml::work_item_source.default_lane parses through to Config.WorkItemSource.DefaultLane so cmd/regatta/wire_work_item_source.go can forward it to the github_issues adapter.
 func TestLoad_GitHubIssues_DefaultLaneSurfaced(t *testing.T) {
-	yaml := strings.Replace(minimalValid, `spec_adapter:
+	yaml := strings.Replace(minimalValid, `work_item_source:
   type: github_issues
   selector: "label:planned"
-`, `spec_adapter:
+`, `work_item_source:
   type: github_issues
   selector: "label:planned"
   default_lane: server
@@ -201,10 +201,10 @@ func TestLoad_GitHubIssues_DefaultLaneSurfaced(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	if cfg.SpecAdapter == nil {
-		t.Fatal("SpecAdapter is nil")
+	if cfg.WorkItemSource == nil {
+		t.Fatal("WorkItemSource is nil")
 	}
-	if got := cfg.SpecAdapter.DefaultLane; got != "server" {
+	if got := cfg.WorkItemSource.DefaultLane; got != "server" {
 		t.Fatalf("DefaultLane=%q; want %q", got, "server")
 	}
 }
@@ -248,7 +248,7 @@ func TestLoad_DesignDocCanonicalExample_Valid(t *testing.T) {
 	yaml := `
 version: 1
 repo: { host: github, owner: example, name: myproject }
-spec_adapter: { type: github_issues, selector: 'label:planned' }
+work_item_source: { type: github_issues, selector: 'label:planned' }
 ci: { command: 'npm test && npm run lint' }
 gates:
   - { id: spec_conformance, type: ai, model: claude-opus-4-7,   severity_block: ['fail'] }
@@ -286,10 +286,10 @@ func TestLoad_CustomAdapter_Rejected(t *testing.T) {
 	// W8: the CUE enum narrowed to only implemented types (github_issues,
 	// markdown_catalog, linear); `custom` was a Phase-X forward-fit that
 	// never got a wired consumer, so accepting it silently was a footgun.
-	yaml := strings.Replace(minimalValid, `spec_adapter:
+	yaml := strings.Replace(minimalValid, `work_item_source:
   type: github_issues
   selector: "label:planned"
-`, `spec_adapter:
+`, `work_item_source:
   type: custom
   command: /usr/local/bin/my-adapter
 `, 1)
@@ -453,7 +453,7 @@ repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: github_issues
   selector: "label:planned"
 ci:

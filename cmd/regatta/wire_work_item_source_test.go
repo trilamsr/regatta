@@ -11,7 +11,7 @@ import (
 	"github.com/trilamsr/regatta/contracts/schemas"
 )
 
-const wireSpecAdapterValidGateBlock = `
+const wireWorkItemSourceValidGateBlock = `
 ci:
   command: "go test ./..."
 gates:
@@ -29,26 +29,26 @@ safety:
   agent_creds_scope: dev_only
 `
 
-// TestBuildSpecAdapter_DispatchesByYAMLType asserts factory wires by `regatta.yaml::spec_adapter.type` (MVR-1-T4).
-func TestBuildSpecAdapter_DispatchesByYAMLType(t *testing.T) {
+// TestBuildWorkItemSource_DispatchesByYAMLType asserts factory wires by `regatta.yaml::work_item_source.type` (MVR-1-T4).
+func TestBuildWorkItemSource_DispatchesByYAMLType(t *testing.T) {
 	mdYAML := `version: 1
 repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: markdown_catalog
   root: .
-` + wireSpecAdapterValidGateBlock
+` + wireWorkItemSourceValidGateBlock
 	ghYAML := `version: 1
 repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: github_issues
   selector: "label:autonomous"
-` + wireSpecAdapterValidGateBlock
+` + wireWorkItemSourceValidGateBlock
 	cases := []struct {
 		name string
 		yaml string
@@ -71,9 +71,9 @@ spec_adapter:
 			// LIVE-6: GH_TOKEN is fail-closed at boot for github_issues; pin a
 			// non-empty value so the dispatch test stays focused on type-routing.
 			t.Setenv("GH_TOKEN", "test-token-for-routing")
-			ad, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, slog.New(slog.NewTextHandler(bytes.NewBuffer(nil), nil)))
+			ad, err := buildWorkItemSource(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, slog.New(slog.NewTextHandler(bytes.NewBuffer(nil), nil)))
 			if err != nil {
-				t.Fatalf("buildSpecAdapter: %v", err)
+				t.Fatalf("buildWorkItemSource: %v", err)
 			}
 			if ad == nil {
 				t.Fatal("ad nil; want non-nil adapter")
@@ -92,8 +92,8 @@ spec_adapter:
 	}
 }
 
-// TestBuildSpecAdapter_LogsConfiguredType pins the #867 contract — every boot emits one INFO record naming the wired adapter so operators can confirm regatta.yaml took effect without log archaeology.
-func TestBuildSpecAdapter_LogsConfiguredType(t *testing.T) {
+// TestBuildWorkItemSource_LogsConfiguredType pins the #867 contract — every boot emits one INFO record naming the wired adapter so operators can confirm regatta.yaml took effect without log archaeology.
+func TestBuildWorkItemSource_LogsConfiguredType(t *testing.T) {
 	cases := []struct {
 		name     string
 		yaml     string
@@ -106,10 +106,10 @@ repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: github_issues
   selector: "label:autonomous"
-` + wireSpecAdapterValidGateBlock,
+` + wireWorkItemSourceValidGateBlock,
 			wantType: "github_issues",
 		},
 		{
@@ -131,8 +131,8 @@ spec_adapter:
 			t.Setenv("GH_TOKEN", "test-token-for-logging")
 			buf := &bytes.Buffer{}
 			logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-			if _, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, logger); err != nil {
-				t.Fatalf("buildSpecAdapter: %v", err)
+			if _, err := buildWorkItemSource(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, logger); err != nil {
+				t.Fatalf("buildWorkItemSource: %v", err)
 			}
 			out := buf.String()
 			if !strings.Contains(out, "msg=adapter.configured") {
@@ -145,16 +145,16 @@ spec_adapter:
 	}
 }
 
-// TestBuildSpecAdapter_SurfacesYAMLLoadError pins the #867 contract — a malformed regatta.yaml MUST surface a WARN record naming the failure instead of silently falling back to markdown_catalog (the silent-swallow behaviour that hid #867 from operator inspection).
-func TestBuildSpecAdapter_SurfacesYAMLLoadError(t *testing.T) {
+// TestBuildWorkItemSource_SurfacesYAMLLoadError pins the #867 contract — a malformed regatta.yaml MUST surface a WARN record naming the failure instead of silently falling back to markdown_catalog (the silent-swallow behaviour that hid #867 from operator inspection).
+func TestBuildWorkItemSource_SurfacesYAMLLoadError(t *testing.T) {
 	tmp := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmp, "regatta.yaml"), []byte("not: valid: yaml: structure\n"), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
 	buf := &bytes.Buffer{}
 	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	if _, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, logger); err != nil {
-		t.Fatalf("buildSpecAdapter: %v", err)
+	if _, err := buildWorkItemSource(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, logger); err != nil {
+		t.Fatalf("buildWorkItemSource: %v", err)
 	}
 	out := buf.String()
 	if !strings.Contains(out, "msg=adapter.config_load_failed") {
@@ -162,13 +162,13 @@ func TestBuildSpecAdapter_SurfacesYAMLLoadError(t *testing.T) {
 	}
 }
 
-// TestBuildSpecAdapter_MissingYAMLStaysSilent pins the negative half of the #867 diagnostic contract — a zero-config deployment (no regatta.yaml on disk) MUST NOT emit adapter.config_load_failed because file-not-present is the documented happy path, not a misconfiguration.
-func TestBuildSpecAdapter_MissingYAMLStaysSilent(t *testing.T) {
+// TestBuildWorkItemSource_MissingYAMLStaysSilent pins the negative half of the #867 diagnostic contract — a zero-config deployment (no regatta.yaml on disk) MUST NOT emit adapter.config_load_failed because file-not-present is the documented happy path, not a misconfiguration.
+func TestBuildWorkItemSource_MissingYAMLStaysSilent(t *testing.T) {
 	tmp := t.TempDir()
 	buf := &bytes.Buffer{}
 	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-	if _, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, logger); err != nil {
-		t.Fatalf("buildSpecAdapter: %v", err)
+	if _, err := buildWorkItemSource(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, logger); err != nil {
+		t.Fatalf("buildWorkItemSource: %v", err)
 	}
 	out := buf.String()
 	if strings.Contains(out, "adapter.config_load_failed") {
@@ -176,26 +176,26 @@ func TestBuildSpecAdapter_MissingYAMLStaysSilent(t *testing.T) {
 	}
 }
 
-// TestBuildSpecAdapter_DefaultLaneYAMLAccepted pins #1117: regatta.yaml `spec_adapter.default_lane` is accepted by buildSpecAdapter and surfaces as a non-nil adapter — the wire path from validate.Load through SpecAdapter.DefaultLane into the github_issues config is exercised end-to-end. The empty-lane skip behaviour is covered by the parse-layer test `TestParseIssueBody_DefaultLaneAppliedWhenNoLabel`; this test gates the wire seam.
-func TestBuildSpecAdapter_DefaultLaneYAMLAccepted(t *testing.T) {
+// TestBuildWorkItemSource_DefaultLaneYAMLAccepted pins #1117: regatta.yaml `work_item_source.default_lane` is accepted by buildWorkItemSource and surfaces as a non-nil adapter — the wire path from validate.Load through WorkItemSource.DefaultLane into the github_issues config is exercised end-to-end. The empty-lane skip behaviour is covered by the parse-layer test `TestParseIssueBody_DefaultLaneAppliedWhenNoLabel`; this test gates the wire seam.
+func TestBuildWorkItemSource_DefaultLaneYAMLAccepted(t *testing.T) {
 	t.Setenv("GH_TOKEN", "stub-token-for-test")
 	yaml := `version: 1
 repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: github_issues
   selector: "label:autonomous"
   default_lane: server
-` + wireSpecAdapterValidGateBlock
+` + wireWorkItemSourceValidGateBlock
 	tmp := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmp, "regatta.yaml"), []byte(yaml), 0o600); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	ad, err := buildSpecAdapter(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, slog.New(slog.NewTextHandler(bytes.NewBuffer(nil), nil)))
+	ad, err := buildWorkItemSource(serveFlags{RepoRoot: tmp, ItemsRoot: tmp}, slog.New(slog.NewTextHandler(bytes.NewBuffer(nil), nil)))
 	if err != nil {
-		t.Fatalf("buildSpecAdapter with default_lane: %v", err)
+		t.Fatalf("buildWorkItemSource with default_lane: %v", err)
 	}
 	if ad == nil {
 		t.Fatal("ad nil; want non-nil adapter when default_lane is set")

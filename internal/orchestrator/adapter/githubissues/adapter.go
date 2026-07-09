@@ -30,7 +30,7 @@ type Repo struct {
 // Slug returns the SourceRef locator prefix "owner/name".
 func (r Repo) Slug() string { return r.Owner + "/" + r.Name }
 
-// GitHubIssuesConfig configures a GH-Issues-backed schemas.SpecAdapter; Client + Repo required, the rest default-fill in NewGitHubIssues.
+// GitHubIssuesConfig configures a GH-Issues-backed schemas.WorkItemSource; Client + Repo required, the rest default-fill in NewGitHubIssues.
 type GitHubIssuesConfig struct {
 	Client            ghclient.Client
 	Repo              Repo
@@ -45,8 +45,8 @@ type GitHubIssuesConfig struct {
 	DefaultLane string
 }
 
-// NewGitHubIssues returns a schemas.SpecAdapter consuming GH issues labelled `autonomous`; fails closed when Client or Repo is unset.
-func NewGitHubIssues(cfg GitHubIssuesConfig) (schemas.SpecAdapter, error) {
+// NewGitHubIssues returns a schemas.WorkItemSource consuming GH issues labelled `autonomous`; fails closed when Client or Repo is unset.
+func NewGitHubIssues(cfg GitHubIssuesConfig) (schemas.WorkItemSource, error) {
 	if cfg.Client == nil {
 		return nil, errors.New("githubissues: Config.Client is required")
 	}

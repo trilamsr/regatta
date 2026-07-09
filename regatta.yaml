@@ -20,7 +20,7 @@ repo:
 scheduler:
   parallel_cap: 5
 
-spec_adapter:
+work_item_source:
   type: github_issues
   selector: "label:autonomous"
   acceptance_section: "## Acceptance criteria"

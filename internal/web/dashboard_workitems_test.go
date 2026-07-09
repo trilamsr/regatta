@@ -129,7 +129,7 @@ func TestLoadWorkItemsView_EmptyHintWhenNoItems(t *testing.T) {
 	if v.EmptyHint == "" {
 		t.Fatalf("EmptyHint empty; want operator-friendly copy when zero work-items")
 	}
-	if !strings.Contains(v.EmptyHint, "spec_adapter.selector") {
+	if !strings.Contains(v.EmptyHint, "work_item_source.selector") {
 		t.Fatalf("EmptyHint missing selector pointer: %q", v.EmptyHint)
 	}
 }

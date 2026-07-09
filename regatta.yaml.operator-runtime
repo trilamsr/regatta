@@ -17,7 +17,7 @@ repo:
   name: regatta
   default_branch: main
 
-spec_adapter:
+work_item_source:
   type: github_issues
   selector: 'label:autonomous'
   default_lane: server

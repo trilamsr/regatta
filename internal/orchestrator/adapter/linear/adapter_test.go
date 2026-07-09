@@ -37,7 +37,7 @@ func stubServer(t *testing.T, pages []string, capture *[]string) *httptest.Serve
 	return srv
 }
 
-func newTestAdapter(t *testing.T, endpoint string) schemas.SpecAdapter {
+func newTestAdapter(t *testing.T, endpoint string) schemas.WorkItemSource {
 	t.Helper()
 	a, err := NewLinearCatalog(LinearCatalogConfig{
 		APIKey:   "lin_api_test",

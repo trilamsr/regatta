@@ -1,16 +1,16 @@
-# How to add a SpecAdapter
+# How to add a WorkItemSource
 
 Reader: internal engineer adding a built-in spec-source adapter.
 Read time: 10 minutes.
-Expires when: `SpecAdapter` Go interface in
-`contracts/schemas/spec_adapter.go` changes shape.
+Expires when: `WorkItemSource` Go interface in
+`contracts/schemas/work_item_source.go` changes shape.
 
 ## Decision: built-in vs custom
 
 | Kind | Lives at | Wired via | When |
 |---|---|---|---|
 | Built-in | `internal/orchestrator/adapter/<name>/` | Hard-coded in the orchestrator | Adapter is universal (`github_issues`, `markdown_catalog` today). |
-| Custom | Customer-supplied binary on PATH | `regatta.yaml spec_adapter.type: custom` + `command:` | Customer-specific or proprietary spec source. |
+| Custom | Customer-supplied binary on PATH | `regatta.yaml work_item_source.type: custom` + `command:` | Customer-specific or proprietary spec source. |
 
 If the adapter is universal, write an ADR under `docs/rfcs/`
 before implementing. The adapter surface is operator-visible (the
@@ -38,12 +38,12 @@ degraded.
 1. Pick the adapter's id (`<name>`, lowercase, underscore-allowed).
    Must match a discriminator value in
    [`contracts/schemas/regatta.v1.cue`](../../contracts/schemas/regatta.v1.cue)
-   `#SpecAdapter.type`.
+   `#WorkItemSource.type`.
 2. Create `internal/orchestrator/adapter/<name>/<name>.go`. Mirror
    `internal/orchestrator/adapter/markdown.go` for the
    `markdown_catalog` shape.
-3. Implement the `SpecAdapter` interface from
-   [`contracts/schemas/spec_adapter.go`](../../contracts/schemas/spec_adapter.go).
+3. Implement the `WorkItemSource` interface from
+   [`contracts/schemas/work_item_source.go`](../../contracts/schemas/work_item_source.go).
    Document the tier in the package doc-comment.
 4. For each `WorkItem` returned, fill the load-bearing fields per
    `docs/design.md` §Spec contract: `acceptance_criteria[].text`
@@ -51,7 +51,7 @@ degraded.
    (immutable pointer L0 uses).
 5. Write a fixture corpus + table-driven test mirroring
    `internal/orchestrator/adapter/markdown_test.go`.
-6. Update the CUE schema's `#SpecAdapter` per-type clause with the
+6. Update the CUE schema's `#WorkItemSource` per-type clause with the
    new fields the adapter needs (selector, project, jql, team,
    etc.).
 7. Wire the adapter into the orchestrator's adapter registry.
@@ -59,7 +59,7 @@ degraded.
 ## Custom adapter wire protocol
 
 Customer-supplied binaries speak JSON-over-stdio per
-`contracts/wire/spec_adapter_jsonio.md` (activation trigger: first
+`contracts/wire/work_item_source_jsonio.md` (activation trigger: first
 reference custom-adapter impl under `plugins/adapters/`).
 
 ## Verifying
@@ -73,7 +73,7 @@ This is the only smoke test until your fixture corpus is wired.
 
 ## Promotion to contracts/
 
-The Go `SpecAdapter` interface already lives at
-`contracts/schemas/spec_adapter.go`. Built-in adapter impls live at
+The Go `WorkItemSource` interface already lives at
+`contracts/schemas/work_item_source.go`. Built-in adapter impls live at
 `internal/orchestrator/adapter/` and are not themselves promoted -
 the interface is the contract surface.

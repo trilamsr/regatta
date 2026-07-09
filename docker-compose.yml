@@ -106,7 +106,7 @@ services:
       # the Keychain-backed mount arrives empty).
       CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:-}
       # Spec-adapter credential — required when regatta.yaml has
-      # spec_adapter.type=github_issues. CI + local operators pass a
+      # work_item_source.type=github_issues. CI + local operators pass a
       # real token; empty default keeps zero-config boot working when
       # the adapter is configured to markdown_catalog instead.
       GH_TOKEN: ${GH_TOKEN:-}

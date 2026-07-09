@@ -18,7 +18,7 @@ import "list"
 #Config: {
 	version: 1
 	repo:          #Repo
-	spec_adapter:  #SpecAdapter
+	work_item_source:  #WorkItemSource
 	ci:            #CI
 	pr_template?:  #PRTemplate
 	gates:         [...#Gate] & list.MinItems(1)
@@ -79,7 +79,7 @@ import "list"
 // and custom are Phase-X forward-fits with no wired consumer and are rejected
 // at CUE-validate time so a mistyped regatta.yaml fails fast instead of
 // silently falling back to markdown_catalog at boot.
-#SpecAdapter: {
+#WorkItemSource: {
 	type: "github_issues" | "markdown_catalog" | "linear"
 
 	if type == "github_issues" {

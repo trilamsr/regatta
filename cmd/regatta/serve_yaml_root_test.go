@@ -20,8 +20,8 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// TestServe_YAMLSpecAdapterRoot_DrivesItemsCatalog pins the S1-T1 contract: when `regatta.yaml` declares  spec_adapter: type: markdown_catalog
-func TestServe_YAMLSpecAdapterRoot_DrivesItemsCatalog(t *testing.T) {
+// TestServe_YAMLWorkItemSourceRoot_DrivesItemsCatalog pins the S1-T1 contract: when `regatta.yaml` declares  work_item_source: type: markdown_catalog
+func TestServe_YAMLWorkItemSourceRoot_DrivesItemsCatalog(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go not on PATH")
 	}
@@ -36,7 +36,7 @@ func TestServe_YAMLSpecAdapterRoot_DrivesItemsCatalog(t *testing.T) {
 
 	// Layout: repo root holds regatta.yaml; itemsRoot is a sibling
 	// subdir under the same repo so the resolution `repoRoot +
-	// spec_adapter.root` lands inside the temp tree.
+	// work_item_source.root` lands inside the temp tree.
 	repoRoot := filepath.Join(dir, "repo")
 	if err := os.MkdirAll(filepath.Join(repoRoot, ".regatta", "items"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -47,7 +47,7 @@ repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: markdown_catalog
   root: .
 ci:
@@ -86,7 +86,7 @@ status: planned
 		"--db", dbPath,
 		"--tick-once",
 		"--ui=false",
-		// NB: no --items-root. The yaml's spec_adapter.root must drive it.
+		// NB: no --items-root. The yaml's work_item_source.root must drive it.
 	)
 	// The CWD must be the repo root so `regatta serve` finds
 	// regatta.yaml via its existing repoRoot-relative load
@@ -113,12 +113,12 @@ status: planned
 		t.Fatalf("scan: %v", err)
 	}
 	if count != 1 {
-		t.Fatalf("work_items row count for YAML-DRIVES-1 = %d; want 1 (yaml spec_adapter.root failed to drive items-root)\nstderr=%s\nstdout=%s", count, stderr.String(), stdout.String())
+		t.Fatalf("work_items row count for YAML-DRIVES-1 = %d; want 1 (yaml work_item_source.root failed to drive items-root)\nstderr=%s\nstdout=%s", count, stderr.String(), stdout.String())
 	}
 }
 
-// TestServe_YAMLSpecAdapterRoot_ExplicitFlagOverrides pins the resolution priority: an explicit `--items-root` beats the yaml-declared `spec_a
-func TestServe_YAMLSpecAdapterRoot_ExplicitFlagOverrides(t *testing.T) {
+// TestServe_YAMLWorkItemSourceRoot_ExplicitFlagOverrides pins the resolution priority: an explicit `--items-root` beats the yaml-declared `spec_a
+func TestServe_YAMLWorkItemSourceRoot_ExplicitFlagOverrides(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go not on PATH")
 	}
@@ -148,7 +148,7 @@ repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: markdown_catalog
   root: yaml-root
 ci:

@@ -297,7 +297,7 @@ status: planned
 	}
 }
 
-// TestMarkdownCatalogKindDefaultsFeature pins the omitted-kind default to "feature" per spec_adapter.go:41 (#866).
+// TestMarkdownCatalogKindDefaultsFeature pins the omitted-kind default to "feature" per work_item_source.go:41 (#866).
 func TestMarkdownCatalogKindDefaultsFeature(t *testing.T) {
 	dir := t.TempDir()
 	writeItem(t, dir, "f.md", `---

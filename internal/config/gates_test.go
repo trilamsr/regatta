@@ -21,7 +21,7 @@ repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: github_issues
   selector: "label:planned"
 ci:

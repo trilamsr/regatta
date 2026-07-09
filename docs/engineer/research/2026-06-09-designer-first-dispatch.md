@@ -27,10 +27,10 @@ Recurring pattern: (a) finite enum of role names in code, (b) one explicit signa
 
 ## Regatta-specific signals
 
-The router needs a deterministic projection from `schemas.WorkItem` (`contracts/schemas/spec_adapter.go:39-50`) to a role token. Fields available today:
+The router needs a deterministic projection from `schemas.WorkItem` (`contracts/schemas/work_item_source.go:39-50`) to a role token. Fields available today:
 
 - **`WorkItem.Kind`** — discriminates `feature` (leaf) from `program` (planner-routed). The `program` rail implies multi-step but has no planner wired. Reusing `Kind` for designer-first conflates two orthogonal axes (shape vs leafness).
-- **GitHub labels** — `parse.go:31-35` pins `autonomous` as the polled label; `spec_adapter.selector` can AND-combine further labels (`docs/engineer/specs/2026-06-04-mvr-1-t4-github-issues-adapter-impl.md:55`). Adding `kind:research-delta` or `needs:design` costs zero schema. Labels are operator-authored — trustworthy if dispatchers refuse to auto-apply.
+- **GitHub labels** — `parse.go:31-35` pins `autonomous` as the polled label; `work_item_source.selector` can AND-combine further labels (`docs/engineer/specs/2026-06-04-mvr-1-t4-github-issues-adapter-impl.md:55`). Adding `kind:research-delta` or `needs:design` costs zero schema. Labels are operator-authored — trustworthy if dispatchers refuse to auto-apply.
 - **Title prefix** — adapter extracts `^[A-Z][A-Z0-9_-]{1,40}:` via `idPrefixRE` (`parse.go:38`). `RESEARCH-DELTA` parses cleanly. The seven `[RESEARCH-DELTA]` issues use bracketed form which the existing regex does NOT match; router either tightens the regex or adds a separate title-prefix probe.
 - **Body section** — issue #1084 sketches a `## Dispatch sequence` H2 with a bullet list of role names. The acceptance-criteria parser (`parse.go:93-134`) already walks H2 sections; an additive parser for a second heading is cheap. Most explicit signal, also most prone to typos.
 - **File-scope hint** — body prose like "touch `internal/X`" exists but deterministic extraction is fragile; the spec rule (`parse.go:1`) forbids LLM inference. Better left as implementer-side concern.
@@ -83,7 +83,7 @@ This is research-only — no decision committed. The path that lines up cleanly 
 - `internal/orchestrator/spawner/claude.go::defaultPromptBuilder` — current single-shape prompt (lines 259-333).
 - `internal/orchestrator/scheduler/scheduler.go` — Tick `dispatch` step (lines 378-388).
 - `internal/orchestrator/adapter/githubissues/parse.go::parseIssueBody` — projection seam (line 57).
-- `contracts/schemas/spec_adapter.go::WorkItem` — schema target (lines 37-50).
+- `contracts/schemas/work_item_source.go::WorkItem` — schema target (lines 37-50).
 - `docs/engineer/dispatch-templates/designer.md` — designer template body.
 - `docs/engineer/dispatch-templates/implementer.md` — implementer template body.
 - `docs/engineer/dispatch-templates/triage.md` — triage template body.

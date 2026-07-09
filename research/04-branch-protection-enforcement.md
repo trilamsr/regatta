@@ -407,7 +407,7 @@ The agent opens PRs via a GitHub App installation. Surfaces to verify:
 [GitLab MR approvals][gitlab-approvals].
 
 **Practical recommendation:** Regatta's GitLab adapter (the
-`gitlab_issues` SpecAdapter already in scope) should refuse to start
+`gitlab_issues` WorkItemSource already in scope) should refuse to start
 against a project where the matching GitLab tier is Free, with a
 clear "required minimum: Premium" message.
 

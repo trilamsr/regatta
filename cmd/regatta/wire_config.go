@@ -12,7 +12,7 @@ import (
 )
 
 // loadMarkdownCatalogRoot reads regatta.yaml at repoRoot and returns
-// (spec_adapter.root, true) when the adapter type is markdown_catalog.
+// (work_item_source.root, true) when the adapter type is markdown_catalog.
 // Returns ("", false) when the yaml is missing, malformed, or declares
 // a different adapter type — callers fall back to the --items-root
 // flag default. Malformed-yaml is intentionally not fatal here: the

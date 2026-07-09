@@ -59,7 +59,7 @@ func TestSchedulerMinPollWithRealAdapter(t *testing.T) {
 
 	ad := &observingAdapter{inner: realAdapter, errInjectAtCall: errInjectCall, injectErr: schemas.ErrTransient}
 
-	sch := New(db, Config{Adapters: []schemas.SpecAdapter{ad}})
+	sch := New(db, Config{Adapters: []schemas.WorkItemSource{ad}})
 
 	deadline := time.Duration(wantPolls+2) * minPoll
 	ctx, cancel := context.WithTimeout(context.Background(), deadline)
@@ -131,9 +131,9 @@ func TestSchedulerMinPollWithRealAdapter(t *testing.T) {
 	}
 }
 
-// observingAdapter wraps a real SpecAdapter, stamps every List call with wall-clock time, and self-injects an error on the Nth call so cadence-after-error is exercised within one run.
+// observingAdapter wraps a real WorkItemSource, stamps every List call with wall-clock time, and self-injects an error on the Nth call so cadence-after-error is exercised within one run.
 type observingAdapter struct {
-	inner           schemas.SpecAdapter
+	inner           schemas.WorkItemSource
 	errInjectAtCall int
 	injectErr       error
 

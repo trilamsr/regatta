@@ -36,7 +36,7 @@ Commit `regatta.yaml` to git. Add `.regatta/` to `.gitignore` — the
 directory holds local state (`sample.diff`, future `items/`,
 `worktrees/`, `state.db`) that should not be versioned.
 
-Required fields per the v1 schema: `version`, `repo`, `spec_adapter`,
+Required fields per the v1 schema: `version`, `repo`, `work_item_source`,
 `ci.command`, `gates`, `safety`. See
 [configure.md](configure.md#required-fields) for the full surface
 with defaults and semantics.
@@ -123,7 +123,7 @@ loop, with the trigger that produces each:
 |---|---|
 | `brief.rejected` | HMAC verify failed, sha256 mismatch, or parse error during `LoadAndVerifyBrief`. |
 | `brief.tombstoned` | A previously-loaded brief file disappeared between ticks. |
-| `adapter.tombstoned` | A SpecAdapter item disappeared between ticks; the corresponding work_item is archived. |
+| `adapter.tombstoned` | A WorkItemSource item disappeared between ticks; the corresponding work_item is archived. |
 | `child.cascade_archived` | Parent program archived; child work_items archived alongside. |
 | `child.dependency_archived` | A child's `depends_on` target was tombstoned; the child is archived. |
 

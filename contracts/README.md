@@ -13,7 +13,7 @@ implement against, or sign against lives here.
 - `prompts/` - signed agent prompts loaded by the orchestrator
   + gate runners. Populated as MVP-1 -> MVP-3 land.
 - `wire/` - wire-protocol docs for plugin authors (custom
-  SpecAdapter, custom gate). Populated when first plugin seam ships.
+  WorkItemSource, custom gate). Populated when first plugin seam ships.
 
 ## Versioning
 

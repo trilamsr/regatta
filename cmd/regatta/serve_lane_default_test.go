@@ -1,5 +1,5 @@
 // serve_lane_default_test pins BUG-1048 c1+c3: regatta serve auto-
-// applies -lane server:1 when spec_adapter.type=github_issues and no
+// applies -lane server:1 when work_item_source.type=github_issues and no
 // --lane was passed, and the resulting scheduler reserves exactly one
 // agent per tick for two planned items on the shared lane.
 package main
@@ -38,7 +38,7 @@ repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: github_issues
   selector: "label:autonomous"
 ci:
@@ -50,7 +50,7 @@ repo:
   host: github
   owner: trilamsr
   name: regatta
-spec_adapter:
+work_item_source:
   type: markdown_catalog
   root: .regatta/items
 ci:

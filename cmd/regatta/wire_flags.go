@@ -151,7 +151,7 @@ type serveFlags struct {
 
 // parseServeFlags registers the `regatta serve` flag set against args,
 // applies the regatta.yaml-driven items-root fallback (explicit flag
-// wins; yaml spec_adapter.root is the second-choice), and returns the
+// wins; yaml work_item_source.root is the second-choice), and returns the
 // populated serveFlags. ContinueOnError surfaces the parse error so
 // main() can run deferred cleanup before exit (R-MEGA-3 LIVE-15).
 func parseServeFlags(args []string) (serveFlags, error) {
@@ -161,9 +161,9 @@ func parseServeFlags(args []string) (serveFlags, error) {
 		LogFormat: logFormatFlag(defaultLogFormat),
 	}
 	fs.StringVar(&f.DBPath, flagDB, stateDBDefaultLiteral, "Path to sqlite state DB")
-	fs.StringVar(&f.ItemsRoot, flagItemsRoot, ".", "Repo root containing .regatta/items/*.md (overrides regatta.yaml spec_adapter.root when set explicitly)")
+	fs.StringVar(&f.ItemsRoot, flagItemsRoot, ".", "Repo root containing .regatta/items/*.md (overrides regatta.yaml work_item_source.root when set explicitly)")
 	fs.BoolVar(&f.TickOnce, flagTickOnce, false, "Run one poll+schedule cycle and exit")
-	fs.DurationVar(&f.PollDur, flagPoll, 30*time.Second, "SpecAdapter poll interval")
+	fs.DurationVar(&f.PollDur, flagPoll, 30*time.Second, "WorkItemSource poll interval")
 	fs.DurationVar(&f.TickDur, flagTick, 5*time.Second, "Scheduler tick interval")
 	fs.DurationVar(&f.HeartDur, flagHeartbeat, 60*time.Second, "Lock heartbeat interval")
 	fs.DurationVar(&f.LockTTL, flagLockTTL, 15*time.Minute, "Hotspot lock heartbeat lease")
@@ -171,7 +171,7 @@ func parseServeFlags(args []string) (serveFlags, error) {
 	fs.StringVar(&f.RepoRoot, flagRepo, ".", "Repo root for the claude spawner (worktrees live under <repo>/.regatta/worktrees)")
 	fs.StringVar(&f.ClaudeBin, flagClaude, spawnerNameClaude, "Path to the claude binary (used when -spawner=claude)")
 	fs.StringVar(&f.BaseRef, flagBaseRef, "HEAD", "Git ref a new agent worktree branches from")
-	fs.Var(f.LaneCaps, flagLane, "Per-lane concurrency cap, repeatable (e.g. -lane server:1). When omitted and spec_adapter.type=github_issues, regatta serve auto-applies -lane server:1 to prevent cascade-rebase on overlapping issues.")
+	fs.Var(f.LaneCaps, flagLane, "Per-lane concurrency cap, repeatable (e.g. -lane server:1). When omitted and work_item_source.type=github_issues, regatta serve auto-applies -lane server:1 to prevent cascade-rebase on overlapping issues.")
 	fs.Var(&f.LogFormat, flagLogFormat, "Structured-log handler: text | json")
 	fs.StringVar(&f.Addr, flagAddr, defaultListenerAddr, "HTTP listener bind address when --ui=true")
 	fs.BoolVar(&f.UI, flagUI, true, "Boot the operator HTTP listener; --ui=false skips bind entirely")
@@ -191,7 +191,7 @@ func parseServeFlags(args []string) (serveFlags, error) {
 	// Resolution priority for the adapter items-root (spec
 	// docs/engineer/specs/2026-06-02-s1-t1-self-host-regatta-yaml.md §5):
 	//   1. explicit --items-root flag wins;
-	//   2. else regatta.yaml spec_adapter.root (markdown_catalog only);
+	//   2. else regatta.yaml work_item_source.root (markdown_catalog only);
 	//   3. else the flag default ".".
 	// flag.Visit reports only flags the operator passed; the default
 	// value never visits, so an absent --items-root falls through to

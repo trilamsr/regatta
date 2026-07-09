@@ -202,7 +202,7 @@ func TestRecoverRequeuesDeadAgents(t *testing.T) {
 }
 
 // failingAdapter returns an error on every List call. Used to prove
-// Run survives a broken SpecAdapter without crashing.
+// Run survives a broken WorkItemSource without crashing.
 type failingAdapter struct{ calls atomic.Int64 }
 
 func (a *failingAdapter) List(ctx context.Context) ([]schemas.WorkItem, error) {
