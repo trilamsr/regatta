@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/trilamsr/regatta/internal/obs"
@@ -39,6 +40,26 @@ import (
 // `gh pr merge` (W2-c2 dependency); pinning at boot gives one operator-
 // actionable error instead of a runtime failure in the sweep loop.
 const MinGHVersion = "2.40.0"
+
+// scopeName is the OTel instrumentation scope for prwatch metrics.
+const scopeName = "github.com/trilamsr/regatta/internal/orchestrator/prwatch"
+
+// ListTimeoutsMetricName is the OTel counter name for ListOpenByHead
+// per-call timeouts (MAY-bug6). Exported so alert rules + dashboards
+// key on one constant.
+const ListTimeoutsMetricName = "regatta.prwatch.list_timeouts"
+
+// DefaultListTimeout bounds a single ListOpenByHead call (MAY-bug6).
+// 10s matches defaultGHTimeout in prwatch/ghcli.go — one network-hung
+// gh probe cannot block Sweep beyond that, so a per-agent hang costs
+// at most 10s of the tick budget instead of the whole tick.
+const DefaultListTimeout = 10 * time.Second
+
+// listFailErrorThreshold is the consecutive-per-agent list-failure
+// count at which prwatch.list_failed escalates from WARN to ERROR
+// (MAY-bug6). 3 rides out an isolated blip while surfacing a
+// persistent outage to dashboards keyed on ERROR volume.
+const listFailErrorThreshold = 3
 
 // DefaultBranchRenameThreshold is the consecutive-empty-sweep count
 // after which Sweep emits `agent_branch_renamed` for a pr_open agent
@@ -117,6 +138,16 @@ type Config struct {
 	// fork-user.
 	StrictForkAuthor bool
 
+	// ListTimeout bounds a single ListOpenByHead call so one hung
+	// per-agent gh shell-out cannot wedge Sweep for the rest of the
+	// tick (MAY-bug6). Zero picks DefaultListTimeout.
+	ListTimeout time.Duration
+
+	// Meter records prwatch counters (list_timeouts_total). Nil falls
+	// back to otel.Meter(scopeName) so a global provider swap flows
+	// through. Paired with Tracer to satisfy the #509 lint invariant.
+	Meter metric.Meter
+
 	// LocalHeadFn returns the agent's local worktree HEAD sha so Sweep
 	// can detect the BUG-1051 stuck-push pattern: agent pushed sha-A,
 	// rebased locally to sha-B, but force-push was denied — PR's
@@ -175,6 +206,11 @@ type Watcher struct {
 	// success. Escalates the list_failed log from WARN to ERROR once
 	// the count reaches listFailErrorThreshold (MAY-bug6).
 	listFailCount map[int64]int
+
+	// listTimeouts counts ListOpenByHead per-call deadline exceedances
+	// so dashboards + on-call see network-hang blips even when Sweep
+	// otherwise looks healthy (MAY-bug6).
+	listTimeouts metric.Int64Counter
 }
 
 // New constructs a Watcher. Returns an error when required deps are
@@ -196,6 +232,15 @@ func New(cfg Config) (*Watcher, error) {
 	tracer := cfg.Tracer
 	if tracer == nil {
 		tracer = otel.Tracer("prwatch")
+	}
+	meter := cfg.Meter
+	if meter == nil {
+		meter = otel.Meter(scopeName)
+	}
+	listTimeouts, _ := meter.Int64Counter(ListTimeoutsMetricName)
+	listTimeout := cfg.ListTimeout
+	if listTimeout <= 0 {
+		listTimeout = DefaultListTimeout
 	}
 	titlePrefix := cfg.TitlePrefix
 	if titlePrefix == nil {
@@ -228,6 +273,8 @@ func New(cfg Config) (*Watcher, error) {
 		localHeadFn:           cfg.LocalHeadFn,
 		divergedEmitted:       make(map[int64]string),
 		listFailCount:         make(map[int64]int),
+		listTimeout:           listTimeout,
+		listTimeouts:          listTimeouts,
 	}, nil
 }
 
@@ -305,20 +352,49 @@ func (w *Watcher) evictDeadBranches(live map[string]struct{}) {
 	w.lastLiveBranches = live
 }
 
+// callLister bounds a single ListOpenByHead call at listTimeout so
+// one network-hung per-agent probe cannot wedge Sweep (MAY-bug6).
+func (w *Watcher) callLister(ctx context.Context, branch, titlePrefix string) ([]PullRequest, error) {
+	cctx, cancel := context.WithTimeout(ctx, w.listTimeout)
+	defer cancel()
+	prs, err := w.lister.ListOpenByHead(cctx, branch, titlePrefix)
+	if err != nil && (errors.Is(err, context.DeadlineExceeded) || errors.Is(cctx.Err(), context.DeadlineExceeded)) {
+		if w.listTimeouts != nil {
+			w.listTimeouts.Add(ctx, 1)
+		}
+	}
+	return prs, err
+}
+
+// observeListFailure logs the per-agent list failure + escalates the
+// slog level once the consecutive-failure count reaches
+// listFailErrorThreshold (MAY-bug6). Reset on the next success.
+func (w *Watcher) observeListFailure(agentID int64, branch string, err error) {
+	w.listFailCount[agentID]++
+	attrs := []any{
+		string(obs.KeyAgentID), agentID,
+		"branch", branch,
+		"consecutive_failures", w.listFailCount[agentID],
+		string(obs.KeyErr), err.Error(),
+	}
+	if w.listFailCount[agentID] >= listFailErrorThreshold {
+		w.log.Error("prwatch.list_failed", attrs...)
+		return
+	}
+	w.log.Warn("prwatch.list_failed", attrs...)
+}
+
 // sweepOne reconciles a single agent. Errors are logged + swallowed
 // per the per-agent isolation rule above.
 func (w *Watcher) sweepOne(ctx context.Context, a state.Agent) {
 	branch := w.branchFn(a.ID)
 	titlePrefix := w.titlePrefix(a.ID)
-	prs, err := w.lister.ListOpenByHead(ctx, branch, titlePrefix)
+	prs, err := w.callLister(ctx, branch, titlePrefix)
 	if err != nil {
-		w.log.Warn("prwatch.list_failed",
-			string(obs.KeyAgentID), a.ID,
-			"branch", branch,
-			string(obs.KeyErr), err.Error(),
-		)
+		w.observeListFailure(a.ID, branch, err)
 		return
 	}
+	w.listFailCount[a.ID] = 0
 	// #522 / #587 impersonator guard: drop PRs whose head ref carries
 	// neither the literal branch nor the agent suffix (and, under
 	// strict mode, whose author is not allowlisted).
