@@ -132,10 +132,9 @@ YAML via Sloth to Prometheus recording + alert rules.
 | SLO | Objective | Window | Error budget | SLI | Runbook |
 |---|---|---|---|---|---|
 | SLO-1 — Scheduler tick latency | p95 ≤ 5 s | 7d rolling | 5% of ticks | `histogram_quantile(0.95, rate(regatta_scheduler_tick_latency_ms_bucket[5m])) <= 5000` | [scheduler-tick runbook](runbooks/scheduler-tick.md) |
-| SLO-2 — L4 gate latency | p95 ≤ 30 s | 7d rolling | 1% of L4 invocations | `histogram_quantile(0.95, rate(regatta_l4_latency_ms_bucket[5m]))` | [l4-latency runbook](runbooks/l4-latency.md) |
 
 **Multi-burn-rate alerting.** The compiled Sloth output at
-`dashboards/prometheus/rules/{scheduler-tick,l4-latency}.yaml`
+`dashboards/prometheus/rules/scheduler-tick.yaml`
 generates 4 burn-rate tiers per `tools/sloth/windows/7d.yaml`:
 13.44× (1h window, page), 3.5× (6h window, page), 1.4× (1d window,
 ticket), 0.98× (3d window, ticket). The two-page-tier pattern catches

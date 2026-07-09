@@ -34,16 +34,6 @@ Page tier wakes the on-call. Ticket tier surfaces in the daily digest.
 
 ## Per-step diagnosis
 
-### `gate_l4` dominant
-
-The L4 gate p95 latency SLO (SLO-2) is the next layer down — check
-`SchedulerTickLatencyHigh` against `L4GateLatencyHigh`. If both fire,
-work the L4 runbook first: `docs/operator/runbooks/l4-latency.md`.
-A model-provider tail latency surfaces here before the L4 SLO trips
-because tick latency = sum of step latencies.
-
-Query: `histogram_quantile(0.95, sum by (le) (rate(regatta_scheduler_tick_step_duration_ms_bucket{step="gate_l4"}[5m])))`.
-
 ### `persist` dominant
 
 The substrate event-append path is contending. Check disk IOPS on the
