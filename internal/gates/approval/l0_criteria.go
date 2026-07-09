@@ -14,7 +14,7 @@ type matchedCriterion struct {
 	Line     int    // 1-based line number in the source
 }
 
-// CriterionState is planned ("- [ ]") or done ("- [x]"). L0 forbids
+// L0CriterionState is planned ("- [ ]") or done ("- [x]"). L0 forbids
 // done→planned flips and enforces byte-identical text on done→done.
 type L0CriterionState int
 
