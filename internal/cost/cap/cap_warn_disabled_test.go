@@ -23,7 +23,7 @@ func TestEnforcer_CapZero_LogsWarn(t *testing.T) {
 		TenantID: "default",
 		Spend:    &fakeSpend{},
 		Recorder: &fakeRecorder{},
-		Resume:   &fakeResume{},
+		Resume:   (&fakeResume{}).read,
 		Clock:    func() time.Time { return now },
 		Logger:   log,
 	})
@@ -51,7 +51,7 @@ func TestEnforcer_CapNonZero_NoWarn(t *testing.T) {
 		TenantID: "default",
 		Spend:    &fakeSpend{},
 		Recorder: &fakeRecorder{},
-		Resume:   &fakeResume{},
+		Resume:   (&fakeResume{}).read,
 		Clock:    func() time.Time { return now },
 		Logger:   log,
 	})

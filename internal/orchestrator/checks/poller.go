@@ -6,10 +6,6 @@ import (
 	"sync"
 )
 
-type GHCLI interface { //nolint:revive // gh-shell seam; production wires GHShell, tests inject a fake
-	PRChecks(ctx context.Context, pr string) (CheckRun, error)
-}
-
 // CheckRun is the aggregated PR-checks rollup; Conclusion ∈ {"success","failure",""}, Status mirrors gh's per-check Status ("completed" once all required checks terminate).
 type CheckRun struct {
 	Conclusion string
@@ -29,14 +25,16 @@ type Emitter interface { //nolint:revive // substrate-write seam; production app
 
 // Poller routes gh pr-checks state changes through Emitter; concurrent Poll is safe — last-seen map is mutex-guarded.
 type Poller struct {
-	gh   GHCLI
+	gh   *GHShell
 	sink Emitter
 
 	mu   sync.Mutex
 	last map[string]CheckRun
 }
 
-func New(gh GHCLI, sink Emitter) *Poller { //nolint:revive // empty last-seen cache so first observation per PR always emits
+// New builds a Poller with an empty last-seen cache so the first
+// observation per PR always emits.
+func New(gh *GHShell, sink Emitter) *Poller {
 	return &Poller{gh: gh, sink: sink, last: map[string]CheckRun{}}
 }
 

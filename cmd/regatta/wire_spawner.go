@@ -105,7 +105,7 @@ func buildSpawner(name, repoRoot, claudeBin, baseRef string, logger *slog.Logger
 			cleanup()
 			return spawnerSet{}, fmt.Errorf("claude spawner: %w", err)
 		}
-		return spawnerSet{Spawner: cs, Killer: cs, Worktrees: wm, Cleanup: cleanup}, nil
+		return spawnerSet{Spawner: cs, Killer: cs.KillAgent, Worktrees: wm, Cleanup: cleanup}, nil
 	default:
 		return spawnerSet{}, fmt.Errorf("unknown spawner %q (want stub|claude)", name)
 	}

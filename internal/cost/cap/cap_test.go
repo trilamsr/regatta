@@ -65,7 +65,7 @@ type fakeResume struct {
 	t  time.Time
 }
 
-func (f *fakeResume) LatestResumeAt(_ context.Context) (time.Time, error) {
+func (f *fakeResume) read(_ context.Context) (time.Time, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.t, nil
@@ -81,7 +81,7 @@ func newTestEnforcer(t *testing.T, capMicro spend.USDMicro, sp *fakeSpend, rec *
 		MemoizeTTL: memo,
 		Spend:      sp,
 		Recorder:   rec,
-		Resume:     res,
+		Resume:     res.read,
 		Clock:      clock,
 	})
 	if err != nil {

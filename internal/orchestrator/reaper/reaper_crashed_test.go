@@ -56,7 +56,7 @@ func TestSweepCrashedWithPID_KillsStampedPIDAndRequeues(t *testing.T) {
 	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	killer := &fakeKiller{}
-	r := New(Config{DB: db, WM: wm, Killer: killer})
+	r := New(Config{DB: db, WM: wm, Killer: killer.KillAgent})
 
 	a := upsert(t, db, "WORK-1", "server")
 	driveToCrashedWithPID(t, db, a.ID, 12345, "sess-1")
@@ -93,7 +93,7 @@ func TestSweepCrashedWithPID_SkipsCrashedWithoutPID(t *testing.T) {
 	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	killer := &fakeKiller{}
-	r := New(Config{DB: db, WM: wm, Killer: killer})
+	r := New(Config{DB: db, WM: wm, Killer: killer.KillAgent})
 
 	a := upsert(t, db, "WORK-1", "server")
 	driveToCrashedNoPID(t, db, a.ID)
@@ -139,7 +139,7 @@ func TestSweepCrashedWithPID_ContinuesOnError(t *testing.T) {
 	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	killer := &errOnFirstKiller{}
-	r := New(Config{DB: db, WM: wm, Killer: killer})
+	r := New(Config{DB: db, WM: wm, Killer: killer.KillAgent})
 
 	a := upsert(t, db, "WORK-1", "server")
 	b := upsert(t, db, "WORK-2", "server")

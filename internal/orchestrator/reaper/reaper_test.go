@@ -95,7 +95,7 @@ func TestReapIsIdempotent(t *testing.T) {
 	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	killer := &fakeKiller{}
-	r := New(Config{DB: db, WM: wm, Killer: killer})
+	r := New(Config{DB: db, WM: wm, Killer: killer.KillAgent})
 
 	a := upsert(t, db, "WORK-1", "server")
 	if _, err := wm.Create(ctx, a.ID, "HEAD"); err != nil {
@@ -157,7 +157,7 @@ func TestReapRefusesNonTerminalAgent(t *testing.T) {
 	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	killer := &fakeKiller{}
-	r := New(Config{DB: db, WM: wm, Killer: killer})
+	r := New(Config{DB: db, WM: wm, Killer: killer.KillAgent})
 
 	a := upsert(t, db, "WORK-1", "server")
 	mustTransition(t, db, a.ID, state.AgentSpawning)
@@ -185,7 +185,7 @@ func TestReapAllAggregatesErrors(t *testing.T) {
 	db := statetest.OpenDB(t)
 	wm := newWM(t)
 	killer := &fakeKiller{fail: errors.New("synthetic")}
-	r := New(Config{DB: db, WM: wm, Killer: killer})
+	r := New(Config{DB: db, WM: wm, Killer: killer.KillAgent})
 
 	a := upsert(t, db, "WORK-1", "server")
 	driveToDone(t, db, a.ID)

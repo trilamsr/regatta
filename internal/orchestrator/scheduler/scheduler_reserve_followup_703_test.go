@@ -17,9 +17,7 @@ import (
 )
 
 // alwaysDenyCostCap halts the tick at the global cost-cap gate.
-type alwaysDenyCostCap struct{}
-
-func (alwaysDenyCostCap) Allow(_ context.Context) bool { return false }
+func alwaysDenyCostCap(_ context.Context) bool { return false }
 
 // TestReserveOrphans_RechecksCostCap_R1 asserts a saturated daily cap also halts the orphan reservation pass (#703 R1).
 func TestReserveOrphans_RechecksCostCap_R1(t *testing.T) {
@@ -36,7 +34,7 @@ func TestReserveOrphans_RechecksCostCap_R1(t *testing.T) {
 		t.Fatalf("after T1 pending=%+v; want one pending agent", pending)
 	}
 
-	t2 := New(db, Config{CostCap: alwaysDenyCostCap{}})
+	t2 := New(db, Config{CostCap: alwaysDenyCostCap})
 	ids, err := t2.Tick(ctx)
 	if err != nil {
 		t.Fatalf("T2 Tick: %v", err)

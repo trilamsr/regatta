@@ -47,7 +47,7 @@ func newOrchestrator(w orchestratorWiring) (*orchestrator.Orchestrator, *health.
 		LockTTL:                  w.Flags.LockTTL,
 		Logger:                   w.Logger,
 		Clock:                    w.Clock,
-		HealthHeartbeat:          hb,
+		HealthHeartbeat:          hb.Touch,
 	})
 	return o, hb
 }

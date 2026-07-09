@@ -211,7 +211,7 @@ func (o *Orchestrator) Run(ctx context.Context) error {
 // existing zero-cfg semantics (#1218).
 func (o *Orchestrator) touchHealthHeartbeat() {
 	if o.heartbeat != nil {
-		o.heartbeat.Touch()
+		o.heartbeat()
 	}
 }
 

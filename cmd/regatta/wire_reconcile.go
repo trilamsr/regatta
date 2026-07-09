@@ -96,7 +96,7 @@ func startReconciler(ctx context.Context, w reconcileWiring) (<-chan struct{}, b
 			Key:   w.Key,
 			KeyID: w.KeyID,
 		}),
-		RecordedReader: spend.NewReader(w.DB.SQL(), clock),
+		RecordedReader: spend.NewReader(w.DB.SQL(), clock).RecordedUSDForWindow,
 		TenantID:       substrate.DefaultTenantID,
 	})
 

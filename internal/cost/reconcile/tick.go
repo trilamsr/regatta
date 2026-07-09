@@ -51,15 +51,9 @@ type Appender interface {
 }
 
 // RecordedReader returns the locally-recorded spend (micro-USD) for
-// the reconcile window. The default production wiring is a thin
-// wrapper around spend.Reader; an interface keeps T4 from importing
-// the Reader type directly and lets tests inject deterministic
-// values. Return type tracks #554's int64 ledger; the reconciler
-// converts to float at the diff-math boundary because drift_pct is
-// inherently a float ratio.
-type RecordedReader interface {
-	RecordedUSDForWindow(ctx context.Context, tenantID string, start, end time.Time) (spend.USDMicro, error)
-}
+// the reconcile window; func-shape lets tests inject deterministic
+// values while production passes (*spend.Reader).RecordedUSDForWindow.
+type RecordedReader func(ctx context.Context, tenantID string, start, end time.Time) (spend.USDMicro, error)
 
 // Config holds the Reconciler's wiring. Mirrors spec §3.4 + plan §3
 // "T4 exports reconcile.Config" verbatim.
@@ -266,7 +260,7 @@ func (r *Reconciler) Tick(ctx context.Context) error {
 	// micro-USD (#554); convert at the diff-math boundary here — the
 	// reconciler's drift_pct is a float ratio and the substrate row
 	// dual-emits both.
-	recordedMicro, rerr := r.cfg.RecordedReader.RecordedUSDForWindow(spanCtx, r.cfg.TenantID, start, end)
+	recordedMicro, rerr := r.cfg.RecordedReader(spanCtx, r.cfg.TenantID, start, end)
 	if rerr != nil {
 		return fmt.Errorf("recorded reader: %w", rerr)
 	}

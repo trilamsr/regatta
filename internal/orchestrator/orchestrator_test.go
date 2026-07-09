@@ -550,7 +550,7 @@ func TestRunTouchesHealthHeartbeat(t *testing.T) {
 	o.cfg.TickInterval = 5 * time.Millisecond
 	o.cfg.HeartbeatInterval = 5 * time.Millisecond
 	hb := &fakeHeartbeatToucher{}
-	o.heartbeat = hb
+	o.heartbeat = hb.Touch
 
 	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
 	defer cancel()

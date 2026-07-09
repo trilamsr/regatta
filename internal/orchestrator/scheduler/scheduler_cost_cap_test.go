@@ -18,7 +18,7 @@ type fakeCostCapGate struct {
 	calls int
 }
 
-func (f *fakeCostCapGate) Allow(_ context.Context) bool {
+func (f *fakeCostCapGate) allowFn(_ context.Context) bool {
 	f.calls++
 	return f.allow
 }
@@ -30,7 +30,7 @@ func TestSchedulerTick_CostCapAllow_PassesThrough(t *testing.T) {
 	seedPlanned(t, db, "WI-CAP-OK", "prod")
 
 	cc := &fakeCostCapGate{allow: true}
-	sch := New(db, Config{CostCap: cc})
+	sch := New(db, Config{CostCap: cc.allowFn})
 	reserved, err := sch.Tick(ctx)
 	if err != nil {
 		t.Fatalf("Tick: %v", err)
@@ -51,7 +51,7 @@ func TestSchedulerTick_CostCapDeny_HaltsTick(t *testing.T) {
 	seedPlanned(t, db, "WI-CAP-THROTTLED-2", "prod")
 
 	cc := &fakeCostCapGate{allow: false}
-	sch := New(db, Config{CostCap: cc})
+	sch := New(db, Config{CostCap: cc.allowFn})
 	reserved, err := sch.Tick(ctx)
 	if err != nil {
 		t.Fatalf("Tick: %v", err)

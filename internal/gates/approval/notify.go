@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net/http"
 	"sync"
 	"time"
 
@@ -19,12 +18,6 @@ type Notifier interface {
 	// Kind returns the registry key matching regatta.yaml channel config; mismatch fails at startup.
 	Kind() string
 	Notify(ctx context.Context, req Request) (Receipt, error)
-}
-
-// InteractiveNotifier extends Notifier with a self-served HTTP callback (e.g. a Slack interactive button POSTing back to regatta).
-type InteractiveNotifier interface {
-	Notifier
-	CallbackRoute() (path string, handler http.Handler)
 }
 
 // Request carries the minimum primitives a notifier needs to render an approval message and resume the gate — primitive shape (vs state.Approval) decouples adapters from the DB schema (#133).

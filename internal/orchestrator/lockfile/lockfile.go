@@ -29,8 +29,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"github.com/gofrs/flock"
+	"syscall"
 )
 
 // ErrFlockHeld fires when the process-level lockfile is already held
@@ -40,49 +39,60 @@ var ErrFlockHeld = errors.New("orchestrator: process flock held by another insta
 
 // Lock represents a held advisory lock; call Release when done.
 type Lock struct {
-	fl *flock.Flock
+	f *os.File
 }
 
 // Acquire takes an exclusive flock on path; the file persists across
 // releases (operator-visible `.pid` convention). Content is the
 // holder's PID written under the flock as a diagnostic aid — liveness
-// is the flock, not the PID.
+// is the flock, not the PID. Linux/darwin only — Windows is out of
+// scope for regatta.
 func Acquire(path string) (*Lock, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, fmt.Errorf("lockfile: mkdir parent: %w", err)
 	}
-	fl := flock.New(path)
-	locked, err := fl.TryLock()
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600) // #nosec G304 -- caller-controlled `<dbPath>.lock`.
 	if err != nil {
-		return nil, fmt.Errorf("lockfile: trylock: %w", err)
+		return nil, fmt.Errorf("lockfile: open: %w", err)
 	}
-	if !locked {
-		holder := readHolderPID(path)
-		if holder == "" {
-			return nil, fmt.Errorf("%w: %s", ErrFlockHeld, path)
+	// LOCK_EX + LOCK_NB: exclusive, non-blocking. EWOULDBLOCK signals
+	// contention — treat as "held elsewhere" and surface the holder.
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		_ = f.Close()
+		if errors.Is(err, syscall.EWOULDBLOCK) {
+			holder := readHolderPID(path)
+			if holder == "" {
+				return nil, fmt.Errorf("%w: %s", ErrFlockHeld, path)
+			}
+			return nil, fmt.Errorf("%w: %s (last-known holder pid=%s; verify with `lsof %s` before killing)",
+				ErrFlockHeld, path, holder, path)
 		}
-		return nil, fmt.Errorf("%w: %s (last-known holder pid=%s; verify with `lsof %s` before killing)",
-			ErrFlockHeld, path, holder, path)
+		return nil, fmt.Errorf("lockfile: flock: %w", err)
 	}
 
 	pid := strconv.Itoa(os.Getpid())
 	if err := os.WriteFile(path, []byte(pid), 0o600); err != nil {
-		_ = fl.Unlock()
+		_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+		_ = f.Close()
 		return nil, fmt.Errorf("lockfile: write pid: %w", err)
 	}
-	return &Lock{fl: fl}, nil
+	return &Lock{f: f}, nil
 }
 
 // Release unlocks without removing the file; the next Acquire
 // overwrites the PID under its own flock.
 func (l *Lock) Release() error {
-	if l == nil || l.fl == nil {
+	if l == nil || l.f == nil {
 		return nil
 	}
-	err := l.fl.Unlock()
-	l.fl = nil
-	if err != nil {
-		return fmt.Errorf("lockfile: unlock: %w", err)
+	unlockErr := syscall.Flock(int(l.f.Fd()), syscall.LOCK_UN)
+	closeErr := l.f.Close()
+	l.f = nil
+	if unlockErr != nil {
+		return fmt.Errorf("lockfile: unlock: %w", unlockErr)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("lockfile: close: %w", closeErr)
 	}
 	return nil
 }

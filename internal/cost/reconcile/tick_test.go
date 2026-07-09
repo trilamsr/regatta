@@ -79,7 +79,7 @@ type fakeRecordedReader struct {
 	err error
 }
 
-func (f *fakeRecordedReader) RecordedUSDForWindow(ctx context.Context, tenantID string, start, end time.Time) (spend.USDMicro, error) {
+func (f *fakeRecordedReader) read(ctx context.Context, tenantID string, start, end time.Time) (spend.USDMicro, error) {
 	return spend.FromUSD(f.usd), f.err
 }
 
@@ -117,9 +117,9 @@ func (c *capturingHandler) eventCounts() map[string]int {
 	return m
 }
 
-func mkRecorder(t *testing.T, recorded float64) *fakeRecordedReader {
+func mkRecorder(t *testing.T, recorded float64) RecordedReader {
 	t.Helper()
-	return &fakeRecordedReader{usd: recorded}
+	return (&fakeRecordedReader{usd: recorded}).read
 }
 
 func mkCapturingLogger() (*slog.Logger, *capturingHandler) {
