@@ -9,7 +9,6 @@ github.com/trilamsr/regatta/internal/authz/policies/embedded
 github.com/trilamsr/regatta/internal/authz/policies/reload
 github.com/trilamsr/regatta/internal/canon/approvaltoken
 github.com/trilamsr/regatta/internal/cost/pricing
-github.com/trilamsr/regatta/internal/gates/security
 github.com/trilamsr/regatta/internal/ghclient
 github.com/trilamsr/regatta/internal/obs/dispatch
 github.com/trilamsr/regatta/internal/obs/failtaxonomy

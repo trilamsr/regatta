@@ -12,7 +12,6 @@ github.com/trilamsr/regatta/internal/cost/reconcile
 github.com/trilamsr/regatta/internal/cost/spend
 github.com/trilamsr/regatta/internal/gates/approval
 github.com/trilamsr/regatta/internal/gates/severity
-github.com/trilamsr/regatta/internal/history
 github.com/trilamsr/regatta/internal/orchestrator
 github.com/trilamsr/regatta/internal/orchestrator/adapter/githubissues
 github.com/trilamsr/regatta/internal/orchestrator/prompt
