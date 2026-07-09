@@ -19,6 +19,9 @@ func TestComposeRuntimeHTTPMatrix(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
+	t.Setenv("REGATTA_UI", "true")
+	t.Setenv("REGATTA_HMAC_KEY", "test-hmac-key-for-runtime-http-matrix")
+
 	out, err := compose(ctx, repoRoot, "up", "-d", "--wait").CombinedOutput()
 	if err := composeUpErrorWithLogs(err, out, composeLogFetcher(ctx, repoRoot), coreServices); err != nil {
 		t.Fatalf("compose up: %v", err)

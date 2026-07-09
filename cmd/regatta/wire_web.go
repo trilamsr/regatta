@@ -82,13 +82,12 @@ func preflightUIBoot(ui bool) error {
 	return fmt.Errorf("--ui requires REGATTA_HMAC_KEY (or REGATTA_HMAC_KEY_ENV) to be set; refusing to boot")
 }
 
-// bootListener returns a configured *http.Server when --ui=true, or nil when --ui=false so the caller skips the listen syscall entirely.
+// bootListener returns a configured *http.Server that always serves /healthz + /readyz for container healthchecks. UI-specific routes mount only when cfg.UI=true.
 func bootListener(cfg listenerConfig) (*http.Server, error) {
-	if !cfg.UI {
-		return nil, nil
-	}
-	if err := preflightUIBoot(true); err != nil {
-		return nil, err
+	if cfg.UI {
+		if err := preflightUIBoot(true); err != nil {
+			return nil, err
+		}
 	}
 	mux := http.NewServeMux()
 	// W3: content-negotiated /healthz — JSON readiness for the supervisor,
@@ -142,20 +141,19 @@ func bootListener(cfg listenerConfig) (*http.Server, error) {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = w.Write([]byte("ok\n"))
 	})
-	cbPath, cbHandler := approval.NewHTTPCallback(approval.Dependencies{
-		DB:      cfg.DB,
-		Keyring: cfg.Keyring,
-		Clock:   cfg.Clock,
-	})
-	mux.Handle(cbPath, cbHandler)
-	// W7.1 T4: mount the operator UI scaffold last so http.ServeMux's
-	// longest-prefix-wins rule keeps /healthz + /api/approval/callback above
-	// the `/` catch-all (TestServe_RootHandlerWiredIntoBootListener pins it).
-	webHandler, err := newWebHandler(cfg)
-	if err != nil {
-		return nil, err
+	if cfg.UI {
+		cbPath, cbHandler := approval.NewHTTPCallback(approval.Dependencies{
+			DB:      cfg.DB,
+			Keyring: cfg.Keyring,
+			Clock:   cfg.Clock,
+		})
+		mux.Handle(cbPath, cbHandler)
+		webHandler, err := newWebHandler(cfg)
+		if err != nil {
+			return nil, err
+		}
+		mux.Handle("/", webHandler)
 	}
-	mux.Handle("/", webHandler)
 	addr := cfg.Addr
 	if addr == "" {
 		addr = defaultListenerAddr

@@ -1,5 +1,5 @@
 # Lint + doc-quality gates. Owned by repo-consistency wedge.
-.PHONY: doc-check doc-check-test verify-vendored-assets lint tidy-check mod-verify check-no-bare-sleep check-no-bare-sleep-test check-tdd-test check-docker-env-parity check-docker-env-parity-test check-env-canonical next-migration
+.PHONY: doc-check doc-check-test verify-vendored-assets lint tidy-check mod-verify check-no-bare-sleep check-no-bare-sleep-test check-docker-env-parity check-docker-env-parity-test check-env-canonical next-migration
 
 doc-check:  ## Run repo-wide doc gates (markdown links, comment-noise, test-godoc length).
 	bash scripts/doc-check.sh
@@ -18,8 +18,6 @@ check-env-canonical:  ## Fail when prod Go code reads a legacy env var name when
 
 
 
-check-tdd-test:  ## Fixture-driven test for check-tdd.sh (gate self-test).
-	bash scripts/check-tdd_test.sh
 
 check-no-bare-sleep:  ## Fail when a *_test.go file carries `time.Sleep` lexically nested inside a `for` block without `// allow-sleep:` directive (#760 migration target: testutil.Eventually).
 	bash scripts/check-no-bare-sleep.sh

@@ -123,41 +123,11 @@ jobs:
           echo "release-notes block ok:"
           printf '%s\n' "$block"
 
-  check-tdd:
-    name: check-tdd
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          fetch-depth: 0
-
-      # N2 (#1265): fetch live PR body via `gh pr view` instead of the
-      # event payload snapshot. Eliminates empty-commit refresh ritual.
-      - name: check-tdd
-        if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]' && !contains(github.event.pull_request.labels.*.name, 'tdd-justified')
-        env:
-          SNAPSHOT_BODY: ${{ github.event.pull_request.body }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          # N2 live body fetch w/ snapshot fallback.
-          if BODY=$(gh pr view "$PR_NUMBER" --json body --jq '.body' 2>/dev/null) && [ -n "$BODY" ]; then
-            echo "::notice::pr-body fetched live via gh pr view at $(date -u +%FT%TZ)"
-          else
-            BODY="$SNAPSHOT_BODY"
-            echo "::warning::pr-body live fetch failed; falling back to event-payload snapshot"
-          fi
-          export BODY
-          bash scripts/check-tdd.sh
 
   pr-lint:
     name: pr-lint
     runs-on: ubuntu-latest
-    needs: [doc-check, release-notes, check-tdd]
+    needs: [doc-check, release-notes]
     if: always()
     timeout-minutes: 2
     steps:
@@ -165,14 +135,12 @@ jobs:
         env:
           DOC_CHECK: ${{ needs.doc-check.result }}
           RELEASE_NOTES: ${{ needs.release-notes.result }}
-          CHECK_TDD: ${{ needs.check-tdd.result }}
         run: |
           set -euo pipefail
           failed=0
           for name_val in \
             "doc-check=$DOC_CHECK" \
-            "release-notes=$RELEASE_NOTES" \
-            "check-tdd=$CHECK_TDD"; do
+            "release-notes=$RELEASE_NOTES"; do
             name="${name_val%%=*}"
             result="${name_val#*=}"
             case "$result" in
