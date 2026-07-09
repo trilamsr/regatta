@@ -5,7 +5,7 @@
 # §6), Grafana 11 reads the same Prom for dashboards, AlertManager fires
 # webhooks to regatta-alerthook (#458 W1) when SLO rules breach.
 #
-# Spec authority: docs/engineer/research/2026-06-02-container-stages.md §6 + §14.
+# Spec authority: docs/engineer/research/archive/2026-06-02-container-stages.md §6 + §14.
 # Stage 1 runbook lives at docs/operator/container.md. Stage 2 operator
 # runbook lives at docs/operator/docker-compose.md.
 #
