@@ -378,8 +378,28 @@ func checkSpawnerAuth(env doctorEnv) doctorCheckResult {
 			Error:  err.Error(),
 		}
 	}
+	authPath := claudeDir + "/auth.json"
+	raw, err := osReadFile(authPath)
+	if err != nil {
+		return doctorCheckResult{
+			Status: statusFail,
+			Hint:   "~/.claude mounted but auth.json unreadable — run `claude` on host to log in OR set CLAUDE_CODE_OAUTH_TOKEN OR REGATTA_SPAWNER_STRIP_API_KEY=0 + ANTHROPIC_API_KEY",
+			Error:  err.Error(),
+		}
+	}
+	var probe map[string]any
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return doctorCheckResult{
+			Status: statusFail,
+			Hint:   "~/.claude/auth.json unparseable — re-run `claude` on host to reset auth OR set CLAUDE_CODE_OAUTH_TOKEN OR REGATTA_SPAWNER_STRIP_API_KEY=0 + ANTHROPIC_API_KEY",
+			Error:  err.Error(),
+		}
+	}
 	return doctorCheckResult{Status: statusPass, Hint: "subscription via mounted ~/.claude"}
 }
+
+// osReadFile is var so tests can stub the file-read boundary; mirrors osStat.
+var osReadFile = os.ReadFile
 
 // osStat is var so tests can stub the stat boundary without bringing in a filesystem mock framework.
 var osStat = func(path string) (isDir bool, err error) {
