@@ -19,10 +19,7 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/adaptersync"
-	"github.com/trilamsr/regatta/internal/orchestrator/reaper"
-	"github.com/trilamsr/regatta/internal/orchestrator/rejectionrouter"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
-	"github.com/trilamsr/regatta/internal/orchestrator/state/substrate"
 	"github.com/trilamsr/regatta/internal/program"
 	"github.com/trilamsr/regatta/internal/secrets"
 )
@@ -219,23 +216,7 @@ func runServe(args []string) int {
 	// the compile cache); Scheduler.Tick step-0 Evals through the same
 	// instance so cached cel.Program survives across ticks.
 	evaluator := program.NewEdgeEvaluator()
-	loader, err := program.NewBriefLoader(program.BriefLoaderConfig{
-		FS:        os.DirFS(briefsDir),
-		DB:        db,
-		Keyring:   loadBriefKeyring(),
-		Evaluator: evaluator,
-		Logger:    slogger,
-		// Issue #80: durable audit sink under the existing brief HMAC
-		// key. Zero-key deployments (no REGATTA_HMAC_KEY) fall back to
-		// slog-only retention; the BriefAuditConfig.enabled() guard
-		// inside the loader keeps the cost zero in that case.
-		Audit: program.BriefAuditConfig{
-			Key:      costKey,
-			KeyID:    costKeyID,
-			TenantID: substrate.DefaultTenantID,
-			RunID:    "brief-loader",
-		},
-	})
+	loader, err := buildBriefLoaderForServe(db, briefsDir, evaluator, costKey, costKeyID, slogger)
 	if err != nil {
 		logger.Printf("brief loader: %v", err)
 		return 2
@@ -281,21 +262,7 @@ func runServe(args []string) int {
 		Logger:    slogger,
 		Clock:     clock,
 	})
-	if set.Worktrees != nil {
-		o.SetReaper(reaper.New(reaper.Config{
-			DB:     db,
-			WM:     set.Worktrees,
-			Killer: set.Killer,
-			Logger: slogger,
-			Clock:  clock,
-		}))
-	}
-	// RejectionRouter wakes agents on AI-gate rejections and labels the
-	// PR `needs-human` after K=3. Defaults match docs/design.md §Failure
-	// modes; no regatta.yaml keys are introduced for MVR-1 — operators
-	// who want richer routing land it when a real customer use-case
-	// shows up.
-	o.SetRejectionRouter(buildRejectionRouter(db, rejectionrouter.GHLabeler{}, slogger))
+	installReaperAndRejectionRouter(o, set, db, slogger, clock)
 
 	if err := startPRWatcher(ctx, o, db, set, f.RepoRoot, f.NoPRWatch, slogger); err != nil {
 		logger.Printf("%v", err)
@@ -379,17 +346,5 @@ func runServe(args []string) int {
 	// behaviour stays byte-equal. Disabled when listen_addr is empty.
 	startAlerthook(ctx, f.RepoRoot, slogger)
 
-	if f.TickOnce {
-		if err := runTickOnce(ctx, o); err != nil {
-			logger.Printf("%v", err)
-			return 1
-		}
-		return 0
-	}
-
-	if err := o.Run(ctx); err != nil {
-		logger.Printf("run: %v", err)
-		return 1
-	}
-	return 0
+	return runServeOrchestratorLoop(ctx, f, o, logger)
 }
