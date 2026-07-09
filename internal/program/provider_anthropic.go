@@ -61,8 +61,10 @@ const maxAnthropicRetries = 5
 // stub without patching os.Setenv or the composite chain.
 var newSecretsFetcher = secrets.Default
 
-// keyResolveTimeout is scaffolding for W-BUG9; wiring lands in the
-// impl commit so the RED test observes an unbounded key resolve.
+// keyResolveTimeout bounds the ANTHROPIC_API_KEY lookup so a wedged
+// keychain (unresponsive `security` binary, hung `pass` GPG agent)
+// cannot block boot forever — operator sees a named-source timeout
+// instead of a misleading "empty key" (W-BUG9).
 var keyResolveTimeout = 5 * time.Second
 
 // NewAnthropicPlanner resolves ANTHROPIC_API_KEY via the secrets
@@ -71,10 +73,17 @@ var keyResolveTimeout = 5 * time.Second
 // choose Opus vs Sonnet vs Haiku (price/quality is operator-visible,
 // never hidden).
 func NewAnthropicPlanner(model string) (*AnthropicPlanner, error) {
-	ctx := context.Background()
-	var key string
+	ctx, cancel := context.WithTimeout(context.Background(), keyResolveTimeout)
+	defer cancel()
 	f := newSecretsFetcher(ctx)
-	if v, err := f.Get(ctx, secrets.KeyAnthropic); err == nil {
+	var key string
+	v, err := f.Get(ctx, secrets.KeyAnthropic)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return nil, fmt.Errorf("timeout waiting for secret source %q resolving %s: %w",
+				f.Name(), secrets.KeyAnthropic, err)
+		}
+	} else {
 		key = strings.TrimSpace(string(v.Bytes()))
 	}
 	if key == "" {
