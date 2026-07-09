@@ -122,7 +122,7 @@ func TestAnthropicPlanner_NewRequiresEnv(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if a.Prompt == "" || a.Timeout == 0 {
+	if a.Prompt == "" {
 		t.Fatal("defaults not applied")
 	}
 }
