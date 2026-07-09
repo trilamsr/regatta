@@ -120,7 +120,15 @@ type auditVerifySummary struct {
 	RunningSchemaVersion int64  `json:"running_schema_version"`
 }
 
-func runAuditVerifyWith(deps auditDeps, args []string) int {
+// auditVerifyOptions is the parsed flag surface for `audit verify`; the
+// per-phase helpers below consume it so the entry point stays linear.
+type auditVerifyOptions struct {
+	runID  string
+	format string
+}
+
+// parseAuditVerifyFlags parses argv into auditVerifyOptions; a false ok signals the caller should return the paired exit code without further work.
+func parseAuditVerifyFlags(deps auditDeps, args []string) (auditVerifyOptions, int, bool) {
 	fs := flag.NewFlagSet("audit verify", flag.ContinueOnError)
 	fs.SetOutput(deps.Stderr)
 	runID := fs.String("run-id", "", "Run id to verify (required)")
@@ -139,15 +147,95 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 		_, _ = fmt.Fprintln(deps.Stderr, "with every row marked chain-unverifiable; it does NOT silently skip verification.")
 	}
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return auditVerifyOptions{}, 2, false
 	}
 	if *runID == "" {
 		fs.Usage()
-		return 2
+		return auditVerifyOptions{}, 2, false
 	}
 	if *format != logFormatJSON && *format != formatTable {
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta audit verify: unknown format %q (want json|table)\n", *format)
-		return 2
+		return auditVerifyOptions{}, 2, false
+	}
+	return auditVerifyOptions{runID: *runID, format: *format}, 0, true
+}
+
+// decodeAuditVerifyPayload maps one substrate event into the operator-facing row shape, applying the legacy-payload + decode-error backfills required so the emitted row is always self-descriptive.
+func decodeAuditVerifyPayload(e substrate.SubstrateEvent) auditVerifyRow {
+	row := auditVerifyRow{
+		GateName:        e.Key,
+		WorkItemID:      e.WorkItemID,
+		EventID:         e.ID,
+		WrittenAtMillis: e.WrittenAt,
+	}
+	// Best-effort decode: a row that fails to parse is flagged as
+	// chain-broken without crashing the whole audit — the operator
+	// still wants to see the chain status of the other rows.
+	var p substrate.GateVerdictPayload
+	if jerr := json.Unmarshal(e.PayloadJSON, &p); jerr == nil {
+		row.Pass = p.Pass
+		row.Reason = p.Reason
+		row.Tool = p.Tool
+		row.ToolVersion = p.ModelOrVersion
+		row.Deterministic = p.Deterministic
+		row.AuditPosture = p.AuditPosture()
+		row.RecordedSchema = p.DBSchemaVersion
+		// Legacy-row backfill: a payload that decodes but has no Tool
+		// was written before issue #550. Operators surfacing these in
+		// `audit verify` need to see them flagged as non-deterministic
+		// (we cannot prove otherwise) with an explicit "unknown-legacy"
+		// tool so the row is visibly distinct from a properly-tagged
+		// verify-only verdict.
+		if row.Tool == "" {
+			row.Tool = toolUnknownLegacy
+			row.ToolVersion = toolUnknownLegacy
+			row.Deterministic = false
+			row.AuditPosture = postureVerifyOnly
+		}
+	} else {
+		// Decode-error rows are non-replayable by construction: we
+		// could not even parse the recorded bytes, so Deterministic
+		// must be explicit (not the implicit zero-value) so the
+		// verify-only bucket counter increments and the JSON column
+		// reflects the actual posture instead of relying on field
+		// ordering invariants.
+		row.Tool = "decode-error"
+		row.Deterministic = false
+		row.AuditPosture = postureVerifyOnly
+	}
+	row.RunningSchema = state.CurrentSchemaVersion
+	row.SchemaSkew = row.RecordedSchema != 0 && row.RecordedSchema != state.CurrentSchemaVersion
+	return row
+}
+
+// tallyAuditVerifyRow updates row.HMACStatus + summary counters for one event; keyErr causes every row to be tagged chain-unverifiable so a missing key never masquerades as a silent zero-broken-chain pass.
+func tallyAuditVerifyRow(row *auditVerifyRow, e substrate.SubstrateEvent, keyring map[string][]byte, keyErr error, summary *auditVerifySummary) {
+	switch {
+	case keyErr != nil:
+		row.HMACStatus = "chain-unverifiable"
+	default:
+		if verr := substrate.Verify(e, keyring); verr == nil {
+			row.HMACStatus = hmacStatusChainOK
+			summary.ChainOK++
+		} else {
+			row.HMACStatus = "chain-broken"
+			summary.ChainBroken++
+		}
+	}
+	if row.SchemaSkew {
+		summary.SchemaSkew++
+	}
+	if row.Deterministic {
+		summary.Reproducible++
+	} else {
+		summary.VerifyOnly++
+	}
+}
+
+func runAuditVerifyWith(deps auditDeps, args []string) int {
+	opts, code, ok := parseAuditVerifyFlags(deps, args)
+	if !ok {
+		return code
 	}
 
 	ctx := context.Background()
@@ -158,7 +246,7 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 	}
 	defer func() { _ = db.Close() }()
 
-	events, err := substrate.Fold(ctx, db.SQL(), *runID, substrate.KindGateVerdict)
+	events, err := substrate.Fold(ctx, db.SQL(), opts.runID, substrate.KindGateVerdict)
 	if err != nil {
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta audit verify: fold: %v\n", err)
 		return 1
@@ -174,77 +262,14 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 
 	rows := make([]auditVerifyRow, 0, len(events))
 	summary := auditVerifySummary{
-		RunID:                *runID,
+		RunID:                opts.runID,
 		Total:                len(events),
 		RunningSchemaVersion: state.CurrentSchemaVersion,
 	}
 
 	for _, e := range events {
-		row := auditVerifyRow{
-			GateName:        e.Key,
-			WorkItemID:      e.WorkItemID,
-			EventID:         e.ID,
-			WrittenAtMillis: e.WrittenAt,
-		}
-		// Decode payload best-effort. A row that fails to decode is
-		// flagged as chain-broken without crashing the whole audit —
-		// the operator still wants to see the chain status of the
-		// other rows.
-		var p substrate.GateVerdictPayload
-		if jerr := json.Unmarshal(e.PayloadJSON, &p); jerr == nil {
-			row.Pass = p.Pass
-			row.Reason = p.Reason
-			row.Tool = p.Tool
-			row.ToolVersion = p.ModelOrVersion
-			row.Deterministic = p.Deterministic
-			row.AuditPosture = p.AuditPosture()
-			row.RecordedSchema = p.DBSchemaVersion
-			// Legacy-row backfill: a payload that decodes but has no
-			// Tool was written before issue #550. Operators surfacing
-			// these in `audit verify` need to see them flagged as
-			// non-deterministic (we cannot prove otherwise) with an
-			// explicit "unknown-legacy" tool so the row is visibly
-			// distinct from a properly-tagged verify-only verdict.
-			if row.Tool == "" {
-				row.Tool = toolUnknownLegacy
-				row.ToolVersion = toolUnknownLegacy
-				row.Deterministic = false
-				row.AuditPosture = postureVerifyOnly
-			}
-		} else {
-			// Decode-error rows are non-replayable by construction: we
-			// could not even parse the recorded bytes, so Deterministic
-			// must be explicit (not the implicit zero-value) so the
-			// verify-only bucket counter increments and the JSON column
-			// reflects the actual posture instead of relying on field
-			// ordering invariants.
-			row.Tool = "decode-error"
-			row.Deterministic = false
-			row.AuditPosture = postureVerifyOnly
-		}
-		row.RunningSchema = state.CurrentSchemaVersion
-		row.SchemaSkew = row.RecordedSchema != 0 && row.RecordedSchema != state.CurrentSchemaVersion
-
-		switch {
-		case keyErr != nil:
-			row.HMACStatus = "chain-unverifiable"
-		default:
-			if verr := substrate.Verify(e, keyring); verr == nil {
-				row.HMACStatus = hmacStatusChainOK
-				summary.ChainOK++
-			} else {
-				row.HMACStatus = "chain-broken"
-				summary.ChainBroken++
-			}
-		}
-		if row.SchemaSkew {
-			summary.SchemaSkew++
-		}
-		if row.Deterministic {
-			summary.Reproducible++
-		} else {
-			summary.VerifyOnly++
-		}
+		row := decodeAuditVerifyPayload(e)
+		tallyAuditVerifyRow(&row, e, keyring, keyErr, &summary)
 		rows = append(rows, row)
 	}
 
@@ -257,13 +282,13 @@ func runAuditVerifyWith(deps auditDeps, args []string) int {
 		return rows[i].EventID < rows[j].EventID
 	})
 
-	if err := emitAuditVerify(deps.Stdout, *format, summary, rows); err != nil {
+	if err := emitAuditVerify(deps.Stdout, opts.format, summary, rows); err != nil {
 		_, _ = fmt.Fprintf(deps.Stderr, "regatta audit verify: emit: %v\n", err)
 		return 1
 	}
 
 	if summary.Total == 0 {
-		_, _ = fmt.Fprintf(deps.Stderr, "regatta audit verify: no gate verdicts recorded for run-id %q (typo? wrong --db? unrecorded run?)\n", *runID)
+		_, _ = fmt.Fprintf(deps.Stderr, "regatta audit verify: no gate verdicts recorded for run-id %q (typo? wrong --db? unrecorded run?)\n", opts.runID)
 	}
 
 	if summary.ChainBroken > 0 || keyErr != nil {
