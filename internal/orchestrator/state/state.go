@@ -121,6 +121,9 @@ func (d *DB) WithTx(ctx context.Context, fn func(*sql.Tx) error) error {
 	if err := fn(tx); err != nil {
 		return err
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("state: commit tx: %w", err)
 	}
