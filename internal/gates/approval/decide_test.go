@@ -283,12 +283,7 @@ func readDecideGoSource() (string, error) {
 	return string(b), nil
 }
 
-// TestMarkApprovalDecidedTx_RowsAffectedZeroReturnsNotFound pins the
-// UPDATE-zero-rows branch (decide.go rows==0). Prior coverage exercised the
-// pre-tx isTerminal guard (#206) which fires BEFORE the UPDATE — the
-// UPDATE-miss branch itself was uncovered. Direct-call scenario: id diverges
-// between GetApproval (or any pre-flight lookup) and the tx BEGIN, so the
-// UPDATE targets a row that isn't there.
+// TestMarkApprovalDecidedTx_RowsAffectedZeroReturnsNotFound pins the UPDATE-zero-rows branch (decide.go rows==0).
 func TestMarkApprovalDecidedTx_RowsAffectedZeroReturnsNotFound(t *testing.T) {
 	h := newDecideTxHarness(t, "system", []string{"alice"}, 1, false)
 	ctx := context.Background()
@@ -307,10 +302,7 @@ func TestMarkApprovalDecidedTx_RowsAffectedZeroReturnsNotFound(t *testing.T) {
 	}
 }
 
-// TestMarkApprovalDecidedTx_HappyPathReturnsNilAndFlipsStatus is the positive
-// twin of the zero-rows regression: same helper, same tx pattern, but against
-// a real approval id — so the not-found test above is proven to isolate the
-// UPDATE-miss branch rather than a broader BEGIN/EXEC failure.
+// TestMarkApprovalDecidedTx_HappyPathReturnsNilAndFlipsStatus is the positive twin isolating the not-found test to the UPDATE-miss branch.
 func TestMarkApprovalDecidedTx_HappyPathReturnsNilAndFlipsStatus(t *testing.T) {
 	h := newDecideTxHarness(t, "system", []string{"alice"}, 1, false)
 	ctx := context.Background()
@@ -328,13 +320,7 @@ func TestMarkApprovalDecidedTx_HappyPathReturnsNilAndFlipsStatus(t *testing.T) {
 	}
 }
 
-// TestApprovalDecideTx_ConcurrentDecideRelyOnTerminalRaceGuard proves the
-// UPDATE-zero-rows branch of markApprovalDecidedTx is NOT reachable under
-// legitimate quorum-of-1 concurrent decides: one goroutine wins terminally,
-// the other observes the pre-tx isTerminal guard (#206) and returns
-// ErrTokenReplay. The guard is what keeps rows==0 unreachable at runtime;
-// removing it would let both decides push the UPDATE through, which is the
-// upstream defect the direct-call test above pins.
+// TestApprovalDecideTx_ConcurrentDecideRelyOnTerminalRaceGuard proves rows==0 stays unreachable because the pre-tx isTerminal guard (#206) fires first.
 func TestApprovalDecideTx_ConcurrentDecideRelyOnTerminalRaceGuard(t *testing.T) {
 	h := newDecideTxHarness(t, "system", []string{"alice", "bob"}, 1, false)
 	ctx := context.Background()
