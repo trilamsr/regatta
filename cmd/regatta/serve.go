@@ -323,18 +323,17 @@ func runServe(args []string) int {
 	}
 
 	// W8 T1/T-HR: Hydrate the OPA authorizer + (optionally) start the
-	// disk-driven hot-reload goroutine. The Authorizer is plumbed to
-	// listenerConfig so W8 T3 can wire it through the web handler
-	// without touching boot code. Hydrate failure is fail-loud because a
-	// broken authz bundle MUST surface at boot — a serve that runs with
-	// an unhydrated store would deny every request mid-evaluation.
-	authzr, err := buildAuthorizer(ctx, f.RepoRoot, slogger)
-	if err != nil {
+	// disk-driven hot-reload goroutine. Hydrate failure is fail-loud
+	// because a broken authz bundle MUST surface at boot — a serve that
+	// runs with an unhydrated store would deny every request
+	// mid-evaluation. The Reloader retains its own reference to the
+	// authorizer via closure, so the returned pointer is discardable.
+	if _, err := buildAuthorizer(ctx, f.RepoRoot, slogger); err != nil {
 		logger.Printf("authz: %v", err)
 		return 2
 	}
 
-	httpSrv, err := bootListener(buildListenerConfig(f, db, clock, authzr, publicHost, healthHB))
+	httpSrv, err := bootListener(buildListenerConfig(f, db, clock, publicHost, healthHB))
 	if err != nil {
 		logger.Printf("listener boot: %v", err)
 		return 2

@@ -12,7 +12,6 @@ import (
 	"os"
 	"time"
 
-	"github.com/trilamsr/regatta/internal/authz"
 	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/gates/approval"
 	"github.com/trilamsr/regatta/internal/health"
@@ -35,10 +34,6 @@ type listenerConfig struct {
 	DB         *state.DB
 	Keyring    approvaltoken.Keyring
 	Clock      func() time.Time
-	// Authorizer is the OPA-backed gate built at runServe boot. Pre-T3
-	// the web handler does not yet consume it; the field is plumbed so
-	// W8 T3 can pick it up without touching listener wiring.
-	Authorizer *authz.OPAAuthorizer
 	// PublicHost is the externally reachable host (no scheme) parsed from
 	// --public-url. Reverse-proxy deployments set it so OriginCheck pins
 	// the public hostname instead of the inner pod's r.Host (#304).
@@ -57,14 +52,13 @@ type listenerConfig struct {
 }
 
 // buildListenerConfig collapses the bootListener call site so cmd/regatta/serve.go stays under the god-file threshold (TestServeFileSize). Wiring fields stay local to wire_web.go where the matching struct definition already lives.
-func buildListenerConfig(f serveFlags, db *state.DB, clock func() time.Time, authzr *authz.OPAAuthorizer, publicHost string, hb *health.HeartbeatCell) listenerConfig {
+func buildListenerConfig(f serveFlags, db *state.DB, clock func() time.Time, publicHost string, hb *health.HeartbeatCell) listenerConfig {
 	return listenerConfig{
 		UI:           f.UI,
 		Addr:         f.Addr,
 		DB:           db,
 		Keyring:      approvaltoken.MapKeyring(loadBriefKeyring()),
 		Clock:        clock,
-		Authorizer:   authzr,
 		PublicHost:   publicHost,
 		Heartbeat:    hb,
 		TickInterval: f.TickDur,
