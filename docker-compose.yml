@@ -35,9 +35,12 @@
 services:
   regatta-init:
     image: busybox:1.37
-    command: ["sh", "-c", "chown 65532:65532 /data && chmod 0750 /data"]
+    # Also chown /repo/.regatta so briefs dir (writable by serve) works
+    # under a bind mount owned by a host uid != 65532.
+    command: ["sh", "-c", "chown 65532:65532 /data && chmod 0750 /data && mkdir -p /repo/.regatta && chown -R 65532:65532 /repo/.regatta && chmod 0750 /repo/.regatta"]
     volumes:
       - regatta-data:/data
+      - ${REPO_PATH:-.}:/repo
     restart: "no"
     networks:
       - regatta-net
