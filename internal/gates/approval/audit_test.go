@@ -12,7 +12,6 @@ import (
 
 	"github.com/trilamsr/regatta/internal/obs"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
-	"github.com/trilamsr/regatta/internal/slogutil"
 
 	"pgregory.net/rapid"
 )
@@ -96,7 +95,7 @@ func TestAudit_SlogMatchesRow(t *testing.T) {
 	// byte-equals the row's payload_json. Drift here means a slog-only
 	// channel and a DB-only channel encoded different shapes — exactly
 	// the bug §5.7 says the single helper must prevent.
-	v, ok := slogutil.AttrValue(rec, "audit_payload")
+	v, ok := attrValue(rec, "audit_payload")
 	if !ok {
 		t.Fatalf("slog record missing audit_payload attr; have=%v", rec)
 	}
@@ -181,7 +180,7 @@ func TestAudit_SlogMatchesRow_Property(t *testing.T) {
 		if !ok {
 			rt.Fatalf("slog event missing")
 		}
-		v, _ := slogutil.AttrValue(rec, "audit_payload")
+		v, _ := attrValue(rec, "audit_payload")
 		if string(events[0].Payload) != v.String() {
 			rt.Fatalf("payload drift:\n  row=%s\n slog=%s", string(events[0].Payload), v.String())
 		}

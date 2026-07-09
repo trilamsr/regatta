@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/obs"
-	"github.com/trilamsr/regatta/internal/slogutil"
 )
 
 // captureHandler records every slog.Record emitted through the bound
@@ -72,7 +71,7 @@ func TestStubNotifier_RecordsAuditAttrs(t *testing.T) {
 		string(obs.KeyGateID):     req.GateName,
 	}
 	for k, want := range wantAttrs {
-		v, ok := slogutil.AttrValue(rec, k)
+		v, ok := attrValue(rec, k)
 		if !ok {
 			t.Fatalf("attr %q missing", k)
 		}
@@ -80,7 +79,7 @@ func TestStubNotifier_RecordsAuditAttrs(t *testing.T) {
 			t.Errorf("attr %q=%q; want %q", k, v.String(), want)
 		}
 	}
-	cnt, ok := slogutil.AttrValue(rec, string(obs.KeyReviewerCount))
+	cnt, ok := attrValue(rec, string(obs.KeyReviewerCount))
 	if !ok {
 		t.Fatalf("attr %q missing", obs.KeyReviewerCount)
 	}

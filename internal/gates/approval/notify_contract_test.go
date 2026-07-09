@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/trilamsr/regatta/internal/obs"
-	"github.com/trilamsr/regatta/internal/slogutil"
 )
 
 // TestNotifier_InterfaceContract asserts spec §7 audit-trail conformance — DeliveredTo == Reviewers, canonical obs attrs, ErrNoReviewers fail-closed, ctx-cancel returns ctx.Err() (#198).
@@ -92,12 +91,12 @@ func TestNotifier_InterfaceContract(t *testing.T) {
 					string(obs.KeyGateID):     req.GateName,
 				}
 				for k, want := range wantStrs {
-					v, ok := slogutil.AttrValue(rec, k)
+					v, ok := attrValue(rec, k)
 					if !ok || v.String() != want {
 						t.Errorf("attr %q=%q want %q (ok=%v)", k, v.String(), want, ok)
 					}
 				}
-				cnt, ok := slogutil.AttrValue(rec, string(obs.KeyReviewerCount))
+				cnt, ok := attrValue(rec, string(obs.KeyReviewerCount))
 				if !ok || cnt.Int64() != int64(len(req.Reviewers)) {
 					t.Errorf("attr %q=%d want %d (ok=%v)", obs.KeyReviewerCount, cnt.Int64(), len(req.Reviewers), ok)
 				}

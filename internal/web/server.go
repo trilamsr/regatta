@@ -9,7 +9,6 @@ import (
 	"github.com/trilamsr/regatta/internal/canon/approvaltoken"
 	"github.com/trilamsr/regatta/internal/health"
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
-	"github.com/trilamsr/regatta/internal/web/internalerror"
 )
 
 // assetsFS embeds templates/ + static/ at build time (spec §3.8). The
@@ -113,7 +112,7 @@ func NewHandler(deps Dependencies) http.Handler {
 			clock = time.Now
 		}
 		if err := deps.Templates.Render(w, "layout.tmpl", dashboardLayoutView{Now: clock()}); err != nil {
-			internalerror.Write(w, nil, "web.layout_render", err)
+			writeInternalError(w, nil, "web.layout_render", err)
 		}
 	})
 	registerDashboardRoutes(mux, deps)
@@ -131,7 +130,7 @@ func staticHandler() http.Handler {
 		// staticDirName tracks the //go:embed directive — this branch
 		// is the test-FS escape hatch (LoadTemplates synthetic root).
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			internalerror.Write(w, nil, "web.static_fs_init", err)
+			writeInternalError(w, nil, "web.static_fs_init", err)
 		})
 	}
 	fileSrv := http.FileServer(http.FS(sub))

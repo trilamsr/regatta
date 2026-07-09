@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/trilamsr/regatta/internal/orchestrator/state"
-	"github.com/trilamsr/regatta/internal/web/internalerror"
 )
 
 // pipelineStageOrder fixes display order so a future stage insertion stays one-line edit.
@@ -91,7 +90,7 @@ func servePipelineDrawer(w http.ResponseWriter, r *http.Request, deps Dependenci
 		view.Items = items
 	}
 	if err := deps.Templates.Render(w, "_drawer_pipeline_stage", view); err != nil {
-		internalerror.Write(w, nil, "web.drawer_pipeline_render", err)
+		writeInternalError(w, nil, "web.drawer_pipeline_render", err)
 	}
 }
 
