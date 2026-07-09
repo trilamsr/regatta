@@ -191,8 +191,8 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	// panic during loop body leaves the prior view intact.
 	freshSchemas := map[FeatureID]*OutputsSchema{}
 	freshProgramBy := map[FeatureID]string{}
-
 	seenFeature := map[string]string{}
+
 	for _, path := range entries {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -202,159 +202,220 @@ func (b *BriefLoader) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		if strings.HasSuffix(path, ".tmp") {
 			continue
 		}
-		brief, v2, err := loadAndVerifyBriefBoth(b.fsys, path, b.keyring)
-		if err != nil {
-			b.log.Warn(string(obs.EventBriefRejected), "path", path, "reason", err.Error())
-			b.recordBriefRejection(ctx, path, err.Error())
-			if b.requireSigning && isSignatureError(err) {
-				return fmt.Errorf("brief_loader: signing required but signature missing/invalid for %s: %w", path, err)
-			}
-			continue
-		}
-		if _, err := b.db.GetWorkItem(ctx, brief.ParentWorkItemID); err != nil {
-			if errors.Is(err, state.ErrWorkItemNotFound) {
-				b.log.Warn(string(obs.EventBriefRejected), "path", path,
-					"reason", "unknown_parent_program", "id", brief.ParentWorkItemID)
-				b.recordBriefRejection(ctx, path, "unknown_parent_program: "+brief.ParentWorkItemID)
-				continue
-			}
-			return fmt.Errorf("brief_loader: probe parent %s: %w", brief.ParentWorkItemID, err)
-		}
-		// Issue #92: processed_briefs is the durable replay-defence
-		// floor; work_items watermark is fallback-only because the row
-		// set is mutable by operators. Two-layer probe so an exact MAC
-		// re-presentation is rejected even at equal/earlier produced_at.
-		if seen, err := b.db.HasProcessedBriefHMAC(ctx, brief.Signature.MAC); err != nil {
-			return fmt.Errorf("brief_loader: probe hmac for %s: %w", brief.ParentWorkItemID, err)
-		} else if seen {
-			b.log.Warn(string(obs.EventBriefRejected), "path", path,
-				"reason", "brief_already_processed",
-				"parent", brief.ParentWorkItemID)
-			b.recordBriefRejection(ctx, path, "brief_already_processed: "+brief.ParentWorkItemID)
-			continue
-		}
-		recorded, hasRecorded, err := b.db.GetProcessedBrief(ctx, brief.ParentWorkItemID)
-		if err != nil {
-			return fmt.Errorf("brief_loader: probe processed_briefs for %s: %w", brief.ParentWorkItemID, err)
-		}
-		watermark, err := b.db.MaxUpdatedAtForBriefChildren(ctx, brief.ParentWorkItemID)
-		if err != nil {
-			return fmt.Errorf("brief_loader: freshness watermark for %s: %w", brief.ParentWorkItemID, err)
-		}
-		// MAX over both layers — durable floor cannot regress when
-		// operators delete work_items rows (the original #92 attack).
-		if hasRecorded && recorded.LastProducedAt.After(watermark) {
-			watermark = recorded.LastProducedAt
-		}
-		if !watermark.IsZero() && !brief.ProducedAt.After(watermark) {
-			b.log.Warn(string(obs.EventBriefRejected), "path", path,
-				"reason", "stale_produced_at",
-				"produced_at", brief.ProducedAt, "watermark", watermark)
-			b.recordBriefRejection(ctx, path, fmt.Sprintf("stale_produced_at: produced_at=%s watermark=%s",
-				brief.ProducedAt.Format(time.RFC3339), watermark.Format(time.RFC3339)))
-			continue
-		}
-
-		acceptanceByFulfilled := map[string]string{}
-		for _, c := range brief.ParentCriteria {
-			acceptanceByFulfilled[c.ID] = c.Text
-		}
-		// Stage children, flush in one BatchUpsertWorkItems (#89).
-		// Per-brief flush preserves the cross-brief CycleCheck contract
-		// — next brief sees prior brief's rows before its own
-		// CycleCheck. Intra-brief cycles are rejected by brief.Validate
-		// before this loop.
-		staged := make([]state.WorkItem, 0, len(brief.Features))
-		for _, feat := range brief.Features {
-			if firstPath, dup := seenFeature[feat.ID]; dup {
-				b.log.Warn(string(obs.EventBriefRejected), "path", path,
-					"reason", "feature_id_collision",
-					"feature", feat.ID, "first_seen_in", firstPath)
-				b.recordBriefRejection(ctx, path, "feature_id_collision: "+feat.ID+" first_seen_in="+firstPath)
-				continue
-			}
-			seenFeature[feat.ID] = path
-
-			snapshot, mErr := json.Marshal(featureAcceptanceSnapshot(feat, acceptanceByFulfilled))
-			if mErr != nil {
-				return fmt.Errorf("brief_loader: marshal snapshot for %s: %w", feat.ID, mErr)
-			}
-			// Issue #78: warn when a re-loaded brief's acceptance
-			// diverges from an in-flight child's snapshot. Snapshot
-			// semantics stay intentional (spec §2.4 + §2.5 Locked #5 —
-			// no auto-resync); this is the visibility seam so silent
-			// re-snapshots no longer surprise agents whose gate bar
-			// just shifted. Skip planned + archived: planned snaps
-			// forward harmlessly; archived no longer gates.
-			if existing, gErr := b.db.GetWorkItem(ctx, feat.ID); gErr == nil &&
-				existing.Status != state.WorkStatusPlanned &&
-				existing.Status != state.WorkStatusArchived &&
-				existing.AcceptanceJSON != "" &&
-				existing.AcceptanceJSON != string(snapshot) {
-				b.log.Warn(string(obs.EventBriefCriteriaDrift),
-					string(obs.KeyProgramID), brief.ParentWorkItemID,
-					string(obs.KeyWorkItemID), feat.ID,
-					"prior_status", string(existing.Status),
-					"path", path)
-			}
-			child := state.WorkItem{
-				ID:                feat.ID,
-				Kind:              state.KindFeature,
-				Title:             feat.Title,
-				Lane:              "server", // MVP-1 single-lane; multi-lane is MVP-2
-				Status:            state.WorkStatusPlanned,
-				ParentProgramID:   brief.ParentWorkItemID,
-				DependsOnFeatures: feat.DependsOnFeatures,
-				AcceptanceJSON:    string(snapshot),
-			}
-			if cycErr := b.db.CycleCheck(ctx, child); cycErr != nil {
-				b.log.Warn(string(obs.EventBriefRejected), "path", path, "reason", cycErr.Error())
-				b.recordBriefRejection(ctx, path, cycErr.Error())
-				continue
-			}
-			staged = append(staged, child)
-		}
-		if err := b.db.BatchUpsertWorkItems(ctx, staged, state.SourceBrief, pollStartedAt); err != nil {
-			return fmt.Errorf("brief_loader: batch upsert children of %s: %w", brief.ParentWorkItemID, err)
-		}
-		if v2 != nil {
-			if err := b.materialiseEdges(ctx, v2, pollStartedAt); err != nil {
-				return err
-			}
-			for i := range v2.FeaturesV2 {
-				f := &v2.FeaturesV2[i]
-				if f.OutputsSchema == nil {
-					continue
-				}
-				freshSchemas[f.ID] = f.OutputsSchema
-				freshProgramBy[f.ID] = v2.ProgramID
-			}
-		}
-		// #92: persist replay-defence watermark independent of
-		// work_items so deleting brief children cannot reset the floor.
-		// Written last so a partial-failure brief never records as
-		// accepted.
-		if err := b.db.RecordProcessedBrief(ctx, brief.ParentWorkItemID,
-			brief.ProducedAt, brief.Signature.MAC, pollStartedAt); err != nil {
-			return fmt.Errorf("brief_loader: record processed_brief %s: %w", brief.ParentWorkItemID, err)
+		if err := b.syncOne(ctx, path, pollStartedAt, seenFeature, freshSchemas, freshProgramBy); err != nil {
+			return err
 		}
 	}
 
-	b.mu.Lock()
-	b.outputsSchemas = freshSchemas
-	b.programByFeature = freshProgramBy
-	b.mu.Unlock()
+	b.swapProjection(freshSchemas, freshProgramBy)
 
+	if err := b.tombstoneAndLog(ctx, pollStartedAt); err != nil {
+		return err
+	}
+
+	return b.reconcileDependencyArchive(ctx, pollStartedAt)
+}
+
+// syncOne processes one brief JSON entry: verify, parent probe, replay
+// defence, per-feature stage, upsert, edge materialisation, watermark
+// record. Returns terminal error only for infra failures — brief-level
+// rejections stay soft (warn + recordBriefRejection + return nil).
+func (b *BriefLoader) syncOne(
+	ctx context.Context,
+	path string,
+	pollStartedAt time.Time,
+	seenFeature map[string]string,
+	freshSchemas map[FeatureID]*OutputsSchema,
+	freshProgramBy map[FeatureID]string,
+) error {
+	brief, v2, err := loadAndVerifyBriefBoth(b.fsys, path, b.keyring)
+	if err != nil {
+		b.log.Warn(string(obs.EventBriefRejected), "path", path, "reason", err.Error())
+		b.recordBriefRejection(ctx, path, err.Error())
+		if b.requireSigning && isSignatureError(err) {
+			return fmt.Errorf("brief_loader: signing required but signature missing/invalid for %s: %w", path, err)
+		}
+		return nil
+	}
+	if _, err := b.db.GetWorkItem(ctx, brief.ParentWorkItemID); err != nil {
+		if errors.Is(err, state.ErrWorkItemNotFound) {
+			b.log.Warn(string(obs.EventBriefRejected), "path", path,
+				"reason", "unknown_parent_program", "id", brief.ParentWorkItemID)
+			b.recordBriefRejection(ctx, path, "unknown_parent_program: "+brief.ParentWorkItemID)
+			return nil
+		}
+		return fmt.Errorf("brief_loader: probe parent %s: %w", brief.ParentWorkItemID, err)
+	}
+	rejected, err := b.checkReplayDefence(ctx, path, brief)
+	if err != nil {
+		return err
+	}
+	if rejected {
+		return nil
+	}
+
+	acceptanceByFulfilled := map[string]string{}
+	for _, c := range brief.ParentCriteria {
+		acceptanceByFulfilled[c.ID] = c.Text
+	}
+	staged, err := b.stageBriefChildren(ctx, path, brief, acceptanceByFulfilled, seenFeature)
+	if err != nil {
+		return err
+	}
+	if err := b.db.BatchUpsertWorkItems(ctx, staged, state.SourceBrief, pollStartedAt); err != nil {
+		return fmt.Errorf("brief_loader: batch upsert children of %s: %w", brief.ParentWorkItemID, err)
+	}
+	if v2 != nil {
+		if err := b.materialiseEdges(ctx, v2, pollStartedAt); err != nil {
+			return err
+		}
+		for i := range v2.FeaturesV2 {
+			f := &v2.FeaturesV2[i]
+			if f.OutputsSchema == nil {
+				continue
+			}
+			freshSchemas[f.ID] = f.OutputsSchema
+			freshProgramBy[f.ID] = v2.ProgramID
+		}
+	}
+	// #92: persist replay-defence watermark independent of
+	// work_items so deleting brief children cannot reset the floor.
+	// Written last so a partial-failure brief never records as
+	// accepted.
+	if err := b.db.RecordProcessedBrief(ctx, brief.ParentWorkItemID,
+		brief.ProducedAt, brief.Signature.MAC, pollStartedAt); err != nil {
+		return fmt.Errorf("brief_loader: record processed_brief %s: %w", brief.ParentWorkItemID, err)
+	}
+	return nil
+}
+
+// checkReplayDefence enforces #92 two-layer replay probe: exact MAC
+// re-presentation OR stale produced_at against MAX(work_items,
+// processed_briefs). Returns (true, nil) on rejection so caller
+// continues to next brief; error is terminal DB failure only.
+func (b *BriefLoader) checkReplayDefence(ctx context.Context, path string, brief *ProgramBrief) (bool, error) {
+	// Issue #92: processed_briefs is the durable replay-defence
+	// floor; work_items watermark is fallback-only because the row
+	// set is mutable by operators. Two-layer probe so an exact MAC
+	// re-presentation is rejected even at equal/earlier produced_at.
+	if seen, err := b.db.HasProcessedBriefHMAC(ctx, brief.Signature.MAC); err != nil {
+		return false, fmt.Errorf("brief_loader: probe hmac for %s: %w", brief.ParentWorkItemID, err)
+	} else if seen {
+		b.log.Warn(string(obs.EventBriefRejected), "path", path,
+			"reason", "brief_already_processed",
+			"parent", brief.ParentWorkItemID)
+		b.recordBriefRejection(ctx, path, "brief_already_processed: "+brief.ParentWorkItemID)
+		return true, nil
+	}
+	recorded, hasRecorded, err := b.db.GetProcessedBrief(ctx, brief.ParentWorkItemID)
+	if err != nil {
+		return false, fmt.Errorf("brief_loader: probe processed_briefs for %s: %w", brief.ParentWorkItemID, err)
+	}
+	watermark, err := b.db.MaxUpdatedAtForBriefChildren(ctx, brief.ParentWorkItemID)
+	if err != nil {
+		return false, fmt.Errorf("brief_loader: freshness watermark for %s: %w", brief.ParentWorkItemID, err)
+	}
+	// MAX over both layers — durable floor cannot regress when
+	// operators delete work_items rows (the original #92 attack).
+	if hasRecorded && recorded.LastProducedAt.After(watermark) {
+		watermark = recorded.LastProducedAt
+	}
+	if !watermark.IsZero() && !brief.ProducedAt.After(watermark) {
+		b.log.Warn(string(obs.EventBriefRejected), "path", path,
+			"reason", "stale_produced_at",
+			"produced_at", brief.ProducedAt, "watermark", watermark)
+		b.recordBriefRejection(ctx, path, fmt.Sprintf("stale_produced_at: produced_at=%s watermark=%s",
+			brief.ProducedAt.Format(time.RFC3339), watermark.Format(time.RFC3339)))
+		return true, nil
+	}
+	return false, nil
+}
+
+// stageBriefChildren builds the work_items rows for one brief:
+// cross-brief feature-ID collision rejects, per-feature snapshot marshal,
+// spec §2.4+§2.5 Locked #5 acceptance-drift warn (#78), CycleCheck.
+// Per-brief flush preserves the cross-brief CycleCheck contract — next
+// brief sees prior brief's rows before its own CycleCheck. Intra-brief
+// cycles are rejected by brief.Validate before this loop.
+func (b *BriefLoader) stageBriefChildren(
+	ctx context.Context,
+	path string,
+	brief *ProgramBrief,
+	acceptanceByFulfilled map[string]string,
+	seenFeature map[string]string,
+) ([]state.WorkItem, error) {
+	staged := make([]state.WorkItem, 0, len(brief.Features))
+	for _, feat := range brief.Features {
+		if firstPath, dup := seenFeature[feat.ID]; dup {
+			b.log.Warn(string(obs.EventBriefRejected), "path", path,
+				"reason", "feature_id_collision",
+				"feature", feat.ID, "first_seen_in", firstPath)
+			b.recordBriefRejection(ctx, path, "feature_id_collision: "+feat.ID+" first_seen_in="+firstPath)
+			continue
+		}
+		seenFeature[feat.ID] = path
+
+		snapshot, mErr := json.Marshal(featureAcceptanceSnapshot(feat, acceptanceByFulfilled))
+		if mErr != nil {
+			return nil, fmt.Errorf("brief_loader: marshal snapshot for %s: %w", feat.ID, mErr)
+		}
+		// Issue #78: warn when a re-loaded brief's acceptance
+		// diverges from an in-flight child's snapshot. Snapshot
+		// semantics stay intentional (spec §2.4 + §2.5 Locked #5 —
+		// no auto-resync); this is the visibility seam so silent
+		// re-snapshots no longer surprise agents whose gate bar
+		// just shifted. Skip planned + archived: planned snaps
+		// forward harmlessly; archived no longer gates.
+		if existing, gErr := b.db.GetWorkItem(ctx, feat.ID); gErr == nil &&
+			existing.Status != state.WorkStatusPlanned &&
+			existing.Status != state.WorkStatusArchived &&
+			existing.AcceptanceJSON != "" &&
+			existing.AcceptanceJSON != string(snapshot) {
+			b.log.Warn(string(obs.EventBriefCriteriaDrift),
+				string(obs.KeyProgramID), brief.ParentWorkItemID,
+				string(obs.KeyWorkItemID), feat.ID,
+				"prior_status", string(existing.Status),
+				"path", path)
+		}
+		child := state.WorkItem{
+			ID:                feat.ID,
+			Kind:              state.KindFeature,
+			Title:             feat.Title,
+			Lane:              "server", // MVP-1 single-lane; multi-lane is MVP-2
+			Status:            state.WorkStatusPlanned,
+			ParentProgramID:   brief.ParentWorkItemID,
+			DependsOnFeatures: feat.DependsOnFeatures,
+			AcceptanceJSON:    string(snapshot),
+		}
+		if cycErr := b.db.CycleCheck(ctx, child); cycErr != nil {
+			b.log.Warn(string(obs.EventBriefRejected), "path", path, "reason", cycErr.Error())
+			b.recordBriefRejection(ctx, path, cycErr.Error())
+			continue
+		}
+		staged = append(staged, child)
+	}
+	return staged, nil
+}
+
+// swapProjection replaces the live resolver maps atomically. Active
+// map is only replaced on success so a panic during Sync loop body
+// leaves the prior view intact.
+func (b *BriefLoader) swapProjection(schemas map[FeatureID]*OutputsSchema, programBy map[FeatureID]string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.outputsSchemas = schemas
+	b.programByFeature = programBy
+}
+
+// tombstoneAndLog archives brief children whose last_seen_at predates
+// pollStartedAt and logs each archived id.
+func (b *BriefLoader) tombstoneAndLog(ctx context.Context, pollStartedAt time.Time) error {
 	archived, err := b.db.TombstoneBySource(ctx, state.SourceBrief, pollStartedAt)
 	if err != nil {
 		return fmt.Errorf("brief_loader: tombstone: %w", err)
 	}
 	for _, id := range archived {
 		b.log.Warn("brief.tombstoned", "id", id, "cutoff", pollStartedAt)
-	}
-
-	if err := b.reconcileDependencyArchive(ctx, pollStartedAt); err != nil {
-		return err
 	}
 	return nil
 }
