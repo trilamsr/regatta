@@ -60,7 +60,7 @@ func TestExportSecretsToEnv_BriefHMAC_FileSourceFormatsKeyring(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	cfg := &secrets.Config{
-		BriefHMAC: &secrets.Spec{Source: secrets.SourceFile, Path: keyPath, KeyID: "brief-2026-06"},
+		BriefHMAC: &secrets.SecretSpec{Source: secrets.SourceFile, Path: keyPath, KeyID: "brief-2026-06"},
 	}
 	f, err := secrets.BuildFromConfig(context.Background(), cfg)
 	if err != nil {

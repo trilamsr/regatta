@@ -16,8 +16,8 @@ const (
 	SourceFile     = "file"
 )
 
-// Spec is the per-key yaml entry shape.
-type Spec struct {
+// SecretSpec is the per-key yaml entry shape.
+type SecretSpec struct {
 	Source string `yaml:"source" json:"source"`
 	Name   string `yaml:"name,omitempty" json:"name,omitempty"`
 	Path   string `yaml:"path,omitempty" json:"path,omitempty"`
@@ -26,12 +26,12 @@ type Spec struct {
 
 // Config is the Go view of the `secrets:` block, one field per canonical key.
 type Config struct {
-	AnthropicAPIKey *Spec `yaml:"anthropic_api_key,omitempty" json:"anthropic_api_key,omitempty"`
-	LinearAPIKey    *Spec `yaml:"linear_api_key,omitempty" json:"linear_api_key,omitempty"`
-	GHToken         *Spec `yaml:"gh_token,omitempty" json:"gh_token,omitempty"`
-	BriefHMAC       *Spec `yaml:"brief_hmac,omitempty" json:"brief_hmac,omitempty"`
-	AuditHMAC       *Spec `yaml:"audit_hmac,omitempty" json:"audit_hmac,omitempty"`
-	ApprovalToken   *Spec `yaml:"approval_token,omitempty" json:"approval_token,omitempty"`
+	AnthropicAPIKey *SecretSpec `yaml:"anthropic_api_key,omitempty" json:"anthropic_api_key,omitempty"`
+	LinearAPIKey    *SecretSpec `yaml:"linear_api_key,omitempty" json:"linear_api_key,omitempty"`
+	GHToken         *SecretSpec `yaml:"gh_token,omitempty" json:"gh_token,omitempty"`
+	BriefHMAC       *SecretSpec `yaml:"brief_hmac,omitempty" json:"brief_hmac,omitempty"`
+	AuditHMAC       *SecretSpec `yaml:"audit_hmac,omitempty" json:"audit_hmac,omitempty"`
+	ApprovalToken   *SecretSpec `yaml:"approval_token,omitempty" json:"approval_token,omitempty"`
 }
 
 // BuildFromConfig returns a Fetcher routing each yaml-mapped key to its source; nil cfg ⇒ Default (back-compat).
@@ -40,7 +40,7 @@ func BuildFromConfig(ctx context.Context, cfg *Config) (Fetcher, error) {
 	if cfg == nil {
 		return def, nil
 	}
-	mapping := map[string]*Spec{
+	mapping := map[string]*SecretSpec{
 		KeyAnthropic:     cfg.AnthropicAPIKey,
 		KeyLinear:        cfg.LinearAPIKey,
 		KeyGHToken:       cfg.GHToken,
@@ -65,7 +65,7 @@ func BuildFromConfig(ctx context.Context, cfg *Config) (Fetcher, error) {
 	return routedFetcher{routed: routed, fallback: def}, nil
 }
 
-func fetcherForSpec(ctx context.Context, key string, spec *Spec) (Fetcher, error) {
+func fetcherForSpec(ctx context.Context, key string, spec *SecretSpec) (Fetcher, error) {
 	switch spec.Source {
 	case SourceEnv:
 		if spec.Name == "" {

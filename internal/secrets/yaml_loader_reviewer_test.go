@@ -18,7 +18,7 @@ func TestRoutedFetcher_FallsBackToDefaultOnRoutedMiss(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "from-legacy-alias")
 	t.Setenv("ROUTED_MISSING_ENV", "")
 	cfg := &Config{
-		AnthropicAPIKey: &Spec{Source: SourceEnv, Name: "ROUTED_MISSING_ENV"},
+		AnthropicAPIKey: &SecretSpec{Source: SourceEnv, Name: "ROUTED_MISSING_ENV"},
 	}
 	f, err := BuildFromConfig(context.Background(), cfg)
 	if err != nil {
@@ -45,7 +45,7 @@ func TestBuildFromConfig_BriefHMAC_FileSource_HexFormatsKeyring(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	cfg := &Config{
-		BriefHMAC: &Spec{Source: SourceFile, Path: keyPath, KeyID: "brief-2026-06"},
+		BriefHMAC: &SecretSpec{Source: SourceFile, Path: keyPath, KeyID: "brief-2026-06"},
 	}
 	f, err := BuildFromConfig(context.Background(), cfg)
 	if err != nil {
@@ -73,7 +73,7 @@ func TestBuildFromConfig_BriefHMAC_FileSource_MissingKeyIDRejected(t *testing.T)
 		t.Fatalf("write: %v", err)
 	}
 	cfg := &Config{
-		BriefHMAC: &Spec{Source: SourceFile, Path: keyPath}, // no KeyID
+		BriefHMAC: &SecretSpec{Source: SourceFile, Path: keyPath}, // no KeyID
 	}
 	if _, err := BuildFromConfig(context.Background(), cfg); err == nil {
 		t.Fatalf("want error on file-source brief_hmac without key_id, got nil")
