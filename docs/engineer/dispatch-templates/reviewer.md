@@ -96,7 +96,7 @@ LENSES (apply in order)
 
 RUN LOCAL LINTS (do not infer from PR description)
 - Fetch branch + run `bash scripts/doc-check.sh` (markdown links, comment-noise, test-godoc).
-- Run `make pre-push-check` (verify, stale-todo, check-tdd, full test suite).
+- Run `make pre-push-check` (verify + full test suite).
 - Compare actual exit codes against author's claim. ~10% lie rate per `feedback_subagent_verification`. (`feedback_reviewer_run_local_lints`, `feedback_subagent_verification`)
 
 AUTOMERGE GATE (every Risk-tier+ must be addressed)

@@ -1,5 +1,5 @@
 # Test + benchmark + mutation targets. Hot — touched by every new property test.
-.PHONY: go-check go-check-full go-check-shard property-test property-test-full crash-recovery-property-full mutation-test mutation-test-install bench cover
+.PHONY: go-check go-check-full property-test property-test-full crash-recovery-property-full mutation-test mutation-test-install bench cover
 
 # Property test set — single source of truth for property-test + property-test-full.
 PROPERTY_TESTS := TestListSpawnable_PropertyTopologicalReady|TestSubstrate_SupersedesCycleProperty|TestSubstrate_ReplayProtectionProperty|TestSchedulerCrashRecoveryProperty|TestSpendCrashRecoveryProperty|TestReaperCrashRecoveryProperty
@@ -12,14 +12,6 @@ PROPERTY_PKGS := ./internal/orchestrator/state/... ./internal/orchestrator/sched
 # catch any race that slipped past the allowlist.
 go-check:  ## Build and test every Go package, with `-race` only on packages in scripts/race-pkgs.txt. PHASE-S-RELAX: -short during self-host window; full race sweep via `make go-check-full`.
 	@bash scripts/go-check.sh
-
-# go-check-shard <N> runs only the packages assigned to shard N in
-# scripts/go-shards/shard-N.txt, splitting between race / norace by
-# membership in scripts/race-pkgs.txt. Used by ci.yml verify-go-{1..4}.
-go-check-shard:  ## Run a single CI shard: SHARD=<N> make go-check-shard.
-	@test -n "$(SHARD)" || { echo "usage: make go-check-shard SHARD=<1|2|3|4>"; exit 2; }
-	@test -f scripts/go-shards/shard-$(SHARD).txt || { echo "no shard file: scripts/go-shards/shard-$(SHARD).txt"; exit 2; }
-	@bash scripts/go-check-shard.sh "$(SHARD)"
 
 go-check-full:  ## Full race sweep without -short, across ALL packages. Run weekly + before any tag. Nightly cross-platform-nightly.yml uses this. PHASE-S-RELAX restoration target — fold back into `go-check` at end of self-host phase (memory/feedback_gate_relaxation_phase_s).
 	go build -buildvcs=false ./...

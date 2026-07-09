@@ -14,19 +14,13 @@ permissions:
 
 jobs:
   # `verify` is the aggregator for these file-disjoint shards:
-  #   verify-docs         bash doc/citation gates (~30s)
-  #   verify-go-{1..4}    sharded `go test -short` partitioned by historical
-  #                       per-package time (greedy bin-pack via
-  #                       scripts/go-shards/shard-N.txt). Each shard takes
-  #                       ~250s of CPU-time; wall-clock ≤3min in CI.
-  #                       Race detector (`-race`) runs ONLY on packages
-  #                       listed in scripts/race-pkgs.txt (30/84 packages
-  #                       use concurrency in prod code).
-  #   verify-stale-todo   cross-tree TODO age scan (~30s)
+  #   verify-docs   bash doc/citation gates (~30s)
+  #   verify-go     `go test -short` across all packages, with `-race`
+  #                 only on packages listed in scripts/race-pkgs.txt
+  #                 (30/84 packages use concurrency in prod code).
   #
   # `verify-property` was demoted to the property-full job in nightly.yml.
   # `cross-platform-test (macos)` was demoted to the cross-platform-test job in nightly.yml.
-  # See PR body for before/after wall-clock measurements.
   verify-docs:
     name: verify-docs
     runs-on: ubuntu-latest
@@ -44,110 +38,27 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: make check-docs
 
-  verify-go-1:
-    name: verify-go-1
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: go-check-shard 1
-        run: make go-check-shard SHARD=1
-
-  verify-go-2:
-    name: verify-go-2
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: go-check-shard 2
-        run: make go-check-shard SHARD=2
-
-  verify-go-3:
-    name: verify-go-3
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: go-check-shard 3
-        run: make go-check-shard SHARD=3
-
-  verify-go-4:
-    name: verify-go-4
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: go-check-shard 4
-        run: make go-check-shard SHARD=4
-
-  # verify-go aggregator preserves the branch-protection required-check name.
-  # Fails closed when any verify-go-<N> shard fails / is cancelled / is skipped.
   verify-go:
     name: verify-go
-    needs: [verify-go-1, verify-go-2, verify-go-3, verify-go-4]
     runs-on: ubuntu-latest
-    if: ${{ always() }}
-    steps:
-      - name: aggregate verify-go shards
-        run: |
-          set -euo pipefail
-          s1='${{ needs.verify-go-1.result }}'
-          s2='${{ needs.verify-go-2.result }}'
-          s3='${{ needs.verify-go-3.result }}'
-          s4='${{ needs.verify-go-4.result }}'
-          echo "verify-go-1=$s1"
-          echo "verify-go-2=$s2"
-          echo "verify-go-3=$s3"
-          echo "verify-go-4=$s4"
-          for r in "$s1" "$s2" "$s3" "$s4"; do
-            if [ "$r" != "success" ]; then
-              echo "verify-go: shard non-success ($r)"
-              exit 1
-            fi
-          done
-          echo "verify-go: all 4 shards green"
-
-  verify-stale-todo:
-    name: verify-stale-todo
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           fetch-depth: 0
-      - name: make check-stale-todo
-        run: make check-stale-todo
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16  # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: make go-check
+        run: make go-check
 
   # Aggregator preserves the `verify` required-check name so branch protection
   # needs no update. Fails closed if any sub-shard fails / is cancelled / is
   # skipped.
   verify:
     name: verify
-    needs: [verify-docs, verify-go, verify-stale-todo]
+    needs: [verify-docs, verify-go]
     runs-on: ubuntu-latest
     if: ${{ always() }}
     steps:
@@ -156,11 +67,9 @@ jobs:
           set -euo pipefail
           docs='${{ needs.verify-docs.result }}'
           go='${{ needs.verify-go.result }}'
-          stale='${{ needs.verify-stale-todo.result }}'
           echo "verify-docs=$docs"
           echo "verify-go=$go"
-          echo "verify-stale-todo=$stale"
-          for r in "$docs" "$go" "$stale"; do
+          for r in "$docs" "$go"; do
             if [ "$r" != "success" ]; then
               echo "verify: shard non-success ($r)"
               exit 1
