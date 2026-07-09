@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -74,15 +75,25 @@ func TestServe_UITrue_BindsListener(t *testing.T) {
 	}
 }
 
-// B2: --ui=false returns nil server; no port is bound.
-func TestServe_UIFalse_SkipsListener(t *testing.T) {
+// B2: --ui=false returns healthz-only server (/healthz + /readyz always served for container healthchecks).
+func TestServe_UIFalse_ServesHealthzOnly(t *testing.T) {
 	h := newListenerHarness(t, false, "127.0.0.1:0")
 	srv, err := bootListener(h.cfg)
 	if err != nil {
 		t.Fatalf("bootListener: %v", err)
 	}
-	if srv != nil {
-		t.Fatal("srv non-nil with --ui=false; listener should be skipped entirely")
+	if srv == nil {
+		t.Fatal("srv nil with --ui=false; /healthz must be served for container healthchecks")
+	}
+	rec := httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if rec.Code != http.StatusOK {
+		t.Errorf("/healthz status=%d want 200 with UI=false; body=%q", rec.Code, rec.Body.String())
+	}
+	rec = httptest.NewRecorder()
+	srv.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/panels/health", nil))
+	if rec.Code == http.StatusOK {
+		t.Errorf("UI route responded 200 with UI=false; should be 404")
 	}
 }
 
@@ -148,14 +159,19 @@ func TestServe_GracefulShutdown(t *testing.T) {
 // A8: callback route registered only when --ui=true; with --ui=false the listener is absent so a POST cannot connect at all.
 func TestServe_CallbackRouteRegisteredOnlyWhenUITrue(t *testing.T) {
 	t.Setenv("REGATTA_HMAC_KEY", "test-key")
-	// --ui=false: no listener bound; dial-fixed-port returns ECONNREFUSED.
+	// --ui=false: healthz-only server; callback route returns 404.
 	hOff := newListenerHarness(t, false, "127.0.0.1:0")
 	srvOff, err := bootListener(hOff.cfg)
 	if err != nil {
 		t.Fatalf("bootListener ui=false: %v", err)
 	}
-	if srvOff != nil {
-		t.Fatal("srvOff non-nil with --ui=false; bind syscall should not fire")
+	if srvOff == nil {
+		t.Fatal("srvOff nil with --ui=false; /healthz must be served")
+	}
+	rec := httptest.NewRecorder()
+	srvOff.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/approval/callback", nil))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("callback status=%d want 404 with UI=false; body=%q", rec.Code, rec.Body.String())
 	}
 
 	// --ui=true: callback path returns 405 on GET (POST-only per spec).
