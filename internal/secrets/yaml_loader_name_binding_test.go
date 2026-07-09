@@ -8,7 +8,7 @@ import (
 // TestRoutedFetcher_KeychainNameAbsentFallsBackToCanonical asserts a keychain source with no name field preserves pre-#934 Default-chain behaviour.
 func TestRoutedFetcher_KeychainNameAbsentFallsBackToCanonical(t *testing.T) {
 	cfg := &Config{
-		AnthropicAPIKey: &Spec{Source: SourceKeychain},
+		AnthropicAPIKey: &SecretSpec{Source: SourceKeychain},
 	}
 	f, err := BuildFromConfig(context.Background(), cfg)
 	if err != nil {
@@ -33,7 +33,7 @@ func TestRoutedFetcher_KeychainNameAbsentFallsBackToCanonical(t *testing.T) {
 // TestRoutedFetcher_KeychainNameBindsCustomAccount asserts a keychain source with name= builds a named-account fetcher (#934).
 func TestRoutedFetcher_KeychainNameBindsCustomAccount(t *testing.T) {
 	cfg := &Config{
-		AnthropicAPIKey: &Spec{Source: SourceKeychain, Name: "regatta/anthropic"},
+		AnthropicAPIKey: &SecretSpec{Source: SourceKeychain, Name: "regatta/anthropic"},
 	}
 	f, err := BuildFromConfig(context.Background(), cfg)
 	if err != nil {
@@ -57,7 +57,7 @@ func TestRoutedFetcher_KeychainNameBindsCustomAccount(t *testing.T) {
 // TestRoutedFetcher_PassNameBindsCustomEntry asserts a pass source with name= builds a named-entry fetcher (#934).
 func TestRoutedFetcher_PassNameBindsCustomEntry(t *testing.T) {
 	cfg := &Config{
-		GHToken: &Spec{Source: SourcePass, Name: "regatta/gh_token_reviewer"},
+		GHToken: &SecretSpec{Source: SourcePass, Name: "regatta/gh_token_reviewer"},
 	}
 	f, err := BuildFromConfig(context.Background(), cfg)
 	if err != nil {

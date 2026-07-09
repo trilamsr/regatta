@@ -54,7 +54,7 @@ var secretEnvOverrides = map[string][]string{
 	secrets.KeyApprovalToken: {"REGATTA_APPROVAL_TOKEN_KEY"},
 }
 
-// buildSecretFetcherFromRepo reads regatta.yaml at repoRoot, returning a Fetcher built from `secrets:` when present, else the Default chain. Spec §11 mitigates yaml-typo risk via CUE rejection — so a non-ENOENT load error MUST surface (WARN + non-nil err) rather than silently fall back. A missing regatta.yaml stays silent and returns Default — zero-config deployments are the documented happy path (mirrors `buildSpecAdapter` #867 contract).
+// buildSecretFetcherFromRepo reads regatta.yaml at repoRoot, returning a Fetcher built from `secrets:` when present, else the Default chain. SecretSpec §11 mitigates yaml-typo risk via CUE rejection — so a non-ENOENT load error MUST surface (WARN + non-nil err) rather than silently fall back. A missing regatta.yaml stays silent and returns Default — zero-config deployments are the documented happy path (mirrors `buildSpecAdapter` #867 contract).
 func buildSecretFetcherFromRepo(ctx context.Context, repoRoot string, logger *slog.Logger) (secrets.Fetcher, error) {
 	cfgPath := filepath.Join(repoRoot, "regatta.yaml")
 	cfg, loadErr := validate.LoadConfigFile(cfgPath)
@@ -82,11 +82,11 @@ func adaptSecretsConfig(in *validate.Secrets) *secrets.Config {
 	if in == nil {
 		return nil
 	}
-	conv := func(s *validate.Secret) *secrets.Spec {
+	conv := func(s *validate.Secret) *secrets.SecretSpec {
 		if s == nil {
 			return nil
 		}
-		return &secrets.Spec{Source: s.Source, Name: s.Name, Path: s.Path, KeyID: s.KeyID}
+		return &secrets.SecretSpec{Source: s.Source, Name: s.Name, Path: s.Path, KeyID: s.KeyID}
 	}
 	return &secrets.Config{
 		AnthropicAPIKey: conv(in.AnthropicAPIKey),

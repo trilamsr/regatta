@@ -13,7 +13,7 @@ import (
 func TestSecrets_BuildFromConfig_EnvSource(t *testing.T) {
 	t.Setenv("REGATTA_TEST_FOO", "from-env")
 	cfg := &Config{
-		AnthropicAPIKey: &Spec{Source: SourceEnv, Name: "REGATTA_TEST_FOO"},
+		AnthropicAPIKey: &SecretSpec{Source: SourceEnv, Name: "REGATTA_TEST_FOO"},
 	}
 	f, err := BuildFromConfig(context.Background(), cfg)
 	if err != nil {
@@ -56,7 +56,7 @@ func TestSecrets_BuildFromConfig_FileSource_PermsTooOpen(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	cfg := &Config{
-		AnthropicAPIKey: &Spec{Source: SourceFile, Path: path},
+		AnthropicAPIKey: &SecretSpec{Source: SourceFile, Path: path},
 	}
 	f, err := BuildFromConfig(context.Background(), cfg)
 	if err != nil {
@@ -79,7 +79,7 @@ func TestSecrets_BuildFromConfig_FileSource_OK(t *testing.T) {
 		t.Fatalf("write: %v", err)
 	}
 	cfg := &Config{
-		AnthropicAPIKey: &Spec{Source: SourceFile, Path: path},
+		AnthropicAPIKey: &SecretSpec{Source: SourceFile, Path: path},
 	}
 	f, err := BuildFromConfig(context.Background(), cfg)
 	if err != nil {
@@ -117,7 +117,7 @@ func TestSecrets_YamlSourceOverridesEnv(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "legacy")
 	t.Setenv("MY_OPERATOR_KEY", "operator-chosen")
 	cfg := &Config{
-		AnthropicAPIKey: &Spec{Source: SourceEnv, Name: "MY_OPERATOR_KEY"},
+		AnthropicAPIKey: &SecretSpec{Source: SourceEnv, Name: "MY_OPERATOR_KEY"},
 	}
 	f, err := BuildFromConfig(context.Background(), cfg)
 	if err != nil {
@@ -135,7 +135,7 @@ func TestSecrets_YamlSourceOverridesEnv(t *testing.T) {
 // TestSecrets_BuildFromConfig_UnknownSourceRejected asserts the loader hard-fails on unknown source enums (#911).
 func TestSecrets_BuildFromConfig_UnknownSourceRejected(t *testing.T) {
 	cfg := &Config{
-		AnthropicAPIKey: &Spec{Source: "vault", Name: "x"},
+		AnthropicAPIKey: &SecretSpec{Source: "vault", Name: "x"},
 	}
 	_, err := BuildFromConfig(context.Background(), cfg)
 	if err == nil {
