@@ -12,14 +12,19 @@ type CheckRun struct {
 	Status     string
 }
 
-type Emission struct { //nolint:revive // payload the poller hands to Emitter on each state change
+// Emission is the payload the Poller hands to Emitter on every observed
+// state change; PrevSeen distinguishes first observation (transition from
+// unknown) from a genuine transition between two known CheckRun values.
+type Emission struct {
 	PR        string
 	CheckRun  CheckRun
 	PrevSeen  bool
 	PrevValue CheckRun
 }
 
-type Emitter interface { //nolint:revive // substrate-write seam; production appends KindGateVerdict per spec §3.2
+// Emitter is the substrate-write seam the Poller invokes on each state
+// transition; production appends KindGateVerdict per spec §3.2.
+type Emitter interface {
 	Emit(ctx context.Context, e Emission) error
 }
 

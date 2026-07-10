@@ -2,7 +2,10 @@ package spawner
 
 import "sort"
 
-type ObservedSignal struct { //nolint:revive // side-effect observation from a tool call; Kind is the field the surprise detector folds against DeclaredEffectClass (spec §3.7)
+// ObservedSignal is a single side-effect observation from a tool call;
+// Kind is the field the surprise detector folds against
+// DeclaredEffectClass (spec §3.7).
+type ObservedSignal struct {
 	Kind     string
 	Path     string
 	Endpoint string

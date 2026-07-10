@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// ApprovalEventFields is the primitive projection of state.ApprovalEvent
+// this sub-package understands; the shape breaks the state → approvals_shadow
+// importer cycle per spec §6 R1.
 type ApprovalEventFields struct {
 	ApprovalID string `json:"approval_id"`
 	Transition string `json:"transition"`
@@ -18,6 +21,9 @@ type ApprovalEventFields struct {
 	TokenJTI   string `json:"token_jti"`
 }
 
+// BuildShadowPayload marshals the shadow-write payload with tokenJTI
+// omitted when empty so downstream substrate rows never carry an empty
+// jti field.
 func BuildShadowPayload(approvalID, transition, actor, tokenJTI string) (json.RawMessage, error) {
 	p := map[string]any{
 		"approval_id": approvalID,
@@ -74,6 +80,8 @@ func ParseSubstrateApprovalPayload(payload []byte) (ApprovalEventFields, error) 
 	return f, nil
 }
 
+// TruncateDiff caps a diff snippet at 512 bytes so a runaway payload
+// cannot bloat the shadow-write row past substrate's per-event budget.
 func TruncateDiff(s string) string {
 	if len(s) <= 512 {
 		return s
