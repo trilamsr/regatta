@@ -113,75 +113,26 @@ func (r *Reaper) Sweep(ctx context.Context) error {
 	return firstErr
 }
 
-// sweepOne runs the per-row tx. Reads prior events FIRST so the policy
-// branch sees the full history (escalate needs the replayed-votes
-// list), then opens the tx and issues all writes — append timed_out,
-// branch on policy, maybe terminal event, mark decided / advance chain.
-// All-or-nothing.
+// sweepOne runs the per-row tx: load prior events, open tx, apply policy
+// all-or-nothing, then emit post-commit slog parity so a tx-write failure
+// cannot lie about a non-existent terminal.
 func (r *Reaper) sweepOne(ctx context.Context, a state.Approval, now time.Time) error {
 	prior, err := r.db.ListApprovalEvents(ctx, a.ID)
 	if err != nil {
 		return fmt.Errorf("approval/reaper: list events %q: %w", a.ID, err)
 	}
 	if isTerminal(prior) {
-		// Defence: a concurrent Sweep already terminated this row.
-		// Idempotency: emit nothing further; the timed_out event was
-		// already appended in the winning sweep's tx.
+		// Concurrent Sweep already terminated this row; the winning tx
+		// appended the timed_out event, so emit nothing further.
 		return nil
 	}
-	policy := a.OnTimeout
-	if policy == "" {
-		policy = policyFail
-	}
-	// chainExhausted + escalateOK steer the post-commit slog parity emit
-	// below (was inline pre-WithTx). Tests TestReaper_AutoApprovePolicy
-	// and TestReaper_EscalatePolicy still pass through the same record.
+	policy := resolveTimeoutPolicy(a.OnTimeout)
 	var (
 		chainExhausted bool
 		escalateOK     bool
 	)
 	if err := r.db.WithTx(ctx, func(tx *sql.Tx) error {
-		// Re-check terminal status INSIDE the tx so a parallel Sweep that
-		// won the race is observed. sqlite's max-1-conn pool serialises
-		// transactions, so the second BeginTx blocks until the first
-		// commits — by then the won row carries a terminal marker and we
-		// exit clean (no second timed_out event).
-		priorInTx, err := listApprovalEventsTx(ctx, tx, a.ID)
-		if err != nil {
-			return fmt.Errorf("approval/reaper: re-list events %q: %w", a.ID, err)
-		}
-		if isTerminal(priorInTx) {
-			return errSweepSkip
-		}
-		// Issue #193: only write timed_out for policies whose denotation
-		// matches "no decision in window" — fail and escalate (chain-
-		// exhausted). auto_approve resolves to approved; writing timed_out
-		// first would make Fold (id-ASC, first-terminal-wins) return
-		// StatusTimedOut and the gate verdict would contradict the denorm
-		// status column.
-		if policy != policyAutoApprove {
-			// fail emits its umbrella slog here; escalate suppresses it
-			// because the trailing escalated slog below carries the chain-
-			// index attrs operators need.
-			logger := r.log
-			if policy == policyEscalate {
-				logger = nil
-			}
-			if err := recordEvent(ctx, recordEventOpts{
-				Tx: tx, Logger: logger, ApprovalID: a.ID,
-				Event: obs.EventApprovalTimedOut, Kind: EventKindTimedOut,
-				Actor: systemActor, Now: now,
-				Attrs: map[string]any{string(obs.KeyPolicy): policy},
-			}); err != nil {
-				return fmt.Errorf("approval/reaper: append timed_out: %w", err)
-			}
-		}
-		if r.txHook != nil {
-			if err := r.txHook(tx); err != nil {
-				return fmt.Errorf("approval/reaper: txHook abort: %w", err)
-			}
-		}
-		ce, eo, err := r.applyTimeoutPolicy(ctx, tx, a, policy, prior, priorInTx, now)
+		ce, eo, err := r.sweepOneTx(ctx, tx, a, policy, prior, now)
 		chainExhausted = ce
 		escalateOK = eo
 		return err
@@ -191,13 +142,80 @@ func (r *Reaper) sweepOne(ctx context.Context, a state.Approval, now time.Time) 
 		}
 		return err
 	}
-	// Post-commit slog parity (was inline pre-WithTx). Slogs after commit
-	// so a tx-write failure does not lie about a non-existent terminal.
+	r.logSweepOutcome(a, policy, chainExhausted, escalateOK)
+	return nil
+}
+
+// resolveTimeoutPolicy defaults a blank on_timeout column to fail so the
+// row still terminates rather than looping forever.
+func resolveTimeoutPolicy(onTimeout string) string {
+	if onTimeout == "" {
+		return policyFail
+	}
+	return onTimeout
+}
+
+// sweepOneTx is sweepOne's tx-body: re-check terminal in-tx, append the
+// timed_out event when policy denotation demands it, run the txHook, and
+// dispatch to the per-policy branch.
+func (r *Reaper) sweepOneTx(
+	ctx context.Context, tx *sql.Tx, a state.Approval, policy string,
+	prior []state.ApprovalEvent, now time.Time,
+) (chainExhausted, escalateOK bool, err error) {
+	// sqlite's max-1-conn pool serialises transactions; a parallel Sweep
+	// that won the race is observed here and short-circuited via
+	// errSweepSkip so no second timed_out event lands.
+	priorInTx, err := listApprovalEventsTx(ctx, tx, a.ID)
+	if err != nil {
+		return false, false, fmt.Errorf("approval/reaper: re-list events %q: %w", a.ID, err)
+	}
+	if isTerminal(priorInTx) {
+		return false, false, errSweepSkip
+	}
+	if err := r.writeTimedOutEvent(ctx, tx, a.ID, policy, now); err != nil {
+		return false, false, err
+	}
+	if r.txHook != nil {
+		if err := r.txHook(tx); err != nil {
+			return false, false, fmt.Errorf("approval/reaper: txHook abort: %w", err)
+		}
+	}
+	return r.applyTimeoutPolicy(ctx, tx, a, policy, prior, priorInTx, now)
+}
+
+// writeTimedOutEvent appends the umbrella timed_out event for policies
+// whose denotation matches "no decision in window". auto_approve resolves
+// to approved (issue #193) so writing timed_out first would make Fold
+// (id-ASC, first-terminal-wins) return StatusTimedOut and contradict the
+// denorm status column.
+func (r *Reaper) writeTimedOutEvent(ctx context.Context, tx *sql.Tx, approvalID, policy string, now time.Time) error {
+	if policy == policyAutoApprove {
+		return nil
+	}
+	// escalate suppresses the umbrella slog here because the trailing
+	// escalated slog carries the chain-index attrs operators need.
+	logger := r.log
+	if policy == policyEscalate {
+		logger = nil
+	}
+	if err := recordEvent(ctx, recordEventOpts{
+		Tx: tx, Logger: logger, ApprovalID: approvalID,
+		Event: obs.EventApprovalTimedOut, Kind: EventKindTimedOut,
+		Actor: systemActor, Now: now,
+		Attrs: map[string]any{string(obs.KeyPolicy): policy},
+	}); err != nil {
+		return fmt.Errorf("approval/reaper: append timed_out: %w", err)
+	}
+	return nil
+}
+
+// logSweepOutcome emits the post-commit slog parity records so tx-write
+// failures cannot lie about a non-existent terminal.
+func (r *Reaper) logSweepOutcome(a state.Approval, policy string, chainExhausted, escalateOK bool) {
 	switch {
 	case policy == policyAutoApprove:
-		// Slog parity with the prior reaper: emit the umbrella timed_out
-		// event too so TestReaper_AutoApprovePolicy still fires. No event
-		// row — issue #193 forbids a timed_out row on this branch.
+		// Umbrella slog parity with the prior reaper (no event row —
+		// issue #193 forbids a timed_out row on this branch).
 		r.log.Info(string(obs.EventApprovalTimedOut),
 			string(obs.KeyApprovalID), a.ID,
 			string(obs.KeyWorkItemID), a.WorkItemID,
@@ -211,15 +229,13 @@ func (r *Reaper) sweepOne(ctx context.Context, a state.Approval, now time.Time) 
 			string(obs.KeyReason), ErrEscalationChainExhausted.Error(),
 		)
 	case escalateOK:
-		// Slog parity: emit timed_out (umbrella) so the existing
-		// TestReaper_EscalatePolicy slog assertion still fires; escalated
-		// was already emitted via recordEvent inside the tx.
+		// Umbrella slog parity; the escalated event was emitted via
+		// recordEvent inside the tx.
 		r.log.Info(string(obs.EventApprovalTimedOut),
 			string(obs.KeyApprovalID), a.ID,
 			string(obs.KeyPolicy), policyEscalate,
 		)
 	}
-	return nil
 }
 
 // applyTimeoutPolicy dispatches the per-row on_timeout branch so sweepOne
