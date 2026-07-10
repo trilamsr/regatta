@@ -33,7 +33,24 @@ func runInit(args []string) int {
 	return runInitWithIO(args, os.Stdout, os.Stderr)
 }
 
-func runInitWithIO(args []string, stdout, stderr io.Writer) int {
+// initDecision captures one file's target path, template blurb, canonical
+// bytes, and the classified action; each field is populated in a distinct
+// phase (classify-then-apply) so refusal stays atomic per PR body.
+type initDecision struct {
+	path   string
+	blurb  string
+	bytes  []byte
+	action string
+}
+
+// initFlags is the parsed flag surface for `regatta init`.
+type initFlags struct {
+	force   bool
+	jsonOut bool
+}
+
+// parseInitFlags parses argv; a false ok signals return the paired exit code (0 covers --help so the caller exits cleanly).
+func parseInitFlags(args []string, stderr io.Writer) (initFlags, int, bool) {
 	fs := flag.NewFlagSet(subcmdInit, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
@@ -56,9 +73,92 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 	jsonOut := fs.Bool("json", false, "emit JSON envelope instead of friendly prose")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			return 0
+			return initFlags{}, 0, false
 		}
-		return 2
+		return initFlags{}, 2, false
+	}
+	return initFlags{force: *force, jsonOut: *jsonOut}, 0, true
+}
+
+// classifyInitFiles walks each embedded template, decides between write/skip/overwrite/diverge, and short-circuits with exit 2 on divergence so the caller never applies partial state.
+func classifyInitFiles(files []initDecision, force bool, stderr io.Writer) (int, bool) {
+	for i := range files {
+		existing, err := os.ReadFile(files[i].path)
+		switch {
+		case os.IsNotExist(err):
+			files[i].action = actionWrite
+		case err != nil:
+			_, _ = fmt.Fprintf(stderr, "regatta init: stat %s: %v\n", files[i].path, err)
+			return 1, false
+		case bytes.Equal(existing, files[i].bytes):
+			files[i].action = actionSkip
+		case force:
+			files[i].action = actionOverwrite
+		default:
+			files[i].action = actionDiverge
+		}
+	}
+	// Short-circuit divergence before any write so refusal stays atomic.
+	for _, d := range files {
+		if d.action == actionDiverge {
+			_, _ = fmt.Fprintf(stderr, "regatta init: %s already exists and differs from the bundled template.\n", filepath.ToSlash(d.path))
+			_, _ = fmt.Fprintf(stderr, "  To re-init: rm regatta.yaml .regatta/sample.diff\n")
+			_, _ = fmt.Fprintf(stderr, "  To overwrite: regatta init --force\n")
+			return 2, false
+		}
+	}
+	return 0, true
+}
+
+// applyInitFiles executes the classified actions (mkdir, write, skip, overwrite) and emits the friendly-mode prose; returns the tri-partition slices for the JSON envelope.
+func applyInitFiles(files []initDecision, jsonOut bool, stdout, stderr io.Writer) (written, skipped, overwritten []string, code int, ok bool) {
+	for _, d := range files {
+		if d.action == actionSkip {
+			continue
+		}
+		if dir := filepath.Dir(d.path); dir != "." {
+			if err := safeMkdir(dir); err != nil {
+				_, _ = fmt.Fprintf(stderr, "regatta init: %v\n", err)
+				return nil, nil, nil, 2, false
+			}
+		}
+	}
+	for _, d := range files {
+		// Forward-slash so output matches docs/incidents.md prose across OSes.
+		display := filepath.ToSlash(d.path)
+		switch d.action {
+		case actionWrite:
+			if err := os.WriteFile(d.path, d.bytes, 0o600); err != nil {
+				_, _ = fmt.Fprintf(stderr, "regatta init: write %s: %v\n", display, err)
+				return nil, nil, nil, 1, false
+			}
+			if !jsonOut {
+				_, _ = fmt.Fprintf(stdout, "+ wrote %s %s\n", padPath(display), d.blurb)
+			}
+			written = append(written, display)
+		case actionSkip:
+			if !jsonOut {
+				_, _ = fmt.Fprintf(stdout, "= %s unchanged\n", display)
+			}
+			skipped = append(skipped, display)
+		case actionOverwrite:
+			if err := os.WriteFile(d.path, d.bytes, 0o600); err != nil {
+				_, _ = fmt.Fprintf(stderr, "regatta init: write %s: %v\n", display, err)
+				return nil, nil, nil, 1, false
+			}
+			if !jsonOut {
+				_, _ = fmt.Fprintf(stdout, "! overwrote %s %s\n", padPath(display), d.blurb)
+			}
+			overwritten = append(overwritten, display)
+		}
+	}
+	return written, skipped, overwritten, 0, true
+}
+
+func runInitWithIO(args []string, stdout, stderr io.Writer) int {
+	flags, code, ok := parseInitFlags(args, stderr)
+	if !ok {
+		return code
 	}
 
 	yamlBytes, err := initAssets.ReadFile("init_assets/regatta.yaml")
@@ -88,84 +188,17 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 		}
 	}
 
-	// Atomic refusal: classify before any write so divergence never leaves partial state.
-	type decision struct {
-		path   string
-		blurb  string
-		bytes  []byte
-		action string
-	}
-	files := []decision{
+	files := []initDecision{
 		{path: defaultRegattaConfig, blurb: "(your config; L0 gate enabled)", bytes: yamlBytes},
 		{path: filepath.Join(".regatta", "sample.diff"), blurb: "(a demo attack against MILESTONES.md)", bytes: diffBytes},
 	}
-	for i := range files {
-		existing, err := os.ReadFile(files[i].path)
-		switch {
-		case os.IsNotExist(err):
-			files[i].action = actionWrite
-		case err != nil:
-			_, _ = fmt.Fprintf(stderr, "regatta init: stat %s: %v\n", files[i].path, err)
-			return 1
-		case bytes.Equal(existing, files[i].bytes):
-			files[i].action = actionSkip
-		case *force:
-			files[i].action = actionOverwrite
-		default:
-			files[i].action = actionDiverge
-		}
-	}
-	// Short-circuit divergence before any write so refusal stays atomic.
-	for _, d := range files {
-		if d.action == actionDiverge {
-			_, _ = fmt.Fprintf(stderr, "regatta init: %s already exists and differs from the bundled template.\n", filepath.ToSlash(d.path))
-			_, _ = fmt.Fprintf(stderr, "  To re-init: rm regatta.yaml .regatta/sample.diff\n")
-			_, _ = fmt.Fprintf(stderr, "  To overwrite: regatta init --force\n")
-			return 2
-		}
+	if code, ok := classifyInitFiles(files, flags.force, stderr); !ok {
+		return code
 	}
 
-	for _, d := range files {
-		if d.action == actionSkip {
-			continue
-		}
-		if dir := filepath.Dir(d.path); dir != "." {
-			if err := safeMkdir(dir); err != nil {
-				_, _ = fmt.Fprintf(stderr, "regatta init: %v\n", err)
-				return 2
-			}
-		}
-	}
-
-	var written, skipped, overwritten []string
-	for _, d := range files {
-		// Forward-slash so output matches docs/incidents.md prose across OSes.
-		display := filepath.ToSlash(d.path)
-		switch d.action {
-		case actionWrite:
-			if err := os.WriteFile(d.path, d.bytes, 0o600); err != nil {
-				_, _ = fmt.Fprintf(stderr, "regatta init: write %s: %v\n", display, err)
-				return 1
-			}
-			if !*jsonOut {
-				_, _ = fmt.Fprintf(stdout, "+ wrote %s %s\n", padPath(display), d.blurb)
-			}
-			written = append(written, display)
-		case actionSkip:
-			if !*jsonOut {
-				_, _ = fmt.Fprintf(stdout, "= %s unchanged\n", display)
-			}
-			skipped = append(skipped, display)
-		case actionOverwrite:
-			if err := os.WriteFile(d.path, d.bytes, 0o600); err != nil {
-				_, _ = fmt.Fprintf(stderr, "regatta init: write %s: %v\n", display, err)
-				return 1
-			}
-			if !*jsonOut {
-				_, _ = fmt.Fprintf(stdout, "! overwrote %s %s\n", padPath(display), d.blurb)
-			}
-			overwritten = append(overwritten, display)
-		}
+	written, skipped, overwritten, code, ok := applyInitFiles(files, flags.jsonOut, stdout, stderr)
+	if !ok {
+		return code
 	}
 
 	// Re-read from disk so operator edits to sample.diff flow into the demo verdict.
@@ -177,7 +210,7 @@ func runInitWithIO(args []string, stdout, stderr io.Writer) int {
 	}
 	res := approval.L0Check(approval.L0Default(), approval.L0ParseUnifiedDiff(string(onDisk)))
 
-	if *jsonOut {
+	if flags.jsonOut {
 		if err := emitInitJSON(stdout, written, skipped, overwritten, res); err != nil {
 			_, _ = fmt.Fprintf(stderr, "regatta init: encode JSON: %v\n", err)
 			return 1

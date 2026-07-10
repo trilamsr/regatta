@@ -43,13 +43,23 @@ func runProgram(args []string) int {
 	}
 }
 
-// runProgramPlan: read a parent WorkItem from disk (.md or .json),
-// invoke the selected planner (anthropic|stub), validate + sign the
-// resulting ProgramBrief, then either write atomically to
-// <write-dir>/<program_id>.json (when -write) or emit pretty JSON to
-// stdout. Source adapters are deferred -- for v1, operators
-// hand-author the parent WorkItem or feed it from an adapter dump.
-func runProgramPlan(args []string) int {
+// programPlanOptions captures the parsed `program plan` flags so the
+// phase helpers below stay signature-stable as flags are added.
+type programPlanOptions struct {
+	model          string
+	keyEnv         string
+	keyID          string
+	plannerName    string
+	writeFlag      bool
+	writeDir       string
+	force          bool
+	unsafeWriteDir bool
+	planDryRun     bool
+	workItemPath   string
+}
+
+// parseProgramPlanFlags parses argv and returns the resolved options plus the exit-code the caller should return on flag / usage failure (0 when parsing succeeded).
+func parseProgramPlanFlags(args []string) (programPlanOptions, int, bool) {
 	fs := flag.NewFlagSet("program plan", flag.ContinueOnError)
 	model := fs.String("model", "claude-opus-4-7", "Claude model id (anthropic planner only)")
 	keyEnv := fs.String("hmac-key-env", "", "Env var holding HMAC key (required)")
@@ -71,23 +81,110 @@ func runProgramPlan(args []string) int {
 		fs.PrintDefaults()
 	}
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return programPlanOptions{}, 2, false
 	}
 	if fs.NArg() != 1 {
 		fs.Usage()
-		return 2
+		return programPlanOptions{}, 2, false
 	}
 	if *keyEnv == "" {
 		fmt.Fprintln(os.Stderr, "regatta program plan: -hmac-key-env is required")
-		return 2
+		return programPlanOptions{}, 2, false
 	}
-	key := os.Getenv(*keyEnv)
+	return programPlanOptions{
+		model:          *model,
+		keyEnv:         *keyEnv,
+		keyID:          *keyID,
+		plannerName:    *plannerName,
+		writeFlag:      *writeFlag,
+		writeDir:       *writeDir,
+		force:          *force,
+		unsafeWriteDir: *unsafeWriteDir,
+		planDryRun:     *planDryRun,
+		workItemPath:   fs.Arg(0),
+	}, 0, true
+}
+
+// selectProgramPlanner resolves the ModelClient for the requested planner name; a non-zero exit code signals unrecoverable flag error.
+func selectProgramPlanner(name, model string) (program.ModelClient, int, bool) {
+	switch name {
+	case "", "anthropic":
+		c, err := program.NewAnthropicPlanner(model)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "regatta program plan:", err)
+			return nil, 2, false
+		}
+		return c, 0, true
+	case plannerNameStub:
+		return program.NewStubPlanner(), 0, true
+	default:
+		fmt.Fprintf(os.Stderr, "regatta program plan: unknown -planner %q (want anthropic|stub)\n", name)
+		return nil, 2, false
+	}
+}
+
+// writeProgramPlanBrief materialises the plan to <write-dir>/<program_id>.json, honouring the safety + dry-run + force flags. The unsafeWriteDir escape hatch skips the cwd-containment TOCTOU closer.
+func writeProgramPlanBrief(plan *program.ProgramBrief, opts programPlanOptions) int {
+	target := opts.writeDir
+	if target == "" {
+		target = filepath.Join(".regatta", "programs")
+	}
+	if !opts.unsafeWriteDir {
+		cwd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "regatta program plan: getwd:", err)
+			return 1
+		}
+		if err := validateWriteDirUnderCwd(target, cwd); err != nil {
+			fmt.Fprintln(os.Stderr, "regatta program plan:", err)
+			return 2
+		}
+		// TOCTOU closer: between validate and mkdir, an attacker can
+		// plant a symlink in an un-created component (e.g. cwd/a -> /etc).
+		// safeMkdirAllUnderCwd walks one component at a time, lstat'ing
+		// each existing step and refusing any symlink in the chain.
+		if err := safeMkdirAllUnderCwd(target, cwd); err != nil {
+			fmt.Fprintln(os.Stderr, "regatta program plan:", err)
+			return 1
+		}
+	} else if err := os.MkdirAll(target, 0o750); err != nil {
+		fmt.Fprintln(os.Stderr, "regatta program plan:", err)
+		return 1
+	}
+	raw, err := json.MarshalIndent(plan, "", "  ")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "regatta program plan: marshal:", err)
+		return 1
+	}
+	briefPath := filepath.Join(target, plan.ProgramID+".json")
+	if err := atomicWriteBriefDryRun(briefPath, raw, opts.force, opts.planDryRun); err != nil {
+		fmt.Fprintln(os.Stderr, "regatta program plan:", err)
+		if errors.Is(err, orchestrator.ErrTargetExists) {
+			return 2
+		}
+		return 1
+	}
+	return 0
+}
+
+// runProgramPlan: read a parent WorkItem from disk (.md or .json),
+// invoke the selected planner (anthropic|stub), validate + sign the
+// resulting ProgramBrief, then either write atomically to
+// <write-dir>/<program_id>.json (when -write) or emit pretty JSON to
+// stdout. Source adapters are deferred -- for v1, operators
+// hand-author the parent WorkItem or feed it from an adapter dump.
+func runProgramPlan(args []string) int {
+	opts, code, ok := parseProgramPlanFlags(args)
+	if !ok {
+		return code
+	}
+	key := os.Getenv(opts.keyEnv)
 	if key == "" {
-		fmt.Fprintf(os.Stderr, "regatta program plan: env var $%s is set but contains an empty string (export a non-empty HMAC key or point -hmac-key-env at a different variable)\n", *keyEnv)
+		fmt.Fprintf(os.Stderr, "regatta program plan: env var $%s is set but contains an empty string (export a non-empty HMAC key or point -hmac-key-env at a different variable)\n", opts.keyEnv)
 		return 2
 	}
 
-	parent, err := loadParentWorkItem(fs.Arg(0))
+	parent, err := loadParentWorkItem(opts.workItemPath)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "regatta program plan:", err)
 		return 2
@@ -101,73 +198,23 @@ func runProgramPlan(args []string) int {
 		return 2
 	}
 
-	var client program.ModelClient
-	switch *plannerName {
-	case "", "anthropic":
-		c, err := program.NewAnthropicPlanner(*model)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "regatta program plan:", err)
-			return 2
-		}
-		client = c
-	case plannerNameStub:
-		client = program.NewStubPlanner()
-	default:
-		fmt.Fprintf(os.Stderr, "regatta program plan: unknown -planner %q (want anthropic|stub)\n", *plannerName)
-		return 2
+	client, code, ok := selectProgramPlanner(opts.plannerName, opts.model)
+	if !ok {
+		return code
 	}
 
 	plan, err := program.Run(context.Background(), program.PlannerOptions{
 		Client:    client,
 		HMACKey:   []byte(key),
-		HMACKeyID: *keyID,
+		HMACKeyID: opts.keyID,
 	}, parent)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "regatta program plan:", err)
 		return 1
 	}
 
-	if *writeFlag {
-		target := *writeDir
-		if target == "" {
-			target = filepath.Join(".regatta", "programs")
-		}
-		if !*unsafeWriteDir {
-			cwd, err := os.Getwd()
-			if err != nil {
-				fmt.Fprintln(os.Stderr, "regatta program plan: getwd:", err)
-				return 1
-			}
-			if err := validateWriteDirUnderCwd(target, cwd); err != nil {
-				fmt.Fprintln(os.Stderr, "regatta program plan:", err)
-				return 2
-			}
-			// TOCTOU closer: between validate and mkdir, an attacker can
-			// plant a symlink in an un-created component (e.g. cwd/a -> /etc).
-			// safeMkdirAllUnderCwd walks one component at a time, lstat'ing
-			// each existing step and refusing any symlink in the chain.
-			if err := safeMkdirAllUnderCwd(target, cwd); err != nil {
-				fmt.Fprintln(os.Stderr, "regatta program plan:", err)
-				return 1
-			}
-		} else if err := os.MkdirAll(target, 0o750); err != nil {
-			fmt.Fprintln(os.Stderr, "regatta program plan:", err)
-			return 1
-		}
-		raw, err := json.MarshalIndent(plan, "", "  ")
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "regatta program plan: marshal:", err)
-			return 1
-		}
-		briefPath := filepath.Join(target, plan.ProgramID+".json")
-		if err := atomicWriteBriefDryRun(briefPath, raw, *force, *planDryRun); err != nil {
-			fmt.Fprintln(os.Stderr, "regatta program plan:", err)
-			if errors.Is(err, orchestrator.ErrTargetExists) {
-				return 2
-			}
-			return 1
-		}
-		return 0
+	if opts.writeFlag {
+		return writeProgramPlanBrief(plan, opts)
 	}
 
 	enc := json.NewEncoder(os.Stdout)
