@@ -17,17 +17,9 @@ import (
 	"github.com/trilamsr/regatta/internal/orchestrator/review"
 )
 
-// buildAuthorizer constructs the W8 OPA authorizer and (when the
-// operator declares safety.authz.policy_dir) spawns the hot-reload
-// goroutine bound to ctx. Empty / missing regatta.yaml ⇒ embed.FS
-// default-deny only; the authorizer is still hydrated so call sites
-// always see a non-nil store.
-//
-// Reloader lifecycle: bound to ctx — SIGINT/SIGTERM cancel the parent,
-// which drains both the watcher and signal goroutines. SIGHUP is
-// claimed by the reloader's own signal.Notify, which does not steal
-// from the parent context's signal.NotifyContext (it listens on a
-// disjoint signal set).
+// buildAuthorizer constructs the W8 OPA authorizer. When policy_dir is
+// set, spawns a ctx-bound hot-reloader; empty falls through to embed.FS
+// default-deny so single-tenant deploys boot zero-config.
 func buildAuthorizer(ctx context.Context, repoRoot string, slogger *slog.Logger) (*authz.OPAAuthorizer, error) {
 	cfg, _ := validateconfig.LoadConfigFile(filepath.Join(repoRoot, "regatta.yaml"))
 	authzCfg := cfg.AuthzConfig()
@@ -134,14 +126,10 @@ func startReviewReconciler(ctx context.Context, slogger *slog.Logger) error {
 	return nil
 }
 
-// buildReviewApprover constructs the W7 L4-as-review Approver from
-// env-driven config. Returns (nil, nil) — opt-in via env — when any of
-// the required vars (REGATTA_REVIEW_REPO, GH_TOKEN_REVIEWER,
-// GH_USER_REVIEWER, GH_USER_BOT) is empty so default-off matches spec
-// §2: "Default-off; opt-in via regatta.yaml: gates.l4_posts_review:
-// true". Env over yaml keeps the secret out of the file + avoids a CUE
-// schema change for this wave; yaml-driven config can land alongside
-// the install-service surface (spec §12 carry-forward).
+// buildReviewApprover constructs the W7 L4-as-review Approver from env
+// config. Returns (nil, nil) when any required var is empty so default-
+// off matches spec §2. Env over yaml keeps the token out of the file
+// until the install-service surface lands (spec §12 carry-forward).
 func buildReviewApprover(logger *slog.Logger) (*review.Approver, error) {
 	repo := os.Getenv("REGATTA_REVIEW_REPO")
 	token := os.Getenv("GH_TOKEN_REVIEWER")

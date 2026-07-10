@@ -334,6 +334,9 @@ func (s *sqliteSource) queryActiveSubagents(ctx context.Context) Panel {
 		started := time.Unix(createdAtUnix, 0) // allow-bare-time-unix: time.Since() consumes the instant; Location is irrelevant.
 		lines = append(lines, fmt.Sprintf("%s  %s", workItemID, time.Since(started).Round(time.Second)))
 	}
+	if err := rows.Err(); err != nil {
+		return Panel{Title: titleActiveSubagents, State: PanelMissing, Lines: []string{err.Error()}}
+	}
 	if len(lines) == 0 {
 		return Panel{Title: titleActiveSubagents, State: PanelEmpty, Lines: []string{"— no active subagents"}}
 	}
@@ -361,6 +364,9 @@ func (s *sqliteSource) queryInFlightPRs(ctx context.Context) Panel {
 			break
 		}
 		lines = append(lines, fmt.Sprintf("%s  %s", workItem, prPayloadSummary(payload)))
+	}
+	if err := rows.Err(); err != nil {
+		return Panel{Title: titleInFlightPRs, State: PanelMissing, Lines: []string{err.Error()}}
 	}
 	if len(lines) == 0 {
 		return Panel{Title: titleInFlightPRs, State: PanelEmpty, Lines: []string{"— no open PRs"}}
