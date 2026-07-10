@@ -159,14 +159,46 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 	// adapter→state mirror activity shows up in the trace tree.
 	ctx, span := s.tracer.Start(ctx, "adaptersync.sync")
 	defer span.End()
-	// MinPollInterval gate (#888): zero-value lastPoll fires the first
-	// call; subsequent calls inside the budget window short-circuit
-	// BEFORE the network hop. lastPoll advances on the error path too so
-	// a flapping rate-limited adapter is not retried-into-the-throttle.
-	if minPoll := s.adapter.Capabilities().MinPollInterval; minPoll > 0 && !s.lastPoll.IsZero() && pollStartedAt.Sub(s.lastPoll) < minPoll {
+	if s.throttled(pollStartedAt) {
 		return nil
 	}
 	s.lastPoll = pollStartedAt
+	items, err := s.fetchItems(ctx, pollStartedAt)
+	if err != nil {
+		return err
+	}
+	if len(items) == 0 {
+		s.handleEmptyList(pollStartedAt)
+		return s.cascadeChildrenOfArchivedPrograms(ctx, pollStartedAt)
+	}
+	s.consecutiveEmpty = 0
+	staged := s.stageItems(ctx, items)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.db.BatchUpsertWorkItems(ctx, staged, state.SourceAdapter, pollStartedAt); err != nil {
+		return fmt.Errorf("adaptersync: batch upsert: %w", err)
+	}
+	archived, err := s.db.TombstoneBySource(ctx, state.SourceAdapter, pollStartedAt)
+	if err != nil {
+		return fmt.Errorf("adaptersync: tombstone: %w", err)
+	}
+	for _, id := range archived {
+		s.log.Warn("adapter.tombstoned", "id", id, "cutoff", pollStartedAt)
+	}
+	return s.cascadeChildrenOfArchivedPrograms(ctx, pollStartedAt)
+}
+
+// throttled short-circuits re-polls inside MinPollInterval so a flapping
+// rate-limited adapter is not retried-into-the-throttle (#888).
+func (s *Syncer) throttled(pollStartedAt time.Time) bool {
+	minPoll := s.adapter.Capabilities().MinPollInterval
+	return minPoll > 0 && !s.lastPoll.IsZero() && pollStartedAt.Sub(s.lastPoll) < minPoll
+}
+
+// fetchItems calls adapter.List and emits the failure→recovery event
+// pair so downstream stages see a clean items slice or a wrapped error.
+func (s *Syncer) fetchItems(ctx context.Context, pollStartedAt time.Time) ([]schemas.WorkItem, error) {
 	items, err := s.adapter.List(ctx)
 	if err != nil {
 		s.adapterPollErrors.Add(ctx, 1)
@@ -174,15 +206,9 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		s.lastSyncFailed = true
 		if !alreadyFailed {
 			s.failureStartedAt = pollStartedAt
-			payload, mErr := json.Marshal(map[string]string{"err": scrubAdaptersyncErr(err.Error())})
-			if mErr != nil {
-				payload = []byte(`{}`)
-			}
-			if recErr := s.db.RecordEvent(ctx, 0, string(obs.EventAdapterSyncFailed), string(payload)); recErr != nil {
-				s.log.Warn("adaptersync.event_record_failed", "kind", string(obs.EventAdapterSyncFailed), "err", recErr)
-			}
+			s.recordAdapterEvent(ctx, obs.EventAdapterSyncFailed, map[string]string{"err": scrubAdaptersyncErr(err.Error())})
 		}
-		return fmt.Errorf("adaptersync: adapter list: %w", err)
+		return nil, fmt.Errorf("adaptersync: adapter list: %w", err)
 	}
 	if s.lastSyncFailed {
 		s.lastSyncFailed = false
@@ -190,31 +216,43 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		if downtimeMs < 0 {
 			downtimeMs = 0
 		}
-		payload, mErr := json.Marshal(map[string]int64{"items_count": int64(len(items)), "downtime_ms": downtimeMs})
-		if mErr != nil {
-			payload = []byte(`{}`)
-		}
-		if recErr := s.db.RecordEvent(ctx, 0, string(obs.EventAdapterSyncSynced), string(payload)); recErr != nil {
-			s.log.Warn("adaptersync.event_record_failed", "kind", string(obs.EventAdapterSyncSynced), "err", recErr)
-		}
+		s.recordAdapterEvent(ctx, obs.EventAdapterSyncSynced, map[string]int64{"items_count": int64(len(items)), "downtime_ms": downtimeMs})
 	}
+	return items, nil
+}
 
-	if len(items) == 0 {
-		s.consecutiveEmpty++
-		if s.consecutiveEmpty == 1 {
-			s.log.Warn("adapter.empty_list", "cutoff", pollStartedAt, "skipping_tombstone", true)
-		} else {
-			s.log.Debug("adapter.empty_list", "cutoff", pollStartedAt, "skipping_tombstone", true, "consecutive", s.consecutiveEmpty)
-		}
-		return s.cascadeChildrenOfArchivedPrograms(ctx, pollStartedAt)
+// recordAdapterEvent serialises payload and records via the state DB;
+// marshal + record errors degrade to a warn log so the sync tick proceeds.
+func (s *Syncer) recordAdapterEvent(ctx context.Context, kind obs.EventName, payload any) {
+	body, mErr := json.Marshal(payload)
+	if mErr != nil {
+		body = []byte(`{}`)
 	}
-	s.consecutiveEmpty = 0
+	if recErr := s.db.RecordEvent(ctx, 0, string(kind), string(body)); recErr != nil {
+		s.log.Warn("adaptersync.event_record_failed", "kind", string(kind), "err", recErr)
+	}
+}
 
+// handleEmptyList advances the consecutive-empty counter and logs at
+// warn on the first empty, debug thereafter. Transient upstream hiccups
+// must not wipe the queue (caller skips the tombstone sweep).
+func (s *Syncer) handleEmptyList(pollStartedAt time.Time) {
+	s.consecutiveEmpty++
+	if s.consecutiveEmpty == 1 {
+		s.log.Warn("adapter.empty_list", "cutoff", pollStartedAt, "skipping_tombstone", true)
+	} else {
+		s.log.Debug("adapter.empty_list", "cutoff", pollStartedAt, "skipping_tombstone", true, "consecutive", s.consecutiveEmpty)
+	}
+}
+
+// stageItems dedupes by ID, maps adapter kind/status → state enums, and
+// skips unmappable rows so one bad row never stops a poll (spec §3).
+func (s *Syncer) stageItems(ctx context.Context, items []schemas.WorkItem) []state.WorkItem {
 	seen := map[string]bool{}
 	staged := make([]state.WorkItem, 0, len(items))
 	for _, it := range items {
-		if err := ctx.Err(); err != nil {
-			return err
+		if ctx.Err() != nil {
+			return staged
 		}
 		id := string(it.ID)
 		if seen[id] {
@@ -247,18 +285,7 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 			Status: status,
 		})
 	}
-	if err := s.db.BatchUpsertWorkItems(ctx, staged, state.SourceAdapter, pollStartedAt); err != nil {
-		return fmt.Errorf("adaptersync: batch upsert: %w", err)
-	}
-
-	archived, err := s.db.TombstoneBySource(ctx, state.SourceAdapter, pollStartedAt)
-	if err != nil {
-		return fmt.Errorf("adaptersync: tombstone: %w", err)
-	}
-	for _, id := range archived {
-		s.log.Warn("adapter.tombstoned", "id", id, "cutoff", pollStartedAt)
-	}
-	return s.cascadeChildrenOfArchivedPrograms(ctx, pollStartedAt)
+	return staged
 }
 
 // cascadeChildrenOfArchivedPrograms archives live children of any
