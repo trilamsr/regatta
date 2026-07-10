@@ -107,6 +107,10 @@ func runReviewStatus(args []string, out io.Writer) int {
 		)
 		printed++
 	}
+	if err := rows.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "review status: rows: %v\n", err)
+		return 1
+	}
 	if printed == 0 {
 		_, _ = fmt.Fprintln(out, "(no gate verdicts in window)")
 	}

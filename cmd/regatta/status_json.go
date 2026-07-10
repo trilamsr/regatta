@@ -233,6 +233,9 @@ func loadAgentsByState(ctx context.Context, db *sql.DB, env *StatusJSON) {
 			env.Agents.InFlight += n
 		}
 	}
+	if err := rows.Err(); err != nil {
+		env.Errors = append(env.Errors, "sqlite: agents rows: "+err.Error())
+	}
 }
 
 // loadLastEvents grabs the most-recent created_at for each of the
