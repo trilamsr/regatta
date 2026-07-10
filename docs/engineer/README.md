@@ -23,4 +23,3 @@ Read time: 1 minute (this index).
 ## Cross-references
 
 - Tree map + read order for the whole repo: [`../architecture.md`](../architecture.md).
-- Universal agent rules: [`../../CLAUDE.md`](../../CLAUDE.md).

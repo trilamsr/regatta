@@ -42,11 +42,9 @@ The reviewer-subagent is flagging a pattern that the repo intentionally
 allows (or that another gate already catches). Top-10 panel will show
 one pattern dominating the dismissal share.
 
-**Fix.** Recalibrate the reviewer prompt
-(`docs/engineer/dispatch-templates/reviewer.md`) to suppress that
-pattern OR re-spec the linter rule so the reviewer trusts the upstream
-gate. Record the change as an entry in `~/.claude/projects/.../memory/`
-via `/learn this` so the recalibration sticks across sessions.
+**Fix.** Recalibrate the reviewer prompt (edit the reviewer template
+that ships with the binary) to suppress that pattern OR re-spec the
+linter rule so the reviewer trusts the upstream gate.
 
 ### Repo-policy churn — what was a finding last week is now expected
 
@@ -57,8 +55,7 @@ rule. Top-10 panel will show a pattern that *first appeared* in the
 
 **Fix.** Diff the spec / convention file against `main` from 7 days
 ago; identify which convention moved; update the reviewer prompt to
-match. The `feedback_<slug>` memory file for that convention should
-also reflect the new shape.
+match.
 
 ### Branch-protection misconfig — finding is correct, but operator
 cannot act on it
@@ -77,10 +74,10 @@ merge without addressing it.
 ## Mitigation while triaging
 
 If the alarm keeps firing during diagnosis, reduce the reviewer's
-dispatch concurrency at the wave-size knob (see
-`docs/engineer/autonomous-session-prompt.md` §"Dispatch") rather than
-silencing the alarm. The signal value of the reviewer is
-load-bearing — muting the alarm to land throughput is a self-defeat.
+dispatch concurrency at the wave-size knob (regatta.yaml
+`waves.reviewer_concurrency`) rather than silencing the alarm. The
+signal value of the reviewer is load-bearing — muting the alarm to
+land throughput is a self-defeat.
 
 ## Rollback
 

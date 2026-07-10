@@ -108,9 +108,8 @@ the rebuild step above.
 
 ## Contributing
 
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contributor guide (PR flow, CI gates, conventions).
-- [`CLAUDE.md`](CLAUDE.md) — agent operating rules; read first if you're touching this repo with Claude Code or any other agent.
-- [`docs/engineer/README.md`](docs/engineer/README.md) — engineer entry point (specs, briefs, dispatch templates, autonomous-loop docs).
+- [`docs/engineer/README.md`](docs/engineer/README.md) — engineer entry point (specs, briefs, runbooks).
+- [`TICKETS.md`](TICKETS.md) — tracker.
 
 ## Why "regatta"
 

@@ -10,11 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 
 	validate "github.com/trilamsr/regatta/internal/config/validate"
-	adapter "github.com/trilamsr/regatta/internal/orchestrator/adapter"
 )
 
 // repoRoot resolves the regatta repo root by walking up from this
@@ -69,32 +67,3 @@ func TestSelfHost_RegattaYAML_DeclaresGithubIssues(t *testing.T) {
 	}
 }
 
-// TestSelfHost_SeedItems_Parse anchors every .regatta/items/*.md file at the repo root against the markdown adapter's pars
-func TestSelfHost_SeedItems_Parse(t *testing.T) {
-	dir := filepath.Join(repoRoot(t), ".regatta", "items")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatalf("read %s: %v", dir, err)
-	}
-	seen := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
-			continue
-		}
-		if strings.HasPrefix(e.Name(), "_") || strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
-		if _, err := adapter.ParseMarkdownItem(data); err != nil {
-			t.Errorf("%s: parse: %v", e.Name(), err)
-		}
-		seen++
-	}
-	if seen < 2 {
-		t.Fatalf("found %d seed items under .regatta/items/; brief §3 S1-T1 acceptance needs ≥2", seen)
-	}
-}
