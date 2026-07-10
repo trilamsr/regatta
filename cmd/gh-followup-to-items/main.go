@@ -317,6 +317,37 @@ func loadIssues(opts convertOpts) ([]ghIssue, error) {
 }
 
 func convert(opts convertOpts) error {
+	applyDefaults(&opts)
+
+	issues, err := loadIssues(opts)
+	if err != nil {
+		return err
+	}
+	if len(issues) >= opts.limit {
+		return fmt.Errorf("issue count %d hit limit %d; raise --limit", len(issues), opts.limit)
+	}
+
+	open, closed := partitionByState(issues)
+
+	if opts.dryRun {
+		emitDryRun(opts, open, closed)
+		return nil
+	}
+
+	if err := os.MkdirAll(opts.out, 0o750); err != nil {
+		return &toolErr{msg: fmt.Sprintf("mkdir out: %v", err)}
+	}
+
+	emitLaneWarnings(opts, open)
+
+	if err := writeOpenIssues(opts, open); err != nil {
+		return err
+	}
+	return cleanupClosedIssues(opts, closed)
+}
+
+// applyDefaults substitutes zero-value opts fields so downstream helpers assume a fully-populated struct.
+func applyDefaults(opts *convertOpts) {
 	if opts.stdout == nil {
 		opts.stdout = io.Discard
 	}
@@ -329,17 +360,10 @@ func convert(opts convertOpts) error {
 	if opts.limit == 0 {
 		opts.limit = defaultLimit
 	}
+}
 
-	issues, err := loadIssues(opts)
-	if err != nil {
-		return err
-	}
-	if len(issues) >= opts.limit {
-		return fmt.Errorf("issue count %d hit limit %d; raise --limit", len(issues), opts.limit)
-	}
-
-	// Partition open vs closed.
-	var open, closed []ghIssue
+// partitionByState splits issues into open/closed slices; unknown states drop so a GH schema drift can't surface as a mystery brief.
+func partitionByState(issues []ghIssue) (open, closed []ghIssue) {
 	for _, iss := range issues {
 		switch strings.ToUpper(iss.State) {
 		case stateOpen:
@@ -348,30 +372,30 @@ func convert(opts convertOpts) error {
 			closed = append(closed, iss)
 		}
 	}
+	return open, closed
+}
 
-	if opts.dryRun {
-		for _, iss := range open {
-			_, _ = fmt.Fprintf(opts.stdout, "would emit %s/%s\n", opts.out, filename(iss))
-		}
-		for _, iss := range closed {
-			_, _ = fmt.Fprintf(opts.stdout, "would delete (closed) gh-issue-%d-*.md\n", iss.Number)
-		}
-		return nil
+// emitDryRun prints the writes+deletes convert WOULD do so operator can preview before touching disk.
+func emitDryRun(opts convertOpts, open, closed []ghIssue) {
+	for _, iss := range open {
+		_, _ = fmt.Fprintf(opts.stdout, "would emit %s/%s\n", opts.out, filename(iss))
 	}
-
-	if err := os.MkdirAll(opts.out, 0o750); err != nil {
-		return &toolErr{msg: fmt.Sprintf("mkdir out: %v", err)}
+	for _, iss := range closed {
+		_, _ = fmt.Fprintf(opts.stdout, "would delete (closed) gh-issue-%d-*.md\n", iss.Number)
 	}
+}
 
-	// Surface lane-ambiguity warnings BEFORE writes — operator catches
-	// the determinism choice in the same run that produces the artifact.
+// emitLaneWarnings surfaces lane-ambiguity BEFORE writes so operator sees the determinism choice in the same run that produced the artifact.
+func emitLaneWarnings(opts convertOpts, open []ghIssue) {
 	for _, iss := range open {
 		if _, warn := deriveLane(iss.Labels); warn != "" {
 			_, _ = fmt.Fprintf(opts.stderr, "warn: issue #%d: %s\n", iss.Number, warn)
 		}
 	}
+}
 
-	// Open-issue pass.
+// writeOpenIssues renders + reconciles one brief per open issue, skipping hand-authored files without a sentinel.
+func writeOpenIssues(opts convertOpts, open []ghIssue) error {
 	for _, iss := range open {
 		target := filepath.Join(opts.out, filename(iss))
 		body := renderItem(iss)
@@ -400,42 +424,43 @@ func convert(opts convertOpts) error {
 			return &toolErr{msg: fmt.Sprintf("write %s: %v", target, err)}
 		}
 	}
+	return nil
+}
 
-	// Closed-issue cleanup pass. Filename-anchored per spec §6 — survives
-	// a frontmatter hand-edit that corrupts linked_artifact.
+// cleanupClosedIssues deletes briefs for closed issues; filename-anchored per spec §6 so it survives a hand-edit that corrupts linked_artifact.
+func cleanupClosedIssues(opts convertOpts, closed []ghIssue) error {
+	if len(closed) == 0 {
+		return nil
+	}
 	closedNums := map[int]bool{}
 	for _, iss := range closed {
 		closedNums[iss.Number] = true
 	}
-	if len(closedNums) > 0 {
-		entries, err := os.ReadDir(opts.out)
-		if err != nil {
-			return fmt.Errorf("readdir %s: %w", opts.out, err)
-		}
-		for _, e := range entries {
-			m := briefFilenameRE.FindStringSubmatch(e.Name())
-			if m == nil {
-				continue
-			}
-			n, parseErr := strconv.Atoi(m[1])
-			if parseErr != nil {
-				continue
-			}
-			if !closedNums[n] {
-				continue
-			}
-			target := filepath.Join(opts.out, e.Name())
-			// Warn before clobbering a hand-edited closed brief
-			// (sentinel stripped → operator may want git-restore).
-			if sha, _ := existingSha(target); sha == "" {
-				_, _ = fmt.Fprintf(opts.stderr, "warn: deleting hand-edited brief for closed issue #%d: %s (git restore to recover)\n", n, target)
-			}
-			if err := os.Remove(target); err != nil {
-				return &toolErr{msg: fmt.Sprintf("remove %s: %v", target, err)}
-			}
-			_, _ = fmt.Fprintf(opts.stdout, "delete (closed) %s\n", target)
-		}
+	entries, err := os.ReadDir(opts.out)
+	if err != nil {
+		return fmt.Errorf("readdir %s: %w", opts.out, err)
 	}
-
+	for _, e := range entries {
+		m := briefFilenameRE.FindStringSubmatch(e.Name())
+		if m == nil {
+			continue
+		}
+		n, parseErr := strconv.Atoi(m[1])
+		if parseErr != nil {
+			continue
+		}
+		if !closedNums[n] {
+			continue
+		}
+		target := filepath.Join(opts.out, e.Name())
+		// Warn before clobbering a hand-edited closed brief — operator may want git-restore.
+		if sha, _ := existingSha(target); sha == "" {
+			_, _ = fmt.Fprintf(opts.stderr, "warn: deleting hand-edited brief for closed issue #%d: %s (git restore to recover)\n", n, target)
+		}
+		if err := os.Remove(target); err != nil {
+			return &toolErr{msg: fmt.Sprintf("remove %s: %v", target, err)}
+		}
+		_, _ = fmt.Fprintf(opts.stdout, "delete (closed) %s\n", target)
+	}
 	return nil
 }
