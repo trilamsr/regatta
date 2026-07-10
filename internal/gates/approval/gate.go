@@ -367,20 +367,43 @@ func (g *Gate) mintTierTokens(snap state.ReviewerSet, approvalID, workItemID str
 func (g *Gate) createApprovalAndNotify(ctx context.Context, wi state.WorkItem, cfg Config) (*state.Approval, error) {
 	now := g.clock()
 	approvalID := newApprovalID()
-
 	tokens, jtis, err := g.mintReviewerTokens(cfg, approvalID, wi.ID, now)
 	if err != nil {
 		return nil, err
 	}
+	approval := buildApprovalRow(cfg, approvalID, wi.ID, now)
+	inserted, err := g.insertApprovalRow(ctx, approval)
+	if err != nil || !inserted {
+		return nil, err
+	}
+	if err := g.recordApprovalRequested(ctx, approvalID, wi.ID, cfg, now); err != nil {
+		return nil, err
+	}
+	if err := g.persistTokenMintedRows(ctx, approvalID, jtis, now); err != nil {
+		return nil, err
+	}
+	receipt, err := g.notifyReviewers(ctx, approval, wi, cfg, tokens, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := g.recordApprovalNotified(ctx, approvalID, cfg, receipt, len(jtis), now); err != nil {
+		return nil, err
+	}
+	return &approval, nil
+}
 
+// buildApprovalRow assembles the pending Approval snapshot for
+// spec §3.1 first-sighting; reviewer set is defensively copied so
+// later cfg mutation cannot bleed into the persisted row.
+func buildApprovalRow(cfg Config, approvalID, workItemID string, now time.Time) state.Approval {
 	snapshot := state.ReviewerSet{
 		Reviewers:         append([]string(nil), cfg.Reviewers...),
 		Quorum:            cfg.Quorum,
 		PreventSelfReview: cfg.PreventSelfReview,
 	}
-	approval := state.Approval{
+	return state.Approval{
 		ID:                  approvalID,
-		WorkItemID:          wi.ID,
+		WorkItemID:          workItemID,
 		GateName:            cfg.Name,
 		RequestedAt:         now,
 		RequestedBy:         "", // Wave-3 will plumb from wi metadata.
@@ -391,22 +414,25 @@ func (g *Gate) createApprovalAndNotify(ctx context.Context, wi state.WorkItem, c
 		OnTimeout:           cfg.OnTimeout,
 		EscalationChain:     cfg.EscalationChain,
 	}
+}
+
+// insertApprovalRow persists the pending row; returns (false, nil) on
+// the race-loser path so Evaluate re-reads the winner's row without
+// double-emitting requested/notified events.
+func (g *Gate) insertApprovalRow(ctx context.Context, approval state.Approval) (bool, error) {
 	if err := g.db.CreateApproval(ctx, approval); err != nil {
 		if errors.Is(err, state.ErrApprovalAlreadyExists) {
-			// Race-loser path: belt tripped because two callers raced
-			// past the GetApprovalForWorkItem check. Return nil so
-			// Evaluate re-reads the winner's row.
-			return nil, nil
+			return false, nil
 		}
-		return nil, fmt.Errorf("approval: create row: %w", err)
+		return false, fmt.Errorf("approval: create row: %w", err)
 	}
+	return true, nil
+}
 
-	requestedAttrs := map[string]any{
-		string(obs.KeyWorkItemID):     wi.ID,
-		string(obs.KeyGateID):         cfg.Name,
-		string(obs.KeyReviewerCount):  len(cfg.Reviewers),
-	}
-	if err := recordEvent(ctx, recordEventOpts{
+// recordApprovalRequested emits the requested event that anchors the
+// spec §3.2.1 fold; failure aborts the first-sighting sequence.
+func (g *Gate) recordApprovalRequested(ctx context.Context, approvalID, workItemID string, cfg Config, now time.Time) error {
+	return recordEvent(ctx, recordEventOpts{
 		DB:         g.db,
 		Logger:     g.log,
 		ApprovalID: approvalID,
@@ -414,32 +440,30 @@ func (g *Gate) createApprovalAndNotify(ctx context.Context, wi state.WorkItem, c
 		Kind:       EventKindRequested,
 		Actor:      ActorOrchestrator,
 		Now:        now,
-		Attrs:      requestedAttrs,
-	}); err != nil {
-		return nil, err
-	}
+		Attrs: map[string]any{
+			string(obs.KeyWorkItemID):    workItemID,
+			string(obs.KeyGateID):        cfg.Name,
+			string(obs.KeyReviewerCount): len(cfg.Reviewers),
+		},
+	})
+}
 
-	// Issue #195: persist one token_minted row per JTI so reaper's
-	// outstandingJTIs (which already drives escalate-revocation per spec
-	// §3.3.1.3) is reachable. Without this, the reaper's per-JTI
-	// token_consumed-reason=escalated loop runs zero times.
-	if err := g.persistTokenMintedRows(ctx, approvalID, jtis, now); err != nil {
-		return nil, err
-	}
-
+// notifyReviewers dispatches the signed tokens to the configured
+// channel; wraps the notifier error with the approval-domain prefix.
+func (g *Gate) notifyReviewers(ctx context.Context, approval state.Approval, wi state.WorkItem, cfg Config, tokens map[string]string, now time.Time) (Receipt, error) {
 	req := newNotifyRequest(approval, wi, now.Add(cfg.DecisionWindow), tokens)
 	receipt, err := g.notifier.Notify(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("approval: notify: %w", err)
+		return Receipt{}, fmt.Errorf("approval: notify: %w", err)
 	}
+	return receipt, nil
+}
 
-	notifiedAttrs := map[string]any{
-		string(obs.KeyGateID):         cfg.Name,
-		string(obs.KeyReviewerCount):  len(receipt.DeliveredTo),
-		"channel":                     receipt.Channel,
-		"jti_count":                   len(jtis),
-	}
-	if err := recordEvent(ctx, recordEventOpts{
+// recordApprovalNotified emits the notified event after successful
+// dispatch; jti_count is carried explicitly so reaper audits can
+// cross-check outstandingJTIs against the mint count.
+func (g *Gate) recordApprovalNotified(ctx context.Context, approvalID string, cfg Config, receipt Receipt, jtiCount int, now time.Time) error {
+	return recordEvent(ctx, recordEventOpts{
 		DB:         g.db,
 		Logger:     g.log,
 		ApprovalID: approvalID,
@@ -447,11 +471,13 @@ func (g *Gate) createApprovalAndNotify(ctx context.Context, wi state.WorkItem, c
 		Kind:       EventKindNotified,
 		Actor:      ActorOrchestrator,
 		Now:        now,
-		Attrs:      notifiedAttrs,
-	}); err != nil {
-		return nil, err
-	}
-	return &approval, nil
+		Attrs: map[string]any{
+			string(obs.KeyGateID):        cfg.Name,
+			string(obs.KeyReviewerCount): len(receipt.DeliveredTo),
+			"channel":                    receipt.Channel,
+			"jti_count":                  jtiCount,
+		},
+	})
 }
 
 // mintReviewerTokens issues one signed token per cfg-listed reviewer
