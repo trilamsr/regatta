@@ -72,37 +72,18 @@ func foldDecisions(events []state.ApprovalEvent, quorum int, reviewerSetSize int
 
 // DecideTx consumes the token, records the decision, folds the event log, and (when terminal) stamps the denorm status in one sqlite transaction (spec §3.2 step 6).
 func DecideTx(ctx context.Context, db *state.DB, payload approvaltoken.TokenPayload, reviewerID, decision, reason string, clock func() time.Time) (DecideTxResult, string, error) {
-	a, err := db.GetApproval(ctx, payload.AID)
+	a, err := lookupAndValidate(ctx, db, payload.AID, reviewerID)
 	if err != nil {
 		return DecideTxResult{}, "", err
 	}
-	if !inReviewerSet(a.ReviewerSetSnapshot.Reviewers, reviewerID) {
-		return DecideTxResult{}, "", ErrNotReviewer
-	}
-	if a.ReviewerSetSnapshot.PreventSelfReview && a.RequestedBy == reviewerID {
-		return DecideTxResult{}, "", ErrSelfReview
-	}
-	// Plain == compare (not subtle.ConstantTimeCompare) is correct here:
-	// a.DecidedBy is a public list of prior voter IDs surfaced in the
-	// approval audit log; reviewerID is the active operator. Neither is
-	// a secret, so timing leak is meaningless. Investigator sweep
-	// 2026-06-22 (R21-I3) flagged this as a defect by analogy to the
-	// approvaltoken HMAC compare; the analogy is wrong (HMAC compares
-	// secret-derived bytes, this compares public usernames).
-	for _, prev := range a.DecidedBy {
-		if prev == reviewerID {
-			return DecideTxResult{}, "", ErrDoubleVote
-		}
-	}
-
 	var (
 		folded DecideTxResult
 		status = state.ApprovalStatusPending
 	)
 	if err := db.WithTx(ctx, func(tx *sql.Tx) error {
-		// Issue #206: re-read the event log INSIDE the tx so a reaper sweep
-		// that committed a terminal event between the pre-tx GetApproval
-		// above and this BEGIN is observed. sqlite's single-writer pool
+		// Issue #206: re-check terminality INSIDE the tx so a reaper sweep
+		// that committed a terminal event between lookupAndValidate above
+		// and this BEGIN is observed. sqlite's single-writer pool
 		// serialises BeginTx behind the reaper's COMMIT — the in-tx list
 		// sees the winning terminal row and we exit clean rather than
 		// silently overwriting it with decided+approved (the bug in #206,
@@ -118,64 +99,91 @@ func DecideTx(ctx context.Context, db *state.DB, payload approvaltoken.TokenPayl
 			return state.ErrTokenReplay
 		}
 		now := clock().UTC()
-
-		// (1) token_consumed first: the UNIQUE(approval_id,kind,token_jti)
-		// index turns a replayed token into a transactional abort BEFORE
-		// any 'decided' row materialises.
-		if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
-			ApprovalID: payload.AID,
-			Ts:         now,
-			Kind:       "token_consumed",
-			Actor:      reviewerID,
-			TokenJTI:   payload.JTI,
-		}); err != nil {
+		if err := insertVoteEvents(ctx, tx, payload, reviewerID, decision, reason, now); err != nil {
 			return err
 		}
-
-		// (2) decided event carries the vote.
-		decidedPayload, _ := json.Marshal(struct {
-			Decision string `json:"decision"`
-			Reason   string `json:"reason,omitempty"`
-		}{Decision: decision, Reason: reason})
-		if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
-			ApprovalID: payload.AID,
-			Ts:         now,
-			Kind:       EventKindDecided,
-			Actor:      reviewerID,
-			Payload:    decidedPayload,
-		}); err != nil {
-			return err
-		}
-
-		// (3) Re-list events inside the tx so the fold sees the just-inserted
-		// vote. sqlite's single-writer guarantee makes this consistent.
-		events, err := decideListEventsTx(ctx, tx, payload.AID)
-		if err != nil {
-			return err
-		}
-		folded = foldDecisions(events, a.Quorum, len(a.ReviewerSetSnapshot.Reviewers))
-		if folded.Terminal {
-			if folded.TerminalAllow {
-				status = state.ApprovalStatusApproved
-				if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
-					ApprovalID: payload.AID, Ts: now, Kind: EventKindApproved, Actor: systemActor,
-				}); err != nil {
-					return err
-				}
-			} else {
-				status = state.ApprovalStatusRejected
-				if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
-					ApprovalID: payload.AID, Ts: now, Kind: EventKindRejected, Actor: systemActor,
-				}); err != nil {
-					return err
-				}
-			}
-			if err := markApprovalDecidedTx(ctx, tx, payload.AID, status, folded.DecidedBy, now); err != nil {
-				return err
-			}
-		}
-		return nil
+		folded, status, err = applyTerminalIfAny(ctx, tx, payload.AID, a, now)
+		return err
 	}); err != nil {
+		return DecideTxResult{}, "", err
+	}
+	return folded, status, nil
+}
+
+// lookupAndValidate loads the approval and rejects non-reviewers, self-reviewers, and double-voters before opening the write tx.
+func lookupAndValidate(ctx context.Context, db *state.DB, aid, reviewerID string) (state.Approval, error) {
+	a, err := db.GetApproval(ctx, aid)
+	if err != nil {
+		return state.Approval{}, err
+	}
+	if !inReviewerSet(a.ReviewerSetSnapshot.Reviewers, reviewerID) {
+		return state.Approval{}, ErrNotReviewer
+	}
+	if a.ReviewerSetSnapshot.PreventSelfReview && a.RequestedBy == reviewerID {
+		return state.Approval{}, ErrSelfReview
+	}
+	// Plain == compare (not subtle.ConstantTimeCompare) is correct here:
+	// a.DecidedBy is a public list of prior voter IDs surfaced in the
+	// approval audit log; reviewerID is the active operator. Neither is
+	// a secret, so timing leak is meaningless. Investigator sweep
+	// 2026-06-22 (R21-I3) flagged this as a defect by analogy to the
+	// approvaltoken HMAC compare; the analogy is wrong (HMAC compares
+	// secret-derived bytes, this compares public usernames).
+	for _, prev := range a.DecidedBy {
+		if prev == reviewerID {
+			return state.Approval{}, ErrDoubleVote
+		}
+	}
+	return a, nil
+}
+
+// insertVoteEvents writes token_consumed before decided so a replayed token aborts on the UNIQUE(approval_id,kind,token_jti) index before any vote materialises.
+func insertVoteEvents(ctx context.Context, tx *sql.Tx, payload approvaltoken.TokenPayload, reviewerID, decision, reason string, now time.Time) error {
+	if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
+		ApprovalID: payload.AID,
+		Ts:         now,
+		Kind:       "token_consumed",
+		Actor:      reviewerID,
+		TokenJTI:   payload.JTI,
+	}); err != nil {
+		return err
+	}
+	decidedPayload, _ := json.Marshal(struct {
+		Decision string `json:"decision"`
+		Reason   string `json:"reason,omitempty"`
+	}{Decision: decision, Reason: reason})
+	return InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
+		ApprovalID: payload.AID,
+		Ts:         now,
+		Kind:       EventKindDecided,
+		Actor:      reviewerID,
+		Payload:    decidedPayload,
+	})
+}
+
+// applyTerminalIfAny re-folds the event log inside the tx and, when quorum is reached, stamps the terminal event and denorm status.
+func applyTerminalIfAny(ctx context.Context, tx *sql.Tx, aid string, a state.Approval, now time.Time) (DecideTxResult, string, error) {
+	events, err := decideListEventsTx(ctx, tx, aid)
+	if err != nil {
+		return DecideTxResult{}, "", err
+	}
+	folded := foldDecisions(events, a.Quorum, len(a.ReviewerSetSnapshot.Reviewers))
+	status := state.ApprovalStatusPending
+	if !folded.Terminal {
+		return folded, status, nil
+	}
+	terminalKind := EventKindRejected
+	status = state.ApprovalStatusRejected
+	if folded.TerminalAllow {
+		terminalKind = EventKindApproved
+		status = state.ApprovalStatusApproved
+	}
+	if err := InsertApprovalEvent(ctx, tx, state.ApprovalEvent{
+		ApprovalID: aid, Ts: now, Kind: terminalKind, Actor: systemActor,
+	}); err != nil {
+		return DecideTxResult{}, "", err
+	}
+	if err := markApprovalDecidedTx(ctx, tx, aid, status, folded.DecidedBy, now); err != nil {
 		return DecideTxResult{}, "", err
 	}
 	return folded, status, nil
