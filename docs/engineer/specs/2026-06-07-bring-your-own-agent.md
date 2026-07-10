@@ -11,7 +11,7 @@ Date: 2026-06-07
 Phase: MVR-1 (adoption-cost collapse)
 Companion specs:
 
-- `docs/engineer/specs/2026-06-01-adapter-contracts-design.md` — P3.8 adapter-contract pattern (`sql.Register`-style; common skeleton).
+- `docs/engineer/specs/phase-x/2026-06-01-adapter-contracts-design.md` — P3.8 adapter-contract pattern (`sql.Register`-style; common skeleton).
 - `docs/engineer/specs/2026-06-02-mvr-1-t3-p38-scm-adapter-gitea-first.md` — sibling SCM adapter spec; mirror its shape (interface + first-party + second-party + registry).
 - `docs/engineer/specs/2026-06-04-mvr-1-t4-github-issues-adapter-impl.md` — sibling work-item adapter spec; mirror its contract section.
 - `docs/engineer/specs/2026-05-31-mvp-3-w6-otel-backbone.md` — `operator_invocation` span contract every spawner adapter MUST emit.
