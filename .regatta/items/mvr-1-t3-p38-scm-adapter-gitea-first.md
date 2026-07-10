@@ -7,7 +7,7 @@ status: planned
 gate: mvr-1-entry (30-day-self-host-green OR named persona-A inbound)
 source_ref: docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md §3 (top-3 rank 3) + §4 MVR-1-T5 + §11 dispatch list
 dependencies: MVR-1-T2
-linked_artifact: docs/engineer/specs/2026-06-01-adapter-contracts-design.md
+linked_artifact: docs/engineer/specs/phase-x/2026-06-01-adapter-contracts-design.md
 ---
 
 Source brief: the unified next-horizon roadmap at `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §3 (top-3 rank 3) + §4 MVR-1-T5 + §11 dispatch list. The unified brief supersedes the prior customer-roadmap chain (PRs #399 / #408 / #418 / #421) and re-promotes SCM to MVR-1-entry — the §3 top-3 verdict overrides the earlier #408-L2 stretch demotion.
@@ -44,12 +44,12 @@ Two child tasks under this item:
 | Tier | Criteria |
 |---|---|
 | B (floor) | (a) Contract extracted; GH path unchanged externally. (b) Second adapter implementation passes the same integration test. (c) Release-notes fence in PR body. (d) Trigger documented - PR body cites the named inbound that fired the dispatch. |
-| A (target) | B + (e) `regatta.yaml` config validates at load time (CUE or `validator/v10`). (f) Both adapters share property tests (round-trip label state, idempotent PR-open). (g) The contract spec lands as `docs/engineer/specs/2026-06-XX-scm-adapter-contract.md` cited from `docs/engineer/specs/2026-06-01-adapter-contracts-design.md`. (h) Per-adapter cost surface tracked (different SCMs price API calls differently). |
+| A (target) | B + (e) `regatta.yaml` config validates at load time (CUE or `validator/v10`). (f) Both adapters share property tests (round-trip label state, idempotent PR-open). (g) The contract spec lands as `docs/engineer/specs/2026-06-XX-scm-adapter-contract.md` cited from `docs/engineer/specs/phase-x/2026-06-01-adapter-contracts-design.md`. (h) Per-adapter cost surface tracked (different SCMs price API calls differently). |
 | A+ (stretch) | A + (i) Adversarial reviewer subagent re-scores against this rubric. (j) Contract leaves room for a third SCM (Bitbucket / sourcehut) without re-shaping. (k) Trigger-customer pilots the adapter end-to-end on their repo; merged-PR count > 5 within first 30 days of adapter ship. (l) Effort lands inside #408 cross-phase budget (1-2 wks). |
 
 ## Cites
 
 - `docs/engineer/briefs/2026-06-02-next-horizon-roadmap.md` §3 (top-3 rank 3) + §4 MVR-1-T5 + §11 dispatch list
-- `docs/engineer/specs/2026-06-01-adapter-contracts-design.md` (P3.8 adapter contracts)
+- `docs/engineer/specs/phase-x/2026-06-01-adapter-contracts-design.md` (P3.8 adapter contracts)
 - `feedback_research_design_principles` - second-consumer proof for adapter contract
 - `feedback_decision_priority` - customer-signal-driven > engineering-convenience
