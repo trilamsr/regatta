@@ -65,6 +65,17 @@ type FoldResult struct {
 	Err               error
 }
 
+// foldTally accumulates the per-actor allow / deny votes plus the two
+// diagnostic flags (selfDropped, foldErr) that survive the scan and
+// feed into resolveVerdict.
+type foldTally struct {
+	allowsBy, deniesBy []string
+	allowSeen          map[string]bool
+	denySeen           map[string]bool
+	selfDropped        bool
+	foldErr            error
+}
+
 // Fold derives the canonical verdict from an event log against a
 // reviewer-set snapshot. Pure function — no DB, no clock, no I/O.
 //
@@ -75,74 +86,117 @@ type FoldResult struct {
 // frozen for that branch (spec §4.1).
 func Fold(events []state.ApprovalEvent, cfg FoldConfig) FoldResult {
 	allowed := reviewerLookup(cfg.ReviewerSet.Reviewers)
-	quorum := cfg.ReviewerSet.Quorum
 	preventSelfReview := cfg.ReviewerSet.PreventSelfReview && cfg.RequestedBy != ""
+	if terminal, ok := scanTerminal(events, allowed, preventSelfReview, cfg.RequestedBy); ok {
+		return terminal
+	}
+	tally := tallyVotes(events, allowed, preventSelfReview, cfg.RequestedBy)
+	return resolveVerdict(tally, allowed, cfg, preventSelfReview)
+}
 
-	var allowsBy, deniesBy []string
-	allowSeen := map[string]bool{}
-	denySeen := map[string]bool{}
-	var selfDropped bool
+// scanTerminal walks events once looking for a terminal marker
+// (`approved`, `rejected`, `timed_out`) that short-circuits the fold
+// per spec §4.1 (first-terminal-wins). Returns (result, true) on hit;
+// (_, false) means no terminal event and the caller proceeds to the
+// vote tally. foldErr from earlier decided-event corruption is NOT
+// propagated here — the terminal marker is authoritative and callers
+// don't need the parse-error diagnostic once the row is frozen.
+func scanTerminal(events []state.ApprovalEvent, allowed map[string]bool, preventSelfReview bool, requestedBy string) (FoldResult, bool) {
+	// foldErr is re-derived by walking prior decided rows so the
+	// terminal-result Err field matches the pre-refactor behavior:
+	// any decided-event parse error observed BEFORE the terminal row
+	// bubbles up alongside the winning status.
 	var foldErr error
-
 	for _, ev := range events {
 		switch ev.Kind {
 		case EventKindApproved:
-			return FoldResult{Status: StatusApproved, DecidedBy: append([]string(nil), ev.Actor), Err: foldErr}
+			return FoldResult{Status: StatusApproved, DecidedBy: append([]string(nil), ev.Actor), Err: foldErr}, true
 		case EventKindRejected:
-			return FoldResult{Status: StatusRejected, DecidedBy: append([]string(nil), ev.Actor), Err: foldErr}
+			return FoldResult{Status: StatusRejected, DecidedBy: append([]string(nil), ev.Actor), Err: foldErr}, true
 		case EventKindTimedOut:
-			return FoldResult{Status: StatusTimedOut, Err: foldErr}
+			return FoldResult{Status: StatusTimedOut, Err: foldErr}, true
 		case EventKindDecided:
 			if !allowed[ev.Actor] {
 				continue
 			}
-			if preventSelfReview && ev.Actor == cfg.RequestedBy {
-				selfDropped = true
+			if preventSelfReview && ev.Actor == requestedBy {
 				continue
 			}
-			dec, err := extractDecision(ev.Payload)
-			if err != nil {
-				// Don't return early — keep folding so the caller sees
-				// every defect in one pass. Status stays pending until
-				// quorum is reached by other (valid) votes.
+			if _, err := extractDecision(ev.Payload); err != nil {
 				foldErr = err
-				continue
-			}
-			switch dec {
-			case DecisionAllow:
-				if !allowSeen[ev.Actor] && !denySeen[ev.Actor] {
-					allowsBy = append(allowsBy, ev.Actor)
-					allowSeen[ev.Actor] = true
-				}
-			case DecisionDeny:
-				if !allowSeen[ev.Actor] && !denySeen[ev.Actor] {
-					deniesBy = append(deniesBy, ev.Actor)
-					denySeen[ev.Actor] = true
-				}
 			}
 		}
 	}
+	return FoldResult{}, false
+}
 
+// tallyVotes walks events (already known to lack a terminal marker
+// per scanTerminal returning false) and tallies decided-event votes
+// per actor, tracking self-review drops + payload-parse errors.
+func tallyVotes(events []state.ApprovalEvent, allowed map[string]bool, preventSelfReview bool, requestedBy string) foldTally {
+	t := foldTally{allowSeen: map[string]bool{}, denySeen: map[string]bool{}}
+	for _, ev := range events {
+		if ev.Kind != EventKindDecided {
+			continue
+		}
+		accumulateVote(&t, ev, allowed, preventSelfReview, requestedBy)
+	}
+	return t
+}
+
+// accumulateVote applies a single decided-event to the running tally,
+// enforcing reviewer-set membership, self-review drop, payload sanity,
+// and one-vote-per-actor before charging the vote to allow / deny.
+func accumulateVote(t *foldTally, ev state.ApprovalEvent, allowed map[string]bool, preventSelfReview bool, requestedBy string) {
+	if !allowed[ev.Actor] {
+		return
+	}
+	if preventSelfReview && ev.Actor == requestedBy {
+		t.selfDropped = true
+		return
+	}
+	dec, err := extractDecision(ev.Payload)
+	if err != nil {
+		// Don't return early — keep folding so the caller sees every
+		// defect in one pass. Status stays pending until quorum is
+		// reached by other (valid) votes.
+		t.foldErr = err
+		return
+	}
+	if t.allowSeen[ev.Actor] || t.denySeen[ev.Actor] {
+		return
+	}
+	switch dec {
+	case DecisionAllow:
+		t.allowsBy = append(t.allowsBy, ev.Actor)
+		t.allowSeen[ev.Actor] = true
+	case DecisionDeny:
+		t.deniesBy = append(t.deniesBy, ev.Actor)
+		t.denySeen[ev.Actor] = true
+	}
+}
+
+// resolveVerdict maps a completed vote tally to the terminal status.
+// Quorum-satisfied approvals win over rejection-threshold denies;
+// insufficient remaining reviewers to reach quorum ⇒ terminal reject
+// (spec §4.1). quorum<1 falls through to pending (fail-closed against
+// corrupted snapshots that slipped past Config.Validate).
+func resolveVerdict(t foldTally, allowed map[string]bool, cfg FoldConfig, preventSelfReview bool) FoldResult {
+	quorum := cfg.ReviewerSet.Quorum
 	if quorum < 1 {
-		// Defensive: should be caught by Config.Validate, but a
-		// corrupted snapshot must not loop or panic. Fail-closed.
-		return FoldResult{Status: StatusPending, SelfReviewDropped: selfDropped, Err: foldErr}
+		return FoldResult{Status: StatusPending, SelfReviewDropped: t.selfDropped, Err: t.foldErr}
 	}
-
-	if len(allowsBy) >= quorum {
-		return FoldResult{Status: StatusApproved, DecidedBy: allowsBy, SelfReviewDropped: selfDropped, Err: foldErr}
+	if len(t.allowsBy) >= quorum {
+		return FoldResult{Status: StatusApproved, DecidedBy: t.allowsBy, SelfReviewDropped: t.selfDropped, Err: t.foldErr}
 	}
-	// Rejection threshold: once enough denies arrive that the remaining
-	// not-yet-voted reviewers cannot reach quorum, the approval is
-	// terminal-rejected. Concretely: n - denies < quorum → reject.
 	eligible := len(allowed)
 	if preventSelfReview && allowed[cfg.RequestedBy] {
 		eligible--
 	}
-	if eligible-len(deniesBy) < quorum {
-		return FoldResult{Status: StatusRejected, DecidedBy: deniesBy, SelfReviewDropped: selfDropped, Err: foldErr}
+	if eligible-len(t.deniesBy) < quorum {
+		return FoldResult{Status: StatusRejected, DecidedBy: t.deniesBy, SelfReviewDropped: t.selfDropped, Err: t.foldErr}
 	}
-	return FoldResult{Status: StatusPending, SelfReviewDropped: selfDropped, Err: foldErr}
+	return FoldResult{Status: StatusPending, SelfReviewDropped: t.selfDropped, Err: t.foldErr}
 }
 
 func reviewerLookup(rs []string) map[string]bool {
