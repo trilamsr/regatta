@@ -462,8 +462,8 @@ Per `feedback_grade_rubric`: each grade has tool-checkable criteria. The PR body
 ### B — basic correctness
 - **B1.** `bash scripts/doc-check.sh` exits 0 against the spec + any new docs. **Verify:** rerun the command.
 - **B2.** `bash scripts/stale-todo.sh` exits 0. **Verify:** rerun the command.
-- **B3.** Every section §1-§10 present in the spec. **Verify:** `grep -E '^## §' docs/engineer/specs/2026-06-01-w12-billing-design.md | wc -l` ≥ 10.
-- **B4.** Risk register has R1-R10 (10 risks). **Verify:** `grep -cE '^\| \*\*R[0-9]+\*\*' docs/engineer/specs/2026-06-01-w12-billing-design.md` == 10.
+- **B3.** Every section §1-§10 present in the spec. **Verify:** `grep -E '^## §' docs/engineer/specs/phase-x/2026-06-01-w12-billing-design.md | wc -l` ≥ 10.
+- **B4.** Risk register has R1-R10 (10 risks). **Verify:** `grep -cE '^\| \*\*R[0-9]+\*\*' docs/engineer/specs/phase-x/2026-06-01-w12-billing-design.md` == 10.
 - **B5.** Every deferred item names a tracking issue with prefix `[billing-followup]`. **Verify:** `grep -c '\[billing-followup\]' docs/engineer/specs/...md` ≥ 6.
 
 ### A — edge cases + deletion + reviewer-cleared

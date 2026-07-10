@@ -47,7 +47,7 @@ Roadmap row this fills: G8 — agent runner beyond Claude (sibling to G7 SCM-bey
 ### In scope
 
 - `internal/orchestrator/spawner/iface.go` — extract the existing `Spawner` interface + supporting value types (`Request`, `Result`) into a stable file with a 1-line WHY-form godoc. No method-set change.
-- `internal/orchestrator/spawner/registry.go` — `Register(kind string, Factory)` + `Open(ctx, kind, cfg) (Spawner, error)` — the P3.8 `sql.Register` shape from `2026-06-01-adapter-contracts-design.md` §Common skeleton.
+- `internal/orchestrator/spawner/registry.go` — `Register(kind string, Factory)` + `Open(ctx, kind, cfg) (Spawner, error)` — the P3.8 `sql.Register` shape from `phase-x/2026-06-01-adapter-contracts-design.md` §Common skeleton.
 - `internal/orchestrator/spawner/claude/` — move `claude.go` + `claude_test.go` + `claude_genai_test.go` here. `init()` calls `spawner.Register("claude", New)`. Byte-equal behavior on the existing path — golden tests from `claude_genai_test.go` carry over verbatim.
 - `internal/orchestrator/spawner/aider/` — second-party skeleton. Constructs an `aider --message-file <prompt> --yes --no-pretty` subprocess; parses Aider's `--stream` JSONL into `StreamResultEvent` so the cost-governor callback fires the same shape it does for Claude.
 - `regatta.yaml` `spawner:` block + CUE row in `contracts/schemas/regatta.v1.cue` — closed enum `kind: claude | aider`; `cursor` and `codex` reserved as documented Phase-X reopen-triggers (no schema row yet).
@@ -409,7 +409,7 @@ The disjoint-block constraint catches the `kind: aider` + missing `aider:` typo 
 
 ## 10. Closes / tracks
 
-- Spec authority for the spawner-adapter row called out in `2026-06-01-adapter-contracts-design.md` §"Common skeleton" but never filled (the contract row is reserved for the spawner seam; this spec fills it).
+- Spec authority for the spawner-adapter row called out in `phase-x/2026-06-01-adapter-contracts-design.md` §"Common skeleton" but never filled (the contract row is reserved for the spawner seam; this spec fills it).
 - File new tracking issue at PR merge: `byoa: cursor headless adapter (P3.8 third-consumer proof)` — reopen-trigger named persona-B inbound.
 - File new tracking issue at PR merge: `byoa: codex CLI adapter` — reopen-trigger OpenAI ToS allows CI use.
 - File new tracking issue at PR merge: `byoa: per-adapter cost-cap calibration table` — reopen-trigger first non-Claude operator hits a cost-cap surprise.
