@@ -25,7 +25,10 @@ const (
 	statusCompleted   = "completed"
 )
 
-func NewGHShell() *GHShell { return &GHShell{Runner: defaultExec} } //nolint:revive // wires Runner to defaultExec
+// NewGHShell returns a GHShell wired to the timeout-bounded `gh` exec so
+// callers never need to plumb the Runner seam in production; tests
+// substitute Runner directly.
+func NewGHShell() *GHShell { return &GHShell{Runner: defaultExec} }
 
 // PRChecks aggregates required-check rows: "failure" wins; "success/completed" only when every row has succeeded.
 func (g *GHShell) PRChecks(ctx context.Context, pr string) (CheckRun, error) {

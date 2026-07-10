@@ -11,12 +11,15 @@ import (
 //go:embed assets/CLAUDE.md.default assets/dispatch-templates/*.default.md
 var bundled embed.FS
 
-type Source string //nolint:revive // tag for which file produced the resolved text
+// Source tags which file produced the resolved prompt text so callers
+// can distinguish target-worktree overrides from the bundled defaults.
+type Source string
 
-const (
-	SourceTarget  Source = "target"  //nolint:revive // resolution outcome
-	SourceBundled Source = "bundled" //nolint:revive // resolution outcome
-)
+// SourceTarget is set when the prompt was read from the target worktree.
+const SourceTarget Source = "target"
+
+// SourceBundled is set when the prompt fell through to the embedded default.
+const SourceBundled Source = "bundled"
 
 // ResolveClaudeMd returns the target's CLAUDE.md when present, else the bundled default; empty repoRoot skips disk (unit-test contract).
 func ResolveClaudeMd(repoRoot string) (string, Source, error) {
