@@ -108,14 +108,14 @@ Pre-push hint: the self-host filter is enforced at issue-triage time (operator w
 
 `main` has `required_status_checks.strict: false` (turned off 2026-06-01 during autonomous batch-merge). Only DIRTY merge-state blocks merge — automerge fires as soon as PR's own CI passes. (`feedback_branch_protection_strict`)
 
-## Tracker (Linear is source of truth)
+## Tracker (`TICKETS.md` is source of truth)
 
-Per-task tracking lives in Linear: https://linear.app/themaydow/project/regatta-ac48ea99ac5d/overview (workspace `themaydow`, project `regatta`, team `MAY`). GH Issues deprecated 2026-06-10 (83 issues #1024–#1278 closed w/ redirect comments → `MAY-20` through `MAY-103`). Open WBS from former `docs/engineer/plans/*.md` → `MAY-116` through `MAY-159`.
+Per-task tracking lives in-repo at `TICKETS.md` (root). Linear retired 2026-07-09 — the 75 open+in-progress tickets were exported into `TICKETS.md` grouped by milestone (M1–M10). Legacy Linear identifiers (`MAY-N`) retained as ticket headings so historical PR bodies still resolve.
 
-- File new wedges, slices, reviewer findings, REVISE slips, plan-master items in Linear. Do NOT `gh issue create`.
-- Every Linear ticket MUST carry a milestone (M1-M12). No orphans. Catch-all priority: theme milestone (M1-M9) → type milestone (M11 bugs / M12 improvements) → M10 (mixed/unclassified, last resort).
-- PR bodies continue using GH `closes #N` for the 83 closed historical GH issues; cite Linear ticket IDs (`MAY-N`) alongside for new work.
-- Design source of truth lives at `docs/engineer/specs/` + `docs/engineer/briefs/`. The former `docs/engineer/plans/` task-breakdown directory was removed in this migration — Linear holds per-task state.
+- File new wedges, slices, reviewer findings, REVISE slips, plan-master items by editing `TICKETS.md`. New entries pick the next `MAY-N` above the highest existing ID.
+- Every ticket MUST live under a milestone heading. Catch-all priority: theme milestone (M1–M9) → M10 (mixed/unclassified, last resort).
+- PR bodies use GH `closes #N` for closed historical GH issues + `MAY-N` in the summary for the corresponding `TICKETS.md` entry — mark that entry `Status: Done` in the same PR.
+- Design source of truth lives at `docs/engineer/specs/` + `docs/engineer/briefs/`. The former `docs/engineer/plans/` task-breakdown directory was removed during the earlier Linear migration; `TICKETS.md` now holds per-task state.
 
 ## Pointers
 
