@@ -18,7 +18,7 @@ sources.
    stack L0-L6, program layer, threat model).
 3. `docs/incidents.md` - AI-agent incident catalog driving the trap
    patterns.
-4. `CLAUDE.md` - universal agent-and-contributor operating rules.
+4. `TICKETS.md` - repo-resident tracker (per-task state, milestones).
 5. `docs/engineer/specs/` + `docs/engineer/briefs/` - active design
    specs and unshipped briefs; `docs/engineer/CHANGELOG.md` for
    shipped decisions.

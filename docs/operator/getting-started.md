@@ -92,8 +92,8 @@ status: planned
 EOF
 ```
 
-**Boot-prompt converter.** If a roadmap document already exists at
-`docs/engineer/autonomous-session-prompt.md` (or equivalent), run:
+**Boot-prompt converter.** If a roadmap document already exists at a
+path you can pass to the converter, run:
 
 ```sh
 make items
