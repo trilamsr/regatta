@@ -172,8 +172,8 @@ func (s *Syncer) Sync(ctx context.Context, pollStartedAt time.Time) error {
 		return s.cascadeChildrenOfArchivedPrograms(ctx, pollStartedAt)
 	}
 	s.consecutiveEmpty = 0
-	staged := s.stageItems(ctx, items)
-	if err := ctx.Err(); err != nil {
+	staged, err := s.stageItems(ctx, items)
+	if err != nil {
 		return err
 	}
 	if err := s.db.BatchUpsertWorkItems(ctx, staged, state.SourceAdapter, pollStartedAt); err != nil {
@@ -247,12 +247,14 @@ func (s *Syncer) handleEmptyList(pollStartedAt time.Time) {
 
 // stageItems dedupes by ID, maps adapter kind/status → state enums, and
 // skips unmappable rows so one bad row never stops a poll (spec §3).
-func (s *Syncer) stageItems(ctx context.Context, items []schemas.WorkItem) []state.WorkItem {
+// Returns ctx.Err() so cancellation propagates through the type system
+// rather than a silently-truncated slice the caller must re-check.
+func (s *Syncer) stageItems(ctx context.Context, items []schemas.WorkItem) ([]state.WorkItem, error) {
 	seen := map[string]bool{}
 	staged := make([]state.WorkItem, 0, len(items))
 	for _, it := range items {
-		if ctx.Err() != nil {
-			return staged
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 		id := string(it.ID)
 		if seen[id] {
@@ -285,7 +287,7 @@ func (s *Syncer) stageItems(ctx context.Context, items []schemas.WorkItem) []sta
 			Status: status,
 		})
 	}
-	return staged
+	return staged, nil
 }
 
 // cascadeChildrenOfArchivedPrograms archives live children of any
